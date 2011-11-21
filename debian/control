@@ -1,0 +1,81 @@
+Source: glance
+Section: net
+Priority: extra
+Maintainer: Thomas Goirand <zigo@debian.org>
+Uploaders: Ghe Rivero <ghe@debian.org>
+Build-Depends: debhelper (>= 7.0.50),
+ python-all
+Build-Depends-Indep:
+ python-setuptools,
+ python-sphinx,
+ python-sqlalchemy-ext | python-sqlalchemy (<< 0.6.3-2),
+ python-nose,
+ python-mox,
+ python-webob,
+ python-eventlet,
+ python-pastedeploy,
+ python-migrate,
+ python-argparse,
+ python-swift,
+ python-boto,
+ python-kombu,
+ curl,
+ pep8
+Standards-Version: 3.9.2
+X-Python-Version: >= 2.6
+Homepage: http://launchpad.net/glance
+Vcs-Browser: http://bazaar.launchpad.net/~openstack-ubuntu-packagers/ubuntu/natty/glance/ubuntu/files/
+Vcs-Bzr: http://bazaar.launchpad.net/~openstack-ubuntu-packagers/ubuntu/natty/glance/ubuntu/
+XS-Debian-Vcs-Browser: http://bazaar.launchpad.net/~glance-core/debian/sid/glance/debian/files
+XS-Debian-Vcs-Bzr: http://bazaar.launchpad.net/~glance-core/debian/sid/glance/debian
+
+Package: python-glance
+Architecture: all
+Section: python
+Depends: ${python:Depends}, ${misc:Depends},
+ python-webob,
+ python-routes,
+ python-daemon,
+ python-eventlet,
+ python-sqlalchemy-ext | python-sqlalchemy (<< 0.6.3-2),
+ python-pastedeploy,
+ python-argparse,
+ python-migrate,
+ python-kombu,
+ python-xattr
+Provides: ${python:Provides}
+Description: OpenStack Image Registry and Delivery Service - Python library
+ The Glance project provides an image registration and discovery service
+ (Parallax) and an image delivery service (Teller). These services are used
+ in conjunction by Nova to deliver images from object stores, such as
+ OpenStack's Swift service, to Nova's compute nodes.
+ .
+ This package contains the Python libraries.
+
+Package: glance
+Architecture: all
+Section: python
+Depends: ${python:Depends}, ${misc:Depends}, python-glance (= ${source:Version}), 
+ adduser, 
+ python-argparse,
+ python-httplib2
+Description: OpenStack Image Registry and Delivery Service - Daemons
+ The Glance project provides an image registration and discovery service
+ (Parallax) and an image delivery service (Teller). These services are used
+ in conjunction by Nova to deliver images from object stores, such as
+ OpenStack's Swift service, to Nova's compute nodes.
+ .
+ This package contains the daemons.
+
+Package: python-glance-doc
+Architecture: all
+Section: doc
+Depends: libjs-jquery, ${misc:Depends}
+Description: OpenStack Image Registry and Delivery Service - Documentation
+ The Glance project provides an image registration and discovery service
+ (Parallax) and an image delivery service (Teller). These services are used
+ in conjunction by Nova to deliver images from object stores, such as
+ OpenStack's Swift service, to Nova's compute nodes.
+ .
+ This package contains the documentation.
+

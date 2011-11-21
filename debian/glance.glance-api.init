@@ -1,0 +1,75 @@
+#! /bin/sh
+### BEGIN INIT INFO
+# Provides:          glance-api
+# Required-Start:    $remote_fs $syslog
+# Required-Stop:     $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: glance-api server
+# Description:       OpenStack Image Service (code-named Glance) provides
+#                    discovery, registration, and delivery services for virtual
+#                    disk images. The Image Service API server provides a
+#                    standard REST interface for querying information about
+#                    virtual disk images stored in a variety of back-end
+#                    stores, including OpenStack Object Storage. Clients can
+#                    register new virtual disk images with the Image Service,
+#                    query for information on publicly available disk images,
+#                    and use the Image Service's client library for streaming
+#                    virtual disk images.
+### END INIT INFO
+
+set -e
+
+DAEMON="/usr/bin/glance-api"
+DAEMON_ARGS="glance"
+PIDFILE=/var/run/glance/glance-api.pid
+USERID="glance"
+GROUPID="glance"
+
+ENABLED=true
+
+if ! [ -x ${DAEMON} ] ; then
+	exit 0
+fi
+
+mkdir -p /var/run/glance
+chown $USERUID:$GROUPID /var/run/glance
+
+mkdir -p /var/log/glance
+chown $USERID:$GROUPID /var/log/glance
+
+. /lib/lsb/init-functions
+
+export PATH="${PATH:+$PATH:}/usr/sbin:/sbin"
+
+case "$1" in
+start)
+	test "$ENABLED" = "true" || exit 0
+	log_daemon_msg "Starting Glance api" "glance-api"
+	start-stop-daemon --start --chuid ${USERID}:${GROUPID} -m -b --pidfile ${PIDFILE} --exec ${DAEMON} -- ${DAEMON_ARGS}
+	log_end_msg $?
+;;
+stop)
+	test "$ENABLED" = "true" || exit 0
+	log_daemon_msg "Stopping Glance api" "glance-api"
+	start-stop-daemon --stop --oknodo --pidfile ${PIDFILE}
+	log_end_msg $?
+;;
+reload|restart|force-reload)
+	test "$ENABLED" = "true" || exit 1
+	$0 stop
+	sleep 1
+	$0 start
+;;
+status)
+	test "$ENABLED" = "true" || exit 0
+	# This is to be fixed: it doesn't exist in Debian
+	status_of_proc -p $PIDFILE $DAEMON nova-api && exit 0 || exit $?
+;;
+*)
+	log_action_msg "Usage: $0 {start|stop|restart|force-reload|status}"
+	exit 1
+;;
+esac
+
+exit 0

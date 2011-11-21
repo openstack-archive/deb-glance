@@ -1,0 +1,27 @@
+#!/bin/sh
+
+set -e
+
+if [ "$1" = "configure" ]
+then
+    if ! getent group glance > /dev/null 2>&1
+    then
+        addgroup --system glance >/dev/null
+    fi
+
+    if ! getent passwd glance > /dev/null 2>&1
+    then
+        adduser --system --home /var/lib/glance --ingroup glance --no-create-home --shell /bin/bash glance
+    fi
+
+    chown glance:glance -R /var/lib/glance /var/log/glance /etc/glance
+    chmod 0700 /etc/glance
+    chmod 0700 /var/log/glance
+
+#    if grep sql_connection /etc/glance/glance.conf | grep -qv "sql_connection = sqlite:////var/lib/glance/glance.sqlite"
+#    then
+#	su -c 'glance-manage db sync' glance
+#    fi
+fi
+
+#DEBHELPER#

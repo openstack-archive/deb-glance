@@ -1,0 +1,9 @@
+usr/bin/*
+etc/glance-scrubber.conf etc/glance
+etc/glance-api.conf etc/glance
+etc/glance-registry.conf etc/glance
+etc/glance-prefetcher.conf etc/glance
+etc/glance-pruner.conf etc/glance
+etc/glance-reaper.conf etc/glance
+
+

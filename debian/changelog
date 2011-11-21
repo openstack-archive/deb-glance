@@ -1,0 +1,53 @@
+glance (2011.3-1) unstable; urgency=low
+
+  * [624c8de] Imported Upstream version 2011.3
+  * [df2ecd1] pkg cleanup
+  * [1f9054b] added post/pre install/rm scripts
+  * [7b6c293] patches refreshed
+
+ -- Ghe Rivero <ghe@debian.org>  Wed, 09 Nov 2011 11:53:23 +0100
+
+glance (2011.2-1) unstable; urgency=low
+
+  * Added patch headers.
+  * Added stub manpages when missing.
+  * Disabled upstart scripts when in Debian.
+  * Added missing adduser dependency.
+  * Added myself as uploaders.
+  * Added glance-api and glance-registry init.d scripts.
+  * Patches glance-api and glance-registry to use a log file instead of
+  stderr / stdout.
+  * Added logrotate file for glance-api and glance-registry.
+
+ -- Thomas Goirand <zigo@debian.org>  Tue, 10 May 2011 09:10:56 +0000
+
+glance (2011.2-0ubuntu1) natty; urgency=low
+
+  * New upstream version. 
+
+ -- Chuck Short <zulcss@ubuntu.com>  Fri, 15 Apr 2011 08:18:16 -0400
+
+glance (2011.2~bzr108-0ubuntu1) natty; urgency=low
+
+  [ Soren Hansen ]
+  * Run test suite during build
+  * Add pep8 as a build-dependency.
+  * Add python-{daemon,eventlet,sqlalchemy} as dependencies of python-
+    glance. Add python-argparse as a dependency of glance.
+  * Add dependency on python-pastedeploy and python-migrate.
+  * Remove deps on Twisted and gflags.
+  * Add curl to build-depends. The test suite needs it.
+  * Add dep on python-argparse.
+  * Build-depend on python-swift. The test suite needs the Swift client.
+  * Install glance-api and glance-registry upstart jobs. (LP: #757404)
+  * Create and chown /var/log/glance directory on install.
+  * Install sample config by default.
+  * Create db on install.
+
+ -- Chuck Short <zulcss@ubuntu.com>  Tue, 12 Apr 2011 09:52:06 -0400
+
+glance (0.1.3pre~bzr39-0ubuntu1) natty; urgency=low
+
+  * Initial upload.
+
+ -- Soren Hansen <soren@ubuntu.com>  Wed, 19 Jan 2011 12:01:32 +0100

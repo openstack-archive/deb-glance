@@ -1,0 +1,36 @@
+#!/usr/bin/make -f
+
+# Verbose mode
+#export DH_VERBOSE=1
+
+%:
+	dh $@ --with python2
+
+get-orig-source:
+	uscan --verbose --force-download --rename --destdir=../build-area
+
+override_dh_install:
+	dh_install
+
+#override_dh_auto_test:
+#	bash run_tests.sh -N
+
+override_dh_auto_build:
+	dh_auto_build
+	mkdir -p doc/build
+	python setup.py build_sphinx
+
+override_dh_auto_clean:
+	rm -rf doc/build
+	rm -rf glance.sqlite
+	rm -rf debian/*.upstart
+
+override_dh_installinit:
+	if dpkg-vendor --derives-from ubuntu ; then \
+		for i in *.upstart.in ; do \
+			MYPKG=`echo $i | cut -d. -f1` ; \
+			cp $MYPKG.upstart.in $MYPKG.upstart ; \
+		done ; \
+	fi
+	dh_installinit --name glance-api
+	dh_installinit --name glance-registry
