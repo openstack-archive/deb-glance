@@ -8,19 +8,14 @@ Build-Depends: debhelper (>= 7.0.50),
 Build-Depends-Indep:
  python-setuptools,
  python-sphinx,
+ python-distutils-extra,
  python-sqlalchemy-ext | python-sqlalchemy (<< 0.6.3-2),
  python-nose,
- python-mox,
  python-webob,
- python-eventlet,
- python-pastedeploy,
  python-migrate,
- python-argparse,
- python-swift,
+ python-routes,
  python-boto,
- python-kombu,
- curl,
- pep8
+ python-kombu
 Standards-Version: 3.9.2
 X-Python-Version: >= 2.6
 Homepage: http://launchpad.net/glance
