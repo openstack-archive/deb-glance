@@ -6,9 +6,6 @@
 %:
 	dh $@ --with python2
 
-get-orig-source:
-	uscan --verbose --force-download --rename --destdir=../build-area
-
 override_dh_auto_build:
 	dh_auto_build
 	mkdir -p doc/build
