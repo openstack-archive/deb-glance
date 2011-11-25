@@ -9,12 +9,6 @@
 get-orig-source:
 	uscan --verbose --force-download --rename --destdir=../build-area
 
-override_dh_install:
-	dh_install
-
-#override_dh_auto_test:
-#	bash run_tests.sh -N
-
 override_dh_auto_build:
 	dh_auto_build
 	mkdir -p doc/build
