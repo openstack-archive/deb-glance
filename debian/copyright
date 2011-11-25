@@ -1,5 +1,5 @@
-Format-Specification: http://svn.debian.org/wsvn/dep/web/deps/dep5.mdwn?op=file&rev=135
-Name: glance
+Format: http://dep.debian.net/deps/dep5
+Upstream-Name: glance
 Source: https://code.launchpad.net/glance
 
 Files: *
