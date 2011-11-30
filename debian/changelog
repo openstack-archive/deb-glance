@@ -1,3 +1,9 @@
+glance (2012.1~e1-1) unstable; urgency=low
+
+  * New upstream release.
+
+ -- Julien Danjou <acid@debian.org>  Wed, 30 Nov 2011 17:33:30 +0100
+
 glance (2011.3-1) unstable; urgency=low
 
   * [624c8de] Imported Upstream version 2011.3
