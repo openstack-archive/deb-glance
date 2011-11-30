@@ -1,9 +1,0 @@
-description "Glance registry server"
-author "Soren Hansen <soren@linux2go.dk>"
-
-start on (local-filesystems and net-device-up IFACE!=lo)
-stop on runlevel [016]
-
-respawn
-
-exec su -c "glance-registry" glance >> /var/log/glance/glance-registry.log 2>&1
