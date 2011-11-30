@@ -39,11 +39,13 @@ import os
 import tempfile
 import unittest
 
+from glance.common import crypt
 import glance.store.swift  # Needed to register driver for location
 from glance.store.location import get_location_from_uri
 from glance.tests.functional import test_api
 from glance.tests.utils import execute, skip_if_disabled
 
+FIVE_KB = 5 * 1024
 FIVE_MB = 5 * 1024 * 1024
 
 
@@ -200,23 +202,27 @@ class TestSwift(test_api.TestApi):
         self.assertEqual(data['image']['name'], "Image1")
         self.assertEqual(data['image']['is_public'], True)
 
-        # HEAD /images/1
+        image_id = data['image']['id']
+
+        # HEAD image
         # Verify image found now
-        path = "http://%s:%d/v1/images/1" % ("0.0.0.0", self.api_port)
+        path = "http://%s:%d/v1/images/%s" % ("0.0.0.0", self.api_port,
+                                              image_id)
         http = httplib2.Http()
         response, content = http.request(path, 'HEAD')
         self.assertEqual(response.status, 200)
         self.assertEqual(response['x-image-meta-name'], "Image1")
 
-        # GET /images/1
+        # GET image
         # Verify all information on image we just added is correct
-        path = "http://%s:%d/v1/images/1" % ("0.0.0.0", self.api_port)
+        path = "http://%s:%d/v1/images/%s" % ("0.0.0.0", self.api_port,
+                                              image_id)
         http = httplib2.Http()
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 200)
 
         expected_image_headers = {
-            'x-image-meta-id': '1',
+            'x-image-meta-id': image_id,
             'x-image-meta-name': 'Image1',
             'x-image-meta-is_public': 'True',
             'x-image-meta-status': 'active',
@@ -252,12 +258,19 @@ class TestSwift(test_api.TestApi):
         # Grab the actual Swift location and query the object manifest for
         # the chunks/segments. We will check that the segments don't exist
         # after we delete the object through Glance...
-        path = "http://%s:%d/images/1" % ("0.0.0.0", self.registry_port)
+        path = "http://%s:%d/images/%s" % ("0.0.0.0", self.registry_port,
+                                           image_id)
         http = httplib2.Http()
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 200)
         data = json.loads(content)
-        image_loc = get_location_from_uri(data['image']['location'])
+        image_loc = data['image']['location']
+        if hasattr(self, 'metadata_encryption_key'):
+            key = self.metadata_encryption_key
+        else:
+            key = self.api_server.metadata_encryption_key
+        image_loc = crypt.urlsafe_decrypt(key, image_loc)
+        image_loc = get_location_from_uri(image_loc)
         swift_loc = image_loc.store_location
 
         from swift.common import client as swift_client
@@ -282,9 +295,10 @@ class TestSwift(test_api.TestApi):
             self.assertTrue(headers.get('content-length') is not None,
                             headers)
 
-        # DELETE /images/1
+        # DELETE image
         # Verify image and all chunks are gone...
-        path = "http://%s:%d/v1/images/1" % ("0.0.0.0", self.api_port)
+        path = "http://%s:%d/v1/images/%s" % ("0.0.0.0", self.api_port,
+                                              image_id)
         http = httplib2.Http()
         response, content = http.request(path, 'DELETE')
         self.assertEqual(response.status, 200)
@@ -338,23 +352,27 @@ class TestSwift(test_api.TestApi):
         self.assertEqual(data['image']['name'], "Image1")
         self.assertEqual(data['image']['is_public'], True)
 
-        # 4. HEAD /images/1
+        image_id = data['image']['id']
+
+        # 4. HEAD image
         # Verify image found now
-        path = "http://%s:%d/v1/images/1" % ("0.0.0.0", self.api_port)
+        path = "http://%s:%d/v1/images/%s" % ("0.0.0.0", self.api_port,
+                                              image_id)
         http = httplib2.Http()
         response, content = http.request(path, 'HEAD')
         self.assertEqual(response.status, 200)
         self.assertEqual(response['x-image-meta-name'], "Image1")
 
-        # 5. GET /images/1
+        # 5. GET image
         # Verify all information on image we just added is correct
-        path = "http://%s:%d/v1/images/1" % ("0.0.0.0", self.api_port)
+        path = "http://%s:%d/v1/images/%s" % ("0.0.0.0", self.api_port,
+                                              image_id)
         http = httplib2.Http()
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 200)
 
         expected_image_headers = {
-            'x-image-meta-id': '1',
+            'x-image-meta-id': image_id,
             'x-image-meta-name': 'Image1',
             'x-image-meta-is_public': 'True',
             'x-image-meta-status': 'active',
@@ -383,5 +401,109 @@ class TestSwift(test_api.TestApi):
         self.assertEqual(content, "*" * FIVE_MB)
         self.assertEqual(hashlib.md5(content).hexdigest(),
                          hashlib.md5("*" * FIVE_MB).hexdigest())
+
+        self.stop_servers()
+
+    @skip_if_disabled
+    def test_remote_image(self):
+        """
+        Ensure we can retrieve an image that was not stored by glance itself
+        """
+        self.cleanup()
+
+        self.start_servers(**self.__dict__.copy())
+
+        api_port = self.api_port
+        registry_port = self.registry_port
+
+        # POST /images with public image named Image1
+        image_data = "*" * FIVE_KB
+        headers = {'Content-Type': 'application/octet-stream',
+                   'X-Image-Meta-Name': 'Image1',
+                   'X-Image-Meta-Is-Public': 'True'}
+        path = "http://%s:%d/v1/images" % ("0.0.0.0", self.api_port)
+        http = httplib2.Http()
+        response, content = http.request(path, 'POST', headers=headers,
+                                         body=image_data)
+        self.assertEqual(response.status, 201, content)
+        data = json.loads(content)
+        self.assertEqual(data['image']['checksum'],
+                         hashlib.md5(image_data).hexdigest())
+        self.assertEqual(data['image']['size'], FIVE_KB)
+        self.assertEqual(data['image']['name'], "Image1")
+        self.assertEqual(data['image']['is_public'], True)
+
+        image_id = data['image']['id']
+
+        # GET image and make sure data was uploaded
+        path = "http://%s:%d/v1/images/%s" % ("0.0.0.0", self.api_port,
+                                              image_id)
+        http = httplib2.Http()
+        response, content = http.request(path, 'GET')
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response['content-length'], str(FIVE_KB))
+
+        self.assertEqual(content, "*" * FIVE_KB)
+        self.assertEqual(hashlib.md5(content).hexdigest(),
+                         hashlib.md5("*" * FIVE_KB).hexdigest())
+
+        # Find the location that was just added and use it as
+        # the remote image location for the next image
+        path = "http://%s:%d/images/%s" % ("0.0.0.0", self.registry_port,
+                                           image_id)
+        http = httplib2.Http()
+        response, content = http.request(path, 'GET')
+        self.assertEqual(response.status, 200)
+        data = json.loads(content)
+        self.assertTrue('location' in data['image'].keys())
+        loc = data['image']['location']
+        if hasattr(self, 'metadata_encryption_key'):
+            key = self.metadata_encryption_key
+        else:
+            key = self.api_server.metadata_encryption_key
+        swift_location = crypt.urlsafe_decrypt(key, loc)
+
+        # POST /images with public image named Image1 without uploading data
+        image_data = "*" * FIVE_KB
+        headers = {'Content-Type': 'application/octet-stream',
+                   'X-Image-Meta-Name': 'Image1',
+                   'X-Image-Meta-Is-Public': 'True',
+                   'X-Image-Meta-Location': swift_location}
+        path = "http://%s:%d/v1/images" % ("0.0.0.0", self.api_port)
+        http = httplib2.Http()
+        response, content = http.request(path, 'POST', headers=headers)
+        self.assertEqual(response.status, 201, content)
+        data = json.loads(content)
+        self.assertEqual(data['image']['checksum'], None)
+        self.assertEqual(data['image']['size'], 0)
+        self.assertEqual(data['image']['name'], "Image1")
+        self.assertEqual(data['image']['is_public'], True)
+
+        image_id2 = data['image']['id']
+
+        # GET /images/2 ensuring the data already in swift is accessible
+        path = "http://%s:%d/v1/images/%s" % ("0.0.0.0", self.api_port,
+                                              image_id2)
+        http = httplib2.Http()
+        response, content = http.request(path, 'GET')
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response['content-length'], str(FIVE_KB))
+
+        self.assertEqual(content, "*" * FIVE_KB)
+        self.assertEqual(hashlib.md5(content).hexdigest(),
+                         hashlib.md5("*" * FIVE_KB).hexdigest())
+
+        # DELETE boty images
+        # Verify image and all chunks are gone...
+        path = "http://%s:%d/v1/images/%s" % ("0.0.0.0", self.api_port,
+                                              image_id)
+        http = httplib2.Http()
+        response, content = http.request(path, 'DELETE')
+        self.assertEqual(response.status, 200)
+        path = "http://%s:%d/v1/images/%s" % ("0.0.0.0", self.api_port,
+                                              image_id2)
+        http = httplib2.Http()
+        response, content = http.request(path, 'DELETE')
+        self.assertEqual(response.status, 200)
 
         self.stop_servers()

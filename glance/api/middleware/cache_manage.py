@@ -24,24 +24,24 @@ import logging
 from glance.api import cached_images
 from glance.common import wsgi
 
-logger = logging.getLogger('glance.api.middleware.image_cache')
+logger = logging.getLogger(__name__)
 
 
-class ImageCacheFilter(wsgi.Middleware):
+class CacheManageFilter(wsgi.Middleware):
     def __init__(self, app, options):
-        super(ImageCacheFilter, self).__init__(app)
 
         map = app.map
         resource = cached_images.create_resource(options)
         map.resource("cached_image", "cached_images",
-                     controller=resource,
-                     collection={'reap_invalid': 'POST',
-                                 'reap_stalled': 'POST'})
+                     controller=resource)
 
         map.connect("/cached_images",
                     controller=resource,
                     action="delete_collection",
                     conditions=dict(method=["DELETE"]))
+
+        logger.info(_("Initialized image cache management middleware"))
+        super(CacheManageFilter, self).__init__(app)
 
 
 def filter_factory(global_conf, **local_conf):
@@ -52,6 +52,6 @@ def filter_factory(global_conf, **local_conf):
     conf.update(local_conf)
 
     def filter(app):
-        return ImageCacheFilter(app, conf)
+        return CacheManageFilter(app, conf)
 
     return filter

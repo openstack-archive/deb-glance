@@ -101,7 +101,7 @@ class KeystoneStrategy(BaseStrategy):
         for _ in range(self.MAX_REDIRECTS):
             try:
                 _authenticate(auth_url)
-            except exception.RedirectException as e:
+            except exception.AuthorizationRedirect as e:
                 # 2. Keystone may redirect us
                 auth_url = e.url
             except exception.AuthorizationFailure:
@@ -117,7 +117,7 @@ class KeystoneStrategy(BaseStrategy):
                 break
         else:
             # Guard against a redirection loop
-            raise Exception(_("Exceeded max redirects %s") % MAX_REDIRECTS)
+            raise exception.MaxRedirectsExceeded(redirects=self.MAX_REDIRECTS)
 
     def _v1_auth(self, token_url):
         creds = self.creds
@@ -139,7 +139,7 @@ class KeystoneStrategy(BaseStrategy):
             except KeyError:
                 raise exception.AuthorizationFailure()
         elif resp.status == 305:
-            raise exception.RedirectException(resp['location'])
+            raise exception.AuthorizationRedirect(resp['location'])
         elif resp.status == 401:
             raise exception.NotAuthorized()
         else:
@@ -148,8 +148,15 @@ class KeystoneStrategy(BaseStrategy):
     def _v2_auth(self, token_url):
         creds = self.creds
 
-        creds = {"passwordCredentials": {"username": creds['username'],
-                                         "password": creds['password']}}
+        creds = {
+            "auth": {
+                "tenantName": creds['tenant'],
+                "passwordCredentials": {
+                    "username": creds['username'],
+                    "password": creds['password']
+                    }
+                }
+            }
 
         tenant = creds.get('tenant')
         if tenant:
@@ -163,17 +170,21 @@ class KeystoneStrategy(BaseStrategy):
                 token_url, 'POST', headers=headers, body=req_body)
 
         if resp.status == 200:
-            resp_auth = json.loads(resp_body)['auth']
+            resp_auth = json.loads(resp_body)['access']
 
             # FIXME(sirp): for now just using the first endpoint we get back
             # from the service catalog for glance, and using the public url.
-            glance_info = resp_auth['serviceCatalog']['glance']
-            glance_endpoint = glance_info[0]['publicURL']
+            for service in resp_auth['serviceCatalog']:
+                if service['name'] == 'glance':
+                    glance_endpoint = service['endpoints'][0]['publicURL']
+                    break
+            else:
+                raise exception.NoServiceEndpoint()
 
             self.management_url = glance_endpoint
             self.auth_token = resp_auth['token']['id']
         elif resp.status == 305:
-            raise RedirectException(resp['location'])
+            raise exception.RedirectException(resp['location'])
         elif resp.status == 401:
             raise exception.NotAuthorized()
         else:

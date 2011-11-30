@@ -18,6 +18,7 @@
 import datetime
 import hashlib
 import httplib
+import logging
 import os
 import json
 import unittest
@@ -27,11 +28,19 @@ import webob
 
 from glance.api import v1 as server
 from glance.common import context
+from glance.common import utils
 from glance.registry import context as rcontext
-from glance.registry import server as rserver
+from glance.registry.api import v1 as rserver
 from glance.registry.db import api as db_api
 from glance.registry.db import models as db_models
 from glance.tests import stubs
+
+
+_gen_uuid = utils.generate_uuid
+
+UUID1 = _gen_uuid()
+UUID2 = _gen_uuid()
+
 
 OPTIONS = {'sql_connection': 'sqlite://',
            'verbose': False,
@@ -43,6 +52,50 @@ OPTIONS = {'sql_connection': 'sqlite://',
            'context_class': 'glance.registry.context.RequestContext'}
 
 
+class TestRegistryDb(unittest.TestCase):
+
+    def setUp(self):
+        """Establish a clean test environment"""
+        self.stubs = stubout.StubOutForTesting()
+
+    def test_bad_sql_connection(self):
+        """
+        Test that a bad sql_connection option supplied to the registry
+        API controller results in a) an Exception being thrown and b)
+        a message being logged to the registry log file...
+        """
+        bad_options = {'verbose': True,
+                       'debug': True,
+                       'sql_connection': 'baddriver:///'}
+        # We set this to None to trigger a reconfigure, otherwise
+        # other modules may have already correctly configured the DB
+        orig_engine = db_api._ENGINE
+        db_api._ENGINE = None
+        self.assertRaises(ImportError, db_api.configure_db,
+                          bad_options)
+        exc_raised = False
+        self.log_written = False
+
+        def fake_log_error(msg):
+            if 'Error configuring registry database' in msg:
+                self.log_written = True
+
+        self.stubs.Set(db_api.logger, 'error', fake_log_error)
+        try:
+            api_obj = rserver.API(bad_options)
+        except ImportError:
+            exc_raised = True
+        finally:
+            db_api._ENGINE = orig_engine
+
+        self.assertTrue(exc_raised)
+        self.assertTrue(self.log_written)
+
+    def tearDown(self):
+        """Clear the test environment"""
+        self.stubs.UnsetAll()
+
+
 class TestRegistryAPI(unittest.TestCase):
     def setUp(self):
         """Establish a clean test environment"""
@@ -51,7 +104,7 @@ class TestRegistryAPI(unittest.TestCase):
         stubs.stub_out_filesystem_backend()
         self.api = context.ContextMiddleware(rserver.API(OPTIONS), OPTIONS)
         self.FIXTURES = [
-            {'id': 1,
+            {'id': UUID1,
              'name': 'fake image #1',
              'status': 'active',
              'disk_format': 'ami',
@@ -67,7 +120,7 @@ class TestRegistryAPI(unittest.TestCase):
              'size': 13,
              'location': "swift://user:passwd@acct/container/obj.tar.0",
              'properties': {'type': 'kernel'}},
-            {'id': 2,
+            {'id': UUID2,
              'name': 'fake image #2',
              'status': 'active',
              'disk_format': 'vhd',
@@ -108,13 +161,13 @@ class TestRegistryAPI(unittest.TestCase):
         Tests that the /images/<id> registry API endpoint
         returns the expected image
         """
-        fixture = {'id': 2,
+        fixture = {'id': UUID2,
                    'name': 'fake image #2',
                    'size': 19,
                    'min_ram': 256,
                    'min_disk': 5,
                    'checksum': None}
-        req = webob.Request.blank('/images/2')
+        req = webob.Request.blank('/images/%s' % UUID2)
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, 200)
         res_dict = json.loads(res.body)
@@ -127,7 +180,7 @@ class TestRegistryAPI(unittest.TestCase):
         Tests that the /images/<id> registry API endpoint
         returns a 404 for an unknown image id
         """
-        req = webob.Request.blank('/images/3')
+        req = webob.Request.blank('/images/%s' % _gen_uuid())
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, 404)
 
@@ -136,7 +189,7 @@ class TestRegistryAPI(unittest.TestCase):
         Tests that the /images/<id> registry API endpoint
         returns a 404 for an invalid (therefore unknown) image id
         """
-        req = webob.Request.blank('/images/2a')
+        req = webob.Request.blank('/images/%s' % _gen_uuid())
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, 404)
 
@@ -145,7 +198,7 @@ class TestRegistryAPI(unittest.TestCase):
         Tests that the root registry API returns "index",
         which is a list of public images
         """
-        fixture = {'id': 2,
+        fixture = {'id': UUID2,
                    'name': 'fake image #2',
                    'size': 19,
                    'checksum': None}
@@ -165,7 +218,7 @@ class TestRegistryAPI(unittest.TestCase):
         Tests that the /images registry API returns list of
         public images
         """
-        fixture = {'id': 2,
+        fixture = {'id': UUID2,
                    'name': 'fake image #2',
                    'size': 19,
                    'checksum': None}
@@ -186,9 +239,11 @@ class TestRegistryAPI(unittest.TestCase):
         public images that conforms to a marker query param
         """
         time1 = datetime.datetime.utcnow() + datetime.timedelta(seconds=5)
-        time2 = datetime.datetime.utcnow()
+        time2 = datetime.datetime.utcnow() + datetime.timedelta(seconds=4)
+        time3 = datetime.datetime.utcnow()
 
-        extra_fixture = {'id': 3,
+        UUID3 = _gen_uuid()
+        extra_fixture = {'id': UUID3,
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -200,19 +255,8 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = {'id': 4,
-                         'status': 'active',
-                         'is_public': True,
-                         'disk_format': 'vhd',
-                         'container_format': 'ovf',
-                         'name': 'new name! #123',
-                         'size': 20,
-                         'checksum': None,
-                         'created_at': time1}
-
-        db_api.image_create(self.context, extra_fixture)
-
-        extra_fixture = {'id': 5,
+        UUID4 = _gen_uuid()
+        extra_fixture = {'id': UUID4,
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -224,7 +268,20 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        req = webob.Request.blank('/images?marker=4')
+        UUID5 = _gen_uuid()
+        extra_fixture = {'id': UUID5,
+                         'status': 'active',
+                         'is_public': True,
+                         'disk_format': 'vhd',
+                         'container_format': 'ovf',
+                         'name': 'new name! #123',
+                         'size': 20,
+                         'checksum': None,
+                         'created_at': time3}
+
+        db_api.image_create(self.context, extra_fixture)
+
+        req = webob.Request.blank('/images?marker=%s' % UUID4)
         res = req.get_response(self.api)
         res_dict = json.loads(res.body)
         self.assertEquals(res.status_int, 200)
@@ -232,26 +289,36 @@ class TestRegistryAPI(unittest.TestCase):
         images = res_dict['images']
         # should be sorted by created_at desc, id desc
         # page should start after marker 4
-        self.assertEquals(len(images), 3)
-        self.assertEquals(int(images[0]['id']), 3)
-        self.assertEquals(int(images[1]['id']), 5)
-        self.assertEquals(int(images[2]['id']), 2)
+        self.assertEquals(len(images), 2)
+        self.assertEquals(images[0]['id'], UUID5)
+        self.assertEquals(images[1]['id'], UUID2)
 
-    def test_get_index_invalid_marker(self):
+    def test_get_index_unknown_marker(self):
         """
         Tests that the /images registry API returns a 400
-        when an invalid marker is provided
+        when an unknown marker is provided
         """
-        req = webob.Request.blank('/images?marker=10')
+        req = webob.Request.blank('/images?marker=%s' % _gen_uuid())
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, 400)
+
+    def test_get_index_malformed_marker(self):
+        """
+        Tests that the /images registry API returns a 400
+        when a malformed marker is provided
+        """
+        req = webob.Request.blank('/images?marker=4')
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 400)
+        self.assertTrue('marker' in res.body)
 
     def test_get_index_limit(self):
         """
         Tests that the /images registry API returns list of
         public images that conforms to a limit query param
         """
-        extra_fixture = {'id': 3,
+        UUID3 = _gen_uuid()
+        extra_fixture = {'id': UUID3,
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -262,7 +329,8 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = {'id': 4,
+        UUID4 = _gen_uuid()
+        extra_fixture = {'id': UUID4,
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -282,7 +350,7 @@ class TestRegistryAPI(unittest.TestCase):
         self.assertEquals(len(images), 1)
 
         # expect list to be sorted by created_at desc
-        self.assertTrue(int(images[0]['id']), 4)
+        self.assertTrue(images[0]['id'], UUID4)
 
     def test_get_index_limit_negative(self):
         """
@@ -307,7 +375,8 @@ class TestRegistryAPI(unittest.TestCase):
         Tests that the /images registry API returns list of
         public images that conforms to limit and marker query params
         """
-        extra_fixture = {'id': 3,
+        UUID3 = _gen_uuid()
+        extra_fixture = {'id': UUID3,
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -318,7 +387,7 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = {'id': 4,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -329,7 +398,7 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        req = webob.Request.blank('/images?marker=3&limit=1')
+        req = webob.Request.blank('/images?marker=%s&limit=1' % UUID3)
         res = req.get_response(self.api)
         res_dict = json.loads(res.body)
         self.assertEquals(res.status_int, 200)
@@ -338,7 +407,7 @@ class TestRegistryAPI(unittest.TestCase):
         self.assertEquals(len(images), 1)
 
         # expect list to be sorted by created_at desc
-        self.assertEqual(int(images[0]['id']), 2)
+        self.assertEqual(images[0]['id'], UUID2)
 
     def test_get_index_filter_name(self):
         """
@@ -346,12 +415,12 @@ class TestRegistryAPI(unittest.TestCase):
         public images that have a specific name. This is really a sanity
         check, filtering is tested more in-depth using /images/detail
         """
-        fixture = {'id': 2,
+        fixture = {'id': UUID2,
                    'name': 'fake image #2',
                    'size': 19,
                    'checksum': None}
 
-        extra_fixture = {'id': 3,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -362,7 +431,7 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = {'id': 4,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -390,9 +459,11 @@ class TestRegistryAPI(unittest.TestCase):
         public images that conforms to a default sort key/dir
         """
         time1 = datetime.datetime.utcnow() + datetime.timedelta(seconds=5)
-        time2 = datetime.datetime.utcnow()
+        time2 = datetime.datetime.utcnow() + datetime.timedelta(seconds=4)
+        time3 = datetime.datetime.utcnow()
 
-        extra_fixture = {'id': 3,
+        UUID3 = _gen_uuid()
+        extra_fixture = {'id': UUID3,
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -404,19 +475,8 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = {'id': 4,
-                         'status': 'active',
-                         'is_public': True,
-                         'disk_format': 'vhd',
-                         'container_format': 'ovf',
-                         'name': 'new name! #123',
-                         'size': 20,
-                         'checksum': None,
-                         'created_at': time1}
-
-        db_api.image_create(self.context, extra_fixture)
-
-        extra_fixture = {'id': 5,
+        UUID4 = _gen_uuid()
+        extra_fixture = {'id': UUID4,
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -428,6 +488,19 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
+        UUID5 = _gen_uuid()
+        extra_fixture = {'id': UUID5,
+                         'status': 'active',
+                         'is_public': True,
+                         'disk_format': 'vhd',
+                         'container_format': 'ovf',
+                         'name': 'new name! #123',
+                         'size': 20,
+                         'checksum': None,
+                         'created_at': time3}
+
+        db_api.image_create(self.context, extra_fixture)
+
         req = webob.Request.blank('/images')
         res = req.get_response(self.api)
         res_dict = json.loads(res.body)
@@ -435,10 +508,10 @@ class TestRegistryAPI(unittest.TestCase):
 
         images = res_dict['images']
         self.assertEquals(len(images), 4)
-        self.assertEquals(int(images[0]['id']), 4)
-        self.assertEquals(int(images[1]['id']), 3)
-        self.assertEquals(int(images[2]['id']), 5)
-        self.assertEquals(int(images[3]['id']), 2)
+        self.assertEquals(images[0]['id'], UUID3)
+        self.assertEquals(images[1]['id'], UUID4)
+        self.assertEquals(images[2]['id'], UUID5)
+        self.assertEquals(images[3]['id'], UUID2)
 
     def test_get_index_bad_sort_key(self):
         """Ensure a 400 is returned when a bad sort_key is provided."""
@@ -452,51 +525,14 @@ class TestRegistryAPI(unittest.TestCase):
         res = req.get_response(self.api)
         self.assertEqual(400, res.status_int)
 
-    def test_get_index_sort_id_desc(self):
-        """
-        Tests that the /images registry API returns list of
-        public images sorted by id in descending order.
-        """
-        extra_fixture = {'id': 3,
-                         'status': 'active',
-                         'is_public': True,
-                         'disk_format': 'vhd',
-                         'container_format': 'ovf',
-                         'name': 'asdf',
-                         'size': 19,
-                         'checksum': None}
-
-        db_api.image_create(self.context, extra_fixture)
-
-        extra_fixture = {'id': 4,
-                         'status': 'active',
-                         'is_public': True,
-                         'disk_format': 'vhd',
-                         'container_format': 'ovf',
-                         'name': 'xyz',
-                         'size': 20,
-                         'checksum': None}
-
-        db_api.image_create(self.context, extra_fixture)
-
-        req = webob.Request.blank('/images?sort_key=id&sort_dir=desc')
-        res = req.get_response(self.api)
-        self.assertEquals(res.status_int, 200)
-        res_dict = json.loads(res.body)
-
-        images = res_dict['images']
-        self.assertEquals(len(images), 3)
-        self.assertEquals(int(images[0]['id']), 4)
-        self.assertEquals(int(images[1]['id']), 3)
-        self.assertEquals(int(images[2]['id']), 2)
-
     def test_get_index_sort_name_asc(self):
         """
         Tests that the /images registry API returns list of
         public images sorted alphabetically by name in
         ascending order.
         """
-        extra_fixture = {'id': 3,
+        UUID3 = _gen_uuid()
+        extra_fixture = {'id': UUID3,
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -507,7 +543,8 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = {'id': 4,
+        UUID4 = _gen_uuid()
+        extra_fixture = {'id': UUID4,
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -525,9 +562,9 @@ class TestRegistryAPI(unittest.TestCase):
 
         images = res_dict['images']
         self.assertEquals(len(images), 3)
-        self.assertEquals(int(images[0]['id']), 3)
-        self.assertEquals(int(images[1]['id']), 2)
-        self.assertEquals(int(images[2]['id']), 4)
+        self.assertEquals(images[0]['id'], UUID3)
+        self.assertEquals(images[1]['id'], UUID2)
+        self.assertEquals(images[2]['id'], UUID4)
 
     def test_get_index_sort_status_desc(self):
         """
@@ -535,7 +572,8 @@ class TestRegistryAPI(unittest.TestCase):
         public images sorted alphabetically by status in
         descending order.
         """
-        extra_fixture = {'id': 3,
+        UUID3 = _gen_uuid()
+        extra_fixture = {'id': UUID3,
                          'status': 'queued',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -546,7 +584,8 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = {'id': 4,
+        UUID4 = _gen_uuid()
+        extra_fixture = {'id': UUID4,
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -564,9 +603,9 @@ class TestRegistryAPI(unittest.TestCase):
 
         images = res_dict['images']
         self.assertEquals(len(images), 3)
-        self.assertEquals(int(images[0]['id']), 3)
-        self.assertEquals(int(images[1]['id']), 4)
-        self.assertEquals(int(images[2]['id']), 2)
+        self.assertEquals(images[0]['id'], UUID3)
+        self.assertEquals(images[1]['id'], UUID4)
+        self.assertEquals(images[2]['id'], UUID2)
 
     def test_get_index_sort_disk_format_asc(self):
         """
@@ -574,7 +613,8 @@ class TestRegistryAPI(unittest.TestCase):
         public images sorted alphabetically by disk_format in
         ascending order.
         """
-        extra_fixture = {'id': 3,
+        UUID3 = _gen_uuid()
+        extra_fixture = {'id': UUID3,
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'ami',
@@ -585,7 +625,8 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = {'id': 4,
+        UUID4 = _gen_uuid()
+        extra_fixture = {'id': UUID4,
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vdi',
@@ -603,9 +644,9 @@ class TestRegistryAPI(unittest.TestCase):
 
         images = res_dict['images']
         self.assertEquals(len(images), 3)
-        self.assertEquals(int(images[0]['id']), 3)
-        self.assertEquals(int(images[1]['id']), 4)
-        self.assertEquals(int(images[2]['id']), 2)
+        self.assertEquals(images[0]['id'], UUID3)
+        self.assertEquals(images[1]['id'], UUID4)
+        self.assertEquals(images[2]['id'], UUID2)
 
     def test_get_index_sort_container_format_desc(self):
         """
@@ -613,7 +654,8 @@ class TestRegistryAPI(unittest.TestCase):
         public images sorted alphabetically by container_format in
         descending order.
         """
-        extra_fixture = {'id': 3,
+        UUID3 = _gen_uuid()
+        extra_fixture = {'id': UUID3,
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'ami',
@@ -624,7 +666,8 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = {'id': 4,
+        UUID4 = _gen_uuid()
+        extra_fixture = {'id': UUID4,
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'iso',
@@ -643,16 +686,17 @@ class TestRegistryAPI(unittest.TestCase):
 
         images = res_dict['images']
         self.assertEquals(len(images), 3)
-        self.assertEquals(int(images[0]['id']), 2)
-        self.assertEquals(int(images[1]['id']), 4)
-        self.assertEquals(int(images[2]['id']), 3)
+        self.assertEquals(images[0]['id'], UUID2)
+        self.assertEquals(images[1]['id'], UUID4)
+        self.assertEquals(images[2]['id'], UUID3)
 
     def test_get_index_sort_size_asc(self):
         """
         Tests that the /images registry API returns list of
         public images sorted by size in ascending order.
         """
-        extra_fixture = {'id': 3,
+        UUID3 = _gen_uuid()
+        extra_fixture = {'id': UUID3,
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'ami',
@@ -663,7 +707,8 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = {'id': 4,
+        UUID4 = _gen_uuid()
+        extra_fixture = {'id': UUID4,
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'iso',
@@ -682,9 +727,9 @@ class TestRegistryAPI(unittest.TestCase):
 
         images = res_dict['images']
         self.assertEquals(len(images), 3)
-        self.assertEquals(int(images[0]['id']), 4)
-        self.assertEquals(int(images[1]['id']), 2)
-        self.assertEquals(int(images[2]['id']), 3)
+        self.assertEquals(images[0]['id'], UUID4)
+        self.assertEquals(images[1]['id'], UUID2)
+        self.assertEquals(images[2]['id'], UUID3)
 
     def test_get_index_sort_created_at_asc(self):
         """
@@ -695,7 +740,8 @@ class TestRegistryAPI(unittest.TestCase):
         time1 = now + datetime.timedelta(seconds=5)
         time2 = now
 
-        extra_fixture = {'id': 3,
+        UUID3 = _gen_uuid()
+        extra_fixture = {'id': UUID3,
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -707,7 +753,8 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = {'id': 4,
+        UUID4 = _gen_uuid()
+        extra_fixture = {'id': UUID4,
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -726,9 +773,9 @@ class TestRegistryAPI(unittest.TestCase):
 
         images = res_dict['images']
         self.assertEquals(len(images), 3)
-        self.assertEquals(int(images[0]['id']), 2)
-        self.assertEquals(int(images[1]['id']), 4)
-        self.assertEquals(int(images[2]['id']), 3)
+        self.assertEquals(images[0]['id'], UUID2)
+        self.assertEquals(images[1]['id'], UUID4)
+        self.assertEquals(images[2]['id'], UUID3)
 
     def test_get_index_sort_updated_at_desc(self):
         """
@@ -739,7 +786,8 @@ class TestRegistryAPI(unittest.TestCase):
         time1 = now + datetime.timedelta(seconds=5)
         time2 = now
 
-        extra_fixture = {'id': 3,
+        UUID3 = _gen_uuid()
+        extra_fixture = {'id': UUID3,
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -752,7 +800,8 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = {'id': 4,
+        UUID4 = _gen_uuid()
+        extra_fixture = {'id': UUID4,
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -772,16 +821,16 @@ class TestRegistryAPI(unittest.TestCase):
 
         images = res_dict['images']
         self.assertEquals(len(images), 3)
-        self.assertEquals(int(images[0]['id']), 3)
-        self.assertEquals(int(images[1]['id']), 4)
-        self.assertEquals(int(images[2]['id']), 2)
+        self.assertEquals(images[0]['id'], UUID3)
+        self.assertEquals(images[1]['id'], UUID4)
+        self.assertEquals(images[2]['id'], UUID2)
 
     def test_get_details(self):
         """
         Tests that the /images/detail registry API returns
         a mapping containing a list of detailed image information
         """
-        fixture = {'id': 2,
+        fixture = {'id': UUID2,
                    'name': 'fake image #2',
                    'is_public': True,
                    'size': 19,
@@ -810,7 +859,8 @@ class TestRegistryAPI(unittest.TestCase):
         This functionality is tested more thoroughly on /images, this is
         just a sanity check
         """
-        extra_fixture = {'id': 3,
+        UUID3 = _gen_uuid()
+        extra_fixture = {'id': UUID3,
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -821,7 +871,7 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = {'id': 4,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -832,7 +882,7 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        req = webob.Request.blank('/images/detail?marker=3&limit=1')
+        req = webob.Request.blank('/images/detail?marker=%s&limit=1' % UUID3)
         res = req.get_response(self.api)
         res_dict = json.loads(res.body)
         self.assertEquals(res.status_int, 200)
@@ -841,14 +891,15 @@ class TestRegistryAPI(unittest.TestCase):
         self.assertEquals(len(images), 1)
 
         # expect list to be sorted by created_at desc
-        self.assertEqual(int(images[0]['id']), 2)
+        self.assertEqual(images[0]['id'], UUID2)
 
     def test_get_details_invalid_marker(self):
         """
         Tests that the /images/detail registry API returns a 400
         when an invalid marker is provided
         """
-        req = webob.Request.blank('/images/detail?marker=10')
+        req = webob.Request.blank('/images/detail?marker=%s'
+                                  % _gen_uuid())
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, 400)
 
@@ -857,7 +908,7 @@ class TestRegistryAPI(unittest.TestCase):
         Tests that the /images/detail registry API returns list of
         public images that have a specific name
         """
-        extra_fixture = {'id': 3,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -868,7 +919,7 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = {'id': 4,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -895,7 +946,7 @@ class TestRegistryAPI(unittest.TestCase):
         Tests that the /images/detail registry API returns list of
         public images that have a specific status
         """
-        extra_fixture = {'id': 3,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'saving',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -906,7 +957,7 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = {'id': 4,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -933,7 +984,7 @@ class TestRegistryAPI(unittest.TestCase):
         Tests that the /images/detail registry API returns list of
         public images that have a specific container_format
         """
-        extra_fixture = {'id': 3,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vdi',
@@ -944,7 +995,7 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = {'id': 4,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'ami',
@@ -971,7 +1022,7 @@ class TestRegistryAPI(unittest.TestCase):
         Tests that the /images/detail registry API returns list of
         public images that have a specific min_disk
         """
-        extra_fixture = {'id': 3,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -983,7 +1034,7 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = {'id': 4,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'ami',
@@ -1010,7 +1061,7 @@ class TestRegistryAPI(unittest.TestCase):
         Tests that the /images/detail registry API returns list of
         public images that have a specific min_ram
         """
-        extra_fixture = {'id': 3,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -1022,7 +1073,7 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = {'id': 4,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'ami',
@@ -1049,7 +1100,7 @@ class TestRegistryAPI(unittest.TestCase):
         Tests that the /images/detail registry API returns list of
         public images that have a specific disk_format
         """
-        extra_fixture = {'id': 3,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -1060,7 +1111,7 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = {'id': 4,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'ami',
@@ -1087,7 +1138,7 @@ class TestRegistryAPI(unittest.TestCase):
         Tests that the /images/detail registry API returns list of
         public images that have a size greater than or equal to size_min
         """
-        extra_fixture = {'id': 3,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -1098,7 +1149,7 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = {'id': 4,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'ami',
@@ -1125,7 +1176,7 @@ class TestRegistryAPI(unittest.TestCase):
         Tests that the /images/detail registry API returns list of
         public images that have a size less than or equal to size_max
         """
-        extra_fixture = {'id': 3,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -1136,7 +1187,7 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = {'id': 4,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'ami',
@@ -1164,7 +1215,7 @@ class TestRegistryAPI(unittest.TestCase):
         public images that have a size less than or equal to size_max
         and greater than or equal to size_min
         """
-        extra_fixture = {'id': 3,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -1175,7 +1226,7 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = {'id': 4,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'ami',
@@ -1186,7 +1237,7 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = {'id': 5,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'ami',
@@ -1208,12 +1259,104 @@ class TestRegistryAPI(unittest.TestCase):
         for image in images:
             self.assertTrue(image['size'] <= 19 and image['size'] >= 18)
 
+    def test_get_details_filter_changes_since(self):
+        """
+        Tests that the /images/detail registry API returns list of
+        public images that have a size less than or equal to size_max
+        """
+        dt1 = datetime.datetime.utcnow() - datetime.timedelta(1)
+        iso1 = utils.isotime(dt1)
+
+        dt2 = datetime.datetime.utcnow() + datetime.timedelta(1)
+        iso2 = utils.isotime(dt2)
+
+        dt3 = datetime.datetime.utcnow() + datetime.timedelta(2)
+        iso3 = utils.isotime(dt3)
+
+        dt4 = datetime.datetime.utcnow() + datetime.timedelta(3)
+        iso4 = utils.isotime(dt4)
+
+        UUID3 = _gen_uuid()
+        extra_fixture = {'id': UUID3,
+                         'status': 'active',
+                         'is_public': True,
+                         'disk_format': 'vhd',
+                         'container_format': 'ovf',
+                         'name': 'fake image #3',
+                         'size': 18,
+                         'checksum': None}
+
+        db_api.image_create(self.context, extra_fixture)
+        db_api.image_destroy(self.context, UUID3)
+
+        UUID4 = _gen_uuid()
+        extra_fixture = {'id': UUID4,
+                         'status': 'active',
+                         'is_public': True,
+                         'disk_format': 'ami',
+                         'container_format': 'ami',
+                         'name': 'fake image #4',
+                         'size': 20,
+                         'checksum': None,
+                         'created_at': dt3,
+                         'updated_at': dt3}
+
+        db_api.image_create(self.context, extra_fixture)
+
+        # Check a standard list, 4 images in db (2 deleted)
+        req = webob.Request.blank('/images/detail')
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 200)
+        res_dict = json.loads(res.body)
+        images = res_dict['images']
+        self.assertEquals(len(images), 2)
+        self.assertEqual(images[0]['id'], UUID4)
+        self.assertEqual(images[1]['id'], UUID2)
+
+        # Expect 3 images (1 deleted)
+        req = webob.Request.blank('/images/detail?changes-since=%s' % iso1)
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 200)
+        res_dict = json.loads(res.body)
+        images = res_dict['images']
+        self.assertEquals(len(images), 3)
+        self.assertEqual(images[0]['id'], UUID4)
+        self.assertEqual(images[1]['id'], UUID3)  # deleted
+        self.assertEqual(images[2]['id'], UUID2)
+
+        # Expect 1 images (0 deleted)
+        req = webob.Request.blank('/images/detail?changes-since=%s' % iso2)
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 200)
+        res_dict = json.loads(res.body)
+        images = res_dict['images']
+        self.assertEquals(len(images), 1)
+        self.assertEqual(images[0]['id'], UUID4)
+
+        # Expect 0 images (0 deleted)
+        req = webob.Request.blank('/images/detail?changes-since=%s' % iso4)
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 200)
+        res_dict = json.loads(res.body)
+        images = res_dict['images']
+        self.assertEquals(len(images), 0)
+
+        # Bad request (empty changes-since param)
+        req = webob.Request.blank('/images/detail?changes-since=')
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 400)
+
+        # Bad request (invalid changes-since param)
+        req = webob.Request.blank('/images/detail?changes-since=2011-09-05')
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 400)
+
     def test_get_details_filter_property(self):
         """
         Tests that the /images/detail registry API returns list of
         public images that have a specific custom property
         """
-        extra_fixture = {'id': 3,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -1225,7 +1368,7 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = {'id': 4,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'ami',
@@ -1253,7 +1396,7 @@ class TestRegistryAPI(unittest.TestCase):
         Tests that the /images/detail registry API returns list of
         all images if is_public none is passed
         """
-        extra_fixture = {'id': 3,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': False,
                          'disk_format': 'vhd',
@@ -1277,7 +1420,7 @@ class TestRegistryAPI(unittest.TestCase):
         Tests that the /images/detail registry API returns list of
         private images if is_public false is passed
         """
-        extra_fixture = {'id': 3,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': False,
                          'disk_format': 'vhd',
@@ -1304,7 +1447,7 @@ class TestRegistryAPI(unittest.TestCase):
         Tests that the /images/detail registry API returns list of
         public images if is_public true is passed (same as default)
         """
-        extra_fixture = {'id': 3,
+        extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
                          'is_public': False,
                          'disk_format': 'vhd',
@@ -1332,7 +1475,8 @@ class TestRegistryAPI(unittest.TestCase):
         public images sorted alphabetically by name in
         ascending order.
         """
-        extra_fixture = {'id': 3,
+        UUID3 = _gen_uuid()
+        extra_fixture = {'id': UUID3,
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -1343,7 +1487,8 @@ class TestRegistryAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = {'id': 4,
+        UUID4 = _gen_uuid()
+        extra_fixture = {'id': UUID4,
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -1361,9 +1506,9 @@ class TestRegistryAPI(unittest.TestCase):
 
         images = res_dict['images']
         self.assertEquals(len(images), 3)
-        self.assertEquals(int(images[0]['id']), 3)
-        self.assertEquals(int(images[1]['id']), 2)
-        self.assertEquals(int(images[2]['id']), 4)
+        self.assertEquals(images[0]['id'], UUID3)
+        self.assertEquals(images[1]['id'], UUID2)
+        self.assertEquals(images[2]['id'], UUID4)
 
     def test_create_image(self):
         """Tests that the /images POST registry API creates the image"""
@@ -1386,9 +1531,6 @@ class TestRegistryAPI(unittest.TestCase):
 
         for k, v in fixture.iteritems():
             self.assertEquals(v, res_dict['image'][k])
-
-        # Test ID auto-assigned properly
-        self.assertEquals(3, res_dict['image']['id'])
 
         # Test status was updated properly
         self.assertEquals('active', res_dict['image']['status'])
@@ -1481,7 +1623,7 @@ class TestRegistryAPI(unittest.TestCase):
 
     def test_create_image_with_bad_container_format(self):
         """Tests proper exception is raised if a bad disk_format is set"""
-        fixture = {'id': 3,
+        fixture = {'id': _gen_uuid(),
                    'name': 'fake public image',
                    'is_public': True,
                    'disk_format': 'vhd',
@@ -1499,7 +1641,7 @@ class TestRegistryAPI(unittest.TestCase):
 
     def test_create_image_with_bad_disk_format(self):
         """Tests proper exception is raised if a bad disk_format is set"""
-        fixture = {'id': 3,
+        fixture = {'id': _gen_uuid(),
                    'name': 'fake public image',
                    'is_public': True,
                    'disk_format': 'invalid',
@@ -1537,7 +1679,7 @@ class TestRegistryAPI(unittest.TestCase):
 
     def test_create_image_with_bad_status(self):
         """Tests proper exception is raised if a bad status is set"""
-        fixture = {'id': 3,
+        fixture = {'id': _gen_uuid(),
                    'name': 'fake public image',
                    'is_public': True,
                    'disk_format': 'vhd',
@@ -1554,6 +1696,23 @@ class TestRegistryAPI(unittest.TestCase):
         self.assertEquals(res.status_int, webob.exc.HTTPBadRequest.code)
         self.assertTrue('Invalid image status' in res.body)
 
+    def test_create_image_with_bad_id(self):
+        """Tests proper exception is raised if a bad disk_format is set"""
+        fixture = {'id': 'asdf',
+                   'name': 'fake public image',
+                   'is_public': True,
+                   'disk_format': 'vhd',
+                   'container_format': 'ovf'}
+
+        req = webob.Request.blank('/images')
+
+        req.method = 'POST'
+        req.content_type = 'application/json'
+        req.body = json.dumps(dict(image=fixture))
+
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, webob.exc.HTTPBadRequest.code)
+
     def test_update_image(self):
         """Tests that the /images PUT registry API updates the image"""
         fixture = {'name': 'fake public image #2',
@@ -1561,7 +1720,7 @@ class TestRegistryAPI(unittest.TestCase):
                    'min_ram': 256,
                    'disk_format': 'raw'}
 
-        req = webob.Request.blank('/images/2')
+        req = webob.Request.blank('/images/%s' % UUID2)
 
         req.method = 'PUT'
         req.content_type = 'application/json'
@@ -1583,7 +1742,7 @@ class TestRegistryAPI(unittest.TestCase):
         """
         fixture = {'status': 'killed'}
 
-        req = webob.Request.blank('/images/3')
+        req = webob.Request.blank('/images/%s' % _gen_uuid())
 
         req.method = 'PUT'
         req.content_type = 'application/json'
@@ -1597,7 +1756,7 @@ class TestRegistryAPI(unittest.TestCase):
         """Tests that exception raised trying to set a bad status"""
         fixture = {'status': 'invalid'}
 
-        req = webob.Request.blank('/images/2')
+        req = webob.Request.blank('/images/%s' % UUID2)
 
         req.method = 'PUT'
         req.content_type = 'application/json'
@@ -1611,7 +1770,7 @@ class TestRegistryAPI(unittest.TestCase):
         """Tests that exception raised trying to set a bad disk_format"""
         fixture = {'disk_format': 'invalid'}
 
-        req = webob.Request.blank('/images/2')
+        req = webob.Request.blank('/images/%s' % UUID2)
 
         req.method = 'PUT'
         req.content_type = 'application/json'
@@ -1625,7 +1784,7 @@ class TestRegistryAPI(unittest.TestCase):
         """Tests that exception raised trying to set a bad container_format"""
         fixture = {'container_format': 'invalid'}
 
-        req = webob.Request.blank('/images/2')
+        req = webob.Request.blank('/images/%s' % UUID2)
 
         req.method = 'PUT'
         req.content_type = 'application/json'
@@ -1642,7 +1801,8 @@ class TestRegistryAPI(unittest.TestCase):
         """
         fixture = {'container_format': 'ari'}
 
-        req = webob.Request.blank('/images/2')  # Image 2 has disk format 'vhd'
+        # Image 2 has disk format 'vhd'
+        req = webob.Request.blank('/images/%s' % UUID2)
 
         req.method = 'PUT'
         req.content_type = 'application/json'
@@ -1665,8 +1825,7 @@ class TestRegistryAPI(unittest.TestCase):
         orig_num_images = len(res_dict['images'])
 
         # Delete image #2
-        req = webob.Request.blank('/images/2')
-
+        req = webob.Request.blank('/images/%s' % UUID2)
         req.method = 'DELETE'
 
         res = req.get_response(self.api)
@@ -1687,8 +1846,7 @@ class TestRegistryAPI(unittest.TestCase):
         Tests proper exception is raised if attempt to delete
         non-existing image
         """
-        req = webob.Request.blank('/images/3')
-
+        req = webob.Request.blank('/images/%s' % _gen_uuid())
         req.method = 'DELETE'
 
         res = req.get_response(self.api)
@@ -1699,8 +1857,7 @@ class TestRegistryAPI(unittest.TestCase):
         """
         Tests members listing for existing images
         """
-        req = webob.Request.blank('/images/2/members')
-
+        req = webob.Request.blank('/images/%s/members' % UUID2)
         req.method = 'GET'
 
         res = req.get_response(self.api)
@@ -1715,8 +1872,7 @@ class TestRegistryAPI(unittest.TestCase):
         Tests proper exception is raised if attempt to get members of
         non-existing image
         """
-        req = webob.Request.blank('/images/3/members')
-
+        req = webob.Request.blank('/images/%s/members' % _gen_uuid())
         req.method = 'GET'
 
         res = req.get_response(self.api)
@@ -1728,7 +1884,6 @@ class TestRegistryAPI(unittest.TestCase):
         Tests image listing for members
         """
         req = webob.Request.blank('/shared-images/pattieblack')
-
         req.method = 'GET'
 
         res = req.get_response(self.api)
@@ -1744,8 +1899,7 @@ class TestRegistryAPI(unittest.TestCase):
         """
         fixture = dict(member_id='pattieblack')
 
-        req = webob.Request.blank('/images/2/members')
-
+        req = webob.Request.blank('/images/%s/members' % UUID2)
         req.method = 'PUT'
         req.content_type = 'application/json'
         req.body = json.dumps(dict(image_memberships=fixture))
@@ -1757,8 +1911,7 @@ class TestRegistryAPI(unittest.TestCase):
         """
         Tests adding image members raises right exception
         """
-        req = webob.Request.blank('/images/2/members/pattieblack')
-
+        req = webob.Request.blank('/images/%s/members/pattieblack' % UUID2)
         req.method = 'PUT'
 
         res = req.get_response(self.api)
@@ -1768,8 +1921,7 @@ class TestRegistryAPI(unittest.TestCase):
         """
         Tests deleting image members raises right exception
         """
-        req = webob.Request.blank('/images/2/members/pattieblack')
-
+        req = webob.Request.blank('/images/%s/members/pattieblack' % UUID2)
         req.method = 'DELETE'
 
         res = req.get_response(self.api)
@@ -1786,7 +1938,7 @@ class TestGlanceAPI(unittest.TestCase):
         sql_connection = os.environ.get('GLANCE_SQL_CONNECTION', "sqlite://")
         self.api = context.ContextMiddleware(server.API(OPTIONS), OPTIONS)
         self.FIXTURES = [
-            {'id': 1,
+            {'id': UUID1,
              'name': 'fake image #1',
              'status': 'active',
              'disk_format': 'ami',
@@ -1800,7 +1952,7 @@ class TestGlanceAPI(unittest.TestCase):
              'size': 13,
              'location': "swift://user:passwd@acct/container/obj.tar.0",
              'properties': {'type': 'kernel'}},
-            {'id': 2,
+            {'id': UUID2,
              'name': 'fake image #2',
              'status': 'active',
              'disk_format': 'vhd',
@@ -1930,17 +2082,15 @@ class TestGlanceAPI(unittest.TestCase):
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, httplib.CREATED)
 
-        res_body = json.loads(res.body)['image']
-        self.assertEquals(res_body['location'],
-                          'file:///tmp/glance-tests/3')
-
         # Test that the Location: header is set to the URI to
         # edit the newly-created image, as required by APP.
         # See LP Bug #719825
         self.assertTrue('location' in res.headers,
                         "'location' not in response headers.\n"
                         "res.headerlist = %r" % res.headerlist)
-        self.assertTrue('/images/3' in res.headers['location'])
+        res_body = json.loads(res.body)['image']
+        self.assertTrue('/images/%s' % res_body['id']
+                        in res.headers['location'])
 
     def test_get_index_sort_name_asc(self):
         """
@@ -1948,7 +2098,8 @@ class TestGlanceAPI(unittest.TestCase):
         public images sorted alphabetically by name in
         ascending order.
         """
-        extra_fixture = {'id': 3,
+        UUID3 = _gen_uuid()
+        extra_fixture = {'id': UUID3,
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -1959,7 +2110,8 @@ class TestGlanceAPI(unittest.TestCase):
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = {'id': 4,
+        UUID4 = _gen_uuid()
+        extra_fixture = {'id': UUID4,
                          'status': 'active',
                          'is_public': True,
                          'disk_format': 'vhd',
@@ -1977,9 +2129,154 @@ class TestGlanceAPI(unittest.TestCase):
 
         images = res_dict['images']
         self.assertEquals(len(images), 3)
-        self.assertEquals(int(images[0]['id']), 3)
-        self.assertEquals(int(images[1]['id']), 2)
-        self.assertEquals(int(images[2]['id']), 4)
+        self.assertEquals(images[0]['id'], UUID3)
+        self.assertEquals(images[1]['id'], UUID2)
+        self.assertEquals(images[2]['id'], UUID4)
+
+    def test_get_details_filter_changes_since(self):
+        """
+        Tests that the /images/detail registry API returns list of
+        public images that have a size less than or equal to size_max
+        """
+        dt1 = datetime.datetime.utcnow() - datetime.timedelta(1)
+        iso1 = utils.isotime(dt1)
+
+        dt2 = datetime.datetime.utcnow() + datetime.timedelta(1)
+        iso2 = utils.isotime(dt2)
+
+        dt3 = datetime.datetime.utcnow() + datetime.timedelta(2)
+        iso3 = utils.isotime(dt3)
+
+        dt4 = datetime.datetime.utcnow() + datetime.timedelta(3)
+        iso4 = utils.isotime(dt4)
+
+        UUID3 = _gen_uuid()
+        extra_fixture = {'id': UUID3,
+                         'status': 'active',
+                         'is_public': True,
+                         'disk_format': 'vhd',
+                         'container_format': 'ovf',
+                         'name': 'fake image #3',
+                         'size': 18,
+                         'checksum': None}
+
+        db_api.image_create(self.context, extra_fixture)
+        db_api.image_destroy(self.context, UUID3)
+
+        UUID4 = _gen_uuid()
+        extra_fixture = {'id': UUID4,
+                         'status': 'active',
+                         'is_public': True,
+                         'disk_format': 'ami',
+                         'container_format': 'ami',
+                         'name': 'fake image #4',
+                         'size': 20,
+                         'checksum': None,
+                         'created_at': dt3,
+                         'updated_at': dt3}
+
+        db_api.image_create(self.context, extra_fixture)
+
+        # Check a standard list, 4 images in db (2 deleted)
+        req = webob.Request.blank('/images/detail')
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 200)
+        res_dict = json.loads(res.body)
+        images = res_dict['images']
+        self.assertEquals(len(images), 2)
+        self.assertEqual(images[0]['id'], UUID4)
+        self.assertEqual(images[1]['id'], UUID2)
+
+        # Expect 3 images (1 deleted)
+        req = webob.Request.blank('/images/detail?changes-since=%s' % iso1)
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 200)
+        res_dict = json.loads(res.body)
+        images = res_dict['images']
+        self.assertEquals(len(images), 3)
+        self.assertEqual(images[0]['id'], UUID4)
+        self.assertEqual(images[1]['id'], UUID3)  # deleted
+        self.assertEqual(images[2]['id'], UUID2)
+
+        # Expect 1 images (0 deleted)
+        req = webob.Request.blank('/images/detail?changes-since=%s' % iso2)
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 200)
+        res_dict = json.loads(res.body)
+        images = res_dict['images']
+        self.assertEquals(len(images), 1)
+        self.assertEqual(images[0]['id'], UUID4)
+
+        # Expect 0 images (0 deleted)
+        req = webob.Request.blank('/images/detail?changes-since=%s' % iso4)
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 200)
+        res_dict = json.loads(res.body)
+        images = res_dict['images']
+        self.assertEquals(len(images), 0)
+
+        # Bad request (empty changes-since param)
+        req = webob.Request.blank('/images/detail?changes-since=')
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 400)
+
+        # Bad request (invalid changes-since param)
+        req = webob.Request.blank('/images/detail?changes-since=2011-09-05')
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 400)
+
+    def test_store_location_not_revealed(self):
+        """
+        Test that the internal store location is NOT revealed
+        through the API server
+        """
+        # Check index and details...
+        for url in ('/images', '/images/detail'):
+            req = webob.Request.blank(url)
+            res = req.get_response(self.api)
+            self.assertEquals(res.status_int, 200)
+            res_dict = json.loads(res.body)
+
+            images = res_dict['images']
+            num_locations = sum([1 for record in images
+                                if 'location' in record.keys()])
+            self.assertEquals(0, num_locations, images)
+
+        # Check GET
+        req = webob.Request.blank("/images/%s" % UUID2)
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 200)
+        self.assertFalse('X-Image-Meta-Location' in res.headers)
+
+        # Check HEAD
+        req = webob.Request.blank("/images/%s" % UUID2)
+        req.method = 'HEAD'
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 200)
+        self.assertFalse('X-Image-Meta-Location' in res.headers)
+
+        # Check PUT
+        req = webob.Request.blank("/images/%s" % UUID2)
+        req.body = res.body
+        req.method = 'PUT'
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 200)
+        res_body = json.loads(res.body)
+        self.assertFalse('location' in res_body['image'])
+
+        # Check POST
+        req = webob.Request.blank("/images")
+        headers = {'x-image-meta-location': 'http://localhost',
+                   'x-image-meta-disk-format': 'vhd',
+                   'x-image-meta-container-format': 'ovf',
+                   'x-image-meta-name': 'fake image #3'}
+        for k, v in headers.iteritems():
+            req.headers[k] = v
+        req.method = 'POST'
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 201)
+        res_body = json.loads(res.body)
+        self.assertFalse('location' in res_body['image'])
 
     def test_image_is_checksummed(self):
         """Test that the image contents are checksummed properly"""
@@ -2001,8 +2298,6 @@ class TestGlanceAPI(unittest.TestCase):
         self.assertEquals(res.status_int, httplib.CREATED)
 
         res_body = json.loads(res.body)['image']
-        self.assertEquals(res_body['location'],
-                          'file:///tmp/glance-tests/3')
         self.assertEquals(image_checksum, res_body['checksum'],
                           "Mismatched checksum. Expected %s, got %s" %
                           (image_checksum, res_body['checksum']))
@@ -2026,10 +2321,12 @@ class TestGlanceAPI(unittest.TestCase):
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, httplib.CREATED)
 
+        image = json.loads(res.body)['image']
+
         # HEAD the image and check the ETag equals the checksum header...
         expected_headers = {'x-image-meta-checksum': image_checksum,
                             'etag': image_checksum}
-        req = webob.Request.blank("/images/3")
+        req = webob.Request.blank("/images/%s" % image['id'])
         req.method = 'HEAD'
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, 200)
@@ -2041,7 +2338,7 @@ class TestGlanceAPI(unittest.TestCase):
         for key, value in expected_headers.iteritems():
             self.assertEquals(value, res.headers[key])
 
-    def test_bad_checksum_kills_image(self):
+    def test_bad_checksum_prevents_image_creation(self):
         """Test that the image contents are checksummed properly"""
         image_contents = "chunk00000remainder"
         bad_checksum = hashlib.md5("invalid").hexdigest()
@@ -2049,7 +2346,8 @@ class TestGlanceAPI(unittest.TestCase):
                            'x-image-meta-disk-format': 'vhd',
                            'x-image-meta-container-format': 'ovf',
                            'x-image-meta-name': 'fake image #3',
-                           'x-image-meta-checksum': bad_checksum}
+                           'x-image-meta-checksum': bad_checksum,
+                           'x-image-meta-is-public': 'true'}
 
         req = webob.Request.blank("/images")
         req.method = 'POST'
@@ -2061,22 +2359,19 @@ class TestGlanceAPI(unittest.TestCase):
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, webob.exc.HTTPBadRequest.code)
 
-        # Test the image was killed...
-        expected_headers = {'x-image-meta-id': '3',
-                            'x-image-meta-status': 'killed'}
-        req = webob.Request.blank("/images/3")
-        req.method = 'HEAD'
+        # Test that only one image was returned (that already exists)
+        req = webob.Request.blank("/images")
+        req.method = 'GET'
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, 200)
-
-        for key, value in expected_headers.iteritems():
-            self.assertEquals(value, res.headers[key])
+        images = json.loads(res.body)['images']
+        self.assertEqual(len(images), 1)
 
     def test_image_meta(self):
         """Test for HEAD /images/<ID>"""
-        expected_headers = {'x-image-meta-id': '2',
+        expected_headers = {'x-image-meta-id': UUID2,
                             'x-image-meta-name': 'fake image #2'}
-        req = webob.Request.blank("/images/2")
+        req = webob.Request.blank("/images/%s" % UUID2)
         req.method = 'HEAD'
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, 200)
@@ -2085,31 +2380,31 @@ class TestGlanceAPI(unittest.TestCase):
             self.assertEquals(value, res.headers[key])
 
     def test_show_image_basic(self):
-        req = webob.Request.blank("/images/2")
+        req = webob.Request.blank("/images/%s" % UUID2)
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 200)
         self.assertEqual(res.content_type, 'application/octet-stream')
         self.assertEqual('chunk00000remainder', res.body)
 
     def test_show_non_exists_image(self):
-        req = webob.Request.blank("/images/42")
+        req = webob.Request.blank("/images/%s" % _gen_uuid())
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, webob.exc.HTTPNotFound.code)
 
     def test_delete_image(self):
-        req = webob.Request.blank("/images/2")
+        req = webob.Request.blank("/images/%s" % UUID2)
         req.method = 'DELETE'
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, 200)
 
-        req = webob.Request.blank("/images/2")
+        req = webob.Request.blank("/images/%s" % UUID2)
         req.method = 'GET'
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, webob.exc.HTTPNotFound.code,
                           res.body)
 
     def test_delete_non_exists_image(self):
-        req = webob.Request.blank("/images/42")
+        req = webob.Request.blank("/images/%s" % _gen_uuid())
         req.method = 'DELETE'
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, webob.exc.HTTPNotFound.code)
@@ -2121,9 +2416,8 @@ class TestGlanceAPI(unittest.TestCase):
         that had had its save process killed manually results in failure
         because the location attribute is None.
         """
-        # Add an image the way that glance-upload adds an image...
-        # by reserving a place in the database for an image without
-        # really any attributes or information on the image and then
+        # Add an image by reserving a place in the database for an image
+        # without really any attributes or information on the image and then
         # later doing an update with the image body and other attributes.
         # We will stop the process after the reservation stage, then
         # try to delete the image.
@@ -2141,7 +2435,7 @@ class TestGlanceAPI(unittest.TestCase):
         self.assertEquals('queued', res_body['status'])
 
         # Now try to delete the image...
-        req = webob.Request.blank("/images/3")
+        req = webob.Request.blank("/images/%s" % res_body['id'])
         req.method = 'DELETE'
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, 200)
@@ -2151,7 +2445,7 @@ class TestGlanceAPI(unittest.TestCase):
         Tests that the /images/detail registry API returns a 400
         when an invalid marker is provided
         """
-        req = webob.Request.blank('/images/detail?marker=10')
+        req = webob.Request.blank('/images/detail?marker=%s' % _gen_uuid())
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, 400)
 
@@ -2159,8 +2453,7 @@ class TestGlanceAPI(unittest.TestCase):
         """
         Tests members listing for existing images
         """
-        req = webob.Request.blank('/images/2/members')
-
+        req = webob.Request.blank('/images/%s/members' % UUID2)
         req.method = 'GET'
 
         res = req.get_response(self.api)
@@ -2175,8 +2468,7 @@ class TestGlanceAPI(unittest.TestCase):
         Tests proper exception is raised if attempt to get members of
         non-existing image
         """
-        req = webob.Request.blank('/images/3/members')
-
+        req = webob.Request.blank('/images/%s/members' % _gen_uuid())
         req.method = 'GET'
 
         res = req.get_response(self.api)
@@ -2188,7 +2480,6 @@ class TestGlanceAPI(unittest.TestCase):
         Tests image listing for members
         """
         req = webob.Request.blank('/shared-images/pattieblack')
-
         req.method = 'GET'
 
         res = req.get_response(self.api)
@@ -2204,8 +2495,7 @@ class TestGlanceAPI(unittest.TestCase):
         """
         fixture = dict(member_id='pattieblack')
 
-        req = webob.Request.blank('/images/2/members')
-
+        req = webob.Request.blank('/images/%s/members' % UUID2)
         req.method = 'PUT'
         req.content_type = 'application/json'
         req.body = json.dumps(dict(image_memberships=fixture))
@@ -2217,8 +2507,7 @@ class TestGlanceAPI(unittest.TestCase):
         """
         Tests adding image members raises right exception
         """
-        req = webob.Request.blank('/images/2/members/pattieblack')
-
+        req = webob.Request.blank('/images/%s/members/pattieblack' % UUID2)
         req.method = 'PUT'
 
         res = req.get_response(self.api)
@@ -2228,8 +2517,7 @@ class TestGlanceAPI(unittest.TestCase):
         """
         Tests deleting image members raises right exception
         """
-        req = webob.Request.blank('/images/2/members/pattieblack')
-
+        req = webob.Request.blank('/images/%s/members/pattieblack' % UUID2)
         req.method = 'DELETE'
 
         res = req.get_response(self.api)

@@ -65,7 +65,8 @@ class TestMiscellaneous(functional.FunctionalTest):
 
         # 3. HEAD /images/1
         # Verify image found now
-        path = "http://%s:%d/v1/images/1" % ("0.0.0.0", self.api_port)
+        path = "http://%s:%d/v1/images/%s" % ("0.0.0.0", self.api_port,
+                                              data['image']['id'])
         http = httplib2.Http()
         response, content = http.request(path, 'HEAD')
         self.assertEqual(response.status, 200)
@@ -90,9 +91,6 @@ class TestMiscellaneous(functional.FunctionalTest):
         We then use curl to try adding an image that does not
         meet validation requirements on the registry server and test
         that the error returned from the API server to curl is appropriate
-
-        We also fire the glance-upload tool against the API server
-        and verify that glance-upload doesn't eat the exception either...
         """
         self.cleanup()
         self.start_servers()
@@ -139,12 +137,13 @@ class TestMiscellaneous(functional.FunctionalTest):
 
             exitcode, out, err = execute(cmd)
 
+        image_id = out.strip().split(':')[1].strip()
         self.assertEqual(0, exitcode)
         self.assertTrue('Found non-settable field size. Removing.' in out)
-        self.assertTrue('Added new image with ID: 1' in out)
+        self.assertTrue('Added new image with ID: %s' % image_id in out)
 
         # 2. Verify image added as public image
-        cmd = "bin/glance --port=%d show %d" % (self.api_port, 1)
+        cmd = "bin/glance --port=%d show %s" % (self.api_port, image_id)
 
         exitcode, out, err = execute(cmd)
 

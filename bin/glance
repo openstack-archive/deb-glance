@@ -43,8 +43,8 @@ gettext.install('glance', unicode=1)
 from glance import client as glance_client
 from glance import version
 from glance.common import exception
-from glance.common import utils as common_utils
-from glance import utils
+from glance.common import utils
+
 
 SUCCESS = 0
 FAILURE = 1
@@ -100,8 +100,6 @@ def get_image_fields_from_args(args):
             raise RuntimeError(msg)
         fields[pieces[0]] = pieces[1]
 
-    fields = dict([(k.lower().replace('-', '_'), v)
-                   for k, v in fields.items()])
     return fields
 
 
@@ -114,7 +112,8 @@ def get_image_filters_from_args(args):
         return FAILURE
 
     SUPPORTED_FILTERS = ['name', 'disk_format', 'container_format', 'status',
-                         'min_ram', 'min_disk', 'size_min', 'size_max']
+                         'min_ram', 'min_disk', 'size_min', 'size_max',
+                         'changes-since']
     filters = {}
     for (key, value) in fields.items():
         if key not in SUPPORTED_FILTERS:
@@ -215,7 +214,7 @@ EXAMPLES
         return FAILURE
 
     image_meta = {'name': fields.pop('name'),
-                  'is_public': common_utils.bool_from_string(
+                  'is_public': utils.bool_from_string(
                       fields.pop('is_public', False)),
                   'disk_format': fields.pop('disk_format', 'raw'),
                   'min_disk': fields.pop('min_disk', 0),
@@ -341,7 +340,7 @@ to spell field names correctly. :)"""
 
     # Have to handle "boolean" values specially...
     if 'is_public' in fields:
-        image_meta['is_public'] = common_utils.bool_from_string(
+        image_meta['is_public'] = utils.bool_from_string(
             fields.pop('is_public'))
 
     # Add custom attributes, which are all the arguments remaining
@@ -447,7 +446,7 @@ def _images_index(client, filters, limit, print_header=False, **kwargs):
         return SUCCESS
 
     pretty_table = utils.PrettyTable()
-    pretty_table.add_column(16, label="ID")
+    pretty_table.add_column(36, label="ID")
     pretty_table.add_column(30, label="Name")
     pretty_table.add_column(20, label="Disk Format")
     pretty_table.add_column(20, label="Container Format")
@@ -480,8 +479,8 @@ Returns basic information for all public images
 a Glance server knows about. Provided fields are
 handled as query filters. Supported filters
 include 'name', 'disk_format', 'container_format',
-'status', 'size_min', and 'size_max.' Any extra
-fields are treated as image metadata properties"""
+'status', 'size_min', 'size_max' and 'changes-since.'
+Any extra fields are treated as image metadata properties"""
     client = get_client(options)
     filters = get_image_filters_from_args(args)
     limit = options.limit
@@ -539,8 +538,8 @@ Returns detailed information for all public images
 a Glance server knows about. Provided fields are
 handled as query filters. Supported filters
 include 'name', 'disk_format', 'container_format',
-'status', 'size_min', and 'size_max.' Any extra
-fields are treated as image metadata properties"""
+'status', 'size_min', 'size_max' and 'changes-since.'
+Any extra fields are treated as image metadata properties"""
     client = get_client(options)
     filters = get_image_filters_from_args(args)
     limit = options.limit
@@ -598,7 +597,7 @@ List all images currently cached"""
     print "Found %d cached images..." % len(images)
 
     pretty_table = utils.PrettyTable()
-    pretty_table.add_column(16, label="ID")
+    pretty_table.add_column(36, label="ID")
     pretty_table.add_column(30, label="Name")
     pretty_table.add_column(19, label="Last Accessed (UTC)")
     # 1 TB takes 13 characters to display: len(str(2**40)) == 13
@@ -631,7 +630,7 @@ List current invalid cache images"""
     print "Found %d invalid cached images..." % len(images)
 
     pretty_table = utils.PrettyTable()
-    pretty_table.add_column(16, label="ID")
+    pretty_table.add_column(36, label="ID")
     pretty_table.add_column(30, label="Name")
     pretty_table.add_column(30, label="Error")
     pretty_table.add_column(19, label="Last Modified (UTC)")
@@ -668,7 +667,7 @@ List images currently being fetched"""
     print "Found %d incomplete cached images..." % len(images)
 
     pretty_table = utils.PrettyTable()
-    pretty_table.add_column(16, label="ID")
+    pretty_table.add_column(36, label="ID")
     pretty_table.add_column(30, label="Name")
     pretty_table.add_column(19, label="Last Modified (UTC)")
     # 1 TB takes 13 characters to display: len(str(2**40)) == 13
@@ -811,7 +810,7 @@ List images that are being prefetched"""
     print "Found %d images being prefetched..." % len(images)
 
     pretty_table = utils.PrettyTable()
-    pretty_table.add_column(16, label="ID")
+    pretty_table.add_column(36, label="ID")
     pretty_table.add_column(30, label="Name")
     pretty_table.add_column(19, label="Last Accessed (UTC)")
     pretty_table.add_column(10, label="Status", just="r")
@@ -939,7 +938,7 @@ option is given, <MEMBER> will be able to further share the image."""
         c.add_member(image_id, member_id, options.can_share)
     else:
         print "Dry run. We would have done the following:"
-        print ('Add "%(member_id)" to membership of image %(image_id)s'
+        print ('Add "%(member_id)s" to membership of image %(image_id)s'
                % locals())
         if options.can_share:
             print "New member would have been able to further share image."
@@ -981,8 +980,13 @@ def get_client(options):
                  auth_url=os.getenv('OS_AUTH_URL'),
                  strategy=os.getenv('OS_AUTH_STRATEGY', 'noauth'))
 
+    use_ssl = (options.host.find('https') != -1 or (
+        creds['auth_url'] is not None and
+        creds['auth_url'].find('https') != -1))
+
     return glance_client.Client(host=options.host, port=options.port,
-                                auth_tok=options.auth_token, creds=creds)
+                                use_ssl=use_ssl, auth_tok=options.auth_token,
+                                creds=creds)
 
 
 def create_options(parser):

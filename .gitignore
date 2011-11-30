@@ -2,5 +2,9 @@
 *.swp
 *.log
 .glance-venv
+build
+dist
+glance.egg-info
+glance/vcsversion.py
 tests.sqlite
 .pc

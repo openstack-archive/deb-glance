@@ -19,13 +19,11 @@
 /images endpoint for Glance v1 API
 """
 
-import httplib
+import errno
 import json
 import logging
-import sys
 import traceback
 
-import webob
 from webob.exc import (HTTPNotFound,
                        HTTPConflict,
                        HTTPBadRequest,
@@ -41,6 +39,7 @@ from glance.common import wsgi
 import glance.store
 import glance.store.filesystem
 import glance.store.http
+import glance.store.rbd
 import glance.store.s3
 import glance.store.swift
 from glance.store import (get_from_backend,
@@ -49,14 +48,13 @@ from glance.store import (get_from_backend,
                           get_store_from_scheme,
                           UnsupportedBackend)
 from glance import registry
-from glance import utils
 
 
 logger = logging.getLogger('glance.api.v1.images')
 
 SUPPORTED_FILTERS = ['name', 'status', 'container_format', 'disk_format',
                      'min_ram', 'min_disk', 'size_min', 'size_max',
-                     'is_public']
+                     'is_public', 'changes-since']
 
 SUPPORTED_PARAMS = ('limit', 'marker', 'sort_key', 'sort_dir')
 
@@ -84,6 +82,7 @@ class Controller(api.BaseController):
         self.options = options
         glance.store.create_stores(options)
         self.notifier = notifier.Notifier(options)
+        registry.configure_registry_client(options)
 
     def index(self, req):
         """
@@ -110,8 +109,7 @@ class Controller(api.BaseController):
         """
         params = self._get_query_params(req)
         try:
-            images = registry.get_images_list(self.options, req.context,
-                                              **params)
+            images = registry.get_images_list(req.context, **params)
         except exception.Invalid, e:
             raise HTTPBadRequest(explanation="%s" % e)
 
@@ -143,8 +141,7 @@ class Controller(api.BaseController):
         """
         params = self._get_query_params(req)
         try:
-            images = registry.get_images_detail(self.options, req.context,
-                                                **params)
+            images = registry.get_images_detail(req.context, **params)
             # Strip out the Location attribute. Temporary fix for
             # LP Bug #755916. This information is still coming back
             # from the registry, since the API server still needs access
@@ -194,8 +191,10 @@ class Controller(api.BaseController):
 
         :raises HTTPNotFound if image metadata is not available to user
         """
+        image_meta = self.get_image_meta_or_404(req, id)
+        del image_meta['location']
         return {
-            'image_meta': self.get_image_meta_or_404(req, id),
+            'image_meta': image_meta
         }
 
     def show(self, req, id):
@@ -208,10 +207,9 @@ class Controller(api.BaseController):
 
         :raises HTTPNotFound if image is not available to user
         """
-        image = self.get_active_image_meta_or_404(req, id)
+        image_meta = self.get_active_image_meta_or_404(req, id)
 
         def get_from_store(image_meta):
-            """Called if caching disabled"""
             try:
                 location = image_meta['location']
                 image_data, image_size = get_from_backend(location)
@@ -220,60 +218,11 @@ class Controller(api.BaseController):
                 raise HTTPNotFound(explanation="%s" % e)
             return image_data
 
-        def get_from_cache(image, cache):
-            """Called if cache hit"""
-            with cache.open(image, "rb") as cache_file:
-                chunks = utils.chunkiter(cache_file)
-                for chunk in chunks:
-                    yield chunk
-
-        def get_from_store_tee_into_cache(image, cache):
-            """Called if cache miss"""
-            with cache.open(image, "wb") as cache_file:
-                chunks = get_from_store(image)
-                for chunk in chunks:
-                    cache_file.write(chunk)
-                    yield chunk
-
-        cache = image_cache.ImageCache(self.options)
-        if cache.enabled:
-            if cache.hit(id):
-                # hit
-                logger.debug(_("image '%s' is a cache HIT"), id)
-                image_iterator = get_from_cache(image, cache)
-            else:
-                # miss
-                logger.debug(_("image '%s' is a cache MISS"), id)
-
-                # Make sure we're not already prefetching or caching the image
-                # that just generated the miss
-                if cache.is_image_currently_prefetching(id):
-                    logger.debug(_("image '%s' is already being prefetched,"
-                                 " not tee'ing into the cache"), id)
-                    image_iterator = get_from_store(image)
-                elif cache.is_image_currently_being_written(id):
-                    logger.debug(_("image '%s' is already being cached,"
-                                 " not tee'ing into the cache"), id)
-                    image_iterator = get_from_store(image)
-                else:
-                    # NOTE(sirp): If we're about to download and cache an
-                    # image which is currently in the prefetch queue, just
-                    # delete the queue items since we're caching it anyway
-                    if cache.is_image_queued_for_prefetch(id):
-                        cache.delete_queued_prefetch_image(id)
-
-                    logger.debug(_("tee'ing image '%s' into cache"), id)
-                    image_iterator = get_from_store_tee_into_cache(
-                        image, cache)
-        else:
-            # disabled
-            logger.debug(_("image cache DISABLED, retrieving image '%s'"
-                         " from store"), id)
-            image_iterator = get_from_store(image)
-
+        image_iterator = get_from_store(image_meta)
+        del image_meta['location']
         return {
             'image_iterator': image_iterator,
-            'image_meta': image,
+            'image_meta': image_meta,
         }
 
     def _reserve(self, req, image_meta):
@@ -303,9 +252,7 @@ class Controller(api.BaseController):
         image_meta['size'] = image_meta.get('size', 0)
 
         try:
-            image_meta = registry.add_image_metadata(self.options,
-                                                     req.context,
-                                                     image_meta)
+            image_meta = registry.add_image_metadata(req.context, image_meta)
             return image_meta
         except exception.Duplicate:
             msg = (_("An image with identifier %s already exists")
@@ -351,7 +298,7 @@ class Controller(api.BaseController):
 
         image_id = image_meta['id']
         logger.debug(_("Setting image %s to status 'saving'"), image_id)
-        registry.update_image_metadata(self.options, req.context, image_id,
+        registry.update_image_metadata(req.context, image_id,
                                        {'status': 'saving'})
         try:
             logger.debug(_("Uploading image data for image %(image_id)s "
@@ -386,8 +333,7 @@ class Controller(api.BaseController):
             logger.debug(_("Updating image %(image_id)s data. "
                          "Checksum set to %(checksum)s, size set "
                          "to %(size)d"), locals())
-            registry.update_image_metadata(self.options, req.context,
-                                           image_id,
+            registry.update_image_metadata(req.context, image_id,
                                            {'checksum': checksum,
                                             'size': size})
             self.notifier.info('image.upload', image_meta)
@@ -434,10 +380,8 @@ class Controller(api.BaseController):
         image_meta = {}
         image_meta['location'] = location
         image_meta['status'] = 'active'
-        return registry.update_image_metadata(self.options,
-                                       req.context,
-                                       image_id,
-                                       image_meta)
+        return registry.update_image_metadata(req.context, image_id,
+                                              image_meta)
 
     def _kill(self, req, image_id):
         """
@@ -446,9 +390,7 @@ class Controller(api.BaseController):
         :param req: The WSGI/Webob Request object
         :param image_id: Opaque image identifier
         """
-        registry.update_image_metadata(self.options,
-                                       req.context,
-                                       image_id,
+        registry.update_image_metadata(req.context, image_id,
                                        {'status': 'killed'})
 
     def _safe_kill(self, req, image_id):
@@ -537,6 +479,10 @@ class Controller(api.BaseController):
             if location:
                 image_meta = self._activate(req, image_id, location)
 
+        # Prevent client from learning the location, as it
+        # could contain security credentials
+        image_meta.pop('location', None)
+
         return {'image_meta': image_meta}
 
     def update(self, req, id, image_meta, image_data):
@@ -561,8 +507,7 @@ class Controller(api.BaseController):
             raise HTTPConflict(_("Cannot upload to an unqueued image"))
 
         try:
-            image_meta = registry.update_image_metadata(self.options,
-                                                        req.context, id,
+            image_meta = registry.update_image_metadata(req.context, id,
                                                         image_meta, True)
             if image_data is not None:
                 image_meta = self._upload_and_activate(req, image_meta)
@@ -581,6 +526,10 @@ class Controller(api.BaseController):
             raise HTTPNotFound(msg, request=req, content_type="text/plain")
         else:
             self.notifier.info('image.update', image_meta)
+
+        # Prevent client from learning the location, as it
+        # could contain security credentials
+        image_meta.pop('location', None)
 
         return {'image_meta': image_meta}
 
@@ -612,7 +561,7 @@ class Controller(api.BaseController):
             if image['location']:
                 schedule_delete_from_backend(image['location'], self.options,
                                              req.context, id)
-            registry.delete_image_metadata(self.options, req.context, id)
+            registry.delete_image_metadata(req.context, id)
         except exception.NotFound, e:
             msg = ("Failed to find image to delete: %(e)s" % locals())
             for line in msg.split('\n'):
@@ -621,59 +570,6 @@ class Controller(api.BaseController):
             raise HTTPNotFound(msg, request=req, content_type="text/plain")
         else:
             self.notifier.info('image.delete', id)
-
-    def members(self, req, image_id):
-        """
-        Return a list of dictionaries indicating the members of the
-        image, i.e., those tenants the image is shared with.
-
-        :param req: the Request object coming from the wsgi layer
-        :param image_id: The opaque image identifier
-        :retval The response body is a mapping of the following form::
-
-            {'members': [
-                {'member_id': <MEMBER>,
-                 'can_share': <SHARE_PERMISSION>, ...}, ...
-            ]}
-        """
-        try:
-            members = registry.get_image_members(self.options, req.context,
-                                                 image_id)
-        except exception.NotFound:
-            msg = _("Image with identifier %s not found") % image_id
-            logger.debug(msg)
-            raise HTTPNotFound(msg, request=req, content_type='text/plain')
-        except exception.NotAuthorized:
-            msg = _("Unauthorized image access")
-            logger.debug(msg)
-            raise HTTPForbidden(msg, request=req, content_type='text/plain')
-        return dict(members=members)
-
-    def shared_images(self, req, member):
-        """
-        Retrieves list of image memberships for the given member.
-
-        :param req: the Request object coming from the wsgi layer
-        :param member: the opaque member identifier
-        :retval The response body is a mapping of the following form::
-
-            {'shared_images': [
-                {'image_id': <IMAGE>,
-                 'can_share': <SHARE_PERMISSION>, ...}, ...
-            ]}
-        """
-        try:
-            members = registry.get_member_images(self.options, req.context,
-                                                 member)
-        except exception.NotFound, e:
-            msg = "%s" % e
-            logger.debug(msg)
-            raise HTTPNotFound(msg, request=req, content_type='text/plain')
-        except exception.NotAuthorized, e:
-            msg = "%s" % e
-            logger.debug(msg)
-            raise HTTPForbidden(msg, request=req, content_type='text/plain')
-        return dict(shared_images=members)
 
     def get_store_or_400(self, request, store_name):
         """
@@ -694,101 +590,13 @@ class Controller(api.BaseController):
             raise HTTPBadRequest(msg, request=request,
                                  content_type='text/plain')
 
-    def replace_members(self, req, image_id, body):
-        """
-        Replaces the members of the image with those specified in the
-        body.  The body is a dict with the following format::
-
-            {"memberships": [
-                {"member_id": <MEMBER_ID>,
-                 ["can_share": [True|False]]}, ...
-            ]}
-        """
-        if req.context.read_only:
-            raise HTTPForbidden()
-        elif req.context.owner is None:
-            raise HTTPUnauthorized(_("No authenticated user"))
-
-        try:
-            registry.replace_members(self.options, req.context,
-                                     image_id, body)
-        except exception.NotFound, e:
-            msg = "%s" % e
-            logger.debug(msg)
-            raise HTTPNotFound(msg, request=req, content_type='text/plain')
-        except exception.NotAuthorized, e:
-            msg = "%s" % e
-            logger.debug(msg)
-            raise HTTPNotFound(msg, request=req, content_type='text/plain')
-
-        return HTTPNoContent()
-
-    def add_member(self, req, image_id, member, body=None):
-        """
-        Adds a membership to the image, or updates an existing one.
-        If a body is present, it is a dict with the following format::
-
-            {"member": {
-                "can_share": [True|False]
-            }}
-
-        If "can_share" is provided, the member's ability to share is
-        set accordingly.  If it is not provided, existing memberships
-        remain unchanged and new memberships default to False.
-        """
-        if req.context.read_only:
-            raise HTTPForbidden()
-        elif req.context.owner is None:
-            raise HTTPUnauthorized(_("No authenticated user"))
-
-        # Figure out can_share
-        can_share = None
-        if body and 'member' in body and 'can_share' in body['member']:
-            can_share = bool(body['member']['can_share'])
-        try:
-            registry.add_member(self.options, req.context, image_id, member,
-                                can_share)
-        except exception.NotFound, e:
-            msg = "%s" % e
-            logger.debug(msg)
-            raise HTTPNotFound(msg, request=req, content_type='text/plain')
-        except exception.NotAuthorized, e:
-            msg = "%s" % e
-            logger.debug(msg)
-            raise HTTPNotFound(msg, request=req, content_type='text/plain')
-
-        return HTTPNoContent()
-
-    def delete_member(self, req, image_id, member):
-        """
-        Removes a membership from the image.
-        """
-        if req.context.read_only:
-            raise HTTPForbidden()
-        elif req.context.owner is None:
-            raise HTTPUnauthorized(_("No authenticated user"))
-
-        try:
-            registry.delete_member(self.options, req.context,
-                                   image_id, member)
-        except exception.NotFound, e:
-            msg = "%s" % e
-            logger.debug(msg)
-            raise HTTPNotFound(msg, request=req, content_type='text/plain')
-        except exception.NotAuthorized, e:
-            msg = "%s" % e
-            logger.debug(msg)
-            raise HTTPNotFound(msg, request=req, content_type='text/plain')
-
-        return HTTPNoContent()
-
 
 class ImageDeserializer(wsgi.JSONRequestDeserializer):
     """Handles deserialization of specific controller method requests."""
 
     def _deserialize(self, request):
         result = {}
-        result['image_meta'] = utils.get_image_meta_from_headers(request)
+        result['image_meta'] = wsgi.get_image_meta_from_headers(request)
         data = request.body_file if self.has_body(request) else None
         result['image_data'] = data
         return result
@@ -822,7 +630,7 @@ class ImageSerializer(wsgi.JSONResponseSerializer):
         :param response: The Webob Response object
         :param image_meta: Mapping of image metadata
         """
-        headers = utils.image_meta_to_http_headers(image_meta)
+        headers = wsgi.image_meta_to_http_headers(image_meta)
 
         for k, v in headers.items():
             response.headers[k] = v
@@ -840,8 +648,38 @@ class ImageSerializer(wsgi.JSONResponseSerializer):
 
     def show(self, response, result):
         image_meta = result['image_meta']
+        image_id = image_meta['id']
 
-        response.app_iter = result['image_iterator']
+        # We use a secondary iterator here to wrap the
+        # iterator coming back from the store driver in
+        # order to check for disconnections from the backend
+        # storage connections and log an error if the size of
+        # the transferred image is not the same as the expected
+        # size of the image file. See LP Bug #882585.
+        def checked_iter(image_id, expected_size, image_iter):
+            bytes_written = 0
+            try:
+                for chunk in image_iter:
+                    yield chunk
+                    bytes_written += len(chunk)
+            except Exception, err:
+                msg = _("An error occurred reading from backend storage "
+                        "for image %(image_id): %(err)s") % locals()
+                logger.error(msg)
+                raise
+
+            if expected_size != bytes_written:
+                msg = _("Backend storage for image %(image_id)s "
+                        "disconnected after writing only %(bytes_written)d "
+                        "bytes") % locals()
+                logger.error(msg)
+                raise IOError(errno.EPIPE, _("Corrupt image download for "
+                                             "image %(image_id)s") % locals())
+
+        image_iter = result['image_iterator']
+        # image_meta['size'] is a str
+        expected_size = int(image_meta['size'])
+        response.app_iter = checked_iter(image_id, expected_size, image_iter)
         # Using app_iter blanks content-length, so we set it here...
         response.headers['Content-Length'] = image_meta['size']
         response.headers['Content-Type'] = 'application/octet-stream'
@@ -862,7 +700,7 @@ class ImageSerializer(wsgi.JSONResponseSerializer):
 
     def create(self, response, result):
         image_meta = result['image_meta']
-        response.status = httplib.CREATED
+        response.status = 201
         response.headers['Content-Type'] = 'application/json'
         response.body = self.to_json(dict(image=image_meta))
         self._inject_location_header(response, image_meta)

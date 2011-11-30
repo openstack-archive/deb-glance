@@ -21,14 +21,16 @@
 Utility methods for working with WSGI servers
 """
 
+import datetime
+import errno
 import json
 import logging
 import sys
-import datetime
+import time
 
 import eventlet
+from eventlet.green import socket, ssl
 import eventlet.wsgi
-eventlet.patcher.monkey_patch(all=False, socket=True)
 import routes
 import routes.middleware
 import webob.dec
@@ -48,10 +50,61 @@ class WritableLogger(object):
         self.logger.log(self.level, msg.strip("\n"))
 
 
-def run_server(application, port):
-    """Run a WSGI server with the given application."""
-    sock = eventlet.listen(('0.0.0.0', port))
-    eventlet.wsgi.server(sock, application)
+def get_socket(host, port, conf):
+    """
+    Bind socket to bind ip:port in conf
+
+    note: Mostly comes from Swift with a few small changes...
+
+    :param host: Host to bind to
+    :param port: Port to bind to
+    :param conf: Configuration dict to read settings from
+
+    :returns : a socket object as returned from socket.listen or
+               ssl.wrap_socket if conf specifies cert_file
+    """
+    bind_addr = (host, port)
+    # TODO(jaypipes): eventlet's greened socket module does not actually
+    # support IPv6 in getaddrinfo(). We need to get around this in the
+    # future or monitor upstream for a fix
+    address_family = [addr[0] for addr in socket.getaddrinfo(bind_addr[0],
+            bind_addr[1], socket.AF_UNSPEC, socket.SOCK_STREAM)
+            if addr[0] in (socket.AF_INET, socket.AF_INET6)][0]
+    backlog = int(conf.get('backlog', 4096))
+
+    cert_file = conf.get('cert_file')
+    key_file = conf.get('key_file')
+    use_ssl = cert_file or key_file
+    if use_ssl and (not cert_file or not key_file):
+        raise RuntimeError(_("When running server in SSL mode, you must "
+                             "specify both a cert_file and key_file "
+                             "option value in your configuration file"))
+
+    sock = None
+    retry_until = time.time() + 30
+    while not sock and time.time() < retry_until:
+        try:
+            sock = eventlet.listen(bind_addr, backlog=backlog,
+                                   family=address_family)
+            if use_ssl:
+                sock = ssl.wrap_socket(sock, certfile=cert_file,
+                                       keyfile=key_file)
+        except socket.error, err:
+            if err.args[0] != errno.EADDRINUSE:
+                raise
+            sleep(0.1)
+    if not sock:
+        raise RuntimeError(_("Could not bind to %s:%s after trying for 30 "
+                             "seconds") % bind_addr)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    # in my experience, sockets can hang around forever without keepalive
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+
+    # This option isn't available in the OS X version of eventlet
+    if hasattr(socket, 'TCP_KEEPIDLE'):
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 600)
+
+    return sock
 
 
 class Server(object):
@@ -60,9 +113,17 @@ class Server(object):
     def __init__(self, threads=1000):
         self.pool = eventlet.GreenPool(threads)
 
-    def start(self, application, port, host='0.0.0.0', backlog=128):
-        """Run a WSGI server with the given application."""
-        socket = eventlet.listen((host, port), backlog=backlog)
+    def start(self, application, port, host='0.0.0.0', conf=None):
+        """
+        Run a WSGI server with the given application.
+
+        :param application: The application to run in the WSGI server
+        :param port: Port to bind to
+        :param host: Host to bind to
+        :param conf: Mapping of configuration options
+        """
+        conf = conf or {}
+        socket = get_socket(host, port, conf)
         self.pool.spawn_n(self._run, application, socket)
 
     def wait(self):
@@ -345,3 +406,73 @@ class Resource(object):
             pass
 
         return args
+
+
+def image_meta_to_http_headers(image_meta):
+    """
+    Returns a set of image metadata into a dict
+    of HTTP headers that can be fed to either a Webob
+    Request object or an httplib.HTTP(S)Connection object
+
+    :param image_meta: Mapping of image metadata
+    """
+    headers = {}
+    for k, v in image_meta.items():
+        if v is None:
+            v = ''
+        if k == 'properties':
+            for pk, pv in v.items():
+                if pv is None:
+                    pv = ''
+                headers["x-image-meta-property-%s"
+                        % pk.lower()] = unicode(pv)
+        else:
+            headers["x-image-meta-%s" % k.lower()] = unicode(v)
+    return headers
+
+
+def get_image_meta_from_headers(response):
+    """
+    Processes HTTP headers from a supplied response that
+    match the x-image-meta and x-image-meta-property and
+    returns a mapping of image metadata and properties
+
+    :param response: Response to process
+    """
+    result = {}
+    properties = {}
+
+    if hasattr(response, 'getheaders'):  # httplib.HTTPResponse
+        headers = response.getheaders()
+    else:  # webob.Response
+        headers = response.headers.items()
+
+    for key, value in headers:
+        key = str(key.lower())
+        if key.startswith('x-image-meta-property-'):
+            field_name = key[len('x-image-meta-property-'):].replace('-', '_')
+            properties[field_name] = value or None
+        elif key.startswith('x-image-meta-'):
+            field_name = key[len('x-image-meta-'):].replace('-', '_')
+            result[field_name] = value or None
+    result['properties'] = properties
+    if 'size' in result:
+        result['size'] = int(result['size'])
+    if 'is_public' in result:
+        result['is_public'] = bool_from_header_value(result['is_public'])
+    if 'deleted' in result:
+        result['deleted'] = bool_from_header_value(result['deleted'])
+    return result
+
+
+def bool_from_header_value(value):
+    """
+    Returns True if value is a boolean True or the
+    string 'true', case-insensitive, False otherwise
+    """
+    if isinstance(value, bool):
+        return value
+    elif isinstance(value, (basestring, unicode)):
+        if str(value).lower() == 'true':
+            return True
+    return False

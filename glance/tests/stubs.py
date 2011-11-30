@@ -17,26 +17,17 @@
 
 """Stubouts, mocks and fixtures for the test suite"""
 
-import datetime
-import httplib
-import operator
 import os
 import shutil
-import StringIO
-import sys
 
-import stubout
 import webob
 
+from glance.api import v1 as server
+from glance.api.middleware import version_negotiation
 import glance.common.client
 from glance.common import context
 from glance.common import exception
-from glance.registry import server as rserver
-from glance.api import v1 as server
-import glance.store
-import glance.store.filesystem
-import glance.store.http
-import glance.registry.db.api
+from glance.registry.api import v1 as rserver
 
 
 FAKE_FILESYSTEM_ROOTDIR = os.path.join('/tmp', 'glance-tests')
@@ -156,11 +147,15 @@ def stub_out_registry_and_store_server(stubs):
         def getresponse(self):
             options = {'verbose': VERBOSE,
                        'debug': DEBUG,
+                       'bind_host': '0.0.0.0',
+                       'bind_port': '9999999',
                        'registry_host': '0.0.0.0',
                        'registry_port': '9191',
                        'default_store': 'file',
                        'filesystem_store_datadir': FAKE_FILESYSTEM_ROOTDIR}
-            api = context.ContextMiddleware(server.API(options), options)
+            api = version_negotiation.VersionNegotiationFilter(
+                context.ContextMiddleware(server.API(options), options),
+                options)
             res = self.req.get_response(api)
 
             # httplib.Response has a read() method...fake it out
@@ -182,6 +177,67 @@ def stub_out_registry_and_store_server(stubs):
             return FakeGlanceConnection
         elif (client.port == DEFAULT_REGISTRY_PORT and
               client.host == '0.0.0.0'):
+            return FakeRegistryConnection
+
+    def fake_image_iter(self):
+        for i in self.response.app_iter:
+            yield i
+
+    stubs.Set(glance.common.client.BaseClient, 'get_connection_type',
+              fake_get_connection_type)
+    stubs.Set(glance.common.client.ImageBodyIterator, '__iter__',
+              fake_image_iter)
+
+
+def stub_out_registry_server(stubs, **kwargs):
+    """
+    Mocks calls to 127.0.0.1 on 9191 for testing so
+    that a real Glance Registry server does not need to be up and
+    running
+    """
+
+    class FakeRegistryConnection(object):
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def connect(self):
+            return True
+
+        def close(self):
+            return True
+
+        def request(self, method, url, body=None, headers={}):
+            self.req = webob.Request.blank("/" + url.lstrip("/"))
+            self.req.method = method
+            if headers:
+                self.req.headers = headers
+            if body:
+                self.req.body = body
+
+        def getresponse(self):
+            sql_connection = kwargs.get('sql_connection', "sqlite:///")
+            context_class = 'glance.registry.context.RequestContext'
+            options = {'sql_connection': sql_connection, 'verbose': VERBOSE,
+                       'debug': DEBUG, 'context_class': context_class}
+            api = context.ContextMiddleware(rserver.API(options), options)
+            res = self.req.get_response(api)
+
+            # httplib.Response has a read() method...fake it out
+            def fake_reader():
+                return res.body
+
+            setattr(res, 'read', fake_reader)
+            return res
+
+    def fake_get_connection_type(client):
+        """
+        Returns the proper connection type
+        """
+        DEFAULT_REGISTRY_PORT = 9191
+
+        if (client.port == DEFAULT_REGISTRY_PORT and
+            client.host == '0.0.0.0'):
             return FakeRegistryConnection
 
     def fake_image_iter(self):

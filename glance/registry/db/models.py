@@ -31,6 +31,7 @@ from sqlalchemy.ext.declarative import declarative_base
 
 import glance.registry.db.api
 from glance.common import exception
+from glance.common import utils
 
 BASE = declarative_base()
 
@@ -44,7 +45,8 @@ class ModelBase(object):
 
     created_at = Column(DateTime, default=datetime.datetime.utcnow,
                         nullable=False)
-    updated_at = Column(DateTime, onupdate=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow,
+                        nullable=False, onupdate=datetime.datetime.utcnow)
     deleted_at = Column(DateTime)
     deleted = Column(Boolean, nullable=False, default=False)
 
@@ -96,7 +98,7 @@ class Image(BASE, ModelBase):
     """Represents an image in the datastore"""
     __tablename__ = 'images'
 
-    id = Column(Integer, primary_key=True)
+    id = Column(String(36), primary_key=True, default=utils.generate_uuid)
     name = Column(String(255))
     disk_format = Column(String(20))
     container_format = Column(String(20))
@@ -105,8 +107,8 @@ class Image(BASE, ModelBase):
     is_public = Column(Boolean, nullable=False, default=False)
     location = Column(Text)
     checksum = Column(String(32))
-    min_disk = Column(Integer(), default=0)
-    min_ram = Column(Integer(), default=0)
+    min_disk = Column(Integer(), nullable=False, default=0)
+    min_ram = Column(Integer(), nullable=False, default=0)
     owner = Column(String(255))
 
 
@@ -116,7 +118,8 @@ class ImageProperty(BASE, ModelBase):
     __table_args__ = (UniqueConstraint('image_id', 'name'), {})
 
     id = Column(Integer, primary_key=True)
-    image_id = Column(Integer, ForeignKey('images.id'), nullable=False)
+    image_id = Column(String(36), ForeignKey('images.id'),
+                      nullable=False)
     image = relationship(Image, backref=backref('properties'))
 
     name = Column(String(255), index=True, nullable=False)
@@ -129,7 +132,8 @@ class ImageMember(BASE, ModelBase):
     __table_args__ = (UniqueConstraint('image_id', 'member'), {})
 
     id = Column(Integer, primary_key=True)
-    image_id = Column(Integer, ForeignKey('images.id'), nullable=False)
+    image_id = Column(String(36), ForeignKey('images.id'),
+                      nullable=False)
     image = relationship(Image, backref=backref('members'))
 
     member = Column(String(255), nullable=False)

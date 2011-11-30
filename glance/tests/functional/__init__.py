@@ -30,11 +30,11 @@ import random
 import shutil
 import signal
 import socket
-import tempfile
 import time
 import unittest
 import urlparse
 
+from glance.common import utils
 from glance.tests.utils import execute, get_unused_port
 
 from sqlalchemy import create_engine
@@ -79,7 +79,7 @@ class Server(object):
         self.no_venv = False
         self.test_dir = test_dir
         self.bind_port = port
-        self.conf_file = None
+        self.conf_file_name = None
         self.conf_base = None
         self.server_control = './bin/glance-control'
         self.exec_env = None
@@ -90,7 +90,7 @@ class Server(object):
         destination.  Returns the name of the configuration file.
         """
 
-        if self.conf_file:
+        if self.conf_file_name:
             return self.conf_file_name
         if not self.conf_base:
             raise RuntimeError("Subclass did not populate config_base!")
@@ -102,11 +102,13 @@ class Server(object):
         # A config file to use just for this test...we don't want
         # to trample on currently-running Glance servers, now do we?
 
-        conf_file = tempfile.NamedTemporaryFile()
-        conf_file.write(self.conf_base % conf_override)
-        conf_file.flush()
-        self.conf_file = conf_file
-        self.conf_file_name = conf_file.name
+        conf_dir = os.path.join(self.test_dir, 'etc')
+        conf_filepath = os.path.join(conf_dir, "%s.conf" % self.server_name)
+        utils.safe_mkdirs(conf_dir)
+        with open(conf_filepath, 'wb') as conf_file:
+            conf_file.write(self.conf_base % conf_override)
+            conf_file.flush()
+            self.conf_file_name = conf_file.name
 
         return self.conf_file_name
 
@@ -146,10 +148,15 @@ class ApiServer(Server):
         super(ApiServer, self).__init__(test_dir, port)
         self.server_name = 'api'
         self.default_store = 'file'
+        self.key_file = ""
+        self.cert_file = ""
+        self.metadata_encryption_key = "012345678901234567890123456789ab"
         self.image_dir = os.path.join(self.test_dir,
                                          "images")
         self.pid_file = os.path.join(self.test_dir,
                                          "api.pid")
+        self.scrubber_datadir = os.path.join(self.test_dir,
+                                             "scrubber")
         self.log_file = os.path.join(self.test_dir, "api.log")
         self.registry_port = registry_port
         self.s3_store_host = "s3.amazonaws.com"
@@ -162,8 +169,16 @@ class ApiServer(Server):
         self.swift_store_container = ""
         self.swift_store_large_object_size = 5 * 1024
         self.swift_store_large_object_chunk_size = 200
+        self.rbd_store_ceph_conf = ""
+        self.rbd_store_pool = ""
+        self.rbd_store_user = ""
+        self.rbd_store_chunk_size = 4
         self.delayed_delete = delayed_delete
         self.owner_is_tenant = True
+        self.cache_pipeline = ""  # Set to cache for cache middleware
+        self.image_cache_dir = os.path.join(self.test_dir,
+                                            'cache')
+        self.image_cache_driver = 'sqlite'
         self.conf_base = """[DEFAULT]
 verbose = %(verbose)s
 debug = %(debug)s
@@ -171,6 +186,9 @@ filesystem_store_datadir=%(image_dir)s
 default_store = %(default_store)s
 bind_host = 0.0.0.0
 bind_port = %(bind_port)s
+key_file = %(key_file)s
+cert_file = %(cert_file)s
+metadata_encryption_key = %(metadata_encryption_key)s
 registry_host = 0.0.0.0
 registry_port = %(registry_port)s
 log_file = %(log_file)s
@@ -184,11 +202,19 @@ swift_store_key = %(swift_store_key)s
 swift_store_container = %(swift_store_container)s
 swift_store_large_object_size = %(swift_store_large_object_size)s
 swift_store_large_object_chunk_size = %(swift_store_large_object_chunk_size)s
+rbd_store_chunk_size = %(rbd_store_chunk_size)s
+rbd_store_user = %(rbd_store_user)s
+rbd_store_pool = %(rbd_store_pool)s
+rbd_store_ceph_conf = %(rbd_store_ceph_conf)s
 delayed_delete = %(delayed_delete)s
 owner_is_tenant = %(owner_is_tenant)s
+scrub_time = 5
+scrubber_datadir = %(scrubber_datadir)s
+image_cache_dir = %(image_cache_dir)s
+image_cache_driver = %(image_cache_driver)s
 
 [pipeline:glance-api]
-pipeline = versionnegotiation context apiv1app
+pipeline = versionnegotiation context %(cache_pipeline)s apiv1app
 
 [pipeline:versions]
 pipeline = versionsapp
@@ -201,6 +227,12 @@ paste.app_factory = glance.api.v1:app_factory
 
 [filter:versionnegotiation]
 paste.filter_factory = glance.api.middleware.version_negotiation:filter_factory
+
+[filter:cache]
+paste.filter_factory = glance.api.middleware.cache:filter_factory
+
+[filter:cache_manage]
+paste.filter_factory = glance.api.middleware.cache_manage:filter_factory
 
 [filter:context]
 paste.filter_factory = glance.common.context:filter_factory
@@ -241,7 +273,7 @@ owner_is_tenant = %(owner_is_tenant)s
 pipeline = context registryapp
 
 [app:registryapp]
-paste.app_factory = glance.registry.server:app_factory
+paste.app_factory = glance.registry.api.v1:app_factory
 
 [filter:context]
 context_class = glance.registry.context.RequestContext
@@ -254,25 +286,26 @@ class ScrubberDaemon(Server):
     Server object that starts/stops/manages the Scrubber server
     """
 
-    def __init__(self, test_dir, sql_connection, daemon=False):
+    def __init__(self, test_dir, registry_port, daemon=False):
         # NOTE(jkoelker): Set the port to 0 since we actually don't listen
         super(ScrubberDaemon, self).__init__(test_dir, 0)
         self.server_name = 'scrubber'
         self.daemon = daemon
 
-        self.sql_connection = sql_connection
-
+        self.registry_port = registry_port
+        self.scrubber_datadir = os.path.join(self.test_dir,
+                                             "scrubber")
         self.pid_file = os.path.join(self.test_dir, "scrubber.pid")
         self.log_file = os.path.join(self.test_dir, "scrubber.log")
         self.conf_base = """[DEFAULT]
 verbose = %(verbose)s
 debug = %(debug)s
 log_file = %(log_file)s
-scrub_time = 5
 daemon = %(daemon)s
 wakeup_time = 2
-sql_connection = %(sql_connection)s
-sql_idle_timeout = 3600
+scrubber_datadir = %(scrubber_datadir)s
+registry_host = 0.0.0.0
+registry_port = %(registry_port)s
 
 [app:glance-scrubber]
 paste.app_factory = glance.store.scrubber:app_factory
@@ -293,6 +326,7 @@ class FunctionalTest(unittest.TestCase):
         self.test_id = random.randint(0, 100000)
         self.test_dir = os.path.join("/", "tmp", "test.%d" % self.test_id)
 
+        self.api_protocol = 'http'
         self.api_port = get_unused_port()
         self.registry_port = get_unused_port()
 
@@ -302,9 +336,8 @@ class FunctionalTest(unittest.TestCase):
         self.registry_server = RegistryServer(self.test_dir,
                                               self.registry_port)
 
-        registry_db = self.registry_server.sql_connection
         self.scrubber_daemon = ScrubberDaemon(self.test_dir,
-                                              sql_connection=registry_db)
+                                              self.registry_port)
 
         self.pid_files = [self.api_server.pid_file,
                           self.registry_server.pid_file,

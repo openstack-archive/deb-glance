@@ -39,7 +39,8 @@ from glance.registry.db import models
 _ENGINE = None
 _MAKER = None
 BASE = models.BASE
-logger = None
+sa_logger = None
+logger = logging.getLogger(__name__)
 
 # attributes common to all models
 BASE_MODEL_ATTRS = set(['id', 'created_at', 'updated_at', 'deleted_at',
@@ -64,8 +65,7 @@ def configure_db(options):
 
     :param options: Mapping of configuration options
     """
-    global _ENGINE
-    global logger
+    global _ENGINE, sa_logger, logger
     if not _ENGINE:
         debug = config.get_option(
             options, 'debug', type='bool', default=False)
@@ -73,13 +73,21 @@ def configure_db(options):
             options, 'verbose', type='bool', default=False)
         timeout = config.get_option(
             options, 'sql_idle_timeout', type='int', default=3600)
-        _ENGINE = create_engine(options['sql_connection'],
-                                pool_recycle=timeout)
-        logger = logging.getLogger('sqlalchemy.engine')
+        sql_connection = config.get_option(options, 'sql_connection')
+        try:
+            _ENGINE = create_engine(sql_connection, pool_recycle=timeout)
+        except Exception, err:
+            msg = _("Error configuring registry database with supplied "
+                    "sql_connection '%(sql_connection)s'. "
+                    "Got error:\n%(err)s") % locals()
+            logger.error(msg)
+            raise
+
+        sa_logger = logging.getLogger('sqlalchemy.engine')
         if debug:
-            logger.setLevel(logging.DEBUG)
+            sa_logger.setLevel(logging.DEBUG)
         elif verbose:
-            logger.setLevel(logging.INFO)
+            sa_logger.setLevel(logging.INFO)
 
         models.register_models(_ENGINE)
 
@@ -137,20 +145,19 @@ def image_destroy(context, image_id):
 def image_get(context, image_id, session=None):
     """Get an image or raise if it does not exist."""
     session = session or get_session()
-    try:
-        #NOTE(bcwaldon): this is to prevent false matches when mysql compares
-        # an integer to a string that begins with that integer
-        image_id = int(image_id)
-    except (TypeError, ValueError):
-        raise exception.NotFound("No image found")
 
     try:
-        image = session.query(models.Image).\
-                       options(joinedload(models.Image.properties)).\
-                       options(joinedload(models.Image.members)).\
-                       filter_by(deleted=_deleted(context)).\
-                       filter_by(id=image_id).\
-                       one()
+        query = session.query(models.Image).\
+                        options(joinedload(models.Image.properties)).\
+                        options(joinedload(models.Image.members)).\
+                        filter_by(id=image_id)
+
+        # filter out deleted images if context disallows it
+        if not can_show_deleted(context):
+            query = query.filter_by(deleted=False)
+
+        image = query.one()
+
     except exc.NoResultFound:
         raise exception.NotFound("No image found with ID %s" % image_id)
 
@@ -159,30 +166,6 @@ def image_get(context, image_id, session=None):
         raise exception.NotAuthorized("Image not visible to you")
 
     return image
-
-
-def image_get_all_pending_delete(context, delete_time=None, limit=None):
-    """Get all images that are pending deletion
-
-    :param limit: maximum number of images to return
-    """
-    session = get_session()
-    query = session.query(models.Image).\
-                   options(joinedload(models.Image.properties)).\
-                   options(joinedload(models.Image.members)).\
-                   filter_by(deleted=True).\
-                   filter(models.Image.status == 'pending_delete')
-
-    if delete_time:
-        query = query.filter(models.Image.deleted_at <= delete_time)
-
-    query = query.order_by(desc(models.Image.deleted_at)).\
-                  order_by(desc(models.Image.id))
-
-    if limit:
-        query = query.limit(limit)
-
-    return query.all()
 
 
 def image_get_all(context, filters=None, marker=None, limit=None,
@@ -203,9 +186,7 @@ def image_get_all(context, filters=None, marker=None, limit=None,
     session = get_session()
     query = session.query(models.Image).\
                    options(joinedload(models.Image.properties)).\
-                   options(joinedload(models.Image.members)).\
-                   filter_by(deleted=_deleted(context)).\
-                   filter(models.Image.status != 'killed')
+                   options(joinedload(models.Image.members))
 
     sort_dir_func = {
         'asc': asc,
@@ -213,9 +194,9 @@ def image_get_all(context, filters=None, marker=None, limit=None,
     }[sort_dir]
 
     sort_key_attr = getattr(models.Image, sort_key)
-
-    query = query.order_by(sort_dir_func(sort_key_attr)).\
-                  order_by(sort_dir_func(models.Image.id))
+    query = query.order_by(sort_dir_func(sort_key_attr))\
+                 .order_by(sort_dir_func(models.Image.created_at))\
+                 .order_by(sort_dir_func(models.Image.id))
 
     if 'size_min' in filters:
         query = query.filter(models.Image.size >= filters['size_min'])
@@ -237,6 +218,17 @@ def image_get_all(context, filters=None, marker=None, limit=None,
             query = query.filter(the_filter[0])
         del filters['is_public']
 
+    if 'changes-since' in filters:
+        changes_since = filters.pop('changes-since')
+        query = query.filter(models.Image.updated_at > changes_since)
+
+    if 'deleted' in filters:
+        deleted_filter = filters.pop('deleted')
+        query = query.filter_by(deleted=deleted_filter)
+        # TODO(bcwaldon): handle this logic in registry server
+        if not deleted_filter:
+            query = query.filter(models.Image.status != 'killed')
+
     for (k, v) in filters.pop('properties', {}).items():
         query = query.filter(models.Image.properties.any(name=k, value=v))
 
@@ -252,11 +244,13 @@ def image_get_all(context, filters=None, marker=None, limit=None,
             query = query.filter(
                 or_(sort_key_attr < marker_value,
                     and_(sort_key_attr == marker_value,
+                         models.Image.created_at < marker_image.created_at,
                          models.Image.id < marker)))
         else:
             query = query.filter(
                 or_(sort_key_attr > marker_value,
                     and_(sort_key_attr == marker_value,
+                         models.Image.created_at > marker_image.created_at,
                          models.Image.id > marker)))
 
     if limit != None:
@@ -342,10 +336,10 @@ def _image_update(context, values, image_id, purge_props=False):
                 values['size'] = int(values['size'])
 
             if 'min_ram' in values:
-                values['min_ram'] = int(values['min_ram'])
+                values['min_ram'] = int(values['min_ram'] or 0)
 
             if 'min_disk' in values:
-                values['min_disk'] = int(values['min_disk'])
+                values['min_disk'] = int(values['min_disk'] or 0)
 
             values['is_public'] = bool(values.get('is_public', False))
             image_ref = models.Image()
@@ -475,11 +469,15 @@ def image_member_get(context, member_id, session=None):
     """Get an image member or raise if it does not exist."""
     session = session or get_session()
     try:
-        member = session.query(models.ImageMember).\
+        query = session.query(models.ImageMember).\
                         options(joinedload(models.ImageMember.image)).\
-                        filter_by(deleted=_deleted(context)).\
-                        filter_by(id=member_id).\
-                        one()
+                        filter_by(id=member_id)
+
+        if not can_show_deleted(context):
+            query = query.filter_by(deleted=False)
+
+        member = query.one()
+
     except exc.NoResultFound:
         raise exception.NotFound("No membership found with ID %s" % member_id)
 
@@ -496,11 +494,16 @@ def image_member_find(context, image_id, member, session=None):
     try:
         # Note lack of permissions check; this function is called from
         # RequestContext.is_image_visible(), so avoid recursive calls
-        return session.query(models.ImageMember).\
+        query = session.query(models.ImageMember).\
                         options(joinedload(models.ImageMember.image)).\
                         filter_by(image_id=image_id).\
-                        filter_by(member=member).\
-                        one()
+                        filter_by(member=member)
+
+        if not can_show_deleted(context):
+            query = query.filter_by(deleted=False)
+
+        return query.one()
+
     except exc.NoResultFound:
         raise exception.NotFound("No membership found for image %s member %s" %
                                  (image_id, member))
@@ -521,8 +524,10 @@ def image_member_get_memberships(context, member, marker=None, limit=None,
     session = get_session()
     query = session.query(models.ImageMember).\
                    options(joinedload(models.ImageMember.image)).\
-                   filter_by(deleted=_deleted(context)).\
                    filter_by(member=member)
+
+    if not can_show_deleted(context):
+        query = query.filter_by(deleted=False)
 
     sort_dir_func = {
         'asc': asc,
@@ -557,7 +562,7 @@ def image_member_get_memberships(context, member, marker=None, limit=None,
 
 
 # pylint: disable-msg=C0111
-def _deleted(context):
+def can_show_deleted(context):
     """
     Calculates whether to include deleted objects based on context.
     Currently just looks for a flag called deleted in the context dict.
