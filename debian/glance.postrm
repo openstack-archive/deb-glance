@@ -1,22 +1,13 @@
-#!/bin/sh                                                                                                                                  
+#!/bin/sh
 
 set -e
 
 case $1 in
-        purge)
-                echo "Purging glance. Backup of /var/lib/glance can be found at /var/lib/glance.tar.bz2"
-
-                if (which deluser && getent passwd glance) > /dev/null 2>&1; then
-                        deluser --system --quiet --backup-to /var/lib glance
-                fi
-
-                if (which delgroup && getent group glance) > /dev/null 2>&1; then
-                        delgroup --system --quiet glance
-                fi
-
-                [ -e /var/lib/glance ] && rm -rf /var/lib/glance
-                [ -e /var/log/glance ] && rm -rf /var/log/glance
-                ;;
+    purge)
+        deluser --quiet glance
+        delgroup --quiet glance
+        rm -rf /var/log/glance
+        ;;
 esac
 
-#DEBHELPER#   
+#DEBHELPER#
