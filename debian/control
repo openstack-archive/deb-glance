@@ -49,7 +49,8 @@ Description: OpenStack Image Registry and Delivery Service - library
 Package: glance
 Architecture: all
 Section: python
-Depends: ${python:Depends}, ${misc:Depends}, python-glance (= ${source:Version}), 
+Depends: ${python:Depends}, ${misc:Depends}, python-glance (= ${source:Version}),
+ lsb-base (>= 3.0.6),
  adduser, 
  python-argparse,
  python-httplib2
