@@ -3,12 +3,7 @@
     compress
     missingok
     postrotate
-        if dpkg-vendor --derives-from ubuntu ; then
-            restart glance-api
-            restart glance-registry
-        else
-            invoke-rc.d glance-api restart
-            invoke-rc.d glance-registry restart
-        fi
+        invoke-rc.d glance-api restart
+        invoke-rc.d glance-registry restart
     endscript
 }
