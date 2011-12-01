@@ -37,7 +37,8 @@ Depends: ${python:Depends}, ${misc:Depends},
  python-argparse,
  python-migrate,
  python-kombu,
- python-xattr
+ python-xattr,
+ python-crypto
 Description: OpenStack Image Registry and Delivery Service - library
  The Glance project provides an image registration and discovery service
  (Parallax) and an image delivery service (Teller). These services are used
