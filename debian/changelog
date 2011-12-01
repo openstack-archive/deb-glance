@@ -1,3 +1,10 @@
+glance (2012.1~e1-2) unstable; urgency=low
+
+  [ Ghe Rivero ]
+  * Added python-crypto Depends to python-glance
+
+ -- Julien Danjou <acid@debian.org>  Thu, 01 Dec 2011 10:46:28 +0100
+
 glance (2012.1~e1-1) unstable; urgency=low
 
   * New upstream release.
