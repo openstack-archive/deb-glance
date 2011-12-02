@@ -186,6 +186,10 @@ class Store(glance.store.base.Store):
     CHUNKSIZE = 65536
 
     def configure(self):
+        self.snet = config.get_option(
+            self.options, 'swift_enable_snet', type='bool', default=False)
+
+    def configure_add(self):
         """
         Configure the Store to use the stored configuration options
         Any store that needs special configuration should implement
@@ -211,6 +215,12 @@ class Store(glance.store.base.Store):
                     ) * (1024 * 1024)  # Size specified in MB in conf files
             else:
                 self.large_object_chunk_size = DEFAULT_LARGE_OBJECT_CHUNK_SIZE
+
+            if self.options.get('swift_store_object_buffer_dir'):
+                self.swift_store_object_buffer_dir = (
+                    self.options.get('swift_store_object_buffer_dir'))
+            else:
+                self.swift_store_object_buffer_dir = None
         except Exception, e:
             reason = _("Error in configuration options: %s") % e
             logger.error(reason)
@@ -225,9 +235,6 @@ class Store(glance.store.base.Store):
             self.full_auth_address = self.auth_address
         else:  # Defaults https
             self.full_auth_address = 'https://' + self.auth_address
-
-        self.snet = config.get_option(
-            self.options, 'swift_enable_snet', type='bool', default=False)
 
     def get(self, location):
         """
@@ -341,6 +348,13 @@ class Store(glance.store.base.Store):
                 # best...
                 obj_etag = swift_conn.put_object(self.container, obj_name,
                                                  image_file)
+
+                if image_size == 0:
+                    resp_headers = swift_conn.head_object(self.container,
+                                                          obj_name)
+                    # header keys are lowercased by Swift
+                    if 'content-length' in resp_headers:
+                        image_size = int(resp_headers['content-length'])
             else:
                 # Write the image into Swift in chunks. We cannot
                 # stream chunks of the webob.Request.body_file, unfortunately,
@@ -351,8 +365,9 @@ class Store(glance.store.base.Store):
                 total_chunks = int(math.ceil(
                     float(image_size) / float(self.large_object_chunk_size)))
                 checksum = hashlib.md5()
+                tmp = self.swift_store_object_buffer_dir
                 while bytes_left > 0:
-                    with tempfile.NamedTemporaryFile() as disk_buffer:
+                    with tempfile.NamedTemporaryFile(dir=tmp) as disk_buffer:
                         chunk_size = min(self.large_object_chunk_size,
                                          bytes_left)
                         logger.debug(_("Writing %(chunk_size)d bytes for "
