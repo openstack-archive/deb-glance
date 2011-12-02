@@ -1,76 +1,93 @@
-#! /bin/sh
+#!/bin/sh
 ### BEGIN INIT INFO
 # Provides:          glance-registry
-# Required-Start:    $remote_fs $syslog
-# Required-Stop:     $remote_fs $syslog
+# Required-Start:    $network $local_fs $remote_fs $syslog
+# Required-Stop:     $remote_fs
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
-# Short-Description: glance-registry server
-# Description:       OpenStack Image Service (code-named Glance) provides
-#                    discovery, registration, and delivery services for virtual
-#                    disk images. The Image Service API server provides a
-#                    standard REST interface for querying information about
-#                    virtual disk images stored in a variety of back-end
-#                    stores, including OpenStack Object Storage. Clients can
-#                    register new virtual disk images with the Image Service,
-#                    query for information on publicly available disk images,
-#                    and use the Image Service's client library for streaming
-#                    virtual disk images.
+# Short-Description: Glance registry server
+# Description:       Frontend Glance registry server
 ### END INIT INFO
 
+# Author: Julien Danjou <acid@debian.org>
 
-set -e
+# PATH should only include /usr/* if it runs after the mountnfs.sh script
+PATH=/sbin:/usr/sbin:/bin:/usr/bin
+DESC="OpenStack Imaging Service Registry"
+NAME=glance-registry
+DAEMON=/usr/bin/glance-registry
+PIDFILE=/var/run/$NAME.pid
+SCRIPTNAME=/etc/init.d/$NAME
 
-DAEMON="/usr/bin/glance-registry"
-DAEMON_ARGS="glance"
-PIDFILE=/var/run/glance/glance-registry.pid
-USERIDd="glance"
-GROUPID="glance"
+# Exit if the package is not installed
+[ -x $DAEMON ] || exit 0
 
-ENABLED=true
-
-if ! [ -x ${DAEMON} ] ; then
-	exit 0
-fi
-
-mkdir -p /var/run/glance
-chown $USERID:$GROUPID /var/run/glance
-
-mkdir -p /var/log/glance
-chown $USERID:$GROUPID /var/log/glance
+# Read configuration variable file if it is present
+[ -r /etc/default/$NAME ] && . /etc/default/$NAME
 
 . /lib/lsb/init-functions
 
-export PATH="${PATH:+$PATH:}/usr/sbin:/sbin"
+do_start()
+{
+	start-stop-daemon --start --background --quiet --chuid glance:glance --make-pidfile --pidfile $PIDFILE --exec $DAEMON --test > /dev/null \
+		|| return 1
+	start-stop-daemon --start --background --quiet --chuid glance:glance --make-pidfile --pidfile $PIDFILE --exec $DAEMON \
+		|| return 2
+}
+
+do_stop()
+{
+	start-stop-daemon --stop --quiet --retry=TERM/30/KILL/5 --pidfile $PIDFILE --name $NAME
+	RETVAL="$?"
+	[ "$RETVAL" = 2 ] && return 2
+	start-stop-daemon --stop --quiet --oknodo --retry=0/30/KILL/5 --exec $DAEMON
+	[ "$?" = 2 ] && return 2
+	rm -f $PIDFILE
+	return "$RETVAL"
+}
 
 case "$1" in
-start)
-	test "$ENABLED" = "true" || exit 0
-	log_daemon_msg "Starting Glance registry" "glance-registry"
-	start-stop-daemon --start --chuid ${USERID}:${GROUPID} -b -m --pidfile ${PIDFILE} --exec ${DAEMON} -- ${DAEMON_ARGS}
-	log_end_msg $?
-;;
-stop)
-	test "$ENABLED" = "true" || exit 0
-	log_daemon_msg "Stopping Glance registry" "glance-registry"
-	start-stop-daemon --stop --oknodo --pidfile ${PIDFILE}
-	log_end_msg $?
-;;
-reload|restart|force-reload)
-	test "$ENABLED" = "true" || exit 1
-	$0 stop
-	sleep 1
-	$0 start
-;;
-status)
-	test "$ENABLED" = "true" || exit 0
-	# This is to be fixed: it doesn't exist in Debian
-	status_of_proc -p $PIDFILE $DAEMON glance-registry && exit 0 || exit $?
-;;
-*)
-	log_action_msg "Usage: $0 {start|stop|restart|force-reload|status}"
-	exit 1
-;;
+  start)
+    log_daemon_msg "Starting $DESC " "$NAME"
+    do_start
+    case "$?" in
+		0|1) log_end_msg 0 ;;
+		2) log_end_msg 1 ;;
+	esac
+  ;;
+  stop)
+	log_daemon_msg "Stopping $DESC" "$NAME"
+	do_stop
+	case "$?" in
+		0|1) log_end_msg 0 ;;
+		2) log_end_msg 1 ;;
+	esac
+	;;
+  status)
+       status_of_proc "$DAEMON" "$NAME" && exit 0 || exit $?
+       ;;
+  restart|force-reload)
+	log_daemon_msg "Restarting $DESC" "$NAME"
+	do_stop
+	case "$?" in
+	  0|1)
+		do_start
+		case "$?" in
+			0) log_end_msg 0 ;;
+			1) log_end_msg 1 ;; # Old process is still running
+			*) log_end_msg 1 ;; # Failed to start
+		esac
+		;;
+	  *)
+		# Failed to stop
+		log_end_msg 1
+		;;
+	esac
+	;;
+  *)
+	echo "Usage: $SCRIPTNAME {start|stop|status|restart|force-reload}" >&2
+	exit 3
+	;;
 esac
 
-exit 0
+:
