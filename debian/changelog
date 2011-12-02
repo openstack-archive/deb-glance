@@ -1,3 +1,9 @@
+glance (2012.1~e1+git41-gb183f43-1) experimental; urgency=low
+
+  * New snapshot release.
+
+ -- Julien Danjou <acid@debian.org>  Fri, 02 Dec 2011 17:33:36 +0100
+
 glance (2012.1~e1-3) unstable; urgency=low
 
   * Rewrite init scripts properly
