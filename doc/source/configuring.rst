@@ -332,6 +332,18 @@ Glance write chunks to Swift? This amount of data is written
 to a temporary disk buffer during the process of chunking
 the image file, and the default is 200MB
 
+* ``swift_store_object_buffer_dir=PATH``
+
+Optional. Default: ``the platform's default temporary directory``
+
+Can only be specified in configuration files.
+
+`This option is specific to the Swift storage backend.`
+
+When sending large images to Swift, what directory should be
+used to buffer the chunks? By default the platform's
+temporary directory will be used.
+
 Configuring the S3 Storage Backend
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -408,8 +420,20 @@ Can only be specified in configuration files.
 If true, Glance will attempt to create the bucket ``s3_store_bucket``
 if it does not exist.
 
+* ``s3_store_object_buffer_dir=PATH``
+
+Optional. Default: ``the platform's default temporary directory``
+
+Can only be specified in configuration files.
+
+`This option is specific to the S3 storage backend.`
+
+When sending images to S3, what directory should be
+used to buffer the chunks? By default the platform's
+temporary directory will be used.
+
 Configuring the RBD Storage Backend
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 **Note**: the RBD storage backend requires the python bindings for
 librados and librbd. These are in the python-ceph package on
@@ -548,6 +572,20 @@ Default: ``cache.db``
 When using the ``sqlite`` cache driver, you can set the name of the database
 that will be used to store the cached images information. The database
 is always contained in the ``image_cache_dir``.
+
+ * ``image_cache_max_size=SIZE``
+
+Optional.
+
+Default: ``10737418240`` (10 GB)
+
+Size, in bytes, that the image cache should be constrained to. Images files
+are cached automatically in the local image cache, even if the writing of that
+image file would put the total cache size over this size. The
+``glance-cache-pruner`` executable is what prunes the image cache to be equal
+to or less than this value. The ``glance-cache-pruner`` executable is designed
+to be run via cron on a regular basis. See more about this executable in
+`Controlling the Growth of the Image Cache`
 
 Configuring the Glance Registry
 -------------------------------

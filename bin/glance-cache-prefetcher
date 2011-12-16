@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2010 United States Government as represented by the
-# Administrator of the National Aeronautics and Space Administration.
 # Copyright 2011 OpenStack LLC.
 # All Rights Reserved.
 #
@@ -21,7 +19,8 @@
 """
 Glance Image Cache Pre-fetcher
 
-This is meant to be run as a periodic task from cron.
+This is meant to be run from the command line after queueing
+images to be pretched.
 """
 
 import gettext
@@ -41,7 +40,6 @@ gettext.install('glance', unicode=1)
 
 from glance import version
 from glance.common import config
-from glance.common import wsgi
 
 
 def create_options(parser):
@@ -62,7 +60,8 @@ if __name__ == '__main__':
     (options, args) = config.parse_options(oparser)
 
     try:
-        conf, app = config.load_paste_app('glance-prefetcher', options, args)
+        conf, app = config.load_paste_app('glance-prefetcher', options, args,
+                                          'glance-cache')
         app.run()
     except RuntimeError, e:
         sys.exit("ERROR: %s" % e)

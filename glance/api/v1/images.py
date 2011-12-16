@@ -31,11 +31,13 @@ from webob.exc import (HTTPNotFound,
                        HTTPNoContent,
                        HTTPUnauthorized)
 
-from glance import api
+import glance.api.v1
+from glance.api.v1 import controller
 from glance import image_cache
 from glance.common import exception
 from glance.common import notifier
 from glance.common import wsgi
+from glance.common import utils
 import glance.store
 import glance.store.filesystem
 import glance.store.http
@@ -50,16 +52,12 @@ from glance.store import (get_from_backend,
 from glance import registry
 
 
-logger = logging.getLogger('glance.api.v1.images')
-
-SUPPORTED_FILTERS = ['name', 'status', 'container_format', 'disk_format',
-                     'min_ram', 'min_disk', 'size_min', 'size_max',
-                     'is_public', 'changes-since']
-
-SUPPORTED_PARAMS = ('limit', 'marker', 'sort_key', 'sort_dir')
+logger = logging.getLogger(__name__)
+SUPPORTED_PARAMS = glance.api.v1.SUPPORTED_PARAMS
+SUPPORTED_FILTERS = glance.api.v1.SUPPORTED_FILTERS
 
 
-class Controller(api.BaseController):
+class Controller(controller.BaseController):
     """
     WSGI controller for images resource in Glance v1 API
 
@@ -503,12 +501,25 @@ class Controller(api.BaseController):
         orig_image_meta = self.get_image_meta_or_404(req, id)
         orig_status = orig_image_meta['status']
 
+        # The default behaviour for a PUT /images/<IMAGE_ID> is to
+        # override any properties that were previously set. This, however,
+        # leads to a number of issues for the common use case where a caller
+        # registers an image with some properties and then almost immediately
+        # uploads an image file along with some more properties. Here, we
+        # check for a special header value to be false in order to force
+        # properties NOT to be purged. However we also disable purging of
+        # properties if an image file is being uploaded...
+        purge_props = req.headers.get('x-glance-registry-purge-props', True)
+        purge_props = (utils.bool_from_string(purge_props) and
+                       image_data is None)
+
         if image_data is not None and orig_status != 'queued':
             raise HTTPConflict(_("Cannot upload to an unqueued image"))
 
         try:
             image_meta = registry.update_image_metadata(req.context, id,
-                                                        image_meta, True)
+                                                        image_meta,
+                                                        purge_props)
             if image_data is not None:
                 image_meta = self._upload_and_activate(req, image_meta)
         except exception.Invalid, e:
@@ -596,7 +607,7 @@ class ImageDeserializer(wsgi.JSONRequestDeserializer):
 
     def _deserialize(self, request):
         result = {}
-        result['image_meta'] = wsgi.get_image_meta_from_headers(request)
+        result['image_meta'] = utils.get_image_meta_from_headers(request)
         data = request.body_file if self.has_body(request) else None
         result['image_data'] = data
         return result
@@ -630,7 +641,7 @@ class ImageSerializer(wsgi.JSONResponseSerializer):
         :param response: The Webob Response object
         :param image_meta: Mapping of image metadata
         """
-        headers = wsgi.image_meta_to_http_headers(image_meta)
+        headers = utils.image_meta_to_http_headers(image_meta)
 
         for k, v in headers.items():
             response.headers[k] = v

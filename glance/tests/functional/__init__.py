@@ -216,14 +216,8 @@ image_cache_driver = %(image_cache_driver)s
 [pipeline:glance-api]
 pipeline = versionnegotiation context %(cache_pipeline)s apiv1app
 
-[pipeline:versions]
-pipeline = versionsapp
-
-[app:versionsapp]
-paste.app_factory = glance.api.versions:app_factory
-
 [app:apiv1app]
-paste.app_factory = glance.api.v1:app_factory
+paste.app_factory = glance.api.v1.router:app_factory
 
 [filter:versionnegotiation]
 paste.filter_factory = glance.api.middleware.version_negotiation:filter_factory
@@ -319,12 +313,14 @@ class FunctionalTest(unittest.TestCase):
     servers and clients and not just the stubbed out interfaces
     """
 
+    inited = False
     disabled = False
 
     def setUp(self):
 
         self.test_id = random.randint(0, 100000)
         self.test_dir = os.path.join("/", "tmp", "test.%d" % self.test_id)
+        utils.safe_mkdirs(self.test_dir)
 
         self.api_protocol = 'http'
         self.api_port = get_unused_port()

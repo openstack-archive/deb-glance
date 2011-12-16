@@ -66,10 +66,11 @@ import time
 import xattr
 
 from glance.common import exception
-from glance.common import utils
 from glance.image_cache.drivers import base
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_STALL_TIME = 86400  # 24 hours
 
 
 class Driver(base.Driver):
@@ -88,24 +89,32 @@ class Driver(base.Driver):
         """
         # Here we set up the various file-based image cache paths
         # that we need in order to find the files in different states
-        # of cache management. Once we establish these paths, we do
-        # a quick attempt to write a user xattr to a temporary file
-        # to check that the filesystem is even enabled to support xattrs
+        # of cache management.
         self.set_paths()
 
-    def set_paths(self):
-        """
-        Creates all necessary directories under the base cache directory
-        """
-        self.base_dir = self.options.get('image_cache_dir')
-        self.incomplete_dir = os.path.join(self.base_dir, 'incomplete')
-        self.invalid_dir = os.path.join(self.base_dir, 'invalid')
-        self.queue_dir = os.path.join(self.base_dir, 'queue')
-
-        dirs = [self.incomplete_dir, self.invalid_dir, self.queue_dir]
-
-        for path in dirs:
-            utils.safe_mkdirs(path)
+        # We do a quick attempt to write a user xattr to a temporary file
+        # to check that the filesystem is even enabled to support xattrs
+        image_cache_dir = self.base_dir
+        fake_image_filepath = os.path.join(image_cache_dir, 'checkme')
+        with open(fake_image_filepath, 'wb') as fake_file:
+            fake_file.write("XXX")
+            fake_file.flush()
+        try:
+            set_xattr(fake_image_filepath, 'hits', '1')
+        except IOError, e:
+            if e.errno == errno.EOPNOTSUPP:
+                msg = _("The device housing the image cache directory "
+                        "%(image_cache_dir)s does not support xattr. It is "
+                        "likely you need to edit your fstab and add the "
+                        "user_xattr option to the appropriate line for the "
+                        "device housing the cache directory.") % locals()
+                logger.error(msg)
+                raise exception.BadDriverConfiguration(driver="xattr",
+                                                       reason=msg)
+        else:
+            # Cleanup after ourselves...
+            if os.path.exists(fake_image_filepath):
+                os.unlink(fake_image_filepath)
 
     def get_cache_size(self):
         """
@@ -190,7 +199,7 @@ class Driver(base.Driver):
         path = self.get_image_filepath(image_id, 'queue')
         return os.path.exists(path)
 
-    def delete_all(self):
+    def delete_all_cached_images(self):
         """
         Removes all cached image files and any attributes about the images
         """
@@ -200,7 +209,7 @@ class Driver(base.Driver):
             deleted += 1
         return deleted
 
-    def delete(self, image_id):
+    def delete_cached_image(self, image_id):
         """
         Removes a specific cached image file and any attributes about the image
 
@@ -208,6 +217,25 @@ class Driver(base.Driver):
         """
         path = self.get_image_filepath(image_id)
         delete_cached_file(path)
+
+    def delete_all_queued_images(self):
+        """
+        Removes all queued image files and any attributes about the images
+        """
+        files = [f for f in self.get_cache_files(self.queue_dir)]
+        for file in files:
+            os.unlink(file)
+        return len(files)
+
+    def delete_queued_image(self, image_id):
+        """
+        Removes a specific queued image file and any attributes about the image
+
+        :param image_id: Image ID
+        """
+        path = self.get_image_filepath(image_id, 'queue')
+        if os.path.exists(path):
+            os.unlink(path)
 
     def get_least_recently_accessed(self):
         """
@@ -333,7 +361,7 @@ class Driver(base.Driver):
 
         return True
 
-    def get_cache_queue(self):
+    def get_queued_images(self):
         """
         Returns a list of image IDs that are in the queue. The
         list should be sorted by the time the image ID was inserted
@@ -348,90 +376,23 @@ class Driver(base.Driver):
         items.sort()
         return [image_id for (mtime, image_id) in items]
 
-    def _base_entries(self, basepath):
-        def iso8601_from_timestamp(timestamp):
-            return datetime.datetime.utcfromtimestamp(timestamp)\
-                                    .isoformat()
-
-        for path in self.get_all_regular_files(basepath):
-            filename = os.path.basename(path)
-            try:
-                image_id = int(filename)
-            except ValueError, TypeError:
-                continue
-
-            entry = {}
-            entry['id'] = image_id
-            entry['path'] = path
-            entry['name'] = self.driver.get_attr(image_id, 'active',
-                                                      'image_name',
-                                                      default='UNKNOWN')
-
-            mtime = os.path.getmtime(path)
-            entry['last_modified'] = iso8601_from_timestamp(mtime)
-
-            atime = os.path.getatime(path)
-            entry['last_accessed'] = iso8601_from_timestamp(atime)
-
-            entry['size'] = os.path.getsize(path)
-
-            entry['expected_size'] = self.driver.get_attr(image_id,
-                    'active', 'expected_size', default='UNKNOWN')
-
-            yield entry
-
-    def invalid_entries(self):
-        """Cache info for invalid cached images"""
-        for entry in self._base_entries(self.invalid_path):
-            path = entry['path']
-            entry['error'] = self.driver.get_attr(image_id, 'invalid',
-                                                       'error',
-                                                       default='UNKNOWN')
-            yield entry
-
-    def incomplete_entries(self):
-        """Cache info for incomplete cached images"""
-        for entry in self._base_entries(self.incomplete_path):
-            yield entry
-
-    def prefetch_entries(self):
-        """Cache info for both queued and in-progress prefetch jobs"""
-        both_entries = itertools.chain(
-                        self._base_entries(self.prefetch_path),
-                        self._base_entries(self.prefetching_path))
-
-        for entry in both_entries:
-            path = entry['path']
-            entry['status'] = 'in-progress' if 'prefetching' in path\
-                                            else 'queued'
-            yield entry
-
-    def entries(self):
-        """Cache info for currently cached images"""
-        for entry in self._base_entries(self.path):
-            path = entry['path']
-            entry['hits'] = self.driver.get_attr(image_id, 'active',
-                                                      'hits',
-                                                      default='UNKNOWN')
-            yield entry
-
     def _reap_old_files(self, dirpath, entry_type, grace=None):
         """
         """
         now = time.time()
         reaped = 0
-        for path in self.get_all_regular_files(dirpath):
+        for path in get_all_regular_files(dirpath):
             mtime = os.path.getmtime(path)
             age = now - mtime
             if not grace:
                 logger.debug(_("No grace period, reaping '%(path)s'"
                              " immediately"), locals())
-                self._delete_file(path)
+                delete_cached_file(path)
                 reaped += 1
             elif age > grace:
                 logger.debug(_("Cache entry '%(path)s' exceeds grace period, "
                              "(%(age)i s > %(grace)i s)"), locals())
-                self._delete_file(path)
+                delete_cached_file(path)
                 reaped += 1
 
         logger.info(_("Reaped %(reaped)s %(entry_type)s cache entries"),
@@ -444,14 +405,28 @@ class Driver(base.Driver):
         :param grace: Number of seconds to keep an invalid entry around for
                       debugging purposes. If None, then delete immediately.
         """
-        return self._reap_old_files(self.invalid_path, 'invalid', grace=grace)
+        return self._reap_old_files(self.invalid_dir, 'invalid', grace=grace)
 
-    def reap_stalled(self):
-        """Remove any stalled cache entries"""
-        stall_timeout = int(self.options.get('image_cache_stall_timeout',
-                            86400))
-        return self._reap_old_files(self.incomplete_path, 'stalled',
-                                    grace=stall_timeout)
+    def reap_stalled(self, grace=None):
+        """Remove any stalled cache entries
+
+        :param grace: Number of seconds to keep an invalid entry around for
+                      debugging purposes. If None, then delete immediately.
+        """
+        return self._reap_old_files(self.incomplete_dir, 'stalled',
+                                    grace=grace)
+
+    def clean(self):
+        """
+        Delete any image files in the invalid directory and any
+        files in the incomplete directory that are older than a
+        configurable amount of time.
+        """
+        self.reap_invalid()
+
+        incomplete_stall_time = int(self.options.get('image_cache_stall_time',
+                                                     DEFAULT_STALL_TIME))
+        self.reap_stalled(incomplete_stall_time)
 
 
 def get_all_regular_files(basepath):
@@ -515,13 +490,7 @@ def set_xattr(path, key, value):
     """
     namespaced_key = _make_namespaced_xattr_key(key)
     entry_xattr = xattr.xattr(path)
-    try:
-        entry_xattr.set(namespaced_key, str(value))
-    except IOError as e:
-        if e.errno == errno.EOPNOTSUPP:
-            logger.warn(_("xattrs not supported, skipping..."))
-        else:
-            raise
+    entry_xattr.set(namespaced_key, str(value))
 
 
 def inc_xattr(path, key, n=1):
@@ -535,20 +504,9 @@ def inc_xattr(path, key, n=1):
     the benefits of simple, lock-free code out-weighs the possibility of an
     occasional hit not being counted.
     """
-    try:
-        count = int(get_xattr(path, key))
-    except KeyError:
-        # NOTE(sirp): a KeyError is generated in two cases:
-        # 1) xattrs is not supported by the filesystem
-        # 2) the key is not present on the file
-        #
-        # In either case, just ignore it...
-        pass
-    else:
-        # NOTE(sirp): only try to bump the count if xattrs is supported
-        # and the key is present
-        count += n
-        set_xattr(path, key, str(count))
+    count = int(get_xattr(path, key))
+    count += n
+    set_xattr(path, key, str(count))
 
 
 def iso8601_from_timestamp(timestamp):

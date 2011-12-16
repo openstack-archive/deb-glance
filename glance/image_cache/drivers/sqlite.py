@@ -32,7 +32,6 @@ from eventlet import sleep, timeout
 import sqlite3
 
 from glance.common import exception
-from glance.common import utils
 from glance.image_cache.drivers import base
 
 logger = logging.getLogger(__name__)
@@ -90,26 +89,10 @@ class Driver(base.Driver):
         this method. If the store was not able to successfully configure
         itself, it should raise `exception.BadDriverConfiguration`
         """
-        # Here we set up the various file-based image cache paths
-        # that we need in order to find the files in different states
-        # of cache management. Once we establish these paths, we create
-        # the SQLite database that will hold our cache attributes
-        self.set_paths()
+        super(Driver, self).configure()
+
+        # Create the SQLite database that will hold our cache attributes
         self.initialize_db()
-
-    def set_paths(self):
-        """
-        Creates all necessary directories under the base cache directory
-        """
-        self.base_dir = self.options.get('image_cache_dir')
-        self.incomplete_dir = os.path.join(self.base_dir, 'incomplete')
-        self.invalid_dir = os.path.join(self.base_dir, 'invalid')
-        self.queue_dir = os.path.join(self.base_dir, 'queue')
-
-        dirs = [self.incomplete_dir, self.invalid_dir, self.queue_dir]
-
-        for path in dirs:
-            utils.safe_mkdirs(path)
 
     def initialize_db(self):
         db = self.options.get('image_cache_sqlite_db', DEFAULT_SQLITE_DB)
@@ -120,7 +103,7 @@ class Driver(base.Driver):
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS cached_images (
                     image_id TEXT PRIMARY KEY,
-                    last_access REAL DEFAULT 0.0,
+                    last_accessed REAL DEFAULT 0.0,
                     last_modified REAL DEFAULT 0.0,
                     size INTEGER DEFAULT 0,
                     hits INTEGER DEFAULT 0,
@@ -132,7 +115,8 @@ class Driver(base.Driver):
             msg = _("Failed to initialize the image cache database. "
                     "Got error: %s") % e
             logger.error(msg)
-            raise BadDriverConfiguration(driver_name='sqlite', reason=msg)
+            raise exception.BadDriverConfiguration(driver_name='sqlite',
+                                                   reason=msg)
 
     def get_cache_size(self):
         """
@@ -170,7 +154,7 @@ class Driver(base.Driver):
         logger.debug(_("Gathering cached image entries."))
         with self.get_db() as db:
             cur = db.execute("""SELECT
-                             image_id, hits, last_access, last_modified, size
+                             image_id, hits, last_accessed, last_modified, size
                              FROM cached_images
                              ORDER BY image_id""")
             cur.row_factory = dict_factory
@@ -215,7 +199,7 @@ class Driver(base.Driver):
         path = self.get_image_filepath(image_id, 'queue')
         return os.path.exists(path)
 
-    def delete_all(self):
+    def delete_all_cached_images(self):
         """
         Removes all cached image files and any attributes about the images
         """
@@ -228,7 +212,7 @@ class Driver(base.Driver):
             db.commit()
         return deleted
 
-    def delete(self, image_id):
+    def delete_cached_image(self, image_id):
         """
         Removes a specific cached image file and any attributes about the image
 
@@ -240,6 +224,25 @@ class Driver(base.Driver):
             db.execute("""DELETE FROM cached_images WHERE image_id = ?""",
                        (image_id, ))
             db.commit()
+
+    def delete_all_queued_images(self):
+        """
+        Removes all queued image files and any attributes about the images
+        """
+        files = [f for f in self.get_cache_files(self.queue_dir)]
+        for file in files:
+            os.unlink(file)
+        return len(files)
+
+    def delete_queued_image(self, image_id):
+        """
+        Removes a specific queued image file and any attributes about the image
+
+        :param image_id: Image ID
+        """
+        path = self.get_image_filepath(image_id, 'queue')
+        if os.path.exists(path):
+            os.unlink(path)
 
     def clean(self):
         """
@@ -253,7 +256,7 @@ class Driver(base.Driver):
                                                      DEFAULT_STALL_TIME))
         now = time.time()
         older_than = now - incomplete_stall_time
-        self.delete_incomplete_files(older_than)
+        self.delete_stalled_files(older_than)
 
     def get_least_recently_accessed(self):
         """
@@ -262,7 +265,7 @@ class Driver(base.Driver):
         """
         with self.get_db() as db:
             cur = db.execute("""SELECT image_id FROM cached_images
-                             ORDER BY last_access LIMIT 1""")
+                             ORDER BY last_accessed LIMIT 1""")
             image_id = cur.fetchone()[0]
 
         path = self.get_image_filepath(image_id)
@@ -296,18 +299,21 @@ class Driver(base.Driver):
                 now = time.time()
 
                 db.execute("""INSERT INTO cached_images
-                           (image_id, last_access, last_modified, hits, size)
+                           (image_id, last_accessed, last_modified, hits, size)
                            VALUES (?, 0, ?, 0, ?)""",
                            (image_id, now, filesize))
                 db.commit()
 
         def rollback(e):
             with self.get_db() as db:
-                invalid_path = self.get_image_filepath(image_id, 'invalid')
-                logger.debug(_("Fetch of cache file failed, rolling back by "
-                               "moving '%(incomplete_path)s' to "
-                               "'%(invalid_path)s'") % locals())
-                os.rename(incomplete_path, invalid_path)
+                if os.path.exists(incomplete_path):
+                    invalid_path = self.get_image_filepath(image_id, 'invalid')
+
+                    logger.debug(_("Fetch of cache file failed, rolling back "
+                                   "by moving '%(incomplete_path)s' to "
+                                   "'%(invalid_path)s'") % locals())
+                    os.rename(incomplete_path, invalid_path)
+
                 db.execute("""DELETE FROM cached_images
                            WHERE image_id = ?""", (image_id, ))
                 db.commit()
@@ -335,7 +341,7 @@ class Driver(base.Driver):
         now = time.time()
         with self.get_db() as db:
             db.execute("""UPDATE cached_images
-                       SET hits = hits + 1, last_access = ?
+                       SET hits = hits + 1, last_accessed = ?
                        WHERE image_id = ?""",
                        (now, image_id))
             db.commit()
@@ -407,73 +413,6 @@ class Driver(base.Driver):
 
         return True
 
-    def _base_entries(self, basepath):
-        def iso8601_from_timestamp(timestamp):
-            return datetime.datetime.utcfromtimestamp(timestamp)\
-                                    .isoformat()
-
-        for path in self.self.get_cache_files(basepath):
-            filename = os.path.basename(path)
-            try:
-                image_id = int(filename)
-            except ValueError, TypeError:
-                continue
-
-            entry = {}
-            entry['id'] = image_id
-            entry['path'] = path
-            entry['name'] = self.driver.get_attr(image_id, 'active',
-                                                      'image_name',
-                                                      default='UNKNOWN')
-
-            mtime = os.path.getmtime(path)
-            entry['last_modified'] = iso8601_from_timestamp(mtime)
-
-            atime = os.path.getatime(path)
-            entry['last_accessed'] = iso8601_from_timestamp(atime)
-
-            entry['size'] = os.path.getsize(path)
-
-            entry['expected_size'] = self.driver.get_attr(image_id,
-                    'active', 'expected_size', default='UNKNOWN')
-
-            yield entry
-
-    def invalid_entries(self):
-        """Cache info for invalid cached images"""
-        for entry in self._base_entries(self.invalid_path):
-            path = entry['path']
-            entry['error'] = self.driver.get_attr(image_id, 'invalid',
-                                                       'error',
-                                                       default='UNKNOWN')
-            yield entry
-
-    def incomplete_entries(self):
-        """Cache info for incomplete cached images"""
-        for entry in self._base_entries(self.incomplete_path):
-            yield entry
-
-    def prefetch_entries(self):
-        """Cache info for both queued and in-progress prefetch jobs"""
-        both_entries = itertools.chain(
-                        self._base_entries(self.prefetch_path),
-                        self._base_entries(self.prefetching_path))
-
-        for entry in both_entries:
-            path = entry['path']
-            entry['status'] = 'in-progress' if 'prefetching' in path\
-                                            else 'queued'
-            yield entry
-
-    def entries(self):
-        """Cache info for currently cached images"""
-        for entry in self._base_entries(self.path):
-            path = entry['path']
-            entry['hits'] = self.driver.get_attr(image_id, 'active',
-                                                      'hits',
-                                                      default='UNKNOWN')
-            yield entry
-
     def delete_invalid_files(self):
         """
         Removes any invalid cache entries
@@ -494,7 +433,7 @@ class Driver(base.Driver):
             os.unlink(path)
             logger.info("Removed stalled cache file %s", path)
 
-    def get_cache_queue(self):
+    def get_queued_images(self):
         """
         Returns a list of image IDs that are in the queue. The
         list should be sorted by the time the image ID was inserted

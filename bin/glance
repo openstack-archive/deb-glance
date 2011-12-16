@@ -26,9 +26,10 @@ import functools
 import gettext
 import optparse
 import os
-import re
 import sys
 import time
+
+from urlparse import urlparse
 
 # If ../glance/__init__.py exists, add ../ to Python search path, so that
 # it will override what happens to be installed in /usr/(local/)lib/python...
@@ -40,14 +41,16 @@ if os.path.exists(os.path.join(possible_topdir, 'glance', '__init__.py')):
 
 gettext.install('glance', unicode=1)
 
-from glance import client as glance_client
 from glance import version
+from glance import client as glance_client
 from glance.common import exception
 from glance.common import utils
 
 
 SUCCESS = 0
 FAILURE = 1
+
+DEFAULT_PORT = 9292
 
 
 #TODO(sirp): make more of the actions use this decorator
@@ -75,15 +78,6 @@ def catch_error(action):
 
         return wrapper
     return wrap
-
-
-def get_percent_done(image):
-    try:
-        pct_done = image['size'] * 100 / int(image['expected_size'])
-    except (ValueError, ZeroDivisionError):
-        # NOTE(sirp): Ignore if expected_size isn't a number, or if it's 0
-        pct_done = "UNKNOWN"
-    return pct_done
 
 
 def get_image_fields_from_args(args):
@@ -130,8 +124,10 @@ def print_image_formatted(client, image):
     :param client: The Glance client object
     :param image: The image metadata
     """
-    print "URI: %s://%s/images/%s" % (client.use_ssl and "https" or "http",
+    print "URI: %s://%s:%s/v1/images/%s" % (
+                                      client.use_ssl and "https" or "http",
                                       client.host,
+                                      client.port,
                                       image['id'])
     print "Id: %s" % image['id']
     print "Public: " + (image['is_public'] and "Yes" or "No")
@@ -582,249 +578,6 @@ Deletes all images from a Glance server"""
     return SUCCESS
 
 
-@catch_error('show cached images')
-def cache_index(options, args):
-    """
-%(prog)s cache-index [options]
-
-List all images currently cached"""
-    client = get_client(options)
-    images = client.get_cached_images()
-    if not images:
-        print "No cached images."
-        return SUCCESS
-
-    print "Found %d cached images..." % len(images)
-
-    pretty_table = utils.PrettyTable()
-    pretty_table.add_column(36, label="ID")
-    pretty_table.add_column(30, label="Name")
-    pretty_table.add_column(19, label="Last Accessed (UTC)")
-    # 1 TB takes 13 characters to display: len(str(2**40)) == 13
-    pretty_table.add_column(14, label="Size", just="r")
-    pretty_table.add_column(10, label="Hits", just="r")
-
-    print pretty_table.make_header()
-
-    for image in images:
-        print pretty_table.make_row(
-            image['id'],
-            image['name'],
-            image['last_accessed'],
-            image['size'],
-            image['hits'])
-
-
-@catch_error('show invalid cache images')
-def cache_invalid(options, args):
-    """
-%(prog)s cache-invalid [options]
-
-List current invalid cache images"""
-    client = get_client(options)
-    images = client.get_invalid_cached_images()
-    if not images:
-        print "No invalid cached images."
-        return SUCCESS
-
-    print "Found %d invalid cached images..." % len(images)
-
-    pretty_table = utils.PrettyTable()
-    pretty_table.add_column(36, label="ID")
-    pretty_table.add_column(30, label="Name")
-    pretty_table.add_column(30, label="Error")
-    pretty_table.add_column(19, label="Last Modified (UTC)")
-    # 1 TB takes 13 characters to display: len(str(2**40)) == 13
-    pretty_table.add_column(14, label="Size", just="r")
-    pretty_table.add_column(14, label="Expected Size", just="r")
-    pretty_table.add_column(7, label="% Done", just="r")
-
-    print pretty_table.make_header()
-
-    for image in images:
-        print pretty_table.make_row(
-            image['id'],
-            image['name'],
-            image['error'],
-            image['last_accessed'],
-            image['size'],
-            image['expected_size'],
-            get_percent_done(image))
-
-
-@catch_error('show incomplete cache images')
-def cache_incomplete(options, args):
-    """
-%(prog)s cache-incomplete [options]
-
-List images currently being fetched"""
-    client = get_client(options)
-    images = client.get_incomplete_cached_images()
-    if not images:
-        print "No incomplete cached images."
-        return SUCCESS
-
-    print "Found %d incomplete cached images..." % len(images)
-
-    pretty_table = utils.PrettyTable()
-    pretty_table.add_column(36, label="ID")
-    pretty_table.add_column(30, label="Name")
-    pretty_table.add_column(19, label="Last Modified (UTC)")
-    # 1 TB takes 13 characters to display: len(str(2**40)) == 13
-    pretty_table.add_column(14, label="Size", just="r")
-    pretty_table.add_column(14, label="Expected Size", just="r")
-    pretty_table.add_column(7, label="% Done", just="r")
-
-    print pretty_table.make_header()
-
-    for image in images:
-        print pretty_table.make_row(
-            image['id'],
-            image['name'],
-            image['last_modified'],
-            image['size'],
-            image['expected_size'],
-            get_percent_done(image))
-
-
-@catch_error('purge the specified cached image')
-def cache_purge(options, args):
-    """
-%(prog)s cache-purge [options]
-
-Purges an image from the cache"""
-    try:
-        image_id = args.pop()
-    except IndexError:
-        print "Please specify the ID of the image you wish to purge "
-        print "from the cache as the first argument"
-        return FAILURE
-
-    if not options.force and \
-       not user_confirm("Purge cached image %s?" % (image_id,), default=False):
-        print 'Not purging cached image %s' % (image_id,)
-        return FAILURE
-
-    client = get_client(options)
-    client.purge_cached_image(image_id)
-
-    if options.verbose:
-        print "done"
-
-
-@catch_error('clear all cached images')
-def cache_clear(options, args):
-    """
-%(prog)s cache-clear [options]
-
-Removes all images from the cache"""
-    if not options.force and \
-       not user_confirm("Clear all cached images?", default=False):
-        print 'Not purging any cached images.'
-        return FAILURE
-
-    client = get_client(options)
-    num_purged = client.clear_cached_images()
-
-    if options.verbose:
-        print "Purged %(num_purged)s cached images" % locals()
-
-
-@catch_error('reap invalid images')
-def cache_reap_invalid(options, args):
-    """
-%(prog)s cache-reap-invalid [options]
-
-Reaps any invalid images that were left for
-debugging purposes"""
-    if not options.force and \
-       not user_confirm("Reap all invalid cached images?", default=False):
-        print 'Not reaping any invalid cached images.'
-        return FAILURE
-
-    client = get_client(options)
-    num_reaped = client.reap_invalid_cached_images()
-
-    if options.verbose:
-        print "Reaped %(num_reaped)s invalid cached images" % locals()
-
-
-@catch_error('reap stalled images')
-def cache_reap_stalled(options, args):
-    """
-%(prog)s cache-reap-stalled [options]
-
-Reaps any stalled incomplete images"""
-    if not options.force and \
-       not user_confirm("Reap all stalled cached images?", default=False):
-        print 'Not reaping any stalled cached images.'
-        return FAILURE
-
-    client = get_client(options)
-    num_reaped = client.reap_stalled_cached_images()
-
-    if options.verbose:
-        print "Reaped %(num_reaped)s stalled cached images" % locals()
-
-
-@catch_error('prefetch the specified cached image')
-def cache_prefetch(options, args):
-    """
-%(prog)s cache-prefetch [options]
-
-Pre-fetch an image or list of images into the cache"""
-    image_ids = args
-    if not image_ids:
-        print "Please specify the ID or a list of image IDs of the images "\
-              "you wish to "
-        print "prefetch from the cache as the first argument"
-        return FAILURE
-
-    client = get_client(options)
-    for image_id in image_ids:
-        if options.verbose:
-            print "Prefetching image '%s'" % image_id
-
-        try:
-            client.prefetch_cache_image(image_id)
-        except exception.NotFound:
-            print "No image with ID %s was found" % image_id
-            continue
-
-    if options.verbose:
-        print "done"
-
-
-@catch_error('show prefetching images')
-def cache_prefetching(options, args):
-    """
-%(prog)s cache-prefetching [options]
-
-List images that are being prefetched"""
-    client = get_client(options)
-    images = client.get_prefetching_cache_images()
-    if not images:
-        print "No images being prefetched."
-        return SUCCESS
-
-    print "Found %d images being prefetched..." % len(images)
-
-    pretty_table = utils.PrettyTable()
-    pretty_table.add_column(36, label="ID")
-    pretty_table.add_column(30, label="Name")
-    pretty_table.add_column(19, label="Last Accessed (UTC)")
-    pretty_table.add_column(10, label="Status", just="r")
-
-    print pretty_table.make_header()
-
-    for image in images:
-        print pretty_table.make_row(
-            image['id'],
-            image['name'],
-            image['last_accessed'],
-            image['status'])
-
-
 @catch_error('show image members')
 def image_members(options, args):
     """
@@ -980,7 +733,7 @@ def get_client(options):
                  auth_url=os.getenv('OS_AUTH_URL'),
                  strategy=os.getenv('OS_AUTH_STRATEGY', 'noauth'))
 
-    use_ssl = (options.host.find('https') != -1 or (
+    use_ssl = (options.use_ssl or (
         creds['auth_url'] is not None and
         creds['auth_url'].find('https') != -1))
 
@@ -1004,9 +757,15 @@ def create_options(parser):
                       help="Address of Glance API host. "
                            "Default: %default")
     parser.add_option('-p', '--port', dest="port", metavar="PORT",
-                      type=int, default=9292,
+                      type=int, default=DEFAULT_PORT,
                       help="Port the Glance API host listens on. "
                            "Default: %default")
+    parser.add_option('-U', '--url', metavar="URL", default=None,
+                      help="URL of Glance service. This option can be used "
+                           "to specify the hostname, port and protocol "
+                           "(http/https) of the glance server, for example "
+                           "-U https://localhost:" + str(DEFAULT_PORT) +
+                           "/v1 Default: None")
     parser.add_option('-A', '--auth_token', dest="auth_token",
                       metavar="TOKEN", default=None,
                       help="Authentication token to use to identify the "
@@ -1043,6 +802,12 @@ def parse_options(parser, cli_args):
         cli_args.append('-h')  # Show options in usage output...
 
     (options, args) = parser.parse_args(cli_args)
+    if options.url is not None:
+        u = urlparse(options.url)
+        options.port = u.port
+        options.host = u.hostname
+
+    options.use_ssl = (options.url is not None and u.scheme == 'https')
 
     # HACK(sirp): Make the parser available to the print_help method
     # print_help is a command, so it only accepts (options, args); we could
@@ -1086,17 +851,6 @@ def lookup_command(parser, command_name):
                 'show': image_show,
                 'clear': images_clear}
 
-    CACHE_COMMANDS = {
-                'cache-index': cache_index,
-                'cache-invalid': cache_invalid,
-                'cache-incomplete': cache_incomplete,
-                'cache-prefetching': cache_prefetching,
-                'cache-prefetch': cache_prefetch,
-                'cache-purge': cache_purge,
-                'cache-clear': cache_clear,
-                'cache-reap-invalid': cache_reap_invalid,
-                'cache-reap-stalled': cache_reap_stalled}
-
     MEMBER_COMMANDS = {
                 'image-members': image_members,
                 'member-images': member_images,
@@ -1105,7 +859,7 @@ def lookup_command(parser, command_name):
                 'member-delete': member_delete}
 
     commands = {}
-    for command_set in (BASE_COMMANDS, IMAGE_COMMANDS, CACHE_COMMANDS,
+    for command_set in (BASE_COMMANDS, IMAGE_COMMANDS,
                         MEMBER_COMMANDS):
         commands.update(command_set)
 
@@ -1163,28 +917,6 @@ Commands:
                     Glance
 
     clear           Removes all images and metadata from Glance
-
-
-Cache Commands:
-
-    cache-index          List all images currently cached
-
-    cache-invalid        List current invalid cache images
-
-    cache-incomplete     List images currently being fetched
-
-    cache-prefetching    List images that are being prefetched
-
-    cache-prefetch       Pre-fetch an image or list of images into the cache
-
-    cache-purge          Purges an image from the cache
-
-    cache-clear          Removes all images from the cache
-
-    cache-reap-invalid   Reaps any invalid images that were left for
-                         debugging purposes
-
-    cache-reap-stalled   Reaps any stalled incomplete images
 
 
 Member Commands:

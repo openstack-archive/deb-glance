@@ -16,7 +16,7 @@
 #    under the License.
 
 """
-Prefetches images into the Image Cache
+Queues images for prefetching into the image cache
 """
 
 import logging
@@ -28,34 +28,26 @@ from glance.common import context
 from glance.common import exception
 from glance.image_cache import ImageCache
 from glance import registry
-import glance.store
-import glance.store.filesystem
-import glance.store.http
-import glance.store.rbd
-import glance.store.s3
-import glance.store.swift
-from glance.store import get_from_backend
 
 
 logger = logging.getLogger(__name__)
 
 
-class Prefetcher(object):
+class Queuer(object):
 
     def __init__(self, options):
         self.options = options
-        glance.store.create_stores(options)
         self.cache = ImageCache(options)
         registry.configure_registry_client(options)
 
-    def fetch_image_into_cache(self, image_id):
+    def queue_image(self, image_id):
         auth_tok = self.options.get('admin_token')
         ctx = context.RequestContext(is_admin=True, show_deleted=True,
                                      auth_tok=auth_tok)
         try:
             image_meta = registry.get_image_metadata(ctx, image_id)
             if image_meta['status'] != 'active':
-                logger.warn(_("Image '%s' is not active. Not caching."),
+                logger.warn(_("Image '%s' is not active. Not queueing."),
                             image_id)
                 return False
 
@@ -63,34 +55,32 @@ class Prefetcher(object):
             logger.warn(_("No metadata found for image '%s'"), image_id)
             return False
 
-        image_data, image_size = get_from_backend(image_meta['location'])
-        logger.debug(_("Caching image '%s'"), image_id)
-        self.cache.cache_image_iter(image_id, image_data)
+        logger.debug(_("Queueing image '%s'"), image_id)
+        self.cache.queue_image(image_id)
         return True
 
-    def run(self):
-
-        images = self.cache.get_queued_images()
-        if not images:
-            logger.debug(_("Nothing to prefetch."))
-            return True
+    def run(self, images):
 
         num_images = len(images)
-        logger.debug(_("Found %d images to prefetch"), num_images)
+        if num_images == 0:
+            logger.debug(_("No images to queue!"))
+            return True
+
+        logger.debug(_("Received %d images to queue"), num_images)
 
         pool = eventlet.GreenPool(num_images)
-        results = pool.imap(self.fetch_image_into_cache, images)
+        results = pool.imap(self.queue_image, images)
         successes = sum([1 for r in results if r is True])
         if successes != num_images:
-            logger.error(_("Failed to successfully cache all "
+            logger.error(_("Failed to successfully queue all "
                            "images in queue."))
             return False
 
-        logger.info(_("Successfully cached all %d images"), num_images)
+        logger.info(_("Successfully queued all %d images"), num_images)
         return True
 
 
 def app_factory(global_config, **local_conf):
     conf = global_config.copy()
     conf.update(local_conf)
-    return Prefetcher(conf)
+    return Queuer(conf)

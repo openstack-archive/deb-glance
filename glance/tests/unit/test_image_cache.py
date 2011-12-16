@@ -24,10 +24,9 @@ import unittest
 import stubout
 
 from glance import image_cache
-from glance.image_cache import prefetcher
 from glance.common import exception
-from glance.tests import stubs
-from glance.tests.utils import skip_if_disabled
+from glance.common import utils
+from glance.tests.utils import skip_if_disabled, xattr_writes_supported
 
 FIXTURE_DATA = '*' * 1024
 
@@ -100,7 +99,7 @@ class ImageCacheTestCase(object):
 
         self.assertTrue(self.cache.is_cached(1))
 
-        self.cache.delete(1)
+        self.cache.delete_cached_image(1)
 
         self.assertFalse(self.cache.is_cached(1))
 
@@ -120,10 +119,27 @@ class ImageCacheTestCase(object):
         for image_id in (1, 2):
             self.assertTrue(self.cache.is_cached(image_id))
 
-        self.cache.delete_all()
+        self.cache.delete_all_cached_images()
 
         for image_id in (1, 2):
             self.assertFalse(self.cache.is_cached(image_id))
+
+    @skip_if_disabled
+    def test_clean_stalled(self):
+        """
+        Test the clean method removes expected images
+        """
+        incomplete_file_path = os.path.join(self.cache_dir, 'incomplete', '1')
+        incomplete_file = open(incomplete_file_path, 'w')
+        incomplete_file.write(FIXTURE_DATA)
+        incomplete_file.close()
+
+        self.assertTrue(os.path.exists(incomplete_file_path))
+
+        self.cache.options['image_cache_stall_time'] = 0
+        self.cache.clean()
+
+        self.assertFalse(os.path.exists(incomplete_file_path))
 
     @skip_if_disabled
     def test_prune(self):
@@ -196,32 +212,13 @@ class ImageCacheTestCase(object):
 
         self.assertFalse(self.cache.queue_image(1))
 
-        self.cache.delete(1)
+        self.cache.delete_cached_image(1)
 
         for x in xrange(0, 3):
             self.assertTrue(self.cache.queue_image(x))
 
-        self.assertEqual(self.cache.get_cache_queue(),
+        self.assertEqual(self.cache.get_queued_images(),
                          ['0', '1', '2'])
-
-    @skip_if_disabled
-    def test_prefetcher(self):
-        """
-        Test that the prefetcher application works
-        """
-        stubs.stub_out_registry_server(self.stubs)
-        FIXTURE_FILE = StringIO.StringIO(FIXTURE_DATA)
-
-        # Should return True since there is nothing in the queue
-        pf = prefetcher.Prefetcher(self.options)
-        self.assertTrue(pf.run())
-
-        for x in xrange(2, 3):
-            self.assertTrue(self.cache.queue_image(x))
-
-        # Should return False since there is no metadata for these
-        # images in the registry
-        self.assertFalse(pf.run())
 
 
 class TestImageCacheXattr(unittest.TestCase,
@@ -238,6 +235,10 @@ class TestImageCacheXattr(unittest.TestCase,
         if getattr(self, 'disable', False):
             return
 
+        self.cache_dir = os.path.join("/", "tmp", "test.cache.%d" %
+                                      random.randint(0, 1000000))
+        utils.safe_mkdirs(self.cache_dir)
+
         if not getattr(self, 'inited', False):
             try:
                 import xattr
@@ -249,20 +250,22 @@ class TestImageCacheXattr(unittest.TestCase,
 
         self.inited = True
         self.disabled = False
-        self.cache_dir = os.path.join("/", "tmp", "test.cache.%d" %
-                                      random.randint(0, 1000000))
         self.options = {'image_cache_dir': self.cache_dir,
                         'image_cache_driver': 'xattr',
                         'image_cache_max_size': 1024 * 5,
                         'registry_host': '0.0.0.0',
                         'registry_port': 9191}
         self.cache = image_cache.ImageCache(self.options)
-        self.stubs = stubout.StubOutForTesting()
+
+        if not xattr_writes_supported(self.cache_dir):
+            self.inited = True
+            self.disabled = True
+            self.disabled_message = ("filesystem does not support xattr")
+            return
 
     def tearDown(self):
         if os.path.exists(self.cache_dir):
             shutil.rmtree(self.cache_dir)
-        self.stubs.UnsetAll()
 
 
 class TestImageCacheSqlite(unittest.TestCase,
@@ -297,9 +300,7 @@ class TestImageCacheSqlite(unittest.TestCase,
                         'registry_host': '0.0.0.0',
                         'registry_port': 9191}
         self.cache = image_cache.ImageCache(self.options)
-        self.stubs = stubout.StubOutForTesting()
 
     def tearDown(self):
         if os.path.exists(self.cache_dir):
             shutil.rmtree(self.cache_dir)
-        self.stubs.UnsetAll()
