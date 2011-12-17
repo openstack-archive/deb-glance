@@ -4,8 +4,8 @@ set -e
 
 case $1 in
     purge)
-        deluser --quiet glance
-        delgroup --quiet glance
+        userdel glance
+        groupdel glance
         rm -rf /var/log/glance
         ;;
 esac
