@@ -15,7 +15,3 @@ override_dh_auto_clean:
 	dh_auto_clean
 	rm -rf build doc/build glance.egg-info po/glance.pot glance/vcsversion.py
 	rm -rf glance.sqlite
-
-override_dh_installinit:
-	dh_installinit --name glance-api
-	dh_installinit --name glance-registry

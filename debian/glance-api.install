@@ -1,0 +1,9 @@
+usr/bin/glance-api
+usr/bin/glance-cache-manage
+usr/bin/glance-scrubber
+usr/bin/glance-cache-prefetcher
+usr/bin/glance-cache-cleaner
+usr/bin/glance-cache-pruner
+etc/glance-api.conf etc/glance
+etc/glance-cache.conf etc/glance
+etc/glance-scrubber.conf etc/glance

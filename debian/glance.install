@@ -1,5 +1,0 @@
-usr/bin/*
-etc/glance-scrubber.conf etc/glance
-etc/glance-api.conf etc/glance
-etc/glance-cache.conf etc/glance
-etc/glance-registry.conf etc/glance
