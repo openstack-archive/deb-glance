@@ -1,3 +1,9 @@
+glance (2012.1~e2+git66-gea99d1c-1) experimental; urgency=low
+
+  * New snapshot release
+
+ -- Ghe Rivero <ghe@debian.org>  Mon, 19 Dec 2011 19:02:57 +0100
+
 glance (2012.1~e2-3) unstable; urgency=low
 
   [ Ghe Rivero ]
