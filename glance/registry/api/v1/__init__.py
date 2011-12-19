@@ -25,15 +25,15 @@ from glance.common import wsgi
 class API(wsgi.Router):
     """WSGI entry point for all Registry requests."""
 
-    def __init__(self, options):
+    def __init__(self, conf, **local_conf):
         mapper = routes.Mapper()
 
-        images_resource = images.create_resource(options)
+        images_resource = images.create_resource(conf)
         mapper.resource("image", "images", controller=images_resource,
                         collection={'detail': 'GET'})
         mapper.connect("/", controller=images_resource, action="index")
 
-        members_resource = members.create_resource(options)
+        members_resource = members.create_resource(conf)
         mapper.resource("member", "members", controller=members_resource,
                         parent_resource=dict(member_name='image',
                         collection_name='images'))
@@ -45,13 +45,3 @@ class API(wsgi.Router):
                        action="index_shared_images")
 
         super(API, self).__init__(mapper)
-
-
-def app_factory(global_conf, **local_conf):
-    """
-    paste.deploy app factory for creating Glance reference implementation
-    registry server apps
-    """
-    conf = global_conf.copy()
-    conf.update(local_conf)
-    return API(conf)

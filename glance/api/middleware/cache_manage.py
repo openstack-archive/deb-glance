@@ -28,10 +28,9 @@ logger = logging.getLogger(__name__)
 
 
 class CacheManageFilter(wsgi.Middleware):
-    def __init__(self, app, options):
-
+    def __init__(self, app, conf, **local_conf):
         map = app.map
-        resource = cached_images.create_resource(options)
+        resource = cached_images.create_resource(conf)
 
         map.connect("/cached_images",
                     controller=resource,
@@ -70,16 +69,3 @@ class CacheManageFilter(wsgi.Middleware):
 
         logger.info(_("Initialized image cache management middleware"))
         super(CacheManageFilter, self).__init__(app)
-
-
-def filter_factory(global_conf, **local_conf):
-    """
-    Factory method for paste.deploy
-    """
-    conf = global_conf.copy()
-    conf.update(local_conf)
-
-    def filter(app):
-        return CacheManageFilter(app, conf)
-
-    return filter

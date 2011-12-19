@@ -74,6 +74,8 @@ admin_host = 0.0.0.0
 admin_port = %(admin_port)s
 keystone-admin-role = Admin
 keystone-service-admin-role = KeystoneServiceAdmin
+service_ssl = False
+admin_ssl = False
 
 [keystone.backends.sqlalchemy]
 sql_connection = %(sql_connection)s
@@ -158,7 +160,9 @@ admin_token = 999888777666
 delay_auth_decision = 1
 
 [filter:keystone_shim]
-paste.filter_factory = keystone.middleware.glance_auth_token:filter_factory
+paste.filter_factory = glance.common.wsgi:filter_factory
+glance.filter_factory =
+ keystone.middleware.glance_auth_token:KeystoneContextMiddleware
 """ % subs
 
 

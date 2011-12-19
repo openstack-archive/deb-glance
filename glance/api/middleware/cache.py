@@ -38,14 +38,14 @@ from glance.common import utils
 from glance.common import wsgi
 
 logger = logging.getLogger(__name__)
-get_images_re = re.compile(r'^(/v\d+)*/images/(.+)$')
+get_images_re = re.compile(r'^(/v\d+)*/images/([^\/]+)$')
 
 
 class CacheFilter(wsgi.Middleware):
 
-    def __init__(self, app, options):
-        self.options = options
-        self.cache = image_cache.ImageCache(options)
+    def __init__(self, app, conf, **local_conf):
+        self.conf = conf
+        self.cache = image_cache.ImageCache(conf)
         self.serializer = images.ImageSerializer()
         logger.info(_("Initialized image cache middleware"))
         super(CacheFilter, self).__init__(app)
@@ -132,16 +132,3 @@ class CacheFilter(wsgi.Middleware):
             chunks = utils.chunkiter(cache_file)
             for chunk in chunks:
                 yield chunk
-
-
-def filter_factory(global_conf, **local_conf):
-    """
-    Factory method for paste.deploy
-    """
-    conf = global_conf.copy()
-    conf.update(local_conf)
-
-    def filter(app):
-        return CacheFilter(app, conf)
-
-    return filter
