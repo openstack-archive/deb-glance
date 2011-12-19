@@ -1,0 +1,13 @@
+#!/bin/sh
+
+set -e
+
+case $1 in
+    purge)
+        userdel glance || true
+        groupdel glance || true
+        rm -rf /var/log/glance 
+        ;;
+esac
+
+#DEBHELPER#

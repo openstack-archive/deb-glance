@@ -1,3 +1,25 @@
+glance (2012.1~e2-3) unstable; urgency=low
+
+  [ Ghe Rivero ]
+  * Fix piuparts errors
+  * Split glance into api and registriy daemons
+  * Fixed embeded javascript library in python-glance-doc
+
+ -- Ghe Rivero <ghe@debian.org>  Mon, 19 Dec 2011 17:48:42 +0100
+
+glance (2012.1~e2-2) unstable; urgency=low
+
+  [ Ghe Rivero ]
+  * Fix glance.postrm deleting user/group
+
+ -- Ghe Rivero <ghe@debian.org>  Sat, 17 Dec 2011 23:09:33 +0100
+
+glance (2012.1~e2-1) unstable; urgency=low
+
+  * New upstream release
+
+ -- Ghe Rivero <ghe@debian.org>  Fri, 16 Dec 2011 08:22:26 +0100
+
 glance (2012.1~e1+git41-gb183f43-1) experimental; urgency=low
 
   * New snapshot release.

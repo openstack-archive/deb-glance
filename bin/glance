@@ -26,9 +26,10 @@ import functools
 import gettext
 import optparse
 import os
-import re
 import sys
 import time
+
+from urlparse import urlparse
 
 # If ../glance/__init__.py exists, add ../ to Python search path, so that
 # it will override what happens to be installed in /usr/(local/)lib/python...
@@ -48,6 +49,8 @@ from glance.common import utils
 
 SUCCESS = 0
 FAILURE = 1
+
+DEFAULT_PORT = 9292
 
 
 #TODO(sirp): make more of the actions use this decorator
@@ -75,15 +78,6 @@ def catch_error(action):
 
         return wrapper
     return wrap
-
-
-def get_percent_done(image):
-    try:
-        pct_done = image['size'] * 100 / int(image['expected_size'])
-    except (ValueError, ZeroDivisionError):
-        # NOTE(sirp): Ignore if expected_size isn't a number, or if it's 0
-        pct_done = "UNKNOWN"
-    return pct_done
 
 
 def get_image_fields_from_args(args):
@@ -739,7 +733,7 @@ def get_client(options):
                  auth_url=os.getenv('OS_AUTH_URL'),
                  strategy=os.getenv('OS_AUTH_STRATEGY', 'noauth'))
 
-    use_ssl = (options.host.find('https') != -1 or (
+    use_ssl = (options.use_ssl or (
         creds['auth_url'] is not None and
         creds['auth_url'].find('https') != -1))
 
@@ -763,9 +757,15 @@ def create_options(parser):
                       help="Address of Glance API host. "
                            "Default: %default")
     parser.add_option('-p', '--port', dest="port", metavar="PORT",
-                      type=int, default=9292,
+                      type=int, default=DEFAULT_PORT,
                       help="Port the Glance API host listens on. "
                            "Default: %default")
+    parser.add_option('-U', '--url', metavar="URL", default=None,
+                      help="URL of Glance service. This option can be used "
+                           "to specify the hostname, port and protocol "
+                           "(http/https) of the glance server, for example "
+                           "-U https://localhost:" + str(DEFAULT_PORT) +
+                           "/v1 Default: None")
     parser.add_option('-A', '--auth_token', dest="auth_token",
                       metavar="TOKEN", default=None,
                       help="Authentication token to use to identify the "
@@ -802,6 +802,12 @@ def parse_options(parser, cli_args):
         cli_args.append('-h')  # Show options in usage output...
 
     (options, args) = parser.parse_args(cli_args)
+    if options.url is not None:
+        u = urlparse(options.url)
+        options.port = u.port
+        options.host = u.hostname
+
+    options.use_ssl = (options.url is not None and u.scheme == 'https')
 
     # HACK(sirp): Make the parser available to the print_help method
     # print_help is a command, so it only accepts (options, args); we could
@@ -911,28 +917,6 @@ Commands:
                     Glance
 
     clear           Removes all images and metadata from Glance
-
-
-Cache Commands:
-
-    cache-index          List all images currently cached
-
-    cache-invalid        List current invalid cache images
-
-    cache-incomplete     List images currently being fetched
-
-    cache-prefetching    List images that are being prefetched
-
-    cache-prefetch       Pre-fetch an image or list of images into the cache
-
-    cache-purge          Purges an image from the cache
-
-    cache-clear          Removes all images from the cache
-
-    cache-reap-invalid   Reaps any invalid images that were left for
-                         debugging purposes
-
-    cache-reap-stalled   Reaps any stalled incomplete images
 
 
 Member Commands:

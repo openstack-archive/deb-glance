@@ -1,9 +1,8 @@
-/var/log/glance/glance-registry.log /var/log/glance/glance-api.log {
+/var/log/glance/glance-registry.log {
     daily
     compress
     missingok
     postrotate
-        invoke-rc.d glance-api restart
         invoke-rc.d glance-registry restart
     endscript
 }
