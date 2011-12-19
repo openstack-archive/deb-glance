@@ -109,7 +109,7 @@ Description: OpenStack Image Registry and Delivery Service
 Package: python-glance-doc
 Architecture: all
 Section: doc
-Depends: libjs-jquery, ${misc:Depends}
+Depends: libjs-jquery, libjs-underscore, ${misc:Depends}
 Description: OpenStack Image Registry and Delivery Service - Documentation
  The Glance project provides an image registration, discovery and
  delivery service. These services may be used as stand-along services, and
