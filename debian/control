@@ -17,7 +17,8 @@ Build-Depends-Indep:
  python-migrate,
  python-routes,
  python-boto,
- python-kombu
+ python-kombu,
+ python-httplib2 (>= 0.6.0)
 Standards-Version: 3.9.2
 X-Python-Version: >= 2.6
 Homepage: http://launchpad.net/glance
@@ -38,7 +39,8 @@ Depends: ${python:Depends}, ${misc:Depends},
  python-migrate,
  python-kombu,
  python-xattr,
- python-crypto
+ python-crypto,
+ python-httplib(>= 0.6.0)
 Provides: ${python:Provides}
 Description: OpenStack Image Registry and Delivery Service - Python client library
  The Glance project provides an image registration, discovery and
