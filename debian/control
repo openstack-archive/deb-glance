@@ -51,6 +51,7 @@ Description: OpenStack Image Registry and Delivery Service - Python client libra
 Package: glance-common
 Architecture: all
 Section: python
+Replaces: glance (<< 2012.1~e2-3)
 Depends: ${python:Depends}, ${misc:Depends},
     adduser,
     python-eventlet,
@@ -70,7 +71,7 @@ Description: OpenStack Image Registry and Delivery Service - Common
 Package: glance-api
 Architecture: all
 Section: python
-Replaces: glance (<< 2012.1~e1-2)
+Replaces: glance (<< 2012.1~e2-3)
 Depends: ${python:Depends}, ${misc:Depends}, glance-common (= ${source:Version})
 Description: OpenStack Image Registry and Delivery Service - API
  The Glance project provides an image registration, discovery and
@@ -83,7 +84,7 @@ Description: OpenStack Image Registry and Delivery Service - API
 Package: glance-registry
 Architecture: all
 Section: python
-Replaces: glance (<< 2012.1~e2-2)
+Replaces: glance (<< 2012.1~e2-3)
 Depends: ${python:Depends}, ${misc:Depends}, glance-common (= ${source:Version})
 Description: OpenStack Image Registry and Delivery Service - Registry
  The Glance project provides an image registration, discovery and
