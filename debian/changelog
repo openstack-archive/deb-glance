@@ -1,8 +1,9 @@
 glance (2012.1~e2-4) unstable; urgency=low
 
   * Fix new packages replaces
+  * Fix init script stop action
 
- -- Julien Danjou <acid@debian.org>  Tue, 20 Dec 2011 10:04:56 +0100
+ -- Julien Danjou <acid@debian.org>  Tue, 20 Dec 2011 10:13:58 +0100
 
 glance (2012.1~e2-3) unstable; urgency=low
 
