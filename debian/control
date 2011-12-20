@@ -41,7 +41,6 @@ Depends: ${python:Depends}, ${misc:Depends},
  python-xattr,
  python-crypto,
  python-httplib(>= 0.6.0)
-Provides: ${python:Provides}
 Description: OpenStack Image Registry and Delivery Service - Python client library
  The Glance project provides an image registration, discovery and
  delivery service. These services may be used as stand-along services, and
