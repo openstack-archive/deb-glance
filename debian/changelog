@@ -3,8 +3,9 @@ glance (2012.1~e2-4) unstable; urgency=low
   * Fix new packages replaces
   * Fix init script stop action
   * Fix depends on httplib2
+  * Do not fail if db_sync fails
 
- -- Julien Danjou <acid@debian.org>  Tue, 20 Dec 2011 10:25:37 +0100
+ -- Julien Danjou <acid@debian.org>  Tue, 20 Dec 2011 10:26:52 +0100
 
 glance (2012.1~e2-3) unstable; urgency=low
 
