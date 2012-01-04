@@ -6,7 +6,7 @@ if [ "$1" = "configure" ]
 then
 	if ! grep sql_connection /etc/glance/glance-registry.conf | grep -qv "sql_connection = sqlite:////var/lib/glance/glance.sqlite"
 	then
-		su -c 'glance-manage db_sync' glance
+		su -c 'glance-manage db_sync' glance || true
 	fi
 fi
 

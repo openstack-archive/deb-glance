@@ -17,9 +17,9 @@ Build-Depends-Indep:
  python-migrate,
  python-routes,
  python-boto,
- python-kombu
+ python-kombu,
+ python-httplib2 (>= 0.6.0)
 Standards-Version: 3.9.2
-X-Python-Version: >= 2.6
 Homepage: http://launchpad.net/glance
 Vcs-Browser: http://anonscm.debian.org/gitweb/?p=openstack/glance.git;a=summary
 Vcs-Git: git://anonscm.debian.org/openstack/glance.git
@@ -38,8 +38,8 @@ Depends: ${python:Depends}, ${misc:Depends},
  python-migrate,
  python-kombu,
  python-xattr,
- python-crypto
-Provides: ${python:Provides}
+ python-crypto,
+ python-httplib2 (>= 0.6.0)
 Description: OpenStack Image Registry and Delivery Service - Python client library
  The Glance project provides an image registration, discovery and
  delivery service. These services may be used as stand-along services, and
@@ -51,6 +51,7 @@ Description: OpenStack Image Registry and Delivery Service - Python client libra
 Package: glance-common
 Architecture: all
 Section: python
+Replaces: glance (<< 2012.1~e2-3)
 Depends: ${python:Depends}, ${misc:Depends},
     adduser,
     python-eventlet,
@@ -58,7 +59,8 @@ Depends: ${python:Depends}, ${misc:Depends},
     python-migrate,
     python-routes,
     python-sqlalchemy-ext | python-sqlalchemy (<< 0.6.3-2),
-    python-xattr
+    python-xattr,
+    python-paste
 Description: OpenStack Image Registry and Delivery Service - Common
  The Glance project provides an image registration, discovery and
  delivery service. These services may be used as stand-along services, and
@@ -70,7 +72,7 @@ Description: OpenStack Image Registry and Delivery Service - Common
 Package: glance-api
 Architecture: all
 Section: python
-Replaces: glance (<< 2012.1~e1-2)
+Replaces: glance (<< 2012.1~e2-3)
 Depends: ${python:Depends}, ${misc:Depends}, glance-common (= ${source:Version})
 Description: OpenStack Image Registry and Delivery Service - API
  The Glance project provides an image registration, discovery and
@@ -83,7 +85,7 @@ Description: OpenStack Image Registry and Delivery Service - API
 Package: glance-registry
 Architecture: all
 Section: python
-Replaces: glance (<< 2012.1~e2-2)
+Replaces: glance (<< 2012.1~e2-3)
 Depends: ${python:Depends}, ${misc:Depends}, glance-common (= ${source:Version})
 Description: OpenStack Image Registry and Delivery Service - Registry
  The Glance project provides an image registration, discovery and
