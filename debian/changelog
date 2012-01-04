@@ -1,3 +1,9 @@
+glance (2012.1~e2+git82-g98b19af-1) experimental; urgency=low
+
+  * New snapshot release
+
+ -- Ghe Rivero <ghe@debian.org>  Wed, 04 Jan 2012 09:40:55 +0100
+
 glance (2012.1~e2-4) unstable; urgency=low
 
   * Fix new packages replaces
