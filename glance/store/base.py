@@ -28,13 +28,13 @@ class Store(object):
 
     CHUNKSIZE = (16 * 1024 * 1024)  # 16M
 
-    def __init__(self, options=None):
+    def __init__(self, conf):
         """
         Initialize the Store
 
-        :param options: Optional dictionary of configuration options
+        :param conf: Optional dictionary of configuration options
         """
-        self.options = options or {}
+        self.conf = conf
 
         self.configure()
 
@@ -69,6 +69,17 @@ class Store(object):
         Takes a `glance.store.location.Location` object that indicates
         where to find the image file, and returns a tuple of generator
         (for reading the image file) and image_size
+
+        :param location `glance.store.location.Location` object, supplied
+                        from glance.store.location.get_location_from_uri()
+        :raises `glance.exception.NotFound` if image does not exist
+        """
+        raise NotImplementedError
+
+    def get_size(self, location):
+        """
+        Takes a `glance.store.location.Location` object that indicates
+        where to find the image file, and returns the size
 
         :param location `glance.store.location.Location` object, supplied
                         from glance.store.location.get_location_from_uri()

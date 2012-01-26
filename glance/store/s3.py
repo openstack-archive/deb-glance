@@ -23,7 +23,7 @@ import httplib
 import tempfile
 import urlparse
 
-from glance.common import config
+from glance.common import cfg
 from glance.common import exception
 import glance.store
 import glance.store.base
@@ -38,9 +38,9 @@ class StoreLocation(glance.store.location.StoreLocation):
     Class describing an S3 URI. An S3 URI can look like any of
     the following:
 
-        s3://accesskey:secretkey@s3service.com/bucket/key-id
-        s3+http://accesskey:secretkey@s3service.com/bucket/key-id
-        s3+https://accesskey:secretkey@s3service.com/bucket/key-id
+        s3://accesskey:secretkey@s3.amazonaws.com/bucket/key-id
+        s3+http://accesskey:secretkey@s3.amazonaws.com/bucket/key-id
+        s3+https://accesskey:secretkey@s3.amazonaws.com/bucket/key-id
 
     The s3+https:// URIs indicate there is an HTTPS s3service URL
     """
@@ -84,15 +84,19 @@ class StoreLocation(glance.store.location.StoreLocation):
         This function works around that issue.
         """
         # Make sure that URIs that contain multiple schemes, such as:
-        # swift://user:pass@http://authurl.com/v1/container/obj
+        # s3://accesskey:secretkey@https://s3.amazonaws.com/bucket/key-id
         # are immediately rejected.
         if uri.count('://') != 1:
-            reason = _("URI Cannot contain more than one occurrence of a "
-                      "scheme. If you have specified a "
-                      "URI like s3://user:pass@https://s3.amazonaws.com/"
-                      "bucket/key, you need to change it to use the "
-                      "s3+https:// scheme, like so: "
-                      "s3+https://user:pass@s3.amazonaws.com/bucket/key")
+            reason = _(
+                    "URI cannot contain more than one occurrence of a scheme."
+                    "If you have specified a URI like "
+                    "s3://accesskey:secretkey@https://s3.amazonaws.com/bucket/"
+                    "key-id"
+                    ", you need to change it to use the s3+https:// scheme, "
+                    "like so: "
+                    "s3+https://accesskey:secretkey@s3.amazonaws.com/bucket/"
+                    "key-id"
+                      )
             raise exception.BadStoreUri(uri, reason)
 
         pieces = urlparse.urlparse(uri)
@@ -183,6 +187,15 @@ class Store(glance.store.base.Store):
 
     EXAMPLE_URL = "s3://<ACCESS_KEY>:<SECRET_KEY>@<S3_URL>/<BUCKET>/<OBJ>"
 
+    opts = [
+        cfg.StrOpt('s3_store_host'),
+        cfg.StrOpt('s3_store_access_key'),
+        cfg.StrOpt('s3_store_secret_key'),
+        cfg.StrOpt('s3_store_bucket'),
+        cfg.StrOpt('s3_store_object_buffer_dir'),
+        cfg.BoolOpt('s3_store_create_bucket_on_put', default=False),
+        ]
+
     def configure_add(self):
         """
         Configure the Store to use the stored configuration options
@@ -190,6 +203,7 @@ class Store(glance.store.base.Store):
         this method. If the store was not able to successfully configure
         itself, it should raise `exception.BadStoreConfiguration`
         """
+        self.conf.register_opts(self.opts)
         self.s3_host = self._option_get('s3_store_host')
         access_key = self._option_get('s3_store_access_key')
         secret_key = self._option_get('s3_store_secret_key')
@@ -203,21 +217,18 @@ class Store(glance.store.base.Store):
 
         self.scheme = 's3'
         if self.s3_host.startswith('https://'):
-            self.scheme = 'swift+https'
+            self.scheme = 's3+https'
             self.full_s3_host = self.s3_host
         elif self.s3_host.startswith('http://'):
             self.full_s3_host = self.s3_host
         else:  # Defaults http
             self.full_s3_host = 'http://' + self.s3_host
 
-        if self.options.get('s3_store_object_buffer_dir'):
-            self.s3_store_object_buffer_dir = self.options.get(
-                's3_store_object_buffer_dir')
-        else:
-            self.s3_store_object_buffer_dir = None
+        self.s3_store_object_buffer_dir = \
+            self.conf.s3_store_object_buffer_dir
 
     def _option_get(self, param):
-        result = self.options.get(param)
+        result = getattr(self.conf, param)
         if not result:
             reason = _("Could not find %(param)s in configuration "
                        "options.") % locals()
@@ -236,6 +247,27 @@ class Store(glance.store.base.Store):
                         from glance.store.location.get_location_from_uri()
         :raises `glance.exception.NotFound` if image does not exist
         """
+        key = self._retrieve_key(location)
+
+        key.BufferSize = self.CHUNKSIZE
+        return (ChunkedFile(key), key.size)
+
+    def get_size(self, location):
+        """
+        Takes a `glance.store.location.Location` object that indicates
+        where to find the image file, and returns the image_size (or 0
+        if unavailable)
+
+        :param location `glance.store.location.Location` object, supplied
+                        from glance.store.location.get_location_from_uri()
+        """
+        try:
+            key = self._retrieve_key(location)
+            return key.size
+        except Exception:
+            return 0
+
+    def _retrieve_key(self, location):
         loc = location.store_location
         from boto.s3.connection import S3Connection
 
@@ -253,13 +285,7 @@ class Store(glance.store.base.Store):
                 'obj_name': loc.key})
         logger.debug(msg)
 
-        #if expected_size and (key.size != expected_size):
-        #   msg = "Expected %s bytes, got %s" % (expected_size, key.size)
-        #   logger.error(msg)
-        #   raise glance.store.BackendException(msg)
-
-        key.BufferSize = self.CHUNKSIZE
-        return (ChunkedFile(key), key.size)
+        return key
 
     def add(self, image_id, image_file, image_size):
         """
@@ -297,7 +323,7 @@ class Store(glance.store.base.Store):
                                host=loc.s3serviceurl,
                                is_secure=(loc.scheme == 's3+https'))
 
-        create_bucket_if_missing(self.bucket, s3_conn, self.options)
+        create_bucket_if_missing(self.bucket, s3_conn, self.conf)
 
         bucket_obj = get_bucket(s3_conn, self.bucket)
         obj_name = str(image_id)
@@ -403,24 +429,21 @@ def get_bucket(conn, bucket_id):
     return bucket
 
 
-def create_bucket_if_missing(bucket, s3_conn, options):
+def create_bucket_if_missing(bucket, s3_conn, conf):
     """
     Creates a missing bucket in S3 if the
     ``s3_store_create_bucket_on_put`` option is set.
 
     :param bucket: Name of bucket to create
     :param s3_conn: Connection to S3
-    :param options: Option mapping
+    :param conf: Option mapping
     """
     from boto.exception import S3ResponseError
     try:
         s3_conn.get_bucket(bucket)
     except S3ResponseError, e:
         if e.status == httplib.NOT_FOUND:
-            add_bucket = config.get_option(options,
-                                's3_store_create_bucket_on_put',
-                                type='bool', default=False)
-            if add_bucket:
+            if conf.s3_store_create_bucket_on_put:
                 try:
                     s3_conn.create_bucket(bucket)
                 except S3ResponseError, e:

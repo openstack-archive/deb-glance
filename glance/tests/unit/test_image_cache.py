@@ -26,19 +26,16 @@ import stubout
 from glance import image_cache
 from glance.common import exception
 from glance.common import utils
+from glance.tests import utils as test_utils
 from glance.tests.utils import skip_if_disabled, xattr_writes_supported
 
-FIXTURE_DATA = '*' * 1024
+FIXTURE_LENGTH = 1024
+FIXTURE_DATA = '*' * FIXTURE_LENGTH
 
 
 class ImageCacheTestCase(object):
 
-    @skip_if_disabled
-    def test_is_cached(self):
-        """
-        Verify is_cached(1) returns 0, then add something to the cache
-        and verify is_cached(1) returns 1.
-        """
+    def _setup_fixture_file(self):
         FIXTURE_FILE = StringIO.StringIO(FIXTURE_DATA)
 
         self.assertFalse(self.cache.is_cached(1))
@@ -48,17 +45,21 @@ class ImageCacheTestCase(object):
         self.assertTrue(self.cache.is_cached(1))
 
     @skip_if_disabled
+    def test_is_cached(self):
+        """
+        Verify is_cached(1) returns 0, then add something to the cache
+        and verify is_cached(1) returns 1.
+        """
+        self._setup_fixture_file()
+
+    @skip_if_disabled
     def test_read(self):
         """
         Verify is_cached(1) returns 0, then add something to the cache
         and verify after a subsequent read from the cache that
         is_cached(1) returns 1.
         """
-        FIXTURE_FILE = StringIO.StringIO(FIXTURE_DATA)
-
-        self.assertFalse(self.cache.is_cached(1))
-
-        self.assertTrue(self.cache.cache_image_file(1, FIXTURE_FILE))
+        self._setup_fixture_file()
 
         buff = StringIO.StringIO()
         with self.cache.open_for_read(1) as cache_file:
@@ -73,11 +74,7 @@ class ImageCacheTestCase(object):
         Test convenience wrapper for opening a cache file via
         its image identifier.
         """
-        FIXTURE_FILE = StringIO.StringIO(FIXTURE_DATA)
-
-        self.assertFalse(self.cache.is_cached(1))
-
-        self.assertTrue(self.cache.cache_image_file(1, FIXTURE_FILE))
+        self._setup_fixture_file()
 
         buff = StringIO.StringIO()
         with self.cache.open_for_read(1) as cache_file:
@@ -87,17 +84,23 @@ class ImageCacheTestCase(object):
         self.assertEqual(FIXTURE_DATA, buff.getvalue())
 
     @skip_if_disabled
+    def test_get_image_size(self):
+        """
+        Test convenience wrapper for querying cache file size via
+        its image identifier.
+        """
+        self._setup_fixture_file()
+
+        size = self.cache.get_image_size(1)
+
+        self.assertEqual(FIXTURE_LENGTH, size)
+
+    @skip_if_disabled
     def test_delete(self):
         """
         Test delete method that removes an image from the cache
         """
-        FIXTURE_FILE = StringIO.StringIO(FIXTURE_DATA)
-
-        self.assertFalse(self.cache.is_cached(1))
-
-        self.assertTrue(self.cache.cache_image_file(1, FIXTURE_FILE))
-
-        self.assertTrue(self.cache.is_cached(1))
+        self._setup_fixture_file()
 
         self.cache.delete_cached_image(1)
 
@@ -136,8 +139,7 @@ class ImageCacheTestCase(object):
 
         self.assertTrue(os.path.exists(incomplete_file_path))
 
-        self.cache.options['image_cache_stall_time'] = 0
-        self.cache.clean()
+        self.cache.clean(stall_time=0)
 
         self.assertFalse(os.path.exists(incomplete_file_path))
 
@@ -250,12 +252,13 @@ class TestImageCacheXattr(unittest.TestCase,
 
         self.inited = True
         self.disabled = False
-        self.options = {'image_cache_dir': self.cache_dir,
-                        'image_cache_driver': 'xattr',
-                        'image_cache_max_size': 1024 * 5,
-                        'registry_host': '0.0.0.0',
-                        'registry_port': 9191}
-        self.cache = image_cache.ImageCache(self.options)
+        self.conf = test_utils.TestConfigOpts({
+                'image_cache_dir': self.cache_dir,
+                'image_cache_driver': 'xattr',
+                'image_cache_max_size': 1024 * 5,
+                'registry_host': '0.0.0.0',
+                'registry_port': 9191})
+        self.cache = image_cache.ImageCache(self.conf)
 
         if not xattr_writes_supported(self.cache_dir):
             self.inited = True
@@ -294,12 +297,13 @@ class TestImageCacheSqlite(unittest.TestCase,
         self.disabled = False
         self.cache_dir = os.path.join("/", "tmp", "test.cache.%d" %
                                       random.randint(0, 1000000))
-        self.options = {'image_cache_dir': self.cache_dir,
-                        'image_cache_driver': 'sqlite',
-                        'image_cache_max_size': 1024 * 5,
-                        'registry_host': '0.0.0.0',
-                        'registry_port': 9191}
-        self.cache = image_cache.ImageCache(self.options)
+        self.conf = test_utils.TestConfigOpts({
+                'image_cache_dir': self.cache_dir,
+                'image_cache_driver': 'sqlite',
+                'image_cache_max_size': 1024 * 5,
+                'registry_host': '0.0.0.0',
+                'registry_port': 9191})
+        self.cache = image_cache.ImageCache(self.conf)
 
     def tearDown(self):
         if os.path.exists(self.cache_dir):

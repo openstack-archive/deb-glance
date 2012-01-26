@@ -33,15 +33,15 @@ logger = logging.getLogger(__name__)
 
 class Driver(object):
 
-    def __init__(self, options):
+    def __init__(self, conf):
         """
         Initialize the attribute driver with a set of options.
 
-        :param options: Dictionary of configuration file options
+        :param conf: Dictionary of configuration options
         :raises `exception.BadDriverConfiguration` if configuration of the
                 driver fails for any reason.
         """
-        self.options = options or {}
+        self.conf = conf or {}
 
     def configure(self):
         """
@@ -60,11 +60,9 @@ class Driver(object):
         Creates all necessary directories under the base cache directory
         """
 
-        try:
-            key = 'image_cache_dir'
-            self.base_dir = self.options[key]
-        except KeyError:
-            msg = _('Failed to read %s from config') % key
+        self.base_dir = self.conf.image_cache_dir
+        if self.base_dir is None:
+            msg = _('Failed to read %s from config') % 'image_cache_dir'
             logger.error(msg)
             driver = self.__class__.__module__
             raise exception.BadDriverConfiguration(driver_name=driver,
@@ -168,7 +166,7 @@ class Driver(object):
         :param image_id: Image ID
         """
 
-    def clean(self):
+    def clean(self, stall_time=None):
         """
         Dependent on the driver, clean up and destroy any invalid or incomplete
         cached images
@@ -199,6 +197,27 @@ class Driver(object):
         :param image_id: Image ID
         """
         raise NotImplementedError
+
+    def get_image_filepath(self, image_id, cache_status='active'):
+        """
+        This crafts an absolute path to a specific entry
+
+        :param image_id: Image ID
+        :param cache_status: Status of the image in the cache
+        """
+        if cache_status == 'active':
+            return os.path.join(self.base_dir, str(image_id))
+        return os.path.join(self.base_dir, cache_status, str(image_id))
+
+    def get_image_size(self, image_id):
+        """
+        Return the size of the image file for an image with supplied
+        identifier.
+
+        :param image_id: Image ID
+        """
+        path = self.get_image_filepath(image_id)
+        return os.path.getsize(path)
 
     def get_queued_images(self):
         """

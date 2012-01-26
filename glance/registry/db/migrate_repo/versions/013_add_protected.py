@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2010-2011 OpenStack LLC.
+# Copyright 2011 OpenStack LLC.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -15,6 +15,23 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-# NOTE(bcwaldon): This is done as a convenience for people
-# so they don't have to update their paste configs just yet.
-from glance.registry.api.v1 import app_factory
+from sqlalchemy import MetaData, Table, Column, Boolean
+
+
+meta = MetaData()
+
+protected = Column('protected', Boolean, default=False)
+
+
+def upgrade(migrate_engine):
+    meta.bind = migrate_engine
+
+    images = Table('images', meta, autoload=True)
+    images.create_column(protected)
+
+
+def downgrade(migrate_engine):
+    meta.bind = migrate_engine
+
+    images = Table('images', meta, autoload=True)
+    images.drop_column(protected)

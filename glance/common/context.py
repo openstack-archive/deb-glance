@@ -14,7 +14,8 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-from glance.common import config
+
+from glance.common import cfg
 from glance.common import exception
 from glance.common import utils
 from glance.common import wsgi
@@ -53,26 +54,29 @@ class RequestContext(object):
 
 
 class ContextMiddleware(wsgi.Middleware):
-    def __init__(self, app, options):
-        self.options = options
+
+    opts = [
+        cfg.BoolOpt('owner_is_tenant', default=True),
+        ]
+
+    def __init__(self, app, conf, **local_conf):
+        self.conf = conf
+        self.conf.register_opts(self.opts)
+
+        # Determine the context class to use
+        self.ctxcls = RequestContext
+        if 'context_class' in local_conf:
+            self.ctxcls = utils.import_class(local_conf['context_class'])
+
         super(ContextMiddleware, self).__init__(app)
 
     def make_context(self, *args, **kwargs):
         """
         Create a context with the given arguments.
         """
+        kwargs.setdefault('owner_is_tenant', self.conf.owner_is_tenant)
 
-        # Determine the context class to use
-        ctxcls = RequestContext
-        if 'context_class' in self.options:
-            ctxcls = utils.import_class(self.options['context_class'])
-
-        # Determine whether to use tenant or owner
-        owner_is_tenant = config.get_option(self.options, 'owner_is_tenant',
-                                            type='bool', default=True)
-        kwargs.setdefault('owner_is_tenant', owner_is_tenant)
-
-        return ctxcls(*args, **kwargs)
+        return self.ctxcls(*args, **kwargs)
 
     def process_request(self, req):
         """
@@ -119,16 +123,3 @@ class ContextMiddleware(wsgi.Middleware):
         req.context = self.make_context(
             auth_tok=auth_tok, user=user, tenant=tenant, roles=roles,
             is_admin=is_admin)
-
-
-def filter_factory(global_conf, **local_conf):
-    """
-    Factory method for paste.deploy
-    """
-    conf = global_conf.copy()
-    conf.update(local_conf)
-
-    def filter(app):
-        return ContextMiddleware(app, conf)
-
-    return filter

@@ -27,15 +27,9 @@ logger = logging.getLogger(__name__)
 
 
 class Cleaner(object):
-    def __init__(self, options):
-        self.options = options
-        self.cache = ImageCache(options)
+    def __init__(self, conf, **local_conf):
+        self.conf = conf
+        self.cache = ImageCache(conf)
 
     def run(self):
         self.cache.clean()
-
-
-def app_factory(global_config, **local_conf):
-    conf = global_config.copy()
-    conf.update(local_conf)
-    return Cleaner(conf)

@@ -36,10 +36,11 @@ class TestBinGlanceCacheManage(functional.FunctionalTest):
     """Functional tests for the bin/glance CLI tool"""
 
     def setUp(self):
-        self.cache_pipeline = "cache cache_manage"
         self.image_cache_driver = "sqlite"
 
         super(TestBinGlanceCacheManage, self).setUp()
+
+        self.api_server.deployment_flavor = "cachemanagement"
 
         # NOTE(sirp): This is needed in case we are running the tests under an
         # environment in which OS_AUTH_STRATEGY=keystone. The test server we
@@ -85,6 +86,7 @@ class TestBinGlanceCacheManage(functional.FunctionalTest):
         Test that cache index command works
         """
         self.cleanup()
+        self.api_server.deployment_flavor = ''
         self.start_servers()  # Not passing in cache_manage in pipeline...
 
         api_port = self.api_port
@@ -207,22 +209,29 @@ registry_host = 0.0.0.0
 registry_port = %(registry_port)s
 metadata_encryption_key = %(metadata_encryption_key)s
 log_file = %(log_file)s
+""" % cache_file_options)
 
-[app:glance-pruner]
-paste.app_factory = glance.image_cache.pruner:app_factory
+        with open(cache_config_filepath.replace(".conf", "-paste.ini"),
+                  'w') as paste_file:
+            paste_file.write("""[app:glance-pruner]
+paste.app_factory = glance.common.wsgi:app_factory
+glance.app_factory = glance.image_cache.pruner:Pruner
 
 [app:glance-prefetcher]
-paste.app_factory = glance.image_cache.prefetcher:app_factory
+paste.app_factory = glance.common.wsgi:app_factory
+glance.app_factory = glance.image_cache.prefetcher:Prefetcher
 
 [app:glance-cleaner]
-paste.app_factory = glance.image_cache.cleaner:app_factory
+paste.app_factory = glance.common.wsgi:app_factory
+glance.app_factory = glance.image_cache.cleaner:Cleaner
 
 [app:glance-queue-image]
-paste.app_factory = glance.image_cache.queue_image:app_factory
-""" % cache_file_options)
-            cache_file.flush()
+paste.app_factory = glance.common.wsgi:app_factory
+glance.app_factory = glance.image_cache.queue_image:Queuer
+""")
 
-        cmd = "bin/glance-cache-prefetcher %s" % cache_config_filepath
+        cmd = "bin/glance-cache-prefetcher --config-file %s" % \
+            cache_config_filepath
 
         exitcode, out, err = execute(cmd)
 

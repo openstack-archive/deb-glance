@@ -20,22 +20,21 @@
 """
 
 import errno
-import json
 import logging
 import traceback
 
-from webob.exc import (HTTPNotFound,
+from webob.exc import (HTTPError,
+                       HTTPNotFound,
                        HTTPConflict,
                        HTTPBadRequest,
                        HTTPForbidden,
-                       HTTPNoContent,
                        HTTPUnauthorized)
 
+from glance.api import policy
 import glance.api.v1
 from glance.api.v1 import controller
-from glance import image_cache
+from glance.common import cfg
 from glance.common import exception
-from glance.common import notifier
 from glance.common import wsgi
 from glance.common import utils
 import glance.store
@@ -45,16 +44,24 @@ import glance.store.rbd
 import glance.store.s3
 import glance.store.swift
 from glance.store import (get_from_backend,
+                          get_size_from_backend,
                           schedule_delete_from_backend,
                           get_store_from_location,
-                          get_store_from_scheme,
-                          UnsupportedBackend)
+                          get_store_from_scheme)
 from glance import registry
+from glance import notifier
 
 
 logger = logging.getLogger(__name__)
 SUPPORTED_PARAMS = glance.api.v1.SUPPORTED_PARAMS
 SUPPORTED_FILTERS = glance.api.v1.SUPPORTED_FILTERS
+
+
+# 1 PiB, which is a *huge* image by anyone's measure.  This is just to protect
+# against client programming errors (or DoS attacks) in the image metadata.
+# We have a known limit of 1 << 63 in the database -- images.size is declared
+# as a BigInteger.
+IMAGE_SIZE_CAP = 1 << 50
 
 
 class Controller(controller.BaseController):
@@ -76,11 +83,22 @@ class Controller(controller.BaseController):
         DELETE /images/<ID> -- Delete the image with id <ID>
     """
 
-    def __init__(self, options):
-        self.options = options
-        glance.store.create_stores(options)
-        self.notifier = notifier.Notifier(options)
-        registry.configure_registry_client(options)
+    default_store_opt = cfg.StrOpt('default_store', default='file')
+
+    def __init__(self, conf):
+        self.conf = conf
+        self.conf.register_opt(self.default_store_opt)
+        glance.store.create_stores(conf)
+        self.notifier = notifier.Notifier(conf)
+        registry.configure_registry_client(conf)
+        self.policy = policy.Enforcer(conf)
+
+    def _enforce(self, req, action):
+        """Authorize an action against our policies"""
+        try:
+            self.policy.enforce(req.context, action, {})
+        except exception.NotAuthorized:
+            raise HTTPUnauthorized()
 
     def index(self, req):
         """
@@ -105,6 +123,7 @@ class Controller(controller.BaseController):
                  'size': <SIZE>}, ...
             ]}
         """
+        self._enforce(req, 'get_images')
         params = self._get_query_params(req)
         try:
             images = registry.get_images_list(req.context, **params)
@@ -137,6 +156,7 @@ class Controller(controller.BaseController):
                  'properties': {'distro': 'Ubuntu 10.04 LTS', ...}}, ...
             ]}
         """
+        self._enforce(req, 'get_images')
         params = self._get_query_params(req)
         try:
             images = registry.get_images_detail(req.context, **params)
@@ -189,6 +209,7 @@ class Controller(controller.BaseController):
 
         :raises HTTPNotFound if image metadata is not available to user
         """
+        self._enforce(req, 'get_image')
         image_meta = self.get_image_meta_or_404(req, id)
         del image_meta['location']
         return {
@@ -205,6 +226,7 @@ class Controller(controller.BaseController):
 
         :raises HTTPNotFound if image is not available to user
         """
+        self._enforce(req, 'get_image')
         image_meta = self.get_active_image_meta_or_404(req, id)
 
         def get_from_store(image_meta):
@@ -242,12 +264,16 @@ class Controller(controller.BaseController):
             # don't actually care what it is at this point
             self.get_store_or_400(req, store)
 
-        image_meta['status'] = 'queued'
+            # retrieve the image size from remote store (if not provided)
+            image_meta['size'] = image_meta.get('size', 0) \
+                                 or get_size_from_backend(location)
+        else:
+            # Ensure that the size attribute is set to zero for uploadable
+            # images (if not provided). The size will be set to a non-zero
+            # value during upload
+            image_meta['size'] = image_meta.get('size', 0)
 
-        # Ensure that the size attribute is set to zero for all
-        # queued instances. The size will be set to a non-zero
-        # value during upload
-        image_meta['size'] = image_meta.get('size', 0)
+        image_meta['status'] = 'queued'
 
         try:
             image_meta = registry.add_image_metadata(req.context, image_meta)
@@ -290,7 +316,7 @@ class Controller(controller.BaseController):
             raise HTTPBadRequest(explanation=msg)
 
         store_name = req.headers.get('x-image-meta-store',
-                                     self.options['default_store'])
+                                     self.conf.default_store)
 
         store = self.get_store_or_400(req, store_name)
 
@@ -309,6 +335,15 @@ class Controller(controller.BaseController):
                 logger.debug(_("Got request with no content-length and no "
                                "x-image-meta-size header"))
                 image_size = 0
+
+            if image_size > IMAGE_SIZE_CAP:
+                max_image_size = IMAGE_SIZE_CAP
+                msg = _("Denying attempt to upload image larger than "
+                        "%(max_image_size)d. Supplied image size was "
+                        "%(image_size)d") % locals()
+                logger.warn(msg)
+                raise HTTPBadRequest(msg, request=request)
+
             location, size, checksum = store.add(image_meta['id'],
                                                  req.body_file,
                                                  image_size)
@@ -352,6 +387,11 @@ class Controller(controller.BaseController):
             self.notifier.error('image.upload', msg)
             raise HTTPForbidden(msg, request=req,
                                 content_type='text/plain')
+
+        except HTTPError, e:
+            self._safe_kill(req, image_id)
+            self.notifier.error('image.upload', e.explanation)
+            raise
 
         except Exception, e:
             tb_info = traceback.format_exc()
@@ -461,6 +501,7 @@ class Controller(controller.BaseController):
                 and the request body is not application/octet-stream
                 image data.
         """
+        self._enforce(req, 'add_image')
         if req.context.read_only:
             msg = _("Read-only access")
             logger.debug(msg)
@@ -492,6 +533,7 @@ class Controller(controller.BaseController):
 
         :retval Returns the updated image information as a mapping
         """
+        self._enforce(req, 'modify_image')
         if req.context.read_only:
             msg = _("Read-only access")
             logger.debug(msg)
@@ -515,6 +557,14 @@ class Controller(controller.BaseController):
 
         if image_data is not None and orig_status != 'queued':
             raise HTTPConflict(_("Cannot upload to an unqueued image"))
+
+        # Only allow the Location fields to be modified if the image is
+        # in queued status, which indicates that the user called POST /images
+        # but did not supply either a Location field OR image data
+        if not orig_status == 'queued' and 'location' in image_meta:
+            msg = _("Attempted to update Location field for an image "
+                    "not in queued status.")
+            raise HTTPBadRequest(msg, request=req, content_type="text/plain")
 
         try:
             image_meta = registry.update_image_metadata(req.context, id,
@@ -556,6 +606,7 @@ class Controller(controller.BaseController):
         :raises HttpNotAuthorized if image or any chunk is not
                 deleteable by the requesting user
         """
+        self._enforce(req, 'delete_image')
         if req.context.read_only:
             msg = _("Read-only access")
             logger.debug(msg)
@@ -563,6 +614,11 @@ class Controller(controller.BaseController):
                                 content_type="text/plain")
 
         image = self.get_image_meta_or_404(req, id)
+        if image['protected']:
+            msg = _("Image is protected")
+            logger.debug(msg)
+            raise HTTPForbidden(msg, request=req,
+                                content_type="text/plain")
 
         # The image's location field may be None in the case
         # of a saving or queued image, therefore don't ask a backend
@@ -570,7 +626,7 @@ class Controller(controller.BaseController):
         # See https://bugs.launchpad.net/glance/+bug/747799
         try:
             if image['location']:
-                schedule_delete_from_backend(image['location'], self.options,
+                schedule_delete_from_backend(image['location'], self.conf,
                                              req.context, id)
             registry.delete_image_metadata(req.context, id)
         except exception.NotFound, e:
@@ -588,9 +644,9 @@ class Controller(controller.BaseController):
         or raises an HTTPBadRequest (400) response
 
         :param request: The WSGI/Webob Request object
-        :param id: The opaque image identifier
+        :param store_name: The backend store name
 
-        :raises HTTPNotFound if image does not exist
+        :raises HTTPNotFound if store does not exist
         """
         try:
             return get_store_from_scheme(store_name)
@@ -601,13 +657,49 @@ class Controller(controller.BaseController):
             raise HTTPBadRequest(msg, request=request,
                                  content_type='text/plain')
 
+    def verify_store_or_exit(self, store_name):
+        """
+        Verifies availability of the storage backend for the
+        given store name or exits
+
+        :param store_name: The backend store name
+        """
+        try:
+            get_store_from_scheme(store_name)
+        except exception.UnknownScheme:
+            msg = (_("Default store %s not available on this Glance server\n")
+                   % store_name)
+            logger.error(msg)
+            # message on stderr will only be visible if started directly via
+            # bin/glance-api, as opposed to being daemonized by glance-control
+            sys.stderr.write(msg)
+            sys.exit(255)
+
 
 class ImageDeserializer(wsgi.JSONRequestDeserializer):
     """Handles deserialization of specific controller method requests."""
 
     def _deserialize(self, request):
         result = {}
-        result['image_meta'] = utils.get_image_meta_from_headers(request)
+        try:
+            result['image_meta'] = utils.get_image_meta_from_headers(request)
+        except exception.Invalid:
+            image_size_str = request.headers['x-image-meta-size']
+            msg = _("Incoming image size of %s was not convertible to "
+                    "an integer.") % image_size_str
+            raise HTTPBadRequest(msg, request=request)
+
+        image_meta = result['image_meta']
+        if 'size' in image_meta:
+            incoming_image_size = image_meta['size']
+            if incoming_image_size > IMAGE_SIZE_CAP:
+                max_image_size = IMAGE_SIZE_CAP
+                msg = _("Denying attempt to upload image larger than "
+                        "%(max_image_size)d. Supplied image size was "
+                        "%(incoming_image_size)d") % locals()
+                logger.warn(msg)
+                raise HTTPBadRequest(msg, request=request)
+
         data = request.body_file if self.has_body(request) else None
         result['image_data'] = data
         return result
@@ -621,6 +713,10 @@ class ImageDeserializer(wsgi.JSONRequestDeserializer):
 
 class ImageSerializer(wsgi.JSONResponseSerializer):
     """Handles serialization of specific controller method responses."""
+
+    def __init__(self, conf):
+        self.conf = conf
+        self.notifier = notifier.Notifier(conf)
 
     def _inject_location_header(self, response, image_meta):
         location = self._get_image_location(image_meta)
@@ -657,6 +753,28 @@ class ImageSerializer(wsgi.JSONResponseSerializer):
         self._inject_checksum_header(response, image_meta)
         return response
 
+    def image_send_notification(self, bytes_written, expected_size,
+                                image_meta, request):
+        """Send an image.send message to the notifier."""
+        try:
+            context = request.context
+            payload = {
+                'bytes_sent': bytes_written,
+                'image_id': image_meta['id'],
+                'owner_id': image_meta['owner'],
+                'receiver_tenant_id': context.tenant,
+                'receiver_user_id': context.user,
+                'destination_ip': request.remote_addr,
+            }
+            if bytes_written != expected_size:
+                self.notifier.error('image.send', payload)
+            else:
+                self.notifier.info('image.send', payload)
+        except Exception, err:
+            msg = _("An error occurred during image.send"
+                    " notification: %(err)s") % locals()
+            logger.error(msg)
+
     def show(self, response, result):
         image_meta = result['image_meta']
         image_id = image_meta['id']
@@ -669,6 +787,16 @@ class ImageSerializer(wsgi.JSONResponseSerializer):
         # size of the image file. See LP Bug #882585.
         def checked_iter(image_id, expected_size, image_iter):
             bytes_written = 0
+
+            def notify_image_sent_hook(env):
+                self.image_send_notification(bytes_written, expected_size,
+                                             image_meta, response.request)
+
+            # Add hook to process after response is fully sent
+            if 'eventlet.posthooks' in response.environ:
+                response.environ['eventlet.posthooks'].append(
+                    (notify_image_sent_hook, (), {}))
+
             try:
                 for chunk in image_iter:
                     yield chunk
@@ -719,8 +847,8 @@ class ImageSerializer(wsgi.JSONResponseSerializer):
         return response
 
 
-def create_resource(options):
+def create_resource(conf):
     """Images resource factory method"""
     deserializer = ImageDeserializer()
-    serializer = ImageSerializer()
-    return wsgi.Resource(Controller(options), deserializer, serializer)
+    serializer = ImageSerializer(conf)
+    return wsgi.Resource(Controller(conf), deserializer, serializer)

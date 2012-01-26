@@ -24,6 +24,8 @@ import json
 
 import webob.dec
 
+from glance.common import wsgi
+
 
 class Controller(object):
 
@@ -31,8 +33,8 @@ class Controller(object):
     A controller that produces information on the Glance API versions.
     """
 
-    def __init__(self, options):
-        self.options = options
+    def __init__(self, conf):
+        self.conf = conf
 
     @webob.dec.wsgify
     def __call__(self, req):
@@ -44,14 +46,14 @@ class Controller(object):
                 "links": [
                     {
                         "rel": "self",
-                        "href": self.get_href()}]},
+                        "href": self.get_href(req)}]},
             {
                 "id": "v1.0",
                 "status": "SUPPORTED",
                 "links": [
                     {
                         "rel": "self",
-                        "href": self.get_href()}]}]
+                        "href": self.get_href(req)}]}]
 
         body = json.dumps(dict(versions=version_objs))
 
@@ -62,6 +64,5 @@ class Controller(object):
 
         return response
 
-    def get_href(self):
-        return "http://%s:%s/v1/" % (self.options['bind_host'],
-                                      self.options['bind_port'])
+    def get_href(self, req):
+        return "%s/v1/" % req.host_url

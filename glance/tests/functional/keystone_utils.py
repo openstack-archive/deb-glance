@@ -66,6 +66,7 @@ log_file = %(log_file)s
 backends = keystone.backends.sqlalchemy
 service-header-mappings = {
         'nova' : 'X-Server-Management-Url',
+        'glance' : 'X-Image-Management-Url',
         'swift' : 'X-Storage-Url',
         'cdn' : 'X-CDN-Management-Url'}
 service_host = 0.0.0.0
@@ -74,6 +75,8 @@ admin_host = 0.0.0.0
 admin_port = %(admin_port)s
 keystone-admin-role = Admin
 keystone-service-admin-role = KeystoneServiceAdmin
+service_ssl = False
+admin_ssl = False
 
 [keystone.backends.sqlalchemy]
 sql_connection = %(sql_connection)s
@@ -128,23 +131,29 @@ class AdminServer(KeystoneServer):
                                           auth_port, admin_port)
 
 
+def patch_copy(base, src, offset, old, new):
+    base.insert(src + offset, base[src].replace(old, new))
+
+
 def conf_patch(server, **subs):
     # First, pull the configuration file
-    conf_base = server.conf_base.split('\n')
+    paste_base = server.paste_conf_base.split('\n')
 
     # Need to find the pipeline
-    for idx, text in enumerate(conf_base):
+    for idx, text in enumerate(paste_base):
         if text.startswith('[pipeline:glance-'):
-            # OK, the line to modify is the next one...
-            modidx = idx + 1
+            # OK, the lines to repeat in modified form
+            # are this and the next one...
+            modidx = idx
             break
 
-    # Now we need to replace the default context field...
-    conf_base[modidx] = conf_base[modidx].replace('context',
-                                                  'tokenauth keystone_shim')
+    # Now we need to add a new pipeline, replacing the default context field...
+    server.deployment_flavor = 'tokenauth+keystoneshim'
+    patch_copy(paste_base, modidx, 2, ']', '-tokenauth+keystoneshim]')
+    patch_copy(paste_base, modidx + 1, 2, 'context', 'tokenauth keystone_shim')
 
     # Put the conf back together and append the keystone pieces
-    server.conf_base = '\n'.join(conf_base) + """
+    server.paste_conf_base = '\n'.join(paste_base) + """
 [filter:tokenauth]
 paste.filter_factory = keystone.middleware.auth_token:filter_factory
 service_protocol = http
@@ -158,7 +167,9 @@ admin_token = 999888777666
 delay_auth_decision = 1
 
 [filter:keystone_shim]
-paste.filter_factory = keystone.middleware.glance_auth_token:filter_factory
+paste.filter_factory = glance.common.wsgi:filter_factory
+glance.filter_factory =
+ keystone.middleware.glance_auth_token:KeystoneContextMiddleware
 """ % subs
 
 
@@ -212,7 +223,7 @@ class KeystoneTests(functional.FunctionalTest):
                    admin_port=self.admin_port)
         conf_patch(self.registry_server, auth_port=self.auth_port,
                    admin_port=self.admin_port)
-        self.registry_server.conf_base += (
+        self.registry_server.paste_conf_base += (
             'context_class = glance.registry.context.RequestContext\n')
 
     def tearDown(self):
@@ -237,7 +248,10 @@ class KeystoneTests(functional.FunctionalTest):
         keystone_conf = self.auth_server.write_conf(**kwargs)
         datafile = os.path.join(os.path.dirname(__file__), 'data',
                                 'keystone_data.py')
-        execute("python %s -c %s" % (datafile, keystone_conf))
+
+        cmd = "python %s -c %s api_port=%d" % \
+              (datafile, keystone_conf, self.api_server.bind_port)
+        execute(cmd)
 
         # Start keystone-auth
         exitcode, out, err = self.auth_server.start(**kwargs)

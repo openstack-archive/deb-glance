@@ -35,10 +35,10 @@ logger = logging.getLogger('glance.api.middleware.version_negotiation')
 
 class VersionNegotiationFilter(wsgi.Middleware):
 
-    def __init__(self, app, options):
-        self.versions_app = versions.Controller(options)
+    def __init__(self, app, conf, **local_conf):
+        self.versions_app = versions.Controller(conf)
         self.version_uri_regex = re.compile(r"^v(\d+)\.?(\d+)?")
-        self.options = options
+        self.conf = conf
         super(VersionNegotiationFilter, self).__init__(app)
 
     def process_request(self, req):
@@ -121,16 +121,3 @@ class VersionNegotiationFilter(wsgi.Middleware):
             req.environ['api.major_version'] = major_version
             req.environ['api.minor_version'] = minor_version
         return match is not None
-
-
-def filter_factory(global_conf, **local_conf):
-    """
-    Factory method for paste.deploy
-    """
-    conf = global_conf.copy()
-    conf.update(local_conf)
-
-    def filter(app):
-        return VersionNegotiationFilter(app, conf)
-
-    return filter

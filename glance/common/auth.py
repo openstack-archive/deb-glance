@@ -82,9 +82,21 @@ class KeystoneStrategy(BaseStrategy):
            case, we rewrite the url to contain /v2.0/ and retry using the v2
            protocol.
         """
-        def _authenticate(auth_url):
-            token_url = urlparse.urljoin(auth_url, "tokens")
+        def check_auth_params():
+            # Ensure that supplied credential parameters are as required
+            for required in ('username', 'password', 'auth_url'):
+                if required not in self.creds:
+                    raise exception.MissingCredentialError(required=required)
+            # For v2.0 also check tenant is present
+            if self.creds['auth_url'].rstrip('/').endswith('v2.0'):
+                if 'tenant' not in self.creds:
+                    raise exception.MissingCredentialError(required='tenant')
 
+        def _authenticate(auth_url):
+            # If OS_AUTH_URL is missing a trailing slash add one
+            if not auth_url.endswith('/'):
+                auth_url += '/'
+            token_url = urlparse.urljoin(auth_url, "tokens")
             # 1. Check Keystone version
             is_v2 = auth_url.rstrip('/').endswith('v2.0')
             if is_v2:
@@ -92,11 +104,7 @@ class KeystoneStrategy(BaseStrategy):
             else:
                 self._v1_auth(token_url)
 
-        for required in ('username', 'password', 'auth_url'):
-            if required not in self.creds:
-                raise Exception(_("'%s' must be included in creds") %
-                                required)
-
+        check_auth_params()
         auth_url = self.creds['auth_url']
         for _ in range(self.MAX_REDIRECTS):
             try:
@@ -132,16 +140,30 @@ class KeystoneStrategy(BaseStrategy):
 
         resp, resp_body = self._do_request(token_url, 'GET', headers=headers)
 
+        def _management_url(self, resp):
+            for url_header in ('x-image-management-url',
+                               'x-server-management-url',
+                               'x-glance'):
+                try:
+                    return resp[url_header]
+                except KeyError as e:
+                    not_found = e
+            raise not_found
+
         if resp.status in (200, 204):
             try:
-                self.management_url = resp['x-server-management-url']
+                self.management_url = _management_url(self, resp)
                 self.auth_token = resp['x-auth-token']
             except KeyError:
                 raise exception.AuthorizationFailure()
         elif resp.status == 305:
             raise exception.AuthorizationRedirect(resp['location'])
+        elif resp.status == 400:
+            raise exception.AuthBadRequest(url=token_url)
         elif resp.status == 401:
             raise exception.NotAuthorized()
+        elif resp.status == 404:
+            raise exception.AuthUrlNotFound(url=token_url)
         else:
             raise Exception(_('Unexpected response: %s' % resp.status))
 
@@ -157,10 +179,6 @@ class KeystoneStrategy(BaseStrategy):
                     }
                 }
             }
-
-        tenant = creds.get('tenant')
-        if tenant:
-            creds['passwordCredentials']['tenantId'] = tenant
 
         headers = {}
         headers['Content-Type'] = 'application/json'
@@ -185,8 +203,12 @@ class KeystoneStrategy(BaseStrategy):
             self.auth_token = resp_auth['token']['id']
         elif resp.status == 305:
             raise exception.RedirectException(resp['location'])
+        elif resp.status == 400:
+            raise exception.AuthBadRequest(url=token_url)
         elif resp.status == 401:
             raise exception.NotAuthorized()
+        elif resp.status == 404:
+            raise exception.AuthUrlNotFound(url=token_url)
         else:
             raise Exception(_('Unexpected response: %s') % resp.status)
 

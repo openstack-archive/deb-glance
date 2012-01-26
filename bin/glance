@@ -131,6 +131,7 @@ def print_image_formatted(client, image):
                                       image['id'])
     print "Id: %s" % image['id']
     print "Public: " + (image['is_public'] and "Yes" or "No")
+    print "Protected: " + (image['protected'] and "Yes" or "No")
     print "Name: %s" % image['name']
     print "Status: %s" % image['status']
     print "Size: %d" % int(image['size'])
@@ -166,6 +167,9 @@ size                Optional. Should be size in bytes of the image if
                     specified.
 is_public           Optional. If specified, interpreted as a boolean value
                     and sets or unsets the image's availability to the public.
+                    The default value is False.
+protected           Optional. If specified, interpreted as a boolean value
+                    and enables or disables deletion protection.
                     The default value is False.
 disk_format         Optional. Possible values are 'vhd','vmdk','raw', 'qcow2',
                     and 'ami'. Default value is 'raw'.
@@ -212,6 +216,8 @@ EXAMPLES
     image_meta = {'name': fields.pop('name'),
                   'is_public': utils.bool_from_string(
                       fields.pop('is_public', False)),
+                  'protected': utils.bool_from_string(
+                      fields.pop('protected', False)),
                   'disk_format': fields.pop('disk_format', 'raw'),
                   'min_disk': fields.pop('min_disk', 0),
                   'min_ram': fields.pop('min_ram', 0),
@@ -234,13 +240,6 @@ EXAMPLES
         # Grab the image data stream from stdin or redirect,
         # otherwise error out
         image_data = sys.stdin
-    else:
-        # Ensure no image data has been given
-        if not sys.stdin.isatty():
-            print "Either supply a location=LOCATION argument or supply image "
-            print "data via a redirect. You have supplied BOTH image data "
-            print "AND a location."
-            return FAILURE
 
     # Add custom attributes, which are all the arguments remaining
     image_meta['properties'] = fields
@@ -298,6 +297,8 @@ name                A name for the image.
 location            The location of the image.
 is_public           If specified, interpreted as a boolean value
                     and sets or unsets the image's availability to the public.
+protected           If specified, interpreted as a boolean value
+                    and enables or disables deletion protection for the image.
 disk_format         Format of the disk image
 container_format    Format of the container
 
@@ -338,6 +339,9 @@ to spell field names correctly. :)"""
     if 'is_public' in fields:
         image_meta['is_public'] = utils.bool_from_string(
             fields.pop('is_public'))
+    if 'protected' in fields:
+        image_meta['protected'] = utils.bool_from_string(
+            fields.pop('protected'))
 
     # Add custom attributes, which are all the arguments remaining
     image_meta['properties'] = fields
@@ -727,11 +731,12 @@ def get_client(options):
     specified by the --host and --port options
     supplied to the CLI
     """
-    creds = dict(username=os.getenv('OS_AUTH_USER'),
-                 password=os.getenv('OS_AUTH_KEY'),
-                 tenant=os.getenv('OS_AUTH_TENANT'),
-                 auth_url=os.getenv('OS_AUTH_URL'),
-                 strategy=os.getenv('OS_AUTH_STRATEGY', 'noauth'))
+    creds = dict(username=options.username or os.getenv('OS_AUTH_USER'),
+                 password=options.password or os.getenv('OS_AUTH_KEY'),
+                 tenant=options.tenant or os.getenv('OS_AUTH_TENANT'),
+                 auth_url=options.auth_url or os.getenv('OS_AUTH_URL'),
+                 strategy=options.auth_strategy or \
+                          os.getenv('OS_AUTH_STRATEGY', 'noauth'))
 
     use_ssl = (options.use_ssl or (
         creds['auth_url'] is not None and
@@ -770,6 +775,21 @@ def create_options(parser):
                       metavar="TOKEN", default=None,
                       help="Authentication token to use to identify the "
                            "client to the glance server")
+    parser.add_option('-I', '--username', dest="username",
+                      metavar="USER", default=None,
+                      help="User name used to acquire an authentication token")
+    parser.add_option('-K', '--password', dest="password",
+                      metavar="PASSWORD", default=None,
+                      help="Password used to acquire an authentication token")
+    parser.add_option('-T', '--tenant', dest="tenant",
+                      metavar="TENANT", default=None,
+                      help="Tenant name")
+    parser.add_option('-N', '--auth_url', dest="auth_url",
+                      metavar="AUTH_URL", default=None,
+                      help="Authentication URL")
+    parser.add_option('-S', '--auth_strategy', dest="auth_strategy",
+                      metavar="STRATEGY", default=None,
+                      help="Authentication strategy (keystone or noauth)")
     parser.add_option('--limit', dest="limit", metavar="LIMIT", default=10,
                       type="int", help="Page size to use while "
                                        "requesting image metadata")

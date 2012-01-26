@@ -70,8 +70,6 @@ from glance.image_cache.drivers import base
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_STALL_TIME = 86400  # 24 hours
-
 
 class Driver(base.Driver):
 
@@ -316,17 +314,6 @@ class Driver(base.Driver):
         path = self.get_image_filepath(image_id)
         inc_xattr(path, 'hits', 1)
 
-    def get_image_filepath(self, image_id, cache_status='active'):
-        """
-        This crafts an absolute path to a specific entry
-
-        :param image_id: Image ID
-        :param cache_status: Status of the image in the cache
-        """
-        if cache_status == 'active':
-            return os.path.join(self.base_dir, str(image_id))
-        return os.path.join(self.base_dir, cache_status, str(image_id))
-
     def queue_image(self, image_id):
         """
         This adds a image to be cache to the queue.
@@ -416,7 +403,7 @@ class Driver(base.Driver):
         return self._reap_old_files(self.incomplete_dir, 'stalled',
                                     grace=grace)
 
-    def clean(self):
+    def clean(self, stall_time=None):
         """
         Delete any image files in the invalid directory and any
         files in the incomplete directory that are older than a
@@ -424,9 +411,10 @@ class Driver(base.Driver):
         """
         self.reap_invalid()
 
-        incomplete_stall_time = int(self.options.get('image_cache_stall_time',
-                                                     DEFAULT_STALL_TIME))
-        self.reap_stalled(incomplete_stall_time)
+        if stall_time is None:
+            stall_time = self.conf.image_cache_stall_time
+
+        self.reap_stalled(stall_time)
 
 
 def get_all_regular_files(basepath):

@@ -14,8 +14,8 @@ logger = logging.getLogger('glance.api.v1.members')
 
 class Controller(object):
 
-    def __init__(self, options):
-        self.options = options
+    def __init__(self, conf):
+        self.conf = conf
 
     def index(self, req, image_id):
         """
@@ -93,6 +93,10 @@ class Controller(object):
             can_share = bool(body['member']['can_share'])
         try:
             registry.add_member(req.context, image_id, id, can_share)
+        except exception.Invalid, e:
+            msg = "%s" % e
+            logger.debug(msg)
+            raise webob.exc.HTTPBadRequest(explanation=msg)
         except exception.NotFound, e:
             msg = "%s" % e
             logger.debug(msg)
@@ -121,6 +125,10 @@ class Controller(object):
 
         try:
             registry.replace_members(req.context, image_id, body)
+        except exception.Invalid, e:
+            msg = "%s" % e
+            logger.debug(msg)
+            raise webob.exc.HTTPBadRequest(explanation=msg)
         except exception.NotFound, e:
             msg = "%s" % e
             logger.debug(msg)
@@ -158,8 +166,8 @@ class Controller(object):
         return dict(shared_images=members)
 
 
-def create_resource(options):
+def create_resource(conf):
     """Image members resource factory method"""
     deserializer = wsgi.JSONRequestDeserializer()
     serializer = wsgi.JSONResponseSerializer()
-    return wsgi.Resource(Controller(options), deserializer, serializer)
+    return wsgi.Resource(Controller(conf), deserializer, serializer)
