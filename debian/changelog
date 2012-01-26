@@ -1,3 +1,9 @@
+glance (2012.1~e2+git82-g98b19af-1) experimental; urgency=low
+
+  * New snapshot release
+
+ -- Ghe Rivero <ghe@debian.org>  Wed, 04 Jan 2012 09:40:55 +0100
+
 glance (2012.1~e2-4) unstable; urgency=low
 
   * Fix new packages replaces
@@ -6,6 +12,12 @@ glance (2012.1~e2-4) unstable; urgency=low
   * Do not fail if db_sync fails
 
  -- Julien Danjou <acid@debian.org>  Tue, 20 Dec 2011 10:26:52 +0100
+
+glance (2012.1~e2+git66-gea99d1c-1) experimental; urgency=low
+
+  * New snapshot release
+
+ -- Ghe Rivero <ghe@debian.org>  Mon, 19 Dec 2011 19:02:57 +0100
 
 glance (2012.1~e2-3) unstable; urgency=low
 
@@ -28,6 +40,12 @@ glance (2012.1~e2-1) unstable; urgency=low
   * New upstream release
 
  -- Ghe Rivero <ghe@debian.org>  Fri, 16 Dec 2011 08:22:26 +0100
+
+glance (2012.1~e1+git41-gb183f43-1) experimental; urgency=low
+
+  * New snapshot release.
+
+ -- Julien Danjou <acid@debian.org>  Fri, 02 Dec 2011 17:33:36 +0100
 
 glance (2012.1~e1-3) unstable; urgency=low
 
