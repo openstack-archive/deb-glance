@@ -1,6 +1,6 @@
 --- a/etc/glance-registry.conf
 +++ b/etc/glance-registry.conf
-@@ -24,7 +24,7 @@
+@@ -21,7 +21,7 @@
  # SQLAlchemy connection string for the reference implementation
  # registry server. Any valid SQLAlchemy connection string is fine.
  # See: http://www.sqlalchemy.org/docs/05/reference/sqlalchemy/connections.html#sqlalchemy.create_engine

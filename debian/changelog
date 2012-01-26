@@ -1,3 +1,9 @@
+glance (2012.1~e3-1) unstable; urgency=low
+
+  * New upstream release
+
+ -- Ghe Rivero <ghe@debian.org>  Thu, 26 Jan 2012 12:20:27 +0100
+
 glance (2012.1~e2+git82-g98b19af-1) experimental; urgency=low
 
   * New snapshot release
