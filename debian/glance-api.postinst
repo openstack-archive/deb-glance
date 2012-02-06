@@ -1,9 +1,36 @@
 #!/bin/sh
+
 set -e
 
 if [ "$1" = "configure" ]
 then
-	chown glance:glance -R /var/lib/glance/ /var/log/glance/
+    chown glance:glance -R /var/lib/glance/ /var/log/glance/
+
+    . /usr/share/debconf/confmodule
+
+    db_get glance/paste-flavor || true
+    FLAVOR="$RET"
+
+    if ! grep -q '\[paste_deploy\]' /etc/glance/glance-api.conf
+    then
+        echo >> /etc/glance/glance-api.conf
+        echo '# This line has been added by debconf' >> /etc/glance/glance-api.conf
+        echo '# Use dpkg-reconfigure glance-common and then' >> /etc/glance/glance-api.conf
+        echo '# dpkg-reconfigure glance-api to change it' >> /etc/glance/glance-api.conf
+        echo '[paste_deploy]' >> /etc/glance/glance-api.conf
+        echo "flavor = $FLAVOR" >> /etc/glance/glance-api.conf
+    else
+        sed -i "s,^flavor\s*=\s*.\+$,flavor = $FLAVOR," /etc/glance/glance-api.conf
+    fi
+
+    case "$FLAVOR" in
+        keystone*)
+            db_get glance-api/auth-url
+            sed -i "s,^auth_uri\s*=\s*.\+$,auth_uri = $RET," /etc/glance/glance-api-paste.ini
+            db_get glance-api/auth-token
+            sed -i "s/^admin_token\s*=\s*.\+$/admin_token = $RET/" /etc/glance/glance-api-paste.ini
+            ;;
+    esac
 fi
 
 #DEBHELPER#

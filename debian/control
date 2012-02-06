@@ -6,7 +6,8 @@ Uploaders: Julien Danjou <acid@debian.org>,
            Thomas Goirand <zigo@debian.org>,
            Ghe Rivero <ghe@debian.org>
 Build-Depends: debhelper (>= 7.0.50),
- python-all (>= 2.6.6-3~)
+ python-all (>= 2.6.6-3~),
+ po-debconf
 Build-Depends-Indep:
  python-setuptools,
  python-sphinx,
@@ -54,6 +55,7 @@ Section: python
 Replaces: glance (<< 2012.1~e2-3)
 Depends: ${python:Depends}, ${misc:Depends},
     adduser,
+    debconf,
     python-eventlet,
     python-glance (= ${source:Version}),
     python-migrate,
@@ -73,7 +75,7 @@ Package: glance-api
 Architecture: all
 Section: python
 Replaces: glance (<< 2012.1~e2-3)
-Depends: ${python:Depends}, ${misc:Depends}, glance-common (= ${source:Version})
+Depends: ${python:Depends}, ${misc:Depends}, glance-common (= ${source:Version}), debconf
 Description: OpenStack Image Registry and Delivery Service - API
  The Glance project provides an image registration, discovery and
  delivery service. These services may be used as stand-along services, and
@@ -86,7 +88,7 @@ Package: glance-registry
 Architecture: all
 Section: python
 Replaces: glance (<< 2012.1~e2-3)
-Depends: ${python:Depends}, ${misc:Depends}, glance-common (= ${source:Version})
+Depends: ${python:Depends}, ${misc:Depends}, glance-common (= ${source:Version}), debconf
 Description: OpenStack Image Registry and Delivery Service - Registry
  The Glance project provides an image registration, discovery and
  delivery service. These services may be used as stand-along services, and
