@@ -20,6 +20,7 @@ Build-Depends-Indep:
  python-kombu,
  python-httplib2 (>= 0.6.0)
 Standards-Version: 3.9.2
+X-Python-Version: >= 2.6
 Homepage: http://launchpad.net/glance
 Vcs-Browser: http://anonscm.debian.org/gitweb/?p=openstack/glance.git;a=summary
 Vcs-Git: git://anonscm.debian.org/openstack/glance.git
