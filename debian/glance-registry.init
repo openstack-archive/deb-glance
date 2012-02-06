@@ -13,7 +13,7 @@
 
 # PATH should only include /usr/* if it runs after the mountnfs.sh script
 PATH=/sbin:/usr/sbin:/bin:/usr/bin
-DESC="OpenStack Imaging Service Registry"
+DESC="OpenStack Image Service Registry"
 NAME=glance-registry
 DAEMON=/usr/bin/glance-registry
 PIDFILE=/var/run/$NAME.pid
@@ -45,7 +45,7 @@ do_stop()
 
 case "$1" in
   start)
-    log_daemon_msg "Starting $DESC " "$NAME"
+    log_daemon_msg "Starting $DESC" "$NAME"
     do_start
     case "$?" in
 		0|1) log_end_msg 0 ;;

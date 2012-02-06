@@ -1,8 +1,9 @@
 glance (2012.1~e3-3) unstable; urgency=low
 
   * Add debconf templates to configure
+  * Change service name in init scripts
 
- -- Julien Danjou <acid@debian.org>  Mon, 06 Feb 2012 13:07:10 +0100
+ -- Julien Danjou <acid@debian.org>  Mon, 06 Feb 2012 16:04:08 +0100
 
 glance (2012.1~e3-2) unstable; urgency=low
 
