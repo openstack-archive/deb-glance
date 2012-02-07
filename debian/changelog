@@ -1,3 +1,9 @@
+glance (2012.1~e3+git23-gc6c458e-1) experimental; urgency=low
+
+  * jenkins
+
+ -- Ghe Rivero <ghe@debian.org>  Wed, 08 Feb 2012 00:21:48 +0100
+
 glance (2012.1~e2+git82-g98b19af-1) experimental; urgency=low
 
   * New snapshot release
