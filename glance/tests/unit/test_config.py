@@ -16,15 +16,15 @@
 #    under the License.
 
 import os.path
+import shutil
 import unittest
 
 import stubout
 
-from glance.api.middleware import version_negotiation
-from glance.api.v1 import images
-from glance.api.v1 import members
 from glance.common import config
+from glance.common import context
 from glance.image_cache import pruner
+from glance.tests import utils as test_utils
 
 
 class TestPasteApp(unittest.TestCase):
@@ -35,19 +35,51 @@ class TestPasteApp(unittest.TestCase):
     def tearDown(self):
         self.stubs.UnsetAll()
 
+    def _do_test_load_paste_app(self,
+                                expected_app_type,
+                                paste_group={},
+                                paste_copy=True,
+                                paste_append=None):
+
+        conf = test_utils.TestConfigOpts(groups=paste_group)
+
+        def _appendto(orig, copy, str):
+            shutil.copy(orig, copy)
+            with open(copy, 'ab') as f:
+                f.write(str or '')
+                f.flush()
+
+        if paste_copy:
+            paste_from = os.path.join(os.getcwd(),
+                                      'etc/glance-registry-paste.ini')
+            paste_to = os.path.join(conf.temp_file.replace('.conf',
+                                                       '-paste.ini'))
+            _appendto(paste_from, paste_to, paste_append)
+
+        app = config.load_paste_app(conf, 'glance-registry')
+
+        self.assertEquals(expected_app_type, type(app))
+
     def test_load_paste_app(self):
-        conf = config.GlanceConfigOpts()
-        conf(['--config-file',
-              os.path.join(os.getcwd(), 'etc/glance-api.conf')])
+        expected_middleware = context.ContextMiddleware
+        self._do_test_load_paste_app(expected_middleware)
 
-        self.stubs.Set(config, 'setup_logging', lambda *a: None)
-        self.stubs.Set(images, 'create_resource', lambda *a: None)
-        self.stubs.Set(members, 'create_resource', lambda *a: None)
+    def test_load_paste_app_with_paste_flavor(self):
+        paste_group = {'paste_deploy': {'flavor': 'incomplete'}}
+        pipeline = '[pipeline:glance-registry-incomplete]\n' + \
+                   'pipeline = context registryapp'
 
-        app = config.load_paste_app(conf, 'glance-api')
+        type = context.ContextMiddleware
+        self._do_test_load_paste_app(type, paste_group, paste_append=pipeline)
 
-        self.assertEquals(version_negotiation.VersionNegotiationFilter,
-                          type(app))
+    def test_load_paste_app_with_paste_config_file(self):
+        paste_config_file = os.path.join(os.getcwd(),
+                                         'etc/glance-registry-paste.ini')
+        paste_group = {'paste_deploy': {'config_file': paste_config_file}}
+
+        expected_middleware = context.ContextMiddleware
+        self._do_test_load_paste_app(expected_middleware,
+                                     paste_group, paste_copy=False)
 
     def test_load_paste_app_with_conf_name(self):
         def fake_join(*args):

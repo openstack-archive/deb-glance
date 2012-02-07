@@ -314,17 +314,6 @@ class Driver(base.Driver):
         path = self.get_image_filepath(image_id)
         inc_xattr(path, 'hits', 1)
 
-    def get_image_filepath(self, image_id, cache_status='active'):
-        """
-        This crafts an absolute path to a specific entry
-
-        :param image_id: Image ID
-        :param cache_status: Status of the image in the cache
-        """
-        if cache_status == 'active':
-            return os.path.join(self.base_dir, str(image_id))
-        return os.path.join(self.base_dir, cache_status, str(image_id))
-
     def queue_image(self, image_id):
         """
         This adds a image to be cache to the queue.
@@ -472,10 +461,9 @@ def get_xattr(path, key, **kwargs):
     default using kwargs.
     """
     namespaced_key = _make_namespaced_xattr_key(key)
-    entry_xattr = xattr.xattr(path)
     try:
-        return entry_xattr[namespaced_key]
-    except KeyError:
+        return xattr.getxattr(path, namespaced_key)
+    except IOError:
         if 'default' in kwargs:
             return kwargs['default']
         else:
@@ -488,8 +476,7 @@ def set_xattr(path, key, value):
     If xattrs aren't supported by the file-system, we skip setting the value.
     """
     namespaced_key = _make_namespaced_xattr_key(key)
-    entry_xattr = xattr.xattr(path)
-    entry_xattr.set(namespaced_key, str(value))
+    xattr.setxattr(path, namespaced_key, str(value))
 
 
 def inc_xattr(path, key, n=1):

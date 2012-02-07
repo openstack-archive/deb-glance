@@ -26,7 +26,7 @@ and spinning down the servers.
 import datetime
 import functools
 import os
-import random
+import re
 import shutil
 import signal
 import socket
@@ -34,10 +34,12 @@ import time
 import unittest
 import urlparse
 
-from glance.common import utils
-from glance.tests.utils import execute, get_unused_port
-
 from sqlalchemy import create_engine
+
+from glance.common import utils
+from glance.tests import utils as test_utils
+
+execute, get_unused_port = test_utils.execute, test_utils.get_unused_port
 
 
 def runs_sql(func):
@@ -81,8 +83,11 @@ class Server(object):
         self.bind_port = port
         self.conf_file_name = None
         self.conf_base = None
+        self.paste_conf_base = None
         self.server_control = './bin/glance-control'
         self.exec_env = None
+        self.deployment_flavor = ''
+        self.server_control_options = ''
 
     def write_conf(self, **kwargs):
         """
@@ -99,20 +104,32 @@ class Server(object):
         if kwargs:
             conf_override.update(**kwargs)
 
-        # A config file to use just for this test...we don't want
+        # A config file and paste.ini to use just for this test...we don't want
         # to trample on currently-running Glance servers, now do we?
 
         conf_dir = os.path.join(self.test_dir, 'etc')
         conf_filepath = os.path.join(conf_dir, "%s.conf" % self.server_name)
+        paste_conf_filepath = conf_filepath.replace(".conf", "-paste.ini")
         utils.safe_mkdirs(conf_dir)
-        with open(conf_filepath, 'wb') as conf_file:
-            conf_file.write(self.conf_base % conf_override)
-            conf_file.flush()
-            self.conf_file_name = conf_file.name
+
+        def override_conf(filepath, base, override):
+            with open(filepath, 'wb') as conf_file:
+                conf_file.write(base % override)
+                conf_file.flush()
+                return conf_file.name
+
+        self.conf_file_name = override_conf(conf_filepath,
+                                            self.conf_base,
+                                            conf_override)
+
+        if self.paste_conf_base:
+            override_conf(paste_conf_filepath,
+                          self.paste_conf_base,
+                          conf_override)
 
         return self.conf_file_name
 
-    def start(self, **kwargs):
+    def start(self, expected_exitcode=0, **kwargs):
         """
         Starts the server.
 
@@ -124,9 +141,13 @@ class Server(object):
         self.write_conf(**kwargs)
 
         cmd = ("%(server_control)s %(server_name)s start "
-               "%(conf_file_name)s --pid-file=%(pid_file)s"
+               "%(conf_file_name)s --pid-file=%(pid_file)s "
+               "%(server_control_options)s"
                % self.__dict__)
-        return execute(cmd, no_venv=self.no_venv, exec_env=self.exec_env)
+        return execute(cmd,
+                       no_venv=self.no_venv,
+                       exec_env=self.exec_env,
+                       expected_exitcode=expected_exitcode)
 
     def stop(self):
         """
@@ -144,7 +165,8 @@ class ApiServer(Server):
     Server object that starts/stops/manages the API server
     """
 
-    def __init__(self, test_dir, port, registry_port, delayed_delete=False):
+    def __init__(self, test_dir, port, registry_port, policy_file,
+            delayed_delete=False):
         super(ApiServer, self).__init__(test_dir, port)
         self.server_name = 'api'
         self.default_store = 'file'
@@ -175,10 +197,13 @@ class ApiServer(Server):
         self.rbd_store_chunk_size = 4
         self.delayed_delete = delayed_delete
         self.owner_is_tenant = True
-        self.cache_pipeline = ""  # Set to cache for cache middleware
+        self.workers = 0
         self.image_cache_dir = os.path.join(self.test_dir,
                                             'cache')
         self.image_cache_driver = 'sqlite'
+        self.policy_file = policy_file
+        self.policy_default_rule = 'default'
+        self.server_control_options = '--capture-output'
         self.conf_base = """[DEFAULT]
 verbose = %(verbose)s
 debug = %(debug)s
@@ -208,13 +233,24 @@ rbd_store_pool = %(rbd_store_pool)s
 rbd_store_ceph_conf = %(rbd_store_ceph_conf)s
 delayed_delete = %(delayed_delete)s
 owner_is_tenant = %(owner_is_tenant)s
+workers = %(workers)s
 scrub_time = 5
 scrubber_datadir = %(scrubber_datadir)s
 image_cache_dir = %(image_cache_dir)s
 image_cache_driver = %(image_cache_driver)s
+policy_file = %(policy_file)s
+policy_default_rule = %(policy_default_rule)s
+[paste_deploy]
+flavor = %(deployment_flavor)s
+"""
+        self.paste_conf_base = """[pipeline:glance-api]
+pipeline = versionnegotiation context apiv1app
 
-[pipeline:glance-api]
-pipeline = versionnegotiation context %(cache_pipeline)s apiv1app
+[pipeline:glance-api-caching]
+pipeline = versionnegotiation context cache apiv1app
+
+[pipeline:glance-api-cachemanagement]
+pipeline = versionnegotiation context cache cache_manage apiv1app
 
 [app:apiv1app]
 paste.app_factory = glance.common.wsgi:app_factory
@@ -257,6 +293,7 @@ class RegistryServer(Server):
                                          "registry.pid")
         self.log_file = os.path.join(self.test_dir, "registry.log")
         self.owner_is_tenant = True
+        self.server_control_options = '--capture-output'
         self.conf_base = """[DEFAULT]
 verbose = %(verbose)s
 debug = %(debug)s
@@ -268,8 +305,10 @@ sql_idle_timeout = 3600
 api_limit_max = 1000
 limit_param_default = 25
 owner_is_tenant = %(owner_is_tenant)s
-
-[pipeline:glance-registry]
+[paste_deploy]
+flavor = %(deployment_flavor)s
+"""
+        self.paste_conf_base = """[pipeline:glance-registry]
 pipeline = context registryapp
 
 [app:registryapp]
@@ -308,8 +347,8 @@ wakeup_time = 2
 scrubber_datadir = %(scrubber_datadir)s
 registry_host = 0.0.0.0
 registry_port = %(registry_port)s
-
-[app:glance-scrubber]
+"""
+        self.paste_conf_base = """[app:glance-scrubber]
 paste.app_factory = glance.common.wsgi:app_factory
 glance.app_factory = glance.store.scrubber:Scrubber
 """
@@ -326,18 +365,19 @@ class FunctionalTest(unittest.TestCase):
     disabled = False
 
     def setUp(self):
-
-        self.test_id = random.randint(0, 100000)
-        self.test_dir = os.path.join("/", "tmp", "test.%d" % self.test_id)
-        utils.safe_mkdirs(self.test_dir)
+        self.test_id, self.test_dir = test_utils.get_isolated_test_env()
 
         self.api_protocol = 'http'
         self.api_port = get_unused_port()
         self.registry_port = get_unused_port()
 
+        self.copy_data_file('policy.json', self.test_dir)
+        self.policy_file = os.path.join(self.test_dir, 'policy.json')
+
         self.api_server = ApiServer(self.test_dir,
                                     self.api_port,
-                                    self.registry_port)
+                                    self.registry_port,
+                                    self.policy_file)
         self.registry_server = RegistryServer(self.test_dir,
                                               self.registry_port)
 
@@ -406,11 +446,39 @@ class FunctionalTest(unittest.TestCase):
             if os.path.exists(f):
                 os.unlink(f)
 
+    def start_server(self,
+                     server,
+                     expect_launch,
+                     expected_exitcode=0,
+                     **kwargs):
+        """
+        Starts a server on an unused port.
+
+        Any kwargs passed to this method will override the configuration
+        value in the conf file used in starting the server.
+
+        :param server: the server to launch
+        :param expect_launch: true iff the server is expected to
+                              successfully start
+        :param expected_exitcode: expected exitcode from the launcher
+        """
+        self.cleanup()
+
+        # Start up the requested server
+        exitcode, out, err = server.start(expected_exitcode=expected_exitcode,
+                                          **kwargs)
+
+        self.assertEqual(expected_exitcode, exitcode,
+                         "Failed to spin up the requested server. "
+                         "Got: %s" % err)
+        self.assertTrue(re.search("Starting glance-[a-z]+ with", out))
+
+        self.wait_for_servers([server.bind_port], expect_launch)
+
     def start_servers(self, **kwargs):
         """
-        Starts the API and Registry servers (bin/glance-api and
-        bin/glance-registry) on unused ports and returns a tuple
-        of the (api_port, registry_port, conf_file_name).
+        Starts the API and Registry servers (bin/glance-control api start
+        & bin/glance-control registry start) on unused ports.
 
         Any kwargs passed to this method will override the configuration
         value in the conf file used in starting the servers.
@@ -439,7 +507,7 @@ class FunctionalTest(unittest.TestCase):
                          "Got: %s" % err)
         self.assertTrue("Starting glance-scrubber with" in out)
 
-        self.wait_for_servers()
+        self.wait_for_servers([self.api_port, self.registry_port])
 
     def ping_server(self, port):
         """
@@ -457,23 +525,31 @@ class FunctionalTest(unittest.TestCase):
         except socket.error, e:
             return False
 
-    def wait_for_servers(self, timeout=3):
+    def wait_for_servers(self, ports, expect_launch=True, timeout=3):
         """
-        Tight loop, waiting for both API and registry server to be
-        available on the ports. Returns when both are pingable. There
-        is a timeout on waiting for the servers to come up.
+        Tight loop, waiting for the given server port(s) to be available.
+        Returns when all are pingable. There is a timeout on waiting
+        for the servers to come up.
 
+        :param ports: Glance server ports to ping
+        :param expect_launch: Optional, true iff the server(s) are
+                              expected to successfully start
         :param timeout: Optional, defaults to 3 seconds
         """
         now = datetime.datetime.now()
         timeout_time = now + datetime.timedelta(seconds=timeout)
         while (timeout_time > now):
-            if self.ping_server(self.api_port) and\
-               self.ping_server(self.registry_port):
+            pinged = 0
+            for port in ports:
+                if self.ping_server(port):
+                    pinged += 1
+            if pinged == len(ports):
+                self.assertTrue(expect_launch,
+                                "Unexpected server launch status")
                 return
             now = datetime.datetime.now()
             time.sleep(0.05)
-        self.assertFalse(True, "Failed to start servers.")
+        self.assertFalse(expect_launch, "Unexpected server launch status")
 
     def stop_servers(self):
         """
@@ -522,3 +598,9 @@ class FunctionalTest(unittest.TestCase):
         engine = create_engine(self.registry_server.sql_connection,
                                pool_recycle=30)
         return engine.execute(sql)
+
+    def copy_data_file(self, file_name, dst_dir):
+        src_file_name = os.path.join('glance/tests/etc', file_name)
+        shutil.copy(src_file_name, dst_dir)
+        dst_file_name = os.path.join(dst_dir, file_name)
+        return dst_file_name

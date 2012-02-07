@@ -20,6 +20,7 @@
 import errno
 import functools
 import os
+import random
 import socket
 import subprocess
 import tempfile
@@ -27,38 +28,82 @@ import tempfile
 import nose.plugins.skip
 
 from glance.common import config
+from glance.common import utils
+
+
+def get_isolated_test_env():
+    """
+    Returns a tuple of (test_id, test_dir) that is unique
+    for an isolated test environment. Also ensure the test_dir
+    is created.
+    """
+    test_id = random.randint(0, 100000)
+    test_dir = os.path.join("/", "tmp", "test.%d" % test_id)
+    utils.safe_mkdirs(test_dir)
+    return test_id, test_dir
 
 
 class TestConfigOpts(config.GlanceConfigOpts):
+    """
+    Support easily controllable config for unit tests, avoiding the
+    need to manipulate config files directly.
 
-    def __init__(self, test_values):
+    Configuration values are provided as a dictionary of key-value pairs,
+    in the simplest case feeding into the DEFAULT group only.
+
+    Non-default groups may also populated via nested dictionaries, e.g.
+
+      {'snafu': {'foo': 'bar', 'bells': 'whistles'}}
+
+    equates to config of form:
+
+      [snafu]
+      foo = bar
+      bells = whistles
+
+    The config so provided is dumped to a temporary file, with its path
+    exposed via the temp_file property.
+
+    :param test_values: dictionary of key-value pairs for the
+                        DEFAULT group
+    :param groups:      nested dictionary of key-value pairs for
+                        non-default groups
+    """
+
+    def __init__(self, test_values={}, groups={}):
         super(TestConfigOpts, self).__init__()
         self._test_values = test_values
+        self._test_groups = groups
+
+        self.temp_file = os.path.join(tempfile.mkdtemp(), 'testcfg.conf')
+
         self()
 
     def __call__(self):
-        config_file = self._write_tmp_config_file()
+        self._write_tmp_config_file()
         try:
             super(TestConfigOpts, self).\
-                __call__(['--config-file', config_file])
+                __call__(['--config-file', self.temp_file])
         finally:
-            os.remove(config_file)
+            os.remove(self.temp_file)
 
     def _write_tmp_config_file(self):
         contents = '[DEFAULT]\n'
         for key, value in self._test_values.items():
             contents += '%s = %s\n' % (key, value)
 
-        (fd, path) = tempfile.mkstemp(prefix='testcfg')
-        try:
-            os.write(fd, contents)
-        except Exception, e:
-            os.close(fd)
-            os.remove(path)
-            raise e
+        for group, settings in self._test_groups.items():
+            contents += '[%s]\n' % group
+            for key, value in settings.items():
+                contents += '%s = %s\n' % (key, value)
 
-        os.close(fd)
-        return path
+        try:
+            with open(self.temp_file, 'wb') as f:
+                f.write(contents)
+                f.flush()
+        except Exception, e:
+            os.remove(self.temp_file)
+            raise e
 
 
 class skip_test(object):
@@ -123,7 +168,11 @@ def skip_if_disabled(func):
     return wrapped
 
 
-def execute(cmd, raise_error=True, no_venv=False, exec_env=None):
+def execute(cmd,
+            raise_error=True,
+            no_venv=False,
+            exec_env=None,
+            expected_exitcode=0):
     """
     Executes a command in a subprocess. Returns a tuple
     of (exitcode, out, err), where out is the string output
@@ -138,6 +187,7 @@ def execute(cmd, raise_error=True, no_venv=False, exec_env=None):
                      variables; values may be callables, which will
                      be passed the current value of the named
                      environment variable
+    :param expected_exitcode: expected exitcode from the launcher
     """
 
     env = os.environ.copy()
@@ -174,7 +224,7 @@ def execute(cmd, raise_error=True, no_venv=False, exec_env=None):
     result = process.communicate()
     (out, err) = result
     exitcode = process.returncode
-    if process.returncode != 0 and raise_error:
+    if process.returncode != expected_exitcode and raise_error:
         msg = "Command %(cmd)s did not succeed. Returned an exit "\
               "code of %(exitcode)d."\
               "\n\nSTDOUT: %(out)s"\
@@ -232,8 +282,7 @@ def xattr_writes_supported(path):
         return False
 
     def set_xattr(path, key, value):
-        entry_xattr = xattr.xattr(path)
-        entry_xattr.set("user.%s" % key, str(value))
+        xattr.setxattr(path, "user.%s" % key, str(value))
 
     # We do a quick attempt to write a user xattr to a temporary file
     # to check that the filesystem is even enabled to support xattrs

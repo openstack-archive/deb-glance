@@ -79,6 +79,10 @@ class Duplicate(GlanceException):
     message = _("An object with the same identifier already exists.")
 
 
+class StorageFull(GlanceException):
+    message = _("There is not enough disk space on the image storage media.")
+
+
 class ImportFailure(GlanceException):
     message = _("Failed to import requested object/class: '%(import_str)s'. "
                 "Reason: %(reason)s")
@@ -97,6 +101,10 @@ class AuthorizationFailure(GlanceException):
 
 
 class NotAuthorized(GlanceException):
+    message = _("You are not authorized to complete this action.")
+
+
+class NotAuthorizedPublicImage(NotAuthorized):
     message = _("You are not authorized to complete this action.")
 
 

@@ -35,6 +35,7 @@ from glance.registry import client as rclient
 from glance.registry import context as rcontext
 from glance.tests import stubs
 from glance.tests import utils as test_utils
+from glance.tests.unit import base
 
 CONF = {'sql_connection': 'sqlite://'}
 
@@ -58,18 +59,22 @@ class TestBadClients(unittest.TestCase):
     def test_ssl_no_key_file(self):
         """
         Test that when doing SSL connection, a key file is
-        required
+        required if a cert file has been specified
         """
         try:
-            c = client.Client("0.0.0.0", use_ssl=True)
+            with tempfile.NamedTemporaryFile() as cert_file:
+                cert_file.write("bogus-cert")
+                cert_file.flush()
+            c = client.Client("0.0.0.0", use_ssl=True,
+                              cert_file=cert_file.name)
         except exception.ClientConnectionError:
             return
         self.fail("Did not raise ClientConnectionError")
 
     def test_ssl_non_existing_key_file(self):
         """
-        Test that when doing SSL connection, a key file is
-        required to exist
+        Test that when doing SSL connection, a specified key
+        file is required to exist
         """
         try:
             c = client.Client("0.0.0.0", use_ssl=True,
@@ -81,11 +86,11 @@ class TestBadClients(unittest.TestCase):
     def test_ssl_no_cert_file(self):
         """
         Test that when doing SSL connection, a cert file is
-        required
+        required if a key file has been specified
         """
         try:
             with tempfile.NamedTemporaryFile() as key_file:
-                key_file.write("bogus")
+                key_file.write("bogus-key")
                 key_file.flush()
                 c = client.Client("0.0.0.0", use_ssl=True,
                                   key_file=key_file.name)
@@ -96,11 +101,11 @@ class TestBadClients(unittest.TestCase):
     def test_ssl_non_existing_cert_file(self):
         """
         Test that when doing SSL connection, a cert file is
-        required to exist
+        required to exist if specified
         """
         try:
             with tempfile.NamedTemporaryFile() as key_file:
-                key_file.write("bogus")
+                key_file.write("bogus-key")
                 key_file.flush()
                 c = client.Client("0.0.0.0", use_ssl=True,
                                   key_file=key_file.name,
@@ -109,17 +114,28 @@ class TestBadClients(unittest.TestCase):
             return
         self.fail("Did not raise ClientConnectionError")
 
+    def test_ssl_non_existing_ca_file(self):
+        """
+        Test that when doing SSL connection, a specified CA file exists
+        """
+        try:
+            c = client.Client("0.0.0.0", use_ssl=True,
+                              ca_file='nonexistingfile')
+        except exception.ClientConnectionError:
+            return
+        self.fail("Did not raise ClientConnectionError")
+
     def test_ssl_optional_ca_file(self):
         """
         Test that when doing SSL connection, a cert file and key file are
-        required to exist, but a CA file is optional.
+        required to exist if specified, but a CA file is optional.
         """
         try:
             with tempfile.NamedTemporaryFile() as key_file:
-                key_file.write("bogus")
+                key_file.write("bogus-key")
                 key_file.flush()
                 with tempfile.NamedTemporaryFile() as cert_file:
-                    cert_file.write("bogus")
+                    cert_file.write("bogus-cert")
                     cert_file.flush()
                     c = client.Client("0.0.0.0", use_ssl=True,
                                       key_file=key_file.name,
@@ -128,7 +144,7 @@ class TestBadClients(unittest.TestCase):
             self.fail("Raised ClientConnectionError when it should not")
 
 
-class TestRegistryClient(unittest.TestCase):
+class TestRegistryClient(base.IsolatedUnitTest):
 
     """
     Test proper actions made for both valid and invalid requests
@@ -137,10 +153,8 @@ class TestRegistryClient(unittest.TestCase):
 
     def setUp(self):
         """Establish a clean test environment"""
-        self.stubs = stubout.StubOutForTesting()
-        stubs.stub_out_registry_and_store_server(self.stubs)
-        conf = test_utils.TestConfigOpts(CONF)
-        db_api.configure_db(conf)
+        super(TestRegistryClient, self).setUp()
+        db_api.configure_db(self.conf)
         self.context = rcontext.RequestContext(is_admin=True)
         self.FIXTURES = [
             {'id': UUID1,
@@ -177,7 +191,7 @@ class TestRegistryClient(unittest.TestCase):
 
     def tearDown(self):
         """Clear the test environment"""
-        self.stubs.UnsetAll()
+        super(TestRegistryClient, self).tearDown()
         self.destroy_fixtures()
 
     def create_fixtures(self):
@@ -1128,7 +1142,7 @@ class TestRegistryClient(unittest.TestCase):
                           self.client.delete_member, UUID2, 'pattieblack')
 
 
-class TestClient(unittest.TestCase):
+class TestClient(base.IsolatedUnitTest):
 
     """
     Test proper actions made for both valid and invalid requests
@@ -1137,11 +1151,8 @@ class TestClient(unittest.TestCase):
 
     def setUp(self):
         """Establish a clean test environment"""
-        self.stubs = stubout.StubOutForTesting()
-        stubs.stub_out_registry_and_store_server(self.stubs)
-        stubs.stub_out_filesystem_backend()
-        conf = test_utils.TestConfigOpts(CONF)
-        db_api.configure_db(conf)
+        super(TestClient, self).setUp()
+        db_api.configure_db(self.conf)
         self.client = client.Client("0.0.0.0")
         self.FIXTURES = [
             {'id': UUID1,
@@ -1156,7 +1167,7 @@ class TestClient(unittest.TestCase):
              'deleted': False,
              'checksum': None,
              'size': 13,
-             'location': "swift://user:passwd@acct/container/obj.tar.0",
+             'location': "file:///%s/%s" % (self.test_dir, UUID1),
              'properties': {'type': 'kernel'}},
             {'id': UUID2,
              'name': 'fake image #2',
@@ -1170,7 +1181,7 @@ class TestClient(unittest.TestCase):
              'deleted': False,
              'checksum': None,
              'size': 19,
-             'location': "file:///tmp/glance-tests/2",
+             'location': "file:///%s/%s" % (self.test_dir, UUID2),
              'properties': {}}]
         self.context = rcontext.RequestContext(is_admin=True)
         self.destroy_fixtures()
@@ -1178,13 +1189,16 @@ class TestClient(unittest.TestCase):
 
     def tearDown(self):
         """Clear the test environment"""
-        stubs.clean_out_fake_filesystem_backend()
-        self.stubs.UnsetAll()
+        super(TestClient, self).tearDown()
         self.destroy_fixtures()
 
     def create_fixtures(self):
         for fixture in self.FIXTURES:
             db_api.image_create(self.context, fixture)
+            # We write a fake image file to the filesystem
+            with open("%s/%s" % (self.test_dir, fixture['id']), 'wb') as image:
+                image.write("chunk00000remainder")
+                image.flush()
 
     def destroy_fixtures(self):
         # Easiest to just drop the models and re-create them...
@@ -1813,6 +1827,60 @@ class TestClient(unittest.TestCase):
         self.assertEquals(image_data_fixture, new_image_data)
         for k, v in fixture.items():
             self.assertEquals(v, new_meta[k])
+
+    def _add_image_as_iterable(self):
+        fixture = {'name': 'fake public image',
+                   'is_public': True,
+                   'disk_format': 'vhd',
+                   'container_format': 'ovf',
+                   'size': 10 * 65536,
+                   'properties': {'distro': 'Ubuntu 10.04 LTS'},
+                  }
+
+        class Zeros:
+            def __init__(self, chunks):
+                self.chunks = chunks
+                self.zeros = open('/dev/zero', 'rb')
+
+            def __iter__(self):
+                while self.chunks > 0:
+                    self.chunks -= 1
+                    chunk = self.zeros.read(65536)
+                    yield chunk
+
+        new_image = self.client.add_image(fixture, Zeros(10))
+        new_image_id = new_image['id']
+
+        new_meta, new_image_chunks = self.client.get_image(new_image_id)
+
+        return (fixture, new_meta, new_image_chunks)
+
+    def _verify_image_iterable(self, fixture, meta, chunks):
+        image_data_len = 0
+        for image_chunk in chunks:
+            image_data_len += len(image_chunk)
+        self.assertEquals(10 * 65536, image_data_len)
+
+        for k, v in fixture.items():
+            self.assertEquals(v, meta[k])
+
+    def test_add_image_with_image_data_as_iterable(self):
+        """Tests we can add image by passing image data as an iterable"""
+        fixture, new_meta, new_chunks = self._add_image_as_iterable()
+
+        self._verify_image_iterable(fixture, new_meta, new_chunks)
+
+    def test_roundtrip_image_with_image_data_as_iterable(self):
+        """Tests we can roundtrip image as an iterable"""
+        fixture, new_meta, new_chunks = self._add_image_as_iterable()
+
+        # duplicate directly from iterable returned from get
+        dup_image = self.client.add_image(fixture, new_chunks)
+        dup_image_id = dup_image['id']
+
+        roundtrip_meta, roundtrip_chunks = self.client.get_image(dup_image_id)
+
+        self._verify_image_iterable(fixture, roundtrip_meta, roundtrip_chunks)
 
     def test_add_image_with_image_data_as_string_and_no_size(self):
         """Tests add image by passing image data as string w/ no size attr"""

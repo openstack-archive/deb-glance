@@ -38,9 +38,9 @@ class StoreLocation(glance.store.location.StoreLocation):
     Class describing an S3 URI. An S3 URI can look like any of
     the following:
 
-        s3://accesskey:secretkey@s3service.com/bucket/key-id
-        s3+http://accesskey:secretkey@s3service.com/bucket/key-id
-        s3+https://accesskey:secretkey@s3service.com/bucket/key-id
+        s3://accesskey:secretkey@s3.amazonaws.com/bucket/key-id
+        s3+http://accesskey:secretkey@s3.amazonaws.com/bucket/key-id
+        s3+https://accesskey:secretkey@s3.amazonaws.com/bucket/key-id
 
     The s3+https:// URIs indicate there is an HTTPS s3service URL
     """
@@ -84,15 +84,19 @@ class StoreLocation(glance.store.location.StoreLocation):
         This function works around that issue.
         """
         # Make sure that URIs that contain multiple schemes, such as:
-        # swift://user:pass@http://authurl.com/v1/container/obj
+        # s3://accesskey:secretkey@https://s3.amazonaws.com/bucket/key-id
         # are immediately rejected.
         if uri.count('://') != 1:
-            reason = _("URI Cannot contain more than one occurrence of a "
-                      "scheme. If you have specified a "
-                      "URI like s3://user:pass@https://s3.amazonaws.com/"
-                      "bucket/key, you need to change it to use the "
-                      "s3+https:// scheme, like so: "
-                      "s3+https://user:pass@s3.amazonaws.com/bucket/key")
+            reason = _(
+                    "URI cannot contain more than one occurrence of a scheme."
+                    "If you have specified a URI like "
+                    "s3://accesskey:secretkey@https://s3.amazonaws.com/bucket/"
+                    "key-id"
+                    ", you need to change it to use the s3+https:// scheme, "
+                    "like so: "
+                    "s3+https://accesskey:secretkey@s3.amazonaws.com/bucket/"
+                    "key-id"
+                      )
             raise exception.BadStoreUri(uri, reason)
 
         pieces = urlparse.urlparse(uri)
@@ -213,7 +217,7 @@ class Store(glance.store.base.Store):
 
         self.scheme = 's3'
         if self.s3_host.startswith('https://'):
-            self.scheme = 'swift+https'
+            self.scheme = 's3+https'
             self.full_s3_host = self.s3_host
         elif self.s3_host.startswith('http://'):
             self.full_s3_host = self.s3_host
@@ -243,6 +247,27 @@ class Store(glance.store.base.Store):
                         from glance.store.location.get_location_from_uri()
         :raises `glance.exception.NotFound` if image does not exist
         """
+        key = self._retrieve_key(location)
+
+        key.BufferSize = self.CHUNKSIZE
+        return (ChunkedFile(key), key.size)
+
+    def get_size(self, location):
+        """
+        Takes a `glance.store.location.Location` object that indicates
+        where to find the image file, and returns the image_size (or 0
+        if unavailable)
+
+        :param location `glance.store.location.Location` object, supplied
+                        from glance.store.location.get_location_from_uri()
+        """
+        try:
+            key = self._retrieve_key(location)
+            return key.size
+        except Exception:
+            return 0
+
+    def _retrieve_key(self, location):
         loc = location.store_location
         from boto.s3.connection import S3Connection
 
@@ -260,13 +285,7 @@ class Store(glance.store.base.Store):
                 'obj_name': loc.key})
         logger.debug(msg)
 
-        #if expected_size and (key.size != expected_size):
-        #   msg = "Expected %s bytes, got %s" % (expected_size, key.size)
-        #   logger.error(msg)
-        #   raise glance.store.BackendException(msg)
-
-        key.BufferSize = self.CHUNKSIZE
-        return (ChunkedFile(key), key.size)
+        return key
 
     def add(self, image_id, image_file, image_size):
         """

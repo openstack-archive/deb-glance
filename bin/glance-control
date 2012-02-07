@@ -24,11 +24,12 @@ Thanks for some of the code, Swifties ;)
 from __future__ import with_statement
 
 import errno
+import fcntl
 import gettext
 import os
-import optparse
 import resource
 import signal
+import subprocess
 import sys
 import time
 
@@ -112,42 +113,86 @@ def do_start(server, conf, args):
         fp.write('%d\n' % pid)
         fp.close()
 
-    def launch(ini_file, pid_file):
-        print 'Starting %s with %s' % (server, ini_file)
+    def await_child(pid):
+        if conf.await_child:
+            bail_time = time.time() + conf.await_child
+            while time.time() < bail_time:
+                reported_pid, status = os.waitpid(pid, os.WNOHANG)
+                if reported_pid == pid:
+                    global exitcode
+                    # the exit code is encoded in 2nd least significant byte
+                    exitcode = status >> 8
+                    break
+                time.sleep(0.05)
+
+    def redirect_to_null(fds):
+        with open(os.devnull, 'r+b') as nullfile:
+            for desc in fds:  # close fds
+                try:
+                    os.dup2(nullfile.fileno(), desc)
+                except OSError:
+                    pass
+
+    def redirect_to_syslog(fds, server):
+        log_cmd = '/usr/bin/logger -t "%s[%d]"' % (server, os.getpid())
+        process = subprocess.Popen(log_cmd,
+                                   shell=True,
+                                   stdin=subprocess.PIPE)
+        for desc in fds:  # pipe to logger command
+            try:
+                os.dup2(process.stdin.fileno(), desc)
+            except OSError:
+                pass
+
+    def redirect_stdio(conf, server):
+        input = [sys.stdin.fileno()]
+        output = [sys.stdout.fileno(), sys.stderr.fileno()]
+
+        redirect_to_null(input)
+        if conf.capture_output:
+            redirect_to_syslog(output, server)
+        else:
+            redirect_to_null(output)
+
+    def close_stdio_on_exec():
+        fds = [sys.stdin.fileno(), sys.stdout.fileno(), sys.stderr.fileno()]
+        for desc in fds:  # set close on exec flag
+            fcntl.fcntl(desc, fcntl.F_SETFD, fcntl.FD_CLOEXEC)
+
+    def launch(pid_file, conf_file=None):
+        args = [server]
+        print 'Starting %s' % server,
+        if conf_file:
+            args += ['--config-file', conf_file]
+            print 'with %s' % conf_file,
+        print
+
+        close_stdio_on_exec()
 
         pid = os.fork()
         if pid == 0:
             os.setsid()
-            with open(os.devnull, 'r+b') as nullfile:
-                for desc in (0, 1, 2):  # close stdio
-                    try:
-                        os.dup2(nullfile.fileno(), desc)
-                    except OSError:
-                        pass
+            redirect_stdio(conf, server)
             try:
-                os.execlp('%s' % server, server, '--config-file', ini_file)
+                os.execlp('%s' % server, *args)
             except OSError, e:
                 sys.exit('unable to launch %s. Got error: %s'
                          % (server, "%s" % e))
             sys.exit(0)
         else:
             write_pid_file(pid_file, pid)
+            await_child(pid)
 
     if not conf.pid_file:
         pid_file = '/var/run/glance/%s.pid' % server
     else:
         pid_file = os.path.abspath(conf.pid_file)
 
-    try:
-        if args and os.path.exists(args[0]):
-            conf_file = os.path.abspath(os.path.expanduser(args[0]))
-        else:
-            # Assume paste config is in the last config file
-            conf_file = conf.config_file[-1]
-    except RuntimeError, err:
-        sys.exit("Could not find any configuration file to use: %s" % err)
+    conf_file = None
+    if args and os.path.exists(args[0]):
+        conf_file = os.path.abspath(os.path.expanduser(args[0]))
 
-    launch(conf_file, pid_file)
+    launch(pid_file, conf_file)
 
 
 def do_stop(server, conf, args, graceful=False):
@@ -182,15 +227,32 @@ def do_stop(server, conf, args, graceful=False):
 
 
 if __name__ == '__main__':
+    exitcode = 0
+
     conf = config.GlanceConfigOpts(usage=USAGE)
-    conf.register_cli_opt(cfg.StrOpt('pid-file',
-                                     metavar='PATH',
-                                     help='File to use as pid file. Default: '
-                                          '/var/run/glance/$server.pid'))
+
+    opts = [
+            cfg.StrOpt('pid-file',
+                       metavar='PATH',
+                       help='File to use as pid file. Default: '
+                       '/var/run/glance/$server.pid'),
+            cfg.IntOpt('await-child',
+                       metavar='DELAY',
+                       default=0,
+                       help='Period to wait for service death '
+                            'in order to report exit code '
+                            '(default is to not wait at all)'),
+            cfg.BoolOpt('capture-output',
+                        default=False,
+                        help='Capture stdout/err in syslog '
+                        'instead of discarding'),
+        ]
+    conf.register_cli_opts(opts)
+
     args = conf()
 
     if len(args) < 2:
-        oparser.print_usage()
+        conf.print_usage()
         sys.exit(1)
 
     server = args.pop(0).lower()
@@ -236,3 +298,5 @@ if __name__ == '__main__':
         for server in servers:
             do_stop(server, conf, args, graceful=True)
             do_start(server, conf, args)
+
+    sys.exit(exitcode)

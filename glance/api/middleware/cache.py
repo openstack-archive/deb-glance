@@ -46,7 +46,7 @@ class CacheFilter(wsgi.Middleware):
     def __init__(self, app, conf, **local_conf):
         self.conf = conf
         self.cache = image_cache.ImageCache(conf)
-        self.serializer = images.ImageSerializer()
+        self.serializer = images.ImageSerializer(conf)
         logger.info(_("Initialized image cache middleware"))
         super(CacheFilter, self).__init__(app)
 
@@ -80,7 +80,12 @@ class CacheFilter(wsgi.Middleware):
             try:
                 image_meta = registry.get_image_metadata(context, image_id)
 
-                response = webob.Response()
+                if not image_meta['size']:
+                    # override image size metadata with the actual cached
+                    # file size, see LP Bug #900959
+                    image_meta['size'] = self.cache.get_image_size(image_id)
+
+                response = webob.Response(request=request)
                 return self.serializer.show(response, {
                     'image_iterator': image_iterator,
                     'image_meta': image_meta})
@@ -100,7 +105,7 @@ class CacheFilter(wsgi.Middleware):
             return resp
 
         request = resp.request
-        if request.method != 'GET':
+        if request.method not in ('GET', 'DELETE'):
             return resp
 
         match = get_images_re.match(request.path)
@@ -112,6 +117,9 @@ class CacheFilter(wsgi.Middleware):
             return resp
 
         if self.cache.is_cached(image_id):
+            if request.method == 'DELETE':
+                logger.info(_("Removing image %s from cache"), image_id)
+                self.cache.delete_cached_image(image_id)
             return resp
 
         resp.app_iter = self.cache.get_caching_iter(image_id, resp.app_iter)
