@@ -1,0 +1,53 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: glance\n"
+"Report-Msgid-Bugs-To: glance@packages.debian.org\n"
+"POT-Creation-Date: 2012-02-09 23:58+0100\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=CHARSET\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. Type: string
+#. Description
+#: ../glance-api.templates:1001
+msgid "Auth server URL:"
+msgstr ""
+
+#. Type: string
+#. Description
+#: ../glance-api.templates:1001
+msgid ""
+"Type the URL of your auth server. This is typically the URL of your "
+"OpenStack Identity Service (Keystone)."
+msgstr ""
+
+#. Type: string
+#. Description
+#: ../glance-api.templates:2001
+msgid "Auth server admin token:"
+msgstr ""
+
+#. Type: select
+#. Description
+#: ../glance-common.templates:1001
+msgid "Pipeline flavor:"
+msgstr ""
+
+#. Type: select
+#. Description
+#: ../glance-common.templates:1001
+msgid ""
+"If you use the OpenStack Identity Service (Keystone), you might want to "
+"select keystone. If you don't use this service, you can safely choose "
+"caching only."
+msgstr ""
