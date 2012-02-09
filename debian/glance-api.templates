@@ -1,0 +1,10 @@
+Template: glance-api/auth-url
+Type: string
+Default: http://localhost:5000
+_Description: Auth server URL:
+ Type the URL of your auth server. This is typically the URL of your
+ OpenStack Identity Service (Keystone).
+
+Template: glance-api/auth-token
+Type: string
+_Description: Auth server admin token:

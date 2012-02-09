@@ -1,0 +1,8 @@
+Template: glance/paste-flavor
+Type: select
+Choices: keystone, caching, keystone+caching, cachemanagement, keystone+cachemanagement
+Default: caching
+_Description: Pipeline flavor:
+ If you use the OpenStack Identity Service (Keystone), you might want to
+ select keystone. If you don't use this service, you can safely choose
+ caching only.
