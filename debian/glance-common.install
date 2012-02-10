@@ -1,5 +1,3 @@
 usr/bin/glance
 usr/bin/glance-manage
 usr/bin/glance-control
-etc/glance-api-paste.ini etc/glance
-etc/policy.json etc/glance
