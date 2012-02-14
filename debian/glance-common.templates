@@ -6,3 +6,14 @@ _Description: Pipeline flavor:
  If you use the OpenStack Identity Service (Keystone), you might want to
  select keystone. If you don't use this service, you can safely choose
  caching only.
+
+Template: glance/auth-url
+Type: string
+Default: http://localhost:5000
+_Description: Auth server URL:
+ Type the URL of your auth server. This is typically the URL of your
+ OpenStack Identity Service (Keystone).
+
+Template: glance/auth-token
+Type: string
+_Description: Auth server admin token:

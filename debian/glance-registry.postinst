@@ -17,6 +17,10 @@ then
     case $FLAVOR in
         keystone*)
             FLAVOR=keystone
+            db_get glance/auth-url
+            sed -i "s,^auth_uri\s*=\s*.\+$,auth_uri = $RET," /etc/glance/glance-registry-paste.ini
+            db_get glance/auth-token
+            sed -i "s/^admin_token\s*=\s*.\+$/admin_token = $RET/" /etc/glance/glance-registry-paste.ini
             ;;
         *)
             FLAVOR=
@@ -25,16 +29,15 @@ then
 
     if ! grep -q '\[paste_deploy\]' /etc/glance/glance-registry.conf
     then
-        echo >> /etc/glance/glance-api.conf
+        echo >> /etc/glance/glance-registry.conf
         echo '# This line has been added by debconf' >> /etc/glance/glance-registry.conf
         echo '# Use dpkg-reconfigure glance-common and then' >> /etc/glance/glance-registry.conf
-        echo '# dpkg-reconfigure glance-api to change it' >> /etc/glance/glance-registry.conf
+        echo '# dpkg-reconfigure glance-registry to change it' >> /etc/glance/glance-registry.conf
         echo '[paste_deploy]' >> /etc/glance/glance-registry.conf
         echo "flavor = $FLAVOR" >> /etc/glance/glance-registry.conf
     else
         sed -i "s,^flavor\s*=.*$,flavor = $FLAVOR," /etc/glance/glance-registry.conf
     fi
-
 fi
 
 #DEBHELPER#

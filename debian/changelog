@@ -1,8 +1,10 @@
 glance (2012.1~e3-4) UNRELEASED; urgency=low
 
   * Make /var/log/glance and /etc/glance 0750 instead of 0700
+  * Fix typo in glance-registry.postinst
+  * Move debconf question from glance-api to glance-common
 
- -- Julien Danjou <acid@debian.org>  Tue, 14 Feb 2012 15:30:44 +0100
+ -- Julien Danjou <acid@debian.org>  Tue, 14 Feb 2012 17:25:21 +0100
 
 glance (2012.1~e3-3) unstable; urgency=low
 
