@@ -10,6 +10,7 @@ then
     fi
 
     . /usr/share/debconf/confmodule
+    . /usr/share/dbconfig-common/dpkg/postinst
 
     db_get glance/paste-flavor || true
     FLAVOR="$RET"
@@ -37,6 +38,35 @@ then
         echo "flavor = $FLAVOR" >> /etc/glance/glance-registry.conf
     else
         sed -i "s,^flavor\s*=.*$,flavor = $FLAVOR," /etc/glance/glance-registry.conf
+    fi
+
+    dbc_go glance-registry $@
+
+    if [ "$dbc_install" = "true" ]
+    then
+        case "$dbc_dbtype" in
+            sqlite3)
+                SQL_CONNECTION="sqlite:///$dbc_basepath/$dbc_dbname.db"
+                ;;
+            mysql)
+                [ -n "$dbc_dbport" ] && dbport=:$dbc_dbport
+                SQL_CONNECTION="mysql://$dbc_dbuser:$dbc_dbpass@${dbc_dbserver:-localhost}$dbport/$dbc_dbname"
+                ;;
+            pgsql)
+                [ -n "$dbc_dbport" ] && dbport=:$dbc_dbport
+                SQL_CONNECTION="pgsql://$dbc_dbuser:$dbc_dbpass@${dbc_dbserver:-localhost}$dbport/$dbc_dbname"
+                ;;
+            *)
+                SQL_CONNECTION="sqlite:////var/lib/keystone/keystone.db"
+                ;;
+        esac
+
+        sed -e "s,^sql_connection\s*=\s*.\+$,sql_connection = $SQL_CONNECTION," -i /etc/glance/glance-registry.conf
+
+        if [ "$dbc_upgrade" = "true" ]
+        then
+	    glance-manage db_sync
+        fi
     fi
 fi
 

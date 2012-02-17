@@ -2,9 +2,8 @@
 
 set -e
 
-case $1 in
-	remove|purge)
-		invoke-rc.d glance-registry stop
-esac
+. /usr/share/debconf/confmodule
+. /usr/share/dbconfig-common/dpkg/prerm
+dbc_go glance-registry $@
 
 #DEBHELPER#
