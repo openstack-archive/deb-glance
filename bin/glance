@@ -66,6 +66,8 @@ def catch_error(action):
                 print "Not authorized to make this request. Check "\
                       "your credentials (OS_AUTH_USER, OS_AUTH_KEY, ...)."
                 return FAILURE
+            except exception.ClientConfigurationError:
+                raise
             except Exception, e:
                 options = args[0]
                 if options.debug:
@@ -731,10 +733,12 @@ def get_client(options):
     specified by the --host and --port options
     supplied to the CLI
     """
+
     if options.auth_url or os.getenv('OS_AUTH_URL'):
         force_strategy = 'keystone'
     else:
         force_strategy = None
+
     creds = dict(username=options.username or \
                          os.getenv('OS_AUTH_USER', os.getenv('OS_USERNAME')),
                  password=options.password or \
@@ -746,6 +750,11 @@ def get_client(options):
                  strategy=force_strategy or options.auth_strategy or \
                           os.getenv('OS_AUTH_STRATEGY', 'noauth'))
 
+    if creds['strategy'] == 'keystone' and not creds['auth_url']:
+        msg = ("--auth_url option or OS_AUTH_URL environment variable "
+               "required when keystone authentication strategy is enabled\n")
+        raise exception.ClientConfigurationError(msg)
+
     use_ssl = (options.use_ssl or (
         creds['auth_url'] is not None and
         creds['auth_url'].find('https') != -1))
@@ -754,7 +763,7 @@ def get_client(options):
                                 use_ssl=use_ssl,
                                 auth_tok=options.auth_token or \
                                         os.getenv('OS_TOKEN'),
-                                creds=creds)
+                                creds=creds, insecure=options.insecure)
 
 
 def create_options(parser):
@@ -781,6 +790,12 @@ def create_options(parser):
                            "(http/https) of the glance server, for example "
                            "-U https://localhost:" + str(DEFAULT_PORT) +
                            "/v1 Default: None")
+    parser.add_option('-k', '--insecure', dest="insecure",
+                      default=False, action="store_true",
+                      help="Explicitly allow glance to perform \"insecure\" "
+                      "SSL (https) requests. The server's certificate will "
+                      "not be verified against any certificate authorities. "
+                      "This option should be used with caution.")
     parser.add_option('-A', '--auth_token', dest="auth_token",
                       metavar="TOKEN", default=None,
                       help="Authentication token to use to identify the "
@@ -810,7 +825,7 @@ def create_options(parser):
                       help="Sort results by this image attribute.")
     parser.add_option('--sort_dir', dest="sort_dir", metavar="[desc|asc]",
                       help="Sort results in this direction.")
-    parser.add_option('-f', '--force', dest="force", metavar="FORCE",
+    parser.add_option('-f', '--force', dest="force",
                       default=False, action="store_true",
                       help="Prevent select actions from requesting "
                            "user confirmation")
@@ -975,5 +990,9 @@ Member Commands:
         if options.verbose:
             print "Completed in %-0.4f sec." % (end_time - start_time)
         sys.exit(result)
-    except (RuntimeError, NotImplementedError), e:
-        print "ERROR: ", e
+    except (RuntimeError,
+            NotImplementedError,
+            exception.ClientConfigurationError), e:
+        oparser.print_usage()
+        print >> sys.stderr, "ERROR: ", e
+        sys.exit(1)

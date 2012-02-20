@@ -83,6 +83,10 @@ class StorageFull(GlanceException):
     message = _("There is not enough disk space on the image storage media.")
 
 
+class StorageWriteDenied(GlanceException):
+    message = _("Permission to write image storage media denied.")
+
+
 class ImportFailure(GlanceException):
     message = _("Failed to import requested object/class: '%(import_str)s'. "
                 "Reason: %(reason)s")
@@ -122,6 +126,10 @@ class DatabaseMigrationError(GlanceException):
 
 class ClientConnectionError(GlanceException):
     message = _("There was an error connecting to a server")
+
+
+class ClientConfigurationError(GlanceException):
+    message = _("There was an error configuring the client.")
 
 
 class MultipleChoices(GlanceException):
