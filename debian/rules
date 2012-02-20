@@ -10,9 +10,9 @@ override_dh_auto_build:
 	dh_auto_build
 	mkdir -p doc/build
 	python setup.py build_sphinx
+	debconf-updatepo
 
 override_dh_auto_clean:
 	dh_auto_clean
-	debconf-updatepo
 	rm -rf build doc/build glance.egg-info po/glance.pot glance/vcsversion.py
 	rm -rf glance.sqlite
