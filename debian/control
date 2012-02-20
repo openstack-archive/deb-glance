@@ -88,7 +88,7 @@ Package: glance-registry
 Architecture: all
 Section: python
 Replaces: glance (<< 2012.1~e2-3)
-Depends: ${python:Depends}, ${misc:Depends}, glance-common (= ${source:Version}), debconf
+Depends: ${python:Depends}, ${misc:Depends}, glance-common (= ${source:Version}), debconf, dbconfig-common
 Description: OpenStack Image Registry and Delivery Service - Registry
  The Glance project provides an image registration, discovery and
  delivery service. These services may be used as stand-along services, and

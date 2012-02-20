@@ -10,6 +10,7 @@ then
     fi
 
     . /usr/share/debconf/confmodule
+    . /usr/share/dbconfig-common/dpkg/postinst
 
     db_get glance/paste-flavor || true
     FLAVOR="$RET"
@@ -17,6 +18,10 @@ then
     case $FLAVOR in
         keystone*)
             FLAVOR=keystone
+            db_get glance/auth-url
+            sed -i "s,^auth_uri\s*=\s*.\+$,auth_uri = $RET," /etc/glance/glance-registry-paste.ini
+            db_get glance/auth-token
+            sed -i "s/^admin_token\s*=\s*.\+$/admin_token = $RET/" /etc/glance/glance-registry-paste.ini
             ;;
         *)
             FLAVOR=
@@ -25,16 +30,44 @@ then
 
     if ! grep -q '\[paste_deploy\]' /etc/glance/glance-registry.conf
     then
-        echo >> /etc/glance/glance-api.conf
+        echo >> /etc/glance/glance-registry.conf
         echo '# This line has been added by debconf' >> /etc/glance/glance-registry.conf
         echo '# Use dpkg-reconfigure glance-common and then' >> /etc/glance/glance-registry.conf
-        echo '# dpkg-reconfigure glance-api to change it' >> /etc/glance/glance-registry.conf
+        echo '# dpkg-reconfigure glance-registry to change it' >> /etc/glance/glance-registry.conf
         echo '[paste_deploy]' >> /etc/glance/glance-registry.conf
         echo "flavor = $FLAVOR" >> /etc/glance/glance-registry.conf
     else
         sed -i "s,^flavor\s*=.*$,flavor = $FLAVOR," /etc/glance/glance-registry.conf
     fi
 
+    dbc_go glance-registry $@
+
+    if [ "$dbc_install" = "true" ]
+    then
+        case "$dbc_dbtype" in
+            sqlite3)
+                SQL_CONNECTION="sqlite:///$dbc_basepath/$dbc_dbname.db"
+                ;;
+            mysql)
+                [ -n "$dbc_dbport" ] && dbport=:$dbc_dbport
+                SQL_CONNECTION="mysql://$dbc_dbuser:$dbc_dbpass@${dbc_dbserver:-localhost}$dbport/$dbc_dbname"
+                ;;
+            pgsql)
+                [ -n "$dbc_dbport" ] && dbport=:$dbc_dbport
+                SQL_CONNECTION="pgsql://$dbc_dbuser:$dbc_dbpass@${dbc_dbserver:-localhost}$dbport/$dbc_dbname"
+                ;;
+            *)
+                SQL_CONNECTION="sqlite:////var/lib/keystone/keystone.db"
+                ;;
+        esac
+
+        sed -e "s,^sql_connection\s*=\s*.\+$,sql_connection = $SQL_CONNECTION," -i /etc/glance/glance-registry.conf
+
+        if [ "$dbc_upgrade" = "true" ]
+        then
+	    glance-manage db_sync
+        fi
+    fi
 fi
 
 #DEBHELPER#

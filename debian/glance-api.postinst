@@ -25,9 +25,9 @@ then
 
     case "$FLAVOR" in
         keystone*)
-            db_get glance-api/auth-url
+            db_get glance/auth-url
             sed -i "s,^auth_uri\s*=\s*.\+$,auth_uri = $RET," /etc/glance/glance-api-paste.ini
-            db_get glance-api/auth-token
+            db_get glance/auth-token
             sed -i "s/^admin_token\s*=\s*.\+$/admin_token = $RET/" /etc/glance/glance-api-paste.ini
             ;;
     esac
