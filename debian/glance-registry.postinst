@@ -4,11 +4,6 @@ set -e
 
 if [ "$1" = "configure" ]
 then
-    if ! grep sql_connection /etc/glance/glance-registry.conf | grep -qv "sql_connection = sqlite:////var/lib/glance/glance.sqlite"
-    then
-	su -c 'glance-manage db_sync' glance || true
-    fi
-
     . /usr/share/debconf/confmodule
     . /usr/share/dbconfig-common/dpkg/postinst
 
@@ -57,15 +52,18 @@ then
                 SQL_CONNECTION="pgsql://$dbc_dbuser:$dbc_dbpass@${dbc_dbserver:-localhost}$dbport/$dbc_dbname"
                 ;;
             *)
-                SQL_CONNECTION="sqlite:////var/lib/keystone/keystone.db"
+                SQL_CONNECTION="sqlite:////var/lib/glance/glance.db"
                 ;;
         esac
 
         sed -e "s,^sql_connection\s*=\s*.\+$,sql_connection = $SQL_CONNECTION," -i /etc/glance/glance-registry.conf
 
-        if [ "$dbc_upgrade" = "true" ]
+	if ! grep sql_connection /etc/glance/glance-registry.conf | grep -qv "sql_connection = sqlite:////var/lib/glance/glance.db"
+	then
+	    su -c 'glance-manage db_sync' glance || true
+	elif [ "$dbc_upgrade" = "true" ]  ## Really upgrade whatever the database? ToDo
         then
-	    glance-manage db_sync
+	    su -c 'glance-manage db_sync' glance || true
         fi
     fi
 fi
