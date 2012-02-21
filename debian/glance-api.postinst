@@ -4,8 +4,6 @@ set -e
 
 if [ "$1" = "configure" ]
 then
-    chown glance:glance -R /var/lib/glance/ /var/log/glance/
-
     . /usr/share/debconf/confmodule
 
     db_get glance/paste-flavor || true

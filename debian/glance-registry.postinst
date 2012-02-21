@@ -52,13 +52,13 @@ then
                 SQL_CONNECTION="pgsql://$dbc_dbuser:$dbc_dbpass@${dbc_dbserver:-localhost}$dbport/$dbc_dbname"
                 ;;
             *)
-                SQL_CONNECTION="sqlite:////var/lib/glance/glance.db"
+                SQL_CONNECTION="sqlite:////var/lib/glance/$dbc_dbname.db"
                 ;;
         esac
 
         sed -e "s,^sql_connection\s*=\s*.\+$,sql_connection = $SQL_CONNECTION," -i /etc/glance/glance-registry.conf
 
-	if ! grep sql_connection /etc/glance/glance-registry.conf | grep -qv "sql_connection = sqlite:////var/lib/glance/glance.db"
+	if ! grep sql_connection /etc/glance/glance-registry.conf | grep -qv "sql_connection = sqlite:////var/lib/glance/$dbc_dbname.db"
 	then
 	    su -c 'glance-manage db_sync' glance || true
 	elif [ "$dbc_upgrade" = "true" ]  ## Really upgrade whatever the database? ToDo
