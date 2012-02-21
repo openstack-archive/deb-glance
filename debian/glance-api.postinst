@@ -6,6 +6,8 @@ if [ "$1" = "configure" ]
 then
     . /usr/share/debconf/confmodule
 
+    chown glance:glance /var/lib/glance -R
+
     db_get glance/paste-flavor || true
     FLAVOR="$RET"
 
