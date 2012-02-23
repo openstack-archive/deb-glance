@@ -1,4 +1,4 @@
-glance (2012.1~e3-4) UNRELEASED; urgency=low
+glance (2012.1~e3-4) unstable; urgency=low
 
   [ Julien Danjou ]
   * Make /var/log/glance and /etc/glance 0750 instead of 0700
