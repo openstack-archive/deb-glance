@@ -20,11 +20,15 @@ Client classes for callers of a Glance system
 """
 
 import errno
+import httplib
 import json
 import logging
 import os
+import socket
+import sys
 
 import glance.api.v1
+from glance.common import animation
 from glance.common import client as base_client
 from glance.common import exception
 from glance.common import utils
@@ -126,7 +130,7 @@ class V1Client(base_client.BaseClient):
                 else:
                     raise
 
-    def add_image(self, image_meta=None, image_data=None):
+    def add_image(self, image_meta=None, image_data=None, features=None):
         """
         Tells Glance about an image's metadata as well
         as optionally the image_data itself
@@ -136,6 +140,7 @@ class V1Client(base_client.BaseClient):
         :param image_data: Optional string of raw image data
                            or file-like object that can be
                            used to read the image data
+        :param features: Optional map of features
 
         :retval The newly-stored image's metadata.
         """
@@ -150,6 +155,8 @@ class V1Client(base_client.BaseClient):
                 headers['content-length'] = image_size
         else:
             body = None
+
+        utils.add_features_to_http_headers(features, headers)
 
         res = self.do_request("POST", "/images", body, headers)
         data = json.loads(res.read())
@@ -328,5 +335,56 @@ class V1Client(base_client.BaseClient):
                         (image_id, member_id))
         return True
 
+
+class ProgressIteratorWrapper(object):
+
+    def __init__(self, wrapped, transfer_info):
+        self.wrapped = wrapped
+        self.transfer_info = transfer_info
+        self.prev_len = 0L
+
+    def __iter__(self):
+        for chunk in self.wrapped:
+            if self.prev_len:
+                self.transfer_info['so_far'] += self.prev_len
+            self.prev_len = len(chunk)
+            yield chunk
+            # report final chunk
+        self.transfer_info['so_far'] += self.prev_len
+
+
+class ProgressClient(V1Client):
+
+    """
+    Specialized class that adds progress bar output/interaction into the
+    TTY of the calling client
+    """
+    def image_iterator(self, connection, headers, body):
+        wrapped = super(ProgressClient, self).image_iterator(connection,
+                                                                headers,
+                                                                body)
+        try:
+            # spawn the animation thread if the connection is good
+            connection.connect()
+            return ProgressIteratorWrapper(wrapped,
+                                        self.start_animation(headers))
+        except (httplib.HTTPResponse, socket.error):
+            # the connection is out, just "pass"
+            # and let the "glance add" fail with [Errno 111] Connection refused
+            pass
+
+    def start_animation(self, headers):
+        transfer_info = {
+            'so_far': 0L,
+            'size': headers.get('x-image-meta-size', 0L)
+        }
+        pg = animation.UploadProgressStatus(transfer_info)
+        if transfer_info['size'] == 0L:
+            sys.stdout.write("The progressbar doesn't show-up because "
+                            "the headers[x-meta-size] is zero or missing\n")
+        sys.stdout.write("Uploading image '%s'\n" %
+                        headers.get('x-image-meta-name', ''))
+        pg.start()
+        return transfer_info
 
 Client = V1Client

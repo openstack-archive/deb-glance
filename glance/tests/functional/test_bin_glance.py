@@ -23,7 +23,10 @@ import tempfile
 
 from glance.common import utils
 from glance.tests import functional
-from glance.tests.utils import execute
+from glance.tests.utils import execute, requires, minimal_add_command
+from glance.tests.functional.store_utils import (setup_http,
+                                                 teardown_http,
+                                                 get_http_uri)
 
 
 class TestBinGlance(functional.FunctionalTest):
@@ -54,8 +57,9 @@ class TestBinGlance(functional.FunctionalTest):
         self.assertEqual('', out.strip())
 
         # 1. Add public image
-        cmd = "bin/glance --port=%d add is_public=True"\
-              " name=MyImage location=http://example.com" % api_port
+        cmd = minimal_add_command(api_port,
+                                  'MyImage',
+                                  'location=http://example.com')
         exitcode, out, err = execute(cmd)
 
         self.assertEqual(0, exitcode)
@@ -79,6 +83,48 @@ class TestBinGlance(functional.FunctionalTest):
         self.assertEqual('0', size, "Expected image to be 0 bytes in size, "
                                     "but got %s. " % size)
 
+    @requires(setup_http, teardown_http)
+    def test_add_copying_from(self):
+        self.cleanup()
+        self.start_servers(**self.__dict__.copy())
+
+        api_port = self.api_port
+        registry_port = self.registry_port
+
+        # 0. Verify no public images
+        cmd = "bin/glance --port=%d index" % api_port
+
+        exitcode, out, err = execute(cmd)
+
+        self.assertEqual(0, exitcode)
+        self.assertEqual('', out.strip())
+
+        # 1. Add public image
+        suffix = 'copy_from=%s' % get_http_uri(self, 'foobar')
+        cmd = minimal_add_command(api_port, 'MyImage', suffix)
+        exitcode, out, err = execute(cmd)
+
+        self.assertEqual(0, exitcode)
+        self.assertTrue(out.strip().startswith('Added new image with ID:'))
+
+        # 2. Verify image added as public image
+        cmd = "bin/glance --port=%d index" % api_port
+
+        exitcode, out, err = execute(cmd)
+
+        self.assertEqual(0, exitcode)
+        lines = out.split("\n")[2:-1]
+        self.assertEqual(1, len(lines))
+
+        line = lines[0]
+
+        image_id, name, disk_format, container_format, size = \
+            [c.strip() for c in line.split()]
+        self.assertEqual('MyImage', name)
+
+        self.assertEqual('5120', size, "Expected image to be 0 bytes in size,"
+                                       " but got %s. " % size)
+
     def test_add_with_location_and_stdin(self):
         self.cleanup()
         self.start_servers(**self.__dict__.copy())
@@ -99,8 +145,10 @@ class TestBinGlance(functional.FunctionalTest):
             image_file.write("XXX")
             image_file.flush()
             file_name = image_file.name
-            cmd = "bin/glance --port=%d add is_public=True name=MyImage " \
-                  "location=http://example.com < %s" % (api_port, file_name)
+            cmd = minimal_add_command(api_port,
+                                     'MyImage',
+                                     'location=http://example.com < %s' %
+                                     file_name)
             exitcode, out, err = execute(cmd)
 
         self.assertEqual(0, exitcode)
@@ -153,13 +201,16 @@ class TestBinGlance(functional.FunctionalTest):
             image_file.write("XXX")
             image_file.flush()
             image_file_name = image_file.name
-            cmd = "bin/glance --port=%d add is_public=True"\
-                  " name=MyImage < %s" % (api_port, image_file_name)
+            cmd = minimal_add_command(api_port,
+                                     'MyImage',
+                                     '< %s' % image_file_name)
 
             exitcode, out, err = execute(cmd)
 
         self.assertEqual(0, exitcode)
-        self.assertTrue(out.strip().startswith('Added new image with ID:'))
+        msg = out.split("\n")
+        self.assertTrue(msg[0].startswith('Uploading image'))
+        self.assertTrue(msg[1].startswith('Added new image with ID:'))
 
         # 2. Verify image added as public image
         cmd = "bin/glance --port=%d index" % api_port
@@ -227,12 +278,16 @@ class TestBinGlance(functional.FunctionalTest):
         self.assertEqual('', out.strip())
 
         # 1. Add public image
-        cmd = "bin/glance --port=%d add name=MyImage" % api_port
+        cmd = minimal_add_command(api_port,
+                                  'MyImage',
+                                  'location=http://example.com',
+                                  public=False)
 
         exitcode, out, err = execute(cmd)
 
         self.assertEqual(0, exitcode)
-        self.assertTrue(out.strip().startswith('Added new image with ID:'))
+        msg = out.split('\n')
+        self.assertTrue(msg[0].startswith('Added new image with ID:'))
 
         image_id = out.strip().split(':')[1].strip()
 
@@ -355,8 +410,9 @@ class TestBinGlance(functional.FunctionalTest):
 
         # 1. Add some images
         for i in range(1, 5):
-            cmd = "bin/glance --port=%d add is_public=True name=MyName " \
-                  " foo=bar" % api_port
+            cmd = minimal_add_command(api_port,
+                                      'MyImage',
+                                      'foo=bar')
             exitcode, out, err = execute(cmd)
 
             self.assertEqual(0, exitcode)
@@ -705,7 +761,11 @@ class TestBinGlance(functional.FunctionalTest):
             image_file.flush()
             image_file_name = image_file.name
             cmd = "bin/glance --port=%d add is_public=True"\
+                  " disk_format=raw container_format=ovf " \
                   " name=MyImage < %s" % (api_port, image_file_name)
+            cmd = minimal_add_command(api_port,
+                                      'MyImage',
+                                      '< %s' % image_file_name)
 
             exitcode, out, err = execute(cmd)
 
@@ -771,13 +831,16 @@ class TestBinGlance(functional.FunctionalTest):
         self.assertEqual('', out.strip())
 
         # 1. Add public image
-        cmd = "echo testdata | bin/glance --port=%d add is_public=True"\
-              " protected=True name=MyImage" % api_port
+        cmd = ("echo testdata | " +
+               minimal_add_command(api_port,
+                                   'MyImage',
+                                   'protected=True'))
 
         exitcode, out, err = execute(cmd)
 
         self.assertEqual(0, exitcode)
-        self.assertTrue(out.strip().startswith('Added new image with ID:'))
+        msg = out.split("\n")
+        self.assertTrue(msg[3].startswith('Added new image with ID:'))
 
         # 2. Verify image added as public image
         cmd = "bin/glance --port=%d index" % api_port

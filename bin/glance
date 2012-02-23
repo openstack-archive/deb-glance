@@ -141,7 +141,7 @@ def print_image_formatted(client, image):
     print "Container format: %s" % image['container_format']
     print "Minimum Ram Required (MB): %s" % image['min_ram']
     print "Minimum Disk Required (GB): %s" % image['min_disk']
-    if image['owner']:
+    if image.get('owner'):
         print "Owner: %s" % image['owner']
     if len(image['properties']) > 0:
         for k, v in image['properties'].items():
@@ -173,10 +173,9 @@ is_public           Optional. If specified, interpreted as a boolean value
 protected           Optional. If specified, interpreted as a boolean value
                     and enables or disables deletion protection.
                     The default value is False.
-disk_format         Optional. Possible values are 'vhd','vmdk','raw', 'qcow2',
-                    and 'ami'. Default value is 'raw'.
-container_format    Optional. Possible values are 'ovf' and 'ami'.
-                    Default value is 'ovf'.
+disk_format         Required. Possible values are 'vhd','vmdk','raw', 'qcow2',
+                    and 'ami'.
+container_format    Required. Possible values are 'ovf' and 'ami'.
 location            Optional. When specified, should be a readable location
                     in the form of a URI: $STORE://LOCATION. For example, if
                     the image data is stored in a file on the local
@@ -202,7 +201,8 @@ EXAMPLES
     location=http://images.ubuntu.org/images/lucid-10.04-i686.iso \\
     distro="Ubuntu 10.04 LTS"
 
-%(prog)s add name="My Image" distro="Ubuntu 10.04 LTS" < /tmp/myimage.iso"""
+%(prog)s add name="My Image" disk_format=raw container_format=ovf \\
+    distro="Ubuntu 10.04 LTS" < /tmp/myimage.iso"""
     c = get_client(options)
 
     try:
@@ -220,10 +220,13 @@ EXAMPLES
                       fields.pop('is_public', False)),
                   'protected': utils.bool_from_string(
                       fields.pop('protected', False)),
-                  'disk_format': fields.pop('disk_format', 'raw'),
                   'min_disk': fields.pop('min_disk', 0),
                   'min_ram': fields.pop('min_ram', 0),
-                  'container_format': fields.pop('container_format', 'ovf')}
+    }
+
+    for format in ['disk_format', 'container_format']:
+        if format in fields:
+            image_meta[format] = fields.pop(format)
 
     # Strip any args that are not supported
     unsupported_fields = ['status', 'size']
@@ -232,13 +235,21 @@ EXAMPLES
             print 'Found non-settable field %s. Removing.' % field
             fields.pop(field)
 
-    if 'location' in fields.keys():
-        image_meta['location'] = fields.pop('location')
+    def _external_source(fields, image_data):
+        source = None
+        features = {}
+        if 'location' in fields.keys():
+            source = fields.pop('location')
+            image_meta['location'] = source
+        elif 'copy_from' in fields.keys():
+            source = fields.pop('copy_from')
+            features['x-glance-api-copy-from'] = source
+        return source, features
 
     # We need either a location or image data/stream to add...
-    image_location = image_meta.get('location')
+    location, features = _external_source(fields, image_meta)
     image_data = None
-    if not image_location:
+    if not location:
         # Grab the image data stream from stdin or redirect,
         # otherwise error out
         image_data = sys.stdin
@@ -248,7 +259,8 @@ EXAMPLES
 
     if not options.dry_run:
         try:
-            image_meta = c.add_image(image_meta, image_data)
+            image_meta = c.add_image(image_meta, image_data,
+                                     features=features)
             image_id = image_meta['id']
             print "Added new image with ID: %s" % image_id
             if options.verbose:
@@ -275,9 +287,17 @@ EXAMPLES
             return FAILURE
     else:
         print "Dry run. We would have done the following:"
+
+        def _dump(dict):
+            for k, v in sorted(dict.items()):
+                print " %(k)30s => %(v)s" % locals()
+
         print "Add new image with metadata:"
-        for k, v in sorted(image_meta.items()):
-            print " %(k)30s => %(v)s" % locals()
+        _dump(image_meta)
+
+        if features:
+            print "with features enabled:"
+            _dump(features)
 
     return SUCCESS
 
@@ -296,7 +316,8 @@ to Glance that represents the metadata for an image.
 Field names that can be specified:
 
 name                A name for the image.
-location            The location of the image.
+location            An external location to serve out from.
+copy_from           An external location (HTTP, S3 or Swift URI) to copy from.
 is_public           If specified, interpreted as a boolean value
                     and sets or unsets the image's availability to the public.
 protected           If specified, interpreted as a boolean value
@@ -759,11 +780,16 @@ def get_client(options):
         creds['auth_url'] is not None and
         creds['auth_url'].find('https') != -1))
 
-    return glance_client.Client(host=options.host, port=options.port,
-                                use_ssl=use_ssl,
-                                auth_tok=options.auth_token or \
-                                        os.getenv('OS_TOKEN'),
-                                creds=creds, insecure=options.insecure)
+    client = (glance_client.ProgressClient if not options.is_silent_upload
+                                        else glance_client.Client)
+
+    return client(host=options.host,
+                port=options.port,
+                use_ssl=use_ssl,
+                auth_tok=options.auth_token or
+                os.getenv('OS_TOKEN'),
+                creds=creds,
+                insecure=options.insecure)
 
 
 def create_options(parser):
@@ -773,6 +799,10 @@ def create_options(parser):
 
     :param parser: The option parser
     """
+    parser.add_option('--silent-upload', default=False, action="store_true",
+                      dest="is_silent_upload",
+                      help="disable progress bar animation and information "
+                      "during upload")
     parser.add_option('-v', '--verbose', default=False, action="store_true",
                       help="Print more verbose output")
     parser.add_option('-d', '--debug', default=False, action="store_true",
