@@ -58,7 +58,7 @@ then
 
         if [ "$dbc_upgrade" = "true" ]
         then
-            glance-manage db_sync || true
+	    glance-manage db_sync || true
         fi
     fi
 fi
