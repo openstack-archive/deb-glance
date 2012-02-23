@@ -46,26 +46,23 @@ then
                 ;;
             mysql)
                 [ -n "$dbc_dbport" ] && dbport=:$dbc_dbport
-                SQL_CONNECTION="mysql://$dbc_dbuser:$dbc_dbpass@${dbc_dbserver:-localhost}$dbport/glance"
+                SQL_CONNECTION="mysql://$dbc_dbuser:$dbc_dbpass@${dbc_dbserver:-localhost}$dbport/$dbc_dbname"
                 ;;
             pgsql)
                 [ -n "$dbc_dbport" ] && dbport=:$dbc_dbport
-                SQL_CONNECTION="pgsql://$dbc_dbuser:$dbc_dbpass@${dbc_dbserver:-localhost}$dbport/glance"
+                SQL_CONNECTION="pgsql://$dbc_dbuser:$dbc_dbpass@${dbc_dbserver:-localhost}$dbport/$dbc_dbname"
                 ;;
             *)
-                SQL_CONNECTION="sqlite:////var/lib/glance/$dbc_dbname"
+                SQL_CONNECTION="sqlite:////var/lib/glance/$dbc_dbname.db"
                 ;;
         esac
 
         sed -e "s,^sql_connection\s*=\s*.\+$,sql_connection = $SQL_CONNECTION," -i /etc/glance/glance-registry.conf
 
-	if ! grep sql_connection /etc/glance/glance-registry.conf | grep -qv "sql_connection = sqlite:////var/lib/glance/$dbc_dbname"
-	then
-	    su -c 'glance-manage db_sync' glance || true
-	elif [ "$dbc_upgrade" = "true" ]  ## Really upgrade whatever the database? ToDo
-	then
-	    su -c 'glance-manage db_sync' glance || true
-	fi
+        if [ "$dbc_upgrade" = "true" ]
+        then
+            glance-manage db_sync || true
+        fi
     fi
 fi
 
