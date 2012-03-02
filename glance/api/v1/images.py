@@ -21,6 +21,7 @@
 
 import errno
 import logging
+import sys
 import traceback
 
 from webob.exc import (HTTPError,
@@ -28,11 +29,15 @@ from webob.exc import (HTTPError,
                        HTTPConflict,
                        HTTPBadRequest,
                        HTTPForbidden,
-                       HTTPUnauthorized)
+                       HTTPUnauthorized,
+                       HTTPRequestEntityTooLarge,
+                       HTTPServiceUnavailable,
+                      )
 
 from glance.api import policy
 import glance.api.v1
 from glance.api.v1 import controller
+from glance.api.v1 import filters
 from glance.common import cfg
 from glance.common import exception
 from glance.common import wsgi
@@ -89,6 +94,7 @@ class Controller(controller.BaseController):
         self.conf = conf
         self.conf.register_opt(self.default_store_opt)
         glance.store.create_stores(conf)
+        self.verify_store_or_exit(self.conf.default_store)
         self.notifier = notifier.Notifier(conf)
         registry.configure_registry_client(conf)
         self.policy = policy.Enforcer(conf)
@@ -179,6 +185,7 @@ class Controller(controller.BaseController):
         :retval dict of parameters that can be used by registry client
         """
         params = {'filters': self._get_filters(req)}
+
         for PARAM in SUPPORTED_PARAMS:
             if PARAM in req.str_params:
                 params[PARAM] = req.str_params.get(PARAM)
@@ -191,12 +198,15 @@ class Controller(controller.BaseController):
         :param req: the Request object coming from the wsgi layer
         :retval a dict of key/value filters
         """
-        filters = {}
+        query_filters = {}
         for param in req.str_params:
             if param in SUPPORTED_FILTERS or param.startswith('property-'):
-                filters[param] = req.str_params.get(param)
-
-        return filters
+                query_filters[param] = req.str_params.get(param)
+                if not filters.validate(param, query_filters[param]):
+                    raise HTTPBadRequest('Bad value passed to filter %s '
+                                         'got %s' % (param,
+                                                     query_filters[param]))
+        return query_filters
 
     def meta(self, req, id):
         """
@@ -216,6 +226,40 @@ class Controller(controller.BaseController):
             'image_meta': image_meta
         }
 
+    @staticmethod
+    def _validate_source(source, req):
+        """
+        External sources (as specified via the location or copy-from headers)
+        are supported only over non-local store types, i.e. S3, Swift, HTTP.
+        Note the absence of file:// for security reasons, see LP bug #942118.
+        If the above constraint is violated, we reject with 400 "Bad Request".
+        """
+        if source:
+            for scheme in ['s3', 'swift', 'http']:
+                if source.lower().startswith(scheme):
+                    return source
+            msg = _("External sourcing not supported for store %s") % source
+            logger.error(msg)
+            raise HTTPBadRequest(msg, request=req, content_type="text/plain")
+
+    @staticmethod
+    def _copy_from(req):
+        return req.headers.get('x-glance-api-copy-from')
+
+    @staticmethod
+    def _external_source(image_meta, req):
+        source = image_meta.get('location', Controller._copy_from(req))
+        return Controller._validate_source(source, req)
+
+    @staticmethod
+    def _get_from_store(where):
+        try:
+            image_data, image_size = get_from_backend(where)
+        except exception.NotFound, e:
+            raise HTTPNotFound(explanation="%s" % e)
+        image_size = int(image_size) if image_size else None
+        return image_data, image_size
+
     def show(self, req, id):
         """
         Returns an iterator that can be used to retrieve an image's
@@ -229,16 +273,9 @@ class Controller(controller.BaseController):
         self._enforce(req, 'get_image')
         image_meta = self.get_active_image_meta_or_404(req, id)
 
-        def get_from_store(image_meta):
-            try:
-                location = image_meta['location']
-                image_data, image_size = get_from_backend(location)
-                image_meta["size"] = image_size or image_meta["size"]
-            except exception.NotFound, e:
-                raise HTTPNotFound(explanation="%s" % e)
-            return image_data
+        image_iterator, size = self._get_from_store(image_meta['location'])
+        image_meta['size'] = size or image_meta['size']
 
-        image_iterator = get_from_store(image_meta)
         del image_meta['location']
         return {
             'image_iterator': image_iterator,
@@ -253,11 +290,12 @@ class Controller(controller.BaseController):
 
         :param req: The WSGI/Webob Request object
         :param id: The opaque image identifier
+        :param image_meta: The image metadata
 
         :raises HTTPConflict if image already exists
         :raises HTTPBadRequest if image metadata is not valid
         """
-        location = image_meta.get('location')
+        location = self._external_source(image_meta, req)
         if location:
             store = get_store_from_location(location)
             # check the store exists before we hit the registry, but we
@@ -265,12 +303,11 @@ class Controller(controller.BaseController):
             self.get_store_or_400(req, store)
 
             # retrieve the image size from remote store (if not provided)
-            image_meta['size'] = image_meta.get('size', 0) \
-                                 or get_size_from_backend(location)
+            image_meta['size'] = self._get_size(image_meta, location)
         else:
-            # Ensure that the size attribute is set to zero for uploadable
-            # images (if not provided). The size will be set to a non-zero
-            # value during upload
+            # Ensure that the size attribute is set to zero for directly
+            # uploadable images (if not provided). The size will be set
+            # to a non-zero value during upload
             image_meta['size'] = image_meta.get('size', 0)
 
         image_meta['status'] = 'queued'
@@ -307,13 +344,30 @@ class Controller(controller.BaseController):
         :raises HTTPConflict if image already exists
         :retval The location where the image was stored
         """
-        try:
-            req.get_content_type('application/octet-stream')
-        except exception.InvalidContentType:
-            self._safe_kill(req, image_meta['id'])
-            msg = _("Content-Type must be application/octet-stream")
-            logger.error(msg)
-            raise HTTPBadRequest(explanation=msg)
+
+        copy_from = self._copy_from(req)
+        if copy_from:
+            image_data, image_size = self._get_from_store(copy_from)
+            image_meta['size'] = image_size or image_meta['size']
+        else:
+            try:
+                req.get_content_type('application/octet-stream')
+            except exception.InvalidContentType:
+                self._safe_kill(req, image_meta['id'])
+                msg = _("Content-Type must be application/octet-stream")
+                logger.error(msg)
+                raise HTTPBadRequest(explanation=msg)
+
+            image_data = req.body_file
+
+            if req.content_length:
+                image_size = int(req.content_length)
+            elif 'x-image-meta-size' in req.headers:
+                image_size = int(req.headers['x-image-meta-size'])
+            else:
+                logger.debug(_("Got request with no content-length and no "
+                               "x-image-meta-size header"))
+                image_size = 0
 
         store_name = req.headers.get('x-image-meta-store',
                                      self.conf.default_store)
@@ -327,14 +381,6 @@ class Controller(controller.BaseController):
         try:
             logger.debug(_("Uploading image data for image %(image_id)s "
                          "to %(store_name)s store"), locals())
-            if req.content_length:
-                image_size = int(req.content_length)
-            elif 'x-image-meta-size' in req.headers:
-                image_size = int(req.headers['x-image-meta-size'])
-            else:
-                logger.debug(_("Got request with no content-length and no "
-                               "x-image-meta-size header"))
-                image_size = 0
 
             if image_size > IMAGE_SIZE_CAP:
                 max_image_size = IMAGE_SIZE_CAP
@@ -345,7 +391,7 @@ class Controller(controller.BaseController):
                 raise HTTPBadRequest(msg, request=request)
 
             location, size, checksum = store.add(image_meta['id'],
-                                                 req.body_file,
+                                                 image_data,
                                                  image_size)
 
             # Verify any supplied checksum value matches checksum
@@ -388,6 +434,22 @@ class Controller(controller.BaseController):
             raise HTTPForbidden(msg, request=req,
                                 content_type='text/plain')
 
+        except exception.StorageFull, e:
+            msg = _("Image storage media is full: %s") % e
+            logger.error(msg)
+            self._safe_kill(req, image_id)
+            self.notifier.error('image.upload', msg)
+            raise HTTPRequestEntityTooLarge(msg, request=req,
+                                            content_type='text/plain')
+
+        except exception.StorageWriteDenied, e:
+            msg = _("Insufficient permissions on image storage media: %s") % e
+            logger.error(msg)
+            self._safe_kill(req, image_id)
+            self.notifier.error('image.upload', msg)
+            raise HTTPServiceUnavailable(msg, request=req,
+                                         content_type='text/plain')
+
         except HTTPError, e:
             self._safe_kill(req, image_id)
             self.notifier.error('image.upload', e.explanation)
@@ -418,8 +480,18 @@ class Controller(controller.BaseController):
         image_meta = {}
         image_meta['location'] = location
         image_meta['status'] = 'active'
-        return registry.update_image_metadata(req.context, image_id,
-                                              image_meta)
+
+        try:
+            return registry.update_image_metadata(req.context,
+                                                  image_id,
+                                                  image_meta)
+        except exception.Invalid, e:
+            msg = (_("Failed to activate image. Got error: %(e)s")
+                   % locals())
+            for line in msg.split('\n'):
+                logger.error(line)
+            self.notifier.error('image.update', msg)
+            raise HTTPBadRequest(msg, request=req, content_type="text/plain")
 
     def _kill(self, req, image_id):
         """
@@ -467,21 +539,42 @@ class Controller(controller.BaseController):
         location = self._upload(req, image_meta)
         return self._activate(req, image_id, location)
 
+    def _get_size(self, image_meta, location):
+        # retrieve the image size from remote store (if not provided)
+        return image_meta.get('size', 0) or get_size_from_backend(location)
+
+    def _handle_source(self, req, image_id, image_meta, image_data):
+        if image_data or self._copy_from(req):
+            image_meta = self._upload_and_activate(req, image_meta)
+        else:
+            location = image_meta.get('location')
+            if location:
+                image_meta = self._activate(req, image_id, location)
+        return image_meta
+
     def create(self, req, image_meta, image_data):
         """
-        Adds a new image to Glance. Three scenarios exist when creating an
+        Adds a new image to Glance. Four scenarios exist when creating an
         image:
 
-        1. If the image data is available for upload, create can be passed the
-           image data as the request body and the metadata as the request
-           headers. The image will initially be 'queued', during upload it
-           will be in the 'saving' status, and then 'killed' or 'active'
-           depending on whether the upload completed successfully.
+        1. If the image data is available directly for upload, create can be
+           passed the image data as the request body and the metadata as the
+           request headers. The image will initially be 'queued', during
+           upload it will be in the 'saving' status, and then 'killed' or
+           'active' depending on whether the upload completed successfully.
 
-        2. If the image data exists somewhere else, you can pass in the source
-           using the x-image-meta-location header
+        2. If the image data exists somewhere else, you can upload indirectly
+           from the external source using the x-glance-api-copy-from header.
+           Once the image is uploaded, the external store is not subsequently
+           consulted, i.e. the image content is served out from the configured
+           glance image store.  State transitions are as for option #1.
 
-        3. If the image data is not available yet, but you'd like reserve a
+        3. If the image data exists somewhere else, you can reference the
+           source using the x-image-meta-location header. The image content
+           will be served out from the external store, i.e. is never uploaded
+           to the configured glance image store.
+
+        4. If the image data is not available yet, but you'd like reserve a
            spot for it, you can omit the data and a record will be created in
            the 'queued' state. This exists primarily to maintain backwards
            compatibility with OpenStack/Rackspace API semantics.
@@ -509,14 +602,9 @@ class Controller(controller.BaseController):
                                 content_type="text/plain")
 
         image_meta = self._reserve(req, image_meta)
-        image_id = image_meta['id']
+        id = image_meta['id']
 
-        if image_data is not None:
-            image_meta = self._upload_and_activate(req, image_meta)
-        else:
-            location = image_meta.get('location')
-            if location:
-                image_meta = self._activate(req, image_id, location)
+        image_meta = self._handle_source(req, id, image_meta, image_data)
 
         # Prevent client from learning the location, as it
         # could contain security credentials
@@ -558,20 +646,31 @@ class Controller(controller.BaseController):
         if image_data is not None and orig_status != 'queued':
             raise HTTPConflict(_("Cannot upload to an unqueued image"))
 
-        # Only allow the Location fields to be modified if the image is
-        # in queued status, which indicates that the user called POST /images
-        # but did not supply either a Location field OR image data
-        if not orig_status == 'queued' and 'location' in image_meta:
+        # Only allow the Location|Copy-From fields to be modified if the
+        # image is in queued status, which indicates that the user called
+        # POST /images but originally supply neither a Location|Copy-From
+        # field NOR image data
+        location = self._external_source(image_meta, req)
+        reactivating = orig_status != 'queued' and location
+        activating = orig_status == 'queued' and (location or image_data)
+
+        if reactivating:
             msg = _("Attempted to update Location field for an image "
                     "not in queued status.")
             raise HTTPBadRequest(msg, request=req, content_type="text/plain")
 
         try:
-            image_meta = registry.update_image_metadata(req.context, id,
+            if location:
+                image_meta['size'] = self._get_size(image_meta, location)
+
+            image_meta = registry.update_image_metadata(req.context,
+                                                        id,
                                                         image_meta,
                                                         purge_props)
-            if image_data is not None:
-                image_meta = self._upload_and_activate(req, image_meta)
+
+            if activating:
+                image_meta = self._handle_source(req, id, image_meta,
+                                                 image_data)
         except exception.Invalid, e:
             msg = (_("Failed to update image metadata. Got error: %(e)s")
                    % locals())
@@ -585,6 +684,12 @@ class Controller(controller.BaseController):
                 logger.info(line)
             self.notifier.info('image.update', msg)
             raise HTTPNotFound(msg, request=req, content_type="text/plain")
+        except exception.NotAuthorized, e:
+            msg = ("Unable to update image: %(e)s" % locals())
+            for line in msg.split('\n'):
+                logger.info(line)
+            self.notifier.info('image.update', msg)
+            raise HTTPForbidden(msg, request=req, content_type="text/plain")
         else:
             self.notifier.info('image.update', image_meta)
 
@@ -635,6 +740,12 @@ class Controller(controller.BaseController):
                 logger.info(line)
             self.notifier.info('image.delete', msg)
             raise HTTPNotFound(msg, request=req, content_type="text/plain")
+        except exception.NotAuthorized, e:
+            msg = ("Unable to delete image: %(e)s" % locals())
+            for line in msg.split('\n'):
+                logger.info(line)
+            self.notifier.info('image.delete', msg)
+            raise HTTPForbidden(msg, request=req, content_type="text/plain")
         else:
             self.notifier.info('image.delete', id)
 

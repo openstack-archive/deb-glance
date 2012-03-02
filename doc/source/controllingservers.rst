@@ -149,7 +149,7 @@ To start a Glance server with ``glance-control``, simply call
 any command-line options you wish to provide. Start the server with ``glance-control``
 in the following way::
 
-  $> sudo glance-control <SERVER> start [CONFPATH]
+  $> sudo glance-control [OPTIONS] <SERVER> start [CONFPATH]
 
 .. note::
 
@@ -172,9 +172,29 @@ with the ``glance-control`` wrapper script. ::
   jsuh     20042  0.0  0.0   3368   744 pts/1    S+   12:51   0:00 grep glance
 
  
-The same ``paste.deploy`` configuration files are used by ``glance-control``
-to start the Glance server programs, and you can specify (as the example above
-shows) a configuration file when starting the server.
+The same configuration files are used by ``glance-control`` to start the
+Glance server programs, and you can specify (as the example above shows)
+a configuration file when starting the server.
+
+
+In order for your launched glance service to be monitored for unexpected death
+and respawned if necessary, use the following option:
+
+
+  $ sudo glance-control [service] start --respawn ...
+
+
+Note that this will cause ``glance-control`` itself to remain running. Also note
+that deliberately stopped services are not respawned, neither are rapidly bouncing
+services (where process death occurred within one second of the last launch).
+
+
+By default, output from glance services is discarded when launched with ``glance-control``.
+In order to capture such output via syslog, use the following option:
+
+
+  $ sudo glance-control --capture-output ...
+
 
 Stopping a server
 -----------------

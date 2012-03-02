@@ -299,16 +299,23 @@ class Controller(object):
 
         try:
             db_api.image_destroy(req.context, id)
-        except exception.NotFound:
-            return exc.HTTPNotFound()
-        except exception.NotAuthorized:
+
+        except exception.NotAuthorizedPublicImage:
             # If it's private and doesn't belong to them, don't let on
             # that it exists
-            msg = _("Access by %(user)s to image %(id)s "
-                    "denied") % ({'user': req.context.user,
-                    'id': id})
-            logger.info(msg)
-            raise exc.HTTPNotFound()
+            msg = _("Access by %(user)s to delete public image %(id)s denied")
+            args = {'user': req.context.user, 'id': id}
+            logger.info(msg % args)
+            raise exc.HTTPForbidden()
+
+        except exception.NotAuthorized:
+            msg = _("Access by %(user)s to delete private image %(id)s denied")
+            args = {'user': req.context.user, 'id': id}
+            logger.info(msg % args)
+            return exc.HTTPNotFound()
+
+        except exception.NotFound:
+            return exc.HTTPNotFound()
 
     def create(self, req, body):
         """
@@ -390,13 +397,16 @@ class Controller(object):
             raise exc.HTTPNotFound(body='Image not found',
                                request=req,
                                content_type='text/plain')
+        except exception.NotAuthorizedPublicImage:
+            msg = _("Access by %(user)s to update public image %(id)s denied")
+            logger.info(msg % {'user': req.context.user, 'id': id})
+            raise exc.HTTPForbidden()
+
         except exception.NotAuthorized:
             # If it's private and doesn't belong to them, don't let on
             # that it exists
-            msg = _("Access by %(user)s to image %(id)s "
-                    "denied") % ({'user': req.context.user,
-                    'id': id})
-            logger.info(msg)
+            msg = _("Access by %(user)s to update private image %(id)s denied")
+            logger.info(msg % {'user': req.context.user, 'id': id})
             raise exc.HTTPNotFound(body='Image not found',
                                request=req,
                                content_type='text/plain')

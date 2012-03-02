@@ -63,6 +63,11 @@ class MissingCredentialError(GlanceException):
     message = _("Missing required credential: %(required)s")
 
 
+class BadAuthStrategy(GlanceException):
+    message = _("Incorrect auth strategy, expected \"%(expected)s\" but "
+                "received \"%(received)s\"")
+
+
 class NotFound(GlanceException):
     message = _("An object with the specified identifier was not found.")
 
@@ -77,6 +82,14 @@ class BadStoreUri(GlanceException):
 
 class Duplicate(GlanceException):
     message = _("An object with the same identifier already exists.")
+
+
+class StorageFull(GlanceException):
+    message = _("There is not enough disk space on the image storage media.")
+
+
+class StorageWriteDenied(GlanceException):
+    message = _("Permission to write image storage media denied.")
 
 
 class ImportFailure(GlanceException):
@@ -100,6 +113,10 @@ class NotAuthorized(GlanceException):
     message = _("You are not authorized to complete this action.")
 
 
+class NotAuthorizedPublicImage(NotAuthorized):
+    message = _("You are not authorized to complete this action.")
+
+
 class Invalid(GlanceException):
     message = _("Data supplied was not valid.")
 
@@ -114,6 +131,10 @@ class DatabaseMigrationError(GlanceException):
 
 class ClientConnectionError(GlanceException):
     message = _("There was an error connecting to a server")
+
+
+class ClientConfigurationError(GlanceException):
+    message = _("There was an error configuring the client.")
 
 
 class MultipleChoices(GlanceException):
@@ -164,3 +185,9 @@ class InvalidRedirect(GlanceException):
 
 class NoServiceEndpoint(GlanceException):
     message = _("Response from Keystone does not contain a Glance endpoint.")
+
+
+class RegionAmbiguity(GlanceException):
+    message = _("Multiple 'image' service matches for region %(region)s. This "
+                "generally means that a region is required and you have not "
+                "supplied one.")

@@ -19,6 +19,7 @@
 A simple filesystem-backed store
 """
 
+import errno
 import hashlib
 import logging
 import os
@@ -26,6 +27,7 @@ import urlparse
 
 from glance.common import cfg
 from glance.common import exception
+from glance.common import utils
 import glance.store
 import glance.store.base
 import glance.store.location
@@ -195,14 +197,20 @@ class Store(glance.store.base.Store):
 
         checksum = hashlib.md5()
         bytes_written = 0
-        with open(filepath, 'wb') as f:
-            while True:
-                buf = image_file.read(ChunkedFile.CHUNKSIZE)
-                if not buf:
-                    break
-                bytes_written += len(buf)
-                checksum.update(buf)
-                f.write(buf)
+        try:
+            with open(filepath, 'wb') as f:
+                for buf in utils.chunkreadable(image_file,
+                                              ChunkedFile.CHUNKSIZE):
+                    bytes_written += len(buf)
+                    checksum.update(buf)
+                    f.write(buf)
+        except IOError as e:
+            if e.errno in [errno.EFBIG, errno.ENOSPC]:
+                raise exception.StorageFull()
+            elif e.errno == errno.EACCES:
+                raise exception.StorageWriteDenied()
+            else:
+                raise
 
         checksum_hex = checksum.hexdigest()
 

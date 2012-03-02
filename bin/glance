@@ -66,6 +66,8 @@ def catch_error(action):
                 print "Not authorized to make this request. Check "\
                       "your credentials (OS_AUTH_USER, OS_AUTH_KEY, ...)."
                 return FAILURE
+            except exception.ClientConfigurationError:
+                raise
             except Exception, e:
                 options = args[0]
                 if options.debug:
@@ -139,7 +141,7 @@ def print_image_formatted(client, image):
     print "Container format: %s" % image['container_format']
     print "Minimum Ram Required (MB): %s" % image['min_ram']
     print "Minimum Disk Required (GB): %s" % image['min_disk']
-    if image['owner']:
+    if image.get('owner'):
         print "Owner: %s" % image['owner']
     if len(image['properties']) > 0:
         for k, v in image['properties'].items():
@@ -171,16 +173,21 @@ is_public           Optional. If specified, interpreted as a boolean value
 protected           Optional. If specified, interpreted as a boolean value
                     and enables or disables deletion protection.
                     The default value is False.
-disk_format         Optional. Possible values are 'vhd','vmdk','raw', 'qcow2',
-                    and 'ami'. Default value is 'raw'.
-container_format    Optional. Possible values are 'ovf' and 'ami'.
-                    Default value is 'ovf'.
+disk_format         Required. Possible values are 'vhd','vmdk','raw', 'qcow2',
+                    and 'ami'.
+container_format    Required. Possible values are 'ovf' and 'ami'.
 location            Optional. When specified, should be a readable location
                     in the form of a URI: $STORE://LOCATION. For example, if
                     the image data is stored in a file on the local
                     filesystem at /usr/share/images/some.image.tar.gz
                     you would specify:
                     location=file:///usr/share/images/some.image.tar.gz
+copy_from           Optional. An external location (HTTP, S3 or Swift URI) to
+                    copy image content from. For example, if the image data is
+                    stored as an object called fedora16 in an S3 bucket named
+                    images, you would specify (with the approriate access and
+                    secret keys):
+                    copy_from=s3://akey:skey@s3.amazonaws.com/images/fedora16
 
 Any other field names are considered to be custom properties so be careful
 to spell field names correctly. :)
@@ -200,7 +207,8 @@ EXAMPLES
     location=http://images.ubuntu.org/images/lucid-10.04-i686.iso \\
     distro="Ubuntu 10.04 LTS"
 
-%(prog)s add name="My Image" distro="Ubuntu 10.04 LTS" < /tmp/myimage.iso"""
+%(prog)s add name="My Image" disk_format=raw container_format=ovf \\
+    distro="Ubuntu 10.04 LTS" < /tmp/myimage.iso"""
     c = get_client(options)
 
     try:
@@ -218,10 +226,13 @@ EXAMPLES
                       fields.pop('is_public', False)),
                   'protected': utils.bool_from_string(
                       fields.pop('protected', False)),
-                  'disk_format': fields.pop('disk_format', 'raw'),
                   'min_disk': fields.pop('min_disk', 0),
                   'min_ram': fields.pop('min_ram', 0),
-                  'container_format': fields.pop('container_format', 'ovf')}
+    }
+
+    for format in ['disk_format', 'container_format']:
+        if format in fields:
+            image_meta[format] = fields.pop(format)
 
     # Strip any args that are not supported
     unsupported_fields = ['status', 'size']
@@ -230,13 +241,23 @@ EXAMPLES
             print 'Found non-settable field %s. Removing.' % field
             fields.pop(field)
 
-    if 'location' in fields.keys():
-        image_meta['location'] = fields.pop('location')
+    def _external_source(fields, image_data):
+        source = None
+        features = {}
+        if 'location' in fields.keys():
+            source = fields.pop('location')
+            image_meta['location'] = source
+            if 'checksum' in fields.keys():
+                image_meta['checksum'] = fields.pop('checksum')
+        elif 'copy_from' in fields.keys():
+            source = fields.pop('copy_from')
+            features['x-glance-api-copy-from'] = source
+        return source, features
 
     # We need either a location or image data/stream to add...
-    image_location = image_meta.get('location')
+    location, features = _external_source(fields, image_meta)
     image_data = None
-    if not image_location:
+    if not location:
         # Grab the image data stream from stdin or redirect,
         # otherwise error out
         image_data = sys.stdin
@@ -246,7 +267,8 @@ EXAMPLES
 
     if not options.dry_run:
         try:
-            image_meta = c.add_image(image_meta, image_data)
+            image_meta = c.add_image(image_meta, image_data,
+                                     features=features)
             image_id = image_meta['id']
             print "Added new image with ID: %s" % image_id
             if options.verbose:
@@ -273,9 +295,17 @@ EXAMPLES
             return FAILURE
     else:
         print "Dry run. We would have done the following:"
+
+        def _dump(dict):
+            for k, v in sorted(dict.items()):
+                print " %(k)30s => %(v)s" % locals()
+
         print "Add new image with metadata:"
-        for k, v in sorted(image_meta.items()):
-            print " %(k)30s => %(v)s" % locals()
+        _dump(image_meta)
+
+        if features:
+            print "with features enabled:"
+            _dump(features)
 
     return SUCCESS
 
@@ -294,7 +324,9 @@ to Glance that represents the metadata for an image.
 Field names that can be specified:
 
 name                A name for the image.
-location            The location of the image.
+location            An external location to serve out from.
+copy_from           An external location (HTTP, S3 or Swift URI) to copy image
+                    content from.
 is_public           If specified, interpreted as a boolean value
                     and sets or unsets the image's availability to the public.
 protected           If specified, interpreted as a boolean value
@@ -328,6 +360,11 @@ to spell field names correctly. :)"""
             print 'Found non-modifiable field %s. Removing.' % field
             fields.pop(field)
 
+    features = {}
+    if 'location' not in fields and 'copy_from' in fields:
+        source = fields.pop('copy_from')
+        features['x-glance-api-copy-from'] = source
+
     base_image_fields = ['disk_format', 'container_format', 'name',
                          'min_disk', 'min_ram', 'location', 'owner']
     for field in base_image_fields:
@@ -348,7 +385,8 @@ to spell field names correctly. :)"""
 
     if not options.dry_run:
         try:
-            image_meta = c.update_image(image_id, image_meta=image_meta)
+            image_meta = c.update_image(image_id, image_meta=image_meta,
+                                        features=features)
             print "Updated image %s" % image_id
 
             if options.verbose:
@@ -357,6 +395,9 @@ to spell field names correctly. :)"""
         except exception.NotFound:
             print "No image with ID %s was found" % image_id
             return FAILURE
+        except exception.NotAuthorized:
+            print "You do not have permission to update image %s" % image_id
+            return FAILURE
         except Exception, e:
             print "Failed to update image. Got error:"
             pieces = unicode(e).split('\n')
@@ -364,10 +405,18 @@ to spell field names correctly. :)"""
                 print piece
             return FAILURE
     else:
+        def _dump(dict):
+            for k, v in sorted(dict.items()):
+                print " %(k)30s => %(v)s" % locals()
+
         print "Dry run. We would have done the following:"
         print "Update existing image with metadata:"
-        for k, v in sorted(image_meta.items()):
-            print " %(k)30s => %(v)s" % locals()
+        _dump(image_meta)
+
+        if features:
+            print "with features enabled:"
+            _dump(features)
+
     return SUCCESS
 
 
@@ -396,6 +445,9 @@ Deletes an image from Glance"""
         return SUCCESS
     except exception.NotFound:
         print "No image with ID %s was found" % image_id
+        return FAILURE
+    except exception.NotAuthorized:
+        print "You do not have permission to delete image %s" % image_id
         return FAILURE
 
 
@@ -731,20 +783,44 @@ def get_client(options):
     specified by the --host and --port options
     supplied to the CLI
     """
-    creds = dict(username=options.username or os.getenv('OS_AUTH_USER'),
-                 password=options.password or os.getenv('OS_AUTH_KEY'),
-                 tenant=options.tenant or os.getenv('OS_AUTH_TENANT'),
+
+    if options.auth_url or os.getenv('OS_AUTH_URL'):
+        force_strategy = 'keystone'
+    else:
+        force_strategy = None
+
+    creds = dict(username=options.username or \
+                         os.getenv('OS_AUTH_USER', os.getenv('OS_USERNAME')),
+                 password=options.password or \
+                         os.getenv('OS_AUTH_KEY', os.getenv('OS_PASSWORD')),
+                 tenant=options.tenant or \
+                         os.getenv('OS_AUTH_TENANT',
+                                 os.getenv('OS_TENANT_NAME')),
                  auth_url=options.auth_url or os.getenv('OS_AUTH_URL'),
-                 strategy=options.auth_strategy or \
-                          os.getenv('OS_AUTH_STRATEGY', 'noauth'))
+                 strategy=force_strategy or options.auth_strategy or \
+                          os.getenv('OS_AUTH_STRATEGY', 'noauth'),
+                 region=options.region or os.getenv('OS_REGION_NAME'),
+    )
+
+    if creds['strategy'] == 'keystone' and not creds['auth_url']:
+        msg = ("--auth_url option or OS_AUTH_URL environment variable "
+               "required when keystone authentication strategy is enabled\n")
+        raise exception.ClientConfigurationError(msg)
 
     use_ssl = (options.use_ssl or (
         creds['auth_url'] is not None and
         creds['auth_url'].find('https') != -1))
 
-    return glance_client.Client(host=options.host, port=options.port,
-                                use_ssl=use_ssl, auth_tok=options.auth_token,
-                                creds=creds)
+    client = (glance_client.ProgressClient if not options.is_silent_upload
+                                        else glance_client.Client)
+
+    return client(host=options.host,
+                port=options.port,
+                use_ssl=use_ssl,
+                auth_tok=options.auth_token or
+                os.getenv('OS_TOKEN'),
+                creds=creds,
+                insecure=options.insecure)
 
 
 def create_options(parser):
@@ -754,6 +830,10 @@ def create_options(parser):
 
     :param parser: The option parser
     """
+    parser.add_option('--silent-upload', default=False, action="store_true",
+                      dest="is_silent_upload",
+                      help="disable progress bar animation and information "
+                      "during upload")
     parser.add_option('-v', '--verbose', default=False, action="store_true",
                       help="Print more verbose output")
     parser.add_option('-d', '--debug', default=False, action="store_true",
@@ -771,6 +851,12 @@ def create_options(parser):
                            "(http/https) of the glance server, for example "
                            "-U https://localhost:" + str(DEFAULT_PORT) +
                            "/v1 Default: None")
+    parser.add_option('-k', '--insecure', dest="insecure",
+                      default=False, action="store_true",
+                      help="Explicitly allow glance to perform \"insecure\" "
+                      "SSL (https) requests. The server's certificate will "
+                      "not be verified against any certificate authorities. "
+                      "This option should be used with caution.")
     parser.add_option('-A', '--auth_token', dest="auth_token",
                       metavar="TOKEN", default=None,
                       help="Authentication token to use to identify the "
@@ -781,6 +867,13 @@ def create_options(parser):
     parser.add_option('-K', '--password', dest="password",
                       metavar="PASSWORD", default=None,
                       help="Password used to acquire an authentication token")
+    parser.add_option('-R', '--region', dest="region",
+                      metavar="REGION", default=None,
+                      help="Region name. When using keystone authentication "
+                      "version 2.0 or later this identifies the region "
+                      "name to use when selecting the service endpoint. A "
+                      "region name must be provided if more than one "
+                      "region endpoint is available")
     parser.add_option('-T', '--tenant', dest="tenant",
                       metavar="TENANT", default=None,
                       help="Tenant name")
@@ -800,7 +893,7 @@ def create_options(parser):
                       help="Sort results by this image attribute.")
     parser.add_option('--sort_dir', dest="sort_dir", metavar="[desc|asc]",
                       help="Sort results in this direction.")
-    parser.add_option('-f', '--force', dest="force", metavar="FORCE",
+    parser.add_option('-f', '--force', dest="force",
                       default=False, action="store_true",
                       help="Prevent select actions from requesting "
                            "user confirmation")
@@ -965,5 +1058,9 @@ Member Commands:
         if options.verbose:
             print "Completed in %-0.4f sec." % (end_time - start_time)
         sys.exit(result)
-    except (RuntimeError, NotImplementedError), e:
-        print "ERROR: ", e
+    except (RuntimeError,
+            NotImplementedError,
+            exception.ClientConfigurationError), e:
+        oparser.print_usage()
+        print >> sys.stderr, "ERROR: ", e
+        sys.exit(1)

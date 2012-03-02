@@ -25,18 +25,32 @@ import errno
 import inspect
 import logging
 import os
+import platform
 import random
 import subprocess
 import socket
 import sys
 import uuid
 
+import iso8601
+
 from glance.common import exception
 
 
 logger = logging.getLogger(__name__)
 
-TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+TIME_FORMAT = "%Y-%m-%dT%H:%M:%S"
+
+
+def chunkreadable(iter, chunk_size=65536):
+    """
+    Wrap a readable iterator with a reader yielding chunks of
+    a preferred size, otherwise leave iterator unchanged.
+
+    :param iter: an iter which may also be readable
+    :param chunk_size: maximum size of chunk
+    """
+    return chunkiter(iter, chunk_size) if hasattr(iter, 'read') else iter
 
 
 def chunkiter(fp, chunk_size=65536):
@@ -64,17 +78,28 @@ def image_meta_to_http_headers(image_meta):
     """
     headers = {}
     for k, v in image_meta.items():
-        if v is None:
-            v = ''
-        if k == 'properties':
-            for pk, pv in v.items():
-                if pv is None:
-                    pv = ''
-                headers["x-image-meta-property-%s"
-                        % pk.lower()] = unicode(pv)
-        else:
-            headers["x-image-meta-%s" % k.lower()] = unicode(v)
+        if v is not None:
+            if k == 'properties':
+                for pk, pv in v.items():
+                    if pv is not None:
+                        headers["x-image-meta-property-%s"
+                                % pk.lower()] = unicode(pv)
+            else:
+                headers["x-image-meta-%s" % k.lower()] = unicode(v)
     return headers
+
+
+def add_features_to_http_headers(features, headers):
+    """
+    Adds additional headers representing glance features to be enabled.
+
+    :param headers: Base set of headers
+    :param features: Map of enabled features
+    """
+    if features:
+        for k, v in features.items():
+            if v is not None:
+                headers[k.lower()] = unicode(v)
 
 
 def get_image_meta_from_headers(response):
@@ -180,13 +205,29 @@ def is_uuid_like(value):
 
 
 def isotime(at=None):
+    """Stringify time in ISO 8601 format"""
     if not at:
         at = datetime.datetime.utcnow()
-    return at.strftime(TIME_FORMAT)
+    str = at.strftime(TIME_FORMAT)
+    tz = at.tzinfo.tzname(None) if at.tzinfo else 'UTC'
+    str += ('Z' if tz == 'UTC' else tz)
+    return str
 
 
 def parse_isotime(timestr):
-    return datetime.datetime.strptime(timestr, TIME_FORMAT)
+    """Parse time from ISO 8601 format"""
+    try:
+        return iso8601.parse_date(timestr)
+    except iso8601.ParseError as e:
+        raise ValueError(e.message)
+    except TypeError as e:
+        raise ValueError(e.message)
+
+
+def normalize_time(timestamp):
+    """Normalize time in arbitrary timezone to UTC"""
+    offset = timestamp.utcoffset()
+    return timestamp.replace(tzinfo=None) - offset if offset else timestamp
 
 
 def safe_mkdirs(path):
@@ -265,3 +306,67 @@ class PrettyTable(object):
             justified = clipped_data.ljust(width)
 
         return justified
+
+
+def get_terminal_size():
+
+    def _get_terminal_size_posix():
+        import fcntl
+        import struct
+        import termios
+
+        height_width = None
+
+        try:
+            height_width = struct.unpack('hh', fcntl.ioctl(sys.stderr.fileno(),
+                                        termios.TIOCGWINSZ,
+                                        struct.pack('HH', 0, 0)))
+        except:
+            pass
+
+        if not height_width:
+            try:
+                p = subprocess.Popen(['stty', 'size'],
+                                    shell=false,
+                                    stdout=subprocess.PIPE)
+                return tuple(int(x) for x in p.communicate()[0].split())
+            except:
+                pass
+
+        return height_width
+
+    def _get_terminal_size_win32():
+        try:
+            from ctypes import windll, create_string_buffer
+            handle = windll.kernel32.GetStdHandle(-12)
+            csbi = create_string_buffer(22)
+            res = windll.kernel32.GetConsoleScreenBufferInfo(handle, csbi)
+        except:
+            return None
+        if res:
+            import struct
+            unpack_tmp = struct.unpack("hhhhHhhhhhh", csbi.raw)
+            (bufx, bufy, curx, cury, wattr,
+            left, top, right, bottom, maxx, maxy) = unpack_tmp
+            height = bottom - top + 1
+            width = right - left + 1
+            return (height, width)
+        else:
+            return None
+
+    def _get_terminal_size_unknownOS():
+        raise NotImplementedError
+
+    func = {'posix': _get_terminal_size_posix,
+            'win32': _get_terminal_size_win32}
+
+    height_width = func.get(platform.os.name, _get_terminal_size_unknownOS)()
+
+    if height_width == None:
+        raise exception.Invalid()
+
+    for i in height_width:
+        if not isinstance(i, int) or i <= 0:
+            raise exception.Invalid()
+
+    return height_width[0], height_width[1]

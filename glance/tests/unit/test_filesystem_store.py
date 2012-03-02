@@ -17,6 +17,7 @@
 
 """Tests the filesystem backend store"""
 
+import errno
 import StringIO
 import hashlib
 import unittest
@@ -133,6 +134,52 @@ class TestStore(base.IsolatedUnitTest):
         self.assertRaises(exception.Duplicate,
                           self.store.add,
                           image_id, image_file, 0)
+
+    def _do_test_add_failure(self, errno, exception):
+        ChunkedFile.CHUNKSIZE = 1024
+        image_id = utils.generate_uuid()
+        file_size = 1024 * 5  # 5K
+        file_contents = "*" * file_size
+        location = "file://%s/%s" % (self.test_dir, image_id)
+        image_file = StringIO.StringIO(file_contents)
+
+        def fake_IO_Error(size):
+            e = IOError()
+            e.errno = errno
+            raise e
+
+        self.stubs.Set(image_file, 'read', fake_IO_Error)
+        self.assertRaises(exception,
+                          self.store.add,
+                          image_id, image_file, 0)
+
+    def test_add_storage_full(self):
+        """
+        Tests that adding an image without enough space on disk
+        raises an appropriate exception
+        """
+        self._do_test_add_failure(errno.ENOSPC, exception.StorageFull)
+
+    def test_add_file_too_big(self):
+        """
+        Tests that adding an excessively large image file
+        raises an appropriate exception
+        """
+        self._do_test_add_failure(errno.EFBIG, exception.StorageFull)
+
+    def test_add_storage_write_denied(self):
+        """
+        Tests that adding an image with insufficient filestore permissions
+        raises an appropriate exception
+        """
+        self._do_test_add_failure(errno.EACCES, exception.StorageWriteDenied)
+
+    def test_add_other_failure(self):
+        """
+        Tests that a non-space-related IOError does not raise a
+        StorageFull exception.
+        """
+        self._do_test_add_failure(errno.ENOTDIR, IOError)
 
     def test_delete(self):
         """

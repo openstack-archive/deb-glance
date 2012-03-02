@@ -78,10 +78,10 @@ OPTIONS
 
   **-v, --verbose**
         Print more verbose output
- 
+
   **-d, --debug**
         Print more verbose output
- 
+
   **-H ADDRESS, --host=ADDRESS**
         Address of Glance API host. Default: 0.0.0.0
 
@@ -90,9 +90,21 @@ OPTIONS
 
   **-U URL, --url=URL**
         URL of Glance service. This option can be used to specify the hostname,
-        port and protocol (http/https) of the glance server, for example 
-        -U https://localhost:9292/v1 
+        port and protocol (http/https) of the glance server, for example
+        -U https://localhost:9292/v1
         Default: None
+
+  **-k, --insecure**
+        Explicitly allow glance to perform insecure SSL (https) requests.
+        The server certificate will not be verified against any certificate
+        authorities. This option should be used with caution.
+
+  **-R REGION, --region=REGION**
+        When using keystone authentication version 2.0 or later this
+        identifies the region name to use when selecting the service
+        endpoint. If no region is specified and only one region is
+        available that region will be used by default. Where more than
+        one region endpoint is available a region must be provided.
 
   **-A TOKEN, --auth_token=TOKEN**
         Authentication token to use to identify the client to the glance server

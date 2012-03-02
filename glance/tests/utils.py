@@ -154,6 +154,23 @@ class skip_unless(object):
         return _skipper
 
 
+class requires(object):
+    """Decorator that initiates additional test setup/teardown."""
+    def __init__(self, setup, teardown=None):
+        self.setup = setup
+        self.teardown = teardown
+
+    def __call__(self, func):
+        def _runner(*args, **kw):
+            self.setup(args[0])
+            func(*args, **kw)
+            if self.teardown:
+                self.teardown(args[0])
+        _runner.__name__ = func.__name__
+        _runner.__doc__ = func.__doc__
+        return _runner
+
+
 def skip_if_disabled(func):
     """Decorator that skips a test if test case is disabled."""
     @functools.wraps(func)
@@ -168,7 +185,13 @@ def skip_if_disabled(func):
     return wrapped
 
 
-def execute(cmd, raise_error=True, no_venv=False, exec_env=None):
+def execute(cmd,
+            raise_error=True,
+            no_venv=False,
+            exec_env=None,
+            expect_exit=True,
+            expected_exitcode=0,
+            context=None):
     """
     Executes a command in a subprocess. Returns a tuple
     of (exitcode, out, err), where out is the string output
@@ -183,6 +206,9 @@ def execute(cmd, raise_error=True, no_venv=False, exec_env=None):
                      variables; values may be callables, which will
                      be passed the current value of the named
                      environment variable
+    :param expect_exit: Optional flag true iff timely exit is expected
+    :param expected_exitcode: expected exitcode from the launcher
+    :param context: additional context for error message
     """
 
     env = os.environ.copy()
@@ -216,14 +242,22 @@ def execute(cmd, raise_error=True, no_venv=False, exec_env=None):
                                stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE,
                                env=env)
-    result = process.communicate()
-    (out, err) = result
-    exitcode = process.returncode
-    if process.returncode != 0 and raise_error:
+    if expect_exit:
+        result = process.communicate()
+        (out, err) = result
+        exitcode = process.returncode
+    else:
+        out = ''
+        err = ''
+        exitcode = 0
+
+    if exitcode != expected_exitcode and raise_error:
         msg = "Command %(cmd)s did not succeed. Returned an exit "\
               "code of %(exitcode)d."\
               "\n\nSTDOUT: %(out)s"\
               "\n\nSTDERR: %(err)s" % locals()
+        if context:
+            msg += "\n\nCONTEXT: %s" % context
         raise RuntimeError(msg)
     return exitcode, out, err
 
@@ -277,8 +311,7 @@ def xattr_writes_supported(path):
         return False
 
     def set_xattr(path, key, value):
-        entry_xattr = xattr.xattr(path)
-        entry_xattr.set("user.%s" % key, str(value))
+        xattr.setxattr(path, "user.%s" % key, str(value))
 
     # We do a quick attempt to write a user xattr to a temporary file
     # to check that the filesystem is even enabled to support xattrs
@@ -298,3 +331,21 @@ def xattr_writes_supported(path):
             os.unlink(fake_filepath)
 
     return result
+
+
+def minimal_headers(name, public=True):
+    headers = {'Content-Type': 'application/octet-stream',
+               'X-Image-Meta-Name': name,
+               'X-Image-Meta-disk_format': 'raw',
+               'X-Image-Meta-container_format': 'ovf',
+    }
+    if public:
+        headers['X-Image-Meta-Is-Public'] = 'True'
+    return headers
+
+
+def minimal_add_command(port, name, suffix='', public=True):
+    visibility = 'is_public=True' if public else ''
+    return ("bin/glance --port=%d add %s"
+            " disk_format=raw container_format=ovf"
+            " name=%s %s" % (port, visibility, name, suffix))

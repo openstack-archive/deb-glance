@@ -20,6 +20,7 @@
 #   577548-https-httplib-client-connection-with-certificate-v/
 
 import collections
+import errno
 import functools
 import httplib
 import logging
@@ -33,8 +34,14 @@ except ImportError:
     import socket
     import ssl
 
+try:
+    import sendfile
+    SENDFILE_SUPPORTED = True
+except ImportError:
+    SENDFILE_SUPPORTED = False
+
 from glance.common import auth
-from glance.common import exception
+from glance.common import exception, utils
 
 
 # common chunk size for get and put
@@ -102,6 +109,35 @@ class ImageBodyIterator(object):
                 break
 
 
+class SendFileIterator:
+    """
+    Emulate iterator pattern over sendfile, in order to allow
+    send progress be followed by wrapping the iteration.
+    """
+    def __init__(self, connection, body):
+        self.connection = connection
+        self.body = body
+        self.offset = 0
+        self.sending = True
+
+    def __iter__(self):
+        class OfLength:
+            def __init__(self, len):
+                self.len = len
+
+            def __len__(self):
+                return self.len
+
+        while self.sending:
+            sent = sendfile.sendfile(self.connection.sock.fileno(),
+                                     self.body.fileno(),
+                                     self.offset,
+                                     CHUNKSIZE)
+            self.sending = (sent != 0)
+            self.offset += sent
+            yield OfLength(sent)
+
+
 class HTTPSClientAuthConnection(httplib.HTTPSConnection):
     """
     Class to make a HTTPS connection, with support for
@@ -112,13 +148,14 @@ class HTTPSClientAuthConnection(httplib.HTTPSConnection):
     """
 
     def __init__(self, host, port, key_file, cert_file,
-                 ca_file, timeout=None):
+                 ca_file, timeout=None, insecure=False):
         httplib.HTTPSConnection.__init__(self, host, port, key_file=key_file,
                                          cert_file=cert_file)
         self.key_file = key_file
         self.cert_file = cert_file
         self.ca_file = ca_file
         self.timeout = timeout
+        self.insecure = insecure
 
     def connect(self):
         """
@@ -134,14 +171,14 @@ class HTTPSClientAuthConnection(httplib.HTTPSConnection):
         if self._tunnel_host:
             self.sock = sock
             self._tunnel()
-        # If there's no CA File, don't force Server Certificate Check
-        if self.ca_file:
+        # Check CA file unless 'insecure' is specificed
+        if self.insecure is True:
+            self.sock = ssl.wrap_socket(sock, self.key_file, self.cert_file,
+                                        cert_reqs=ssl.CERT_NONE)
+        else:
             self.sock = ssl.wrap_socket(sock, self.key_file, self.cert_file,
                                         ca_certs=self.ca_file,
                                         cert_reqs=ssl.CERT_REQUIRED)
-        else:
-            self.sock = ssl.wrap_socket(sock, self.key_file, self.cert_file,
-                                        cert_reqs=ssl.CERT_NONE)
 
 
 class BaseClient(object):
@@ -150,6 +187,12 @@ class BaseClient(object):
 
     DEFAULT_PORT = 80
     DEFAULT_DOC_ROOT = None
+    # Standard CA file locations for Debian/Ubuntu, RedHat/Fedora,
+    # Suse, FreeBSD/OpenBSD
+    DEFAULT_CA_FILE_PATH = '/etc/ssl/certs/ca-certificates.crt:'\
+        '/etc/pki/tls/certs/ca-bundle.crt:'\
+        '/etc/ssl/ca-bundle.pem:'\
+        '/etc/ssl/cert.pem'
 
     OK_RESPONSE_CODES = (
         httplib.OK,
@@ -167,8 +210,8 @@ class BaseClient(object):
     )
 
     def __init__(self, host, port=None, use_ssl=False, auth_tok=None,
-                 creds=None, doc_root=None,
-                 key_file=None, cert_file=None, ca_file=None):
+                 creds=None, doc_root=None, key_file=None,
+                 cert_file=None, ca_file=None, insecure=False):
         """
         Creates a new client to some service.
 
@@ -195,6 +238,8 @@ class BaseClient(object):
                         If use_ssl is True, and this param is None (the
                         default), then an environ variable
                         GLANCE_CLIENT_CA_FILE is looked for.
+        :param insecure: Optional. If set then the server's certificate
+                         will not be verified.
         """
         self.host = host
         self.port = port or self.DEFAULT_PORT
@@ -210,40 +255,55 @@ class BaseClient(object):
         self.connect_kwargs = {}
 
         if use_ssl:
-            if not key_file:
-                if not os.environ.get('GLANCE_CLIENT_KEY_FILE'):
-                    msg = _("You have selected to use SSL in connecting, "
-                            "however you have failed to supply either a "
-                            "key_file parameter or set the "
-                            "GLANCE_CLIENT_KEY_FILE environ variable")
-                    raise exception.ClientConnectionError(msg)
+            if key_file is None:
                 key_file = os.environ.get('GLANCE_CLIENT_KEY_FILE')
+            if cert_file is None:
+                cert_file = os.environ.get('GLANCE_CLIENT_CERT_FILE')
+            if ca_file is None:
+                ca_file = os.environ.get('GLANCE_CLIENT_CA_FILE')
 
-            if not os.path.exists(key_file):
+            # Check that key_file/cert_file are either both set or both unset
+            if cert_file is not None and key_file is None:
+                msg = _("You have selected to use SSL in connecting, "
+                        "and you have supplied a cert, "
+                        "however you have failed to supply either a "
+                        "key_file parameter or set the "
+                        "GLANCE_CLIENT_KEY_FILE environ variable")
+                raise exception.ClientConnectionError(msg)
+
+            if key_file is not None and cert_file is None:
+                msg = _("You have selected to use SSL in connecting, "
+                        "and you have supplied a key, "
+                        "however you have failed to supply either a "
+                        "cert_file parameter or set the "
+                        "GLANCE_CLIENT_CERT_FILE environ variable")
+                raise exception.ClientConnectionError(msg)
+
+            if key_file is not None and not os.path.exists(key_file):
                 msg = _("The key file you specified %s does not "
                         "exist") % key_file
                 raise exception.ClientConnectionError(msg)
             self.connect_kwargs['key_file'] = key_file
 
-            if not cert_file:
-                if not os.environ.get('GLANCE_CLIENT_CERT_FILE'):
-                    msg = _("You have selected to use SSL in connecting, "
-                            "however you have failed to supply either a "
-                            "cert_file parameter or set the "
-                            "GLANCE_CLIENT_CERT_FILE environ variable")
-                    raise exception.ClientConnectionError(msg)
-                cert_file = os.environ.get('GLANCE_CLIENT_CERT_FILE')
-
-            if not os.path.exists(cert_file):
-                msg = _("The key file you specified %s does not "
+            if cert_file is not None and not os.path.exists(cert_file):
+                msg = _("The cert file you specified %s does not "
                         "exist") % cert_file
                 raise exception.ClientConnectionError(msg)
             self.connect_kwargs['cert_file'] = cert_file
 
-            if not ca_file:
-                ca_file = os.environ.get('GLANCE_CLIENT_CA_FILE')
+            if ca_file is not None and not os.path.exists(ca_file):
+                msg = _("The CA file you specified %s does not "
+                        "exist") % ca_file
+                raise exception.ClientConnectionError(msg)
+
+            if ca_file is None:
+                for ca in self.DEFAULT_CA_FILE_PATH.split(":"):
+                    if os.path.exists(ca):
+                        ca_file = ca
+                        break
 
             self.connect_kwargs['ca_file'] = ca_file
+            self.connect_kwargs['insecure'] = insecure
 
     def set_auth_token(self, auth_tok):
         """
@@ -279,8 +339,7 @@ class BaseClient(object):
         Returns an instantiated authentication plugin.
         """
         strategy = creds.get('strategy', 'noauth')
-        plugin_class = auth.get_plugin_from_strategy(strategy)
-        plugin = plugin_class(creds)
+        plugin = auth.get_plugin_from_strategy(strategy, creds)
         return plugin
 
     def get_connection_type(self):
@@ -394,8 +453,18 @@ class BaseClient(object):
             def _filelike(body):
                 return hasattr(body, 'read')
 
-            def _iterable(body):
-                return isinstance(body, collections.Iterable)
+            def _sendbody(connection, iter):
+                connection.endheaders()
+                for sent in iter:
+                    # iterator has done the heavy lifting
+                    pass
+
+            def _chunkbody(connection, iter):
+                connection.putheader('Transfer-Encoding', 'chunked')
+                connection.endheaders()
+                for chunk in iter:
+                    connection.send('%x\r\n%s\r\n' % (len(chunk), chunk))
+                connection.send('0\r\n\r\n')
 
             # Do a simple request or a chunked request, depending
             # on whether the body param is file-like or iterable and
@@ -404,20 +473,20 @@ class BaseClient(object):
             if not _pushing(method) or _simple(body):
                 # Simple request...
                 c.request(method, path, body, headers)
-            elif _filelike(body) or _iterable(body):
-                # Chunk it, baby...
+            elif _filelike(body) or self._iterable(body):
                 c.putrequest(method, path)
 
                 for header, value in headers.items():
                     c.putheader(header, value)
-                c.putheader('Transfer-Encoding', 'chunked')
-                c.endheaders()
 
-                iter = body if _iterable(body) else ImageBodyIterator(body)
+                iter = self.image_iterator(c, headers, body)
 
-                for chunk in iter:
-                    c.send('%x\r\n%s\r\n' % (len(chunk), chunk))
-                c.send('0\r\n\r\n')
+                if self._sendable(body):
+                    # send actual file without copying into userspace
+                    _sendbody(c, iter)
+                else:
+                    # otherwise iterate and chunk
+                    _chunkbody(c, iter)
             else:
                 raise TypeError('Unsupported image type: %s' % body.__class__)
 
@@ -446,6 +515,33 @@ class BaseClient(object):
 
         except (socket.error, IOError), e:
             raise exception.ClientConnectionError(e)
+
+    def _seekable(self, body):
+        # pipes are not seekable, avoids sendfile() failure on e.g.
+        #   cat /path/to/image | glance add ...
+        # or where add command is launched via popen
+        try:
+            os.lseek(body.fileno(), 0, os.SEEK_SET)
+            return True
+        except OSError as e:
+            return (e.errno != errno.ESPIPE)
+
+    def _sendable(self, body):
+        return (SENDFILE_SUPPORTED      and
+                hasattr(body, 'fileno') and
+                self._seekable(body)    and
+                not self.use_ssl)
+
+    def _iterable(self, body):
+        return isinstance(body, collections.Iterable)
+
+    def image_iterator(self, connection, headers, body):
+        if self._sendable(body):
+            return SendFileIterator(connection, body)
+        elif self._iterable(body):
+            return utils.chunkreadable(body)
+        else:
+            return ImageBodyIterator(body)
 
     def get_status_code(self, response):
         """

@@ -21,12 +21,11 @@ import datetime
 import hashlib
 import httplib2
 import json
-import os
 import tempfile
 
 from glance.common import utils
 from glance.tests import functional
-from glance.tests.utils import execute, skip_if_disabled
+from glance.tests.utils import execute, skip_if_disabled, minimal_headers
 
 FIVE_KB = 5 * 1024
 FIVE_GB = 5 * 1024 * 1024 * 1024
@@ -87,9 +86,7 @@ class TestApi(functional.FunctionalTest):
         # 2. POST /images with public image named Image1
         # attribute and no custom properties. Verify a 200 OK is returned
         image_data = "*" * FIVE_KB
-        headers = {'Content-Type': 'application/octet-stream',
-                   'X-Image-Meta-Name': 'Image1',
-                   'X-Image-Meta-Is-Public': 'True'}
+        headers = minimal_headers('Image1')
         path = "http://%s:%d/v1/images" % ("0.0.0.0", self.api_port)
         http = httplib2.Http()
         response, content = http.request(path, 'POST', headers=headers,
@@ -125,8 +122,8 @@ class TestApi(functional.FunctionalTest):
             'x-image-meta-name': 'Image1',
             'x-image-meta-is_public': 'True',
             'x-image-meta-status': 'active',
-            'x-image-meta-disk_format': '',
-            'x-image-meta-container_format': '',
+            'x-image-meta-disk_format': 'raw',
+            'x-image-meta-container_format': 'ovf',
             'x-image-meta-size': str(FIVE_KB)}
 
         expected_std_headers = {
@@ -158,8 +155,8 @@ class TestApi(functional.FunctionalTest):
         self.assertEqual(response.status, 200)
 
         expected_result = {"images": [
-            {"container_format": None,
-             "disk_format": None,
+            {"container_format": "ovf",
+             "disk_format": "raw",
              "id": image_id,
              "name": "Image1",
              "checksum": "c2e5db72bd7fd153f53ede5da5a06de3",
@@ -177,8 +174,8 @@ class TestApi(functional.FunctionalTest):
             "status": "active",
             "name": "Image1",
             "deleted": False,
-            "container_format": None,
-            "disk_format": None,
+            "container_format": "ovf",
+            "disk_format": "raw",
             "id": image_id,
             "is_public": True,
             "deleted_at": None,
@@ -218,8 +215,8 @@ class TestApi(functional.FunctionalTest):
             "status": "active",
             "name": "Image1",
             "deleted": False,
-            "container_format": None,
-            "disk_format": None,
+            "container_format": "ovf",
+            "disk_format": "raw",
             "id": image_id,
             "is_public": True,
             "deleted_at": None,
@@ -315,9 +312,7 @@ class TestApi(functional.FunctionalTest):
 
         # 1. POST /images with public image named Image1
         # with no location or image data
-        headers = {'Content-Type': 'application/octet-stream',
-                   'X-Image-Meta-Name': 'Image1',
-                   'X-Image-Meta-Is-Public': 'True'}
+        headers = minimal_headers('Image1')
         path = "http://%s:%d/v1/images" % ("0.0.0.0", self.api_port)
         http = httplib2.Http()
         response, content = http.request(path, 'POST', headers=headers)
@@ -325,8 +320,8 @@ class TestApi(functional.FunctionalTest):
         data = json.loads(content)
         self.assertEqual(data['image']['checksum'], None)
         self.assertEqual(data['image']['size'], 0)
-        self.assertEqual(data['image']['container_format'], None)
-        self.assertEqual(data['image']['disk_format'], None)
+        self.assertEqual(data['image']['container_format'], 'ovf')
+        self.assertEqual(data['image']['disk_format'], 'raw')
         self.assertEqual(data['image']['name'], "Image1")
         self.assertEqual(data['image']['is_public'], True)
 
@@ -342,8 +337,8 @@ class TestApi(functional.FunctionalTest):
         self.assertEqual(data['images'][0]['id'], image_id)
         self.assertEqual(data['images'][0]['checksum'], None)
         self.assertEqual(data['images'][0]['size'], 0)
-        self.assertEqual(data['images'][0]['container_format'], None)
-        self.assertEqual(data['images'][0]['disk_format'], None)
+        self.assertEqual(data['images'][0]['container_format'], 'ovf')
+        self.assertEqual(data['images'][0]['disk_format'], 'raw')
         self.assertEqual(data['images'][0]['name'], "Image1")
 
         # 3. HEAD /images
@@ -395,8 +390,8 @@ class TestApi(functional.FunctionalTest):
                          hashlib.md5(image_data).hexdigest())
         self.assertEqual(data['images'][0]['id'], image_id)
         self.assertEqual(data['images'][0]['size'], FIVE_KB)
-        self.assertEqual(data['images'][0]['container_format'], None)
-        self.assertEqual(data['images'][0]['disk_format'], None)
+        self.assertEqual(data['images'][0]['container_format'], 'ovf')
+        self.assertEqual(data['images'][0]['disk_format'], 'raw')
         self.assertEqual(data['images'][0]['name'], "Image1")
 
         # DELETE image
@@ -593,6 +588,8 @@ class TestApi(functional.FunctionalTest):
                    'X-Image-Meta-Location': 'http://example.com/fakeimage',
                    'X-Image-Meta-Size': str(FIVE_GB),
                    'X-Image-Meta-Name': 'Image1',
+                   'X-Image-Meta-disk_format': 'raw',
+                   'X-image-Meta-container_format': 'ovf',
                    'X-Image-Meta-Is-Public': 'True'}
         path = "http://%s:%d/v1/images" % ("0.0.0.0", self.api_port)
         http = httplib2.Http()
@@ -906,9 +903,23 @@ class TestApi(functional.FunctionalTest):
             self.assertEqual(image['name'], "My Image!")
 
         # 16. GET /images with past changes-since filter
-        dt1 = datetime.datetime.utcnow() - datetime.timedelta(1)
-        iso1 = utils.isotime(dt1)
-        params = "changes-since=%s" % iso1
+        yesterday = utils.isotime(datetime.datetime.utcnow() -
+                                  datetime.timedelta(1))
+        params = "changes-since=%s" % yesterday
+        path = "http://%s:%d/v1/images?%s" % ("0.0.0.0", self.api_port, params)
+        response, content = http.request(path, 'GET')
+        self.assertEqual(response.status, 200)
+        data = json.loads(content)
+        self.assertEqual(len(data['images']), 3)
+
+        # one timezone west of Greenwich equates to an hour ago
+        # taking care to pre-urlencode '+' as '%2B', otherwise the timezone
+        # '+' is wrongly decoded as a space
+        # TODO(eglynn): investigate '+' --> <SPACE> decoding, an artifact
+        # of WSGI/webob dispatch?
+        now = datetime.datetime.utcnow()
+        hour_ago = now.strftime('%Y-%m-%dT%H:%M:%S%%2B01:00')
+        params = "changes-since=%s" % hour_ago
         path = "http://%s:%d/v1/images?%s" % ("0.0.0.0", self.api_port, params)
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 200)
@@ -916,14 +927,69 @@ class TestApi(functional.FunctionalTest):
         self.assertEqual(len(data['images']), 3)
 
         # 17. GET /images with future changes-since filter
-        dt2 = datetime.datetime.utcnow() + datetime.timedelta(1)
-        iso2 = utils.isotime(dt2)
-        params = "changes-since=%s" % iso2
+        tomorrow = utils.isotime(datetime.datetime.utcnow() +
+                                 datetime.timedelta(1))
+        params = "changes-since=%s" % tomorrow
         path = "http://%s:%d/v1/images?%s" % ("0.0.0.0", self.api_port, params)
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 200)
         data = json.loads(content)
         self.assertEqual(len(data['images']), 0)
+
+        # one timezone east of Greenwich equates to an hour from now
+        now = datetime.datetime.utcnow()
+        hour_hence = now.strftime('%Y-%m-%dT%H:%M:%S-01:00')
+        params = "changes-since=%s" % hour_hence
+        path = "http://%s:%d/v1/images?%s" % ("0.0.0.0", self.api_port, params)
+        response, content = http.request(path, 'GET')
+        self.assertEqual(response.status, 200)
+        data = json.loads(content)
+        self.assertEqual(len(data['images']), 0)
+
+        # 18. GET /images with size_min filter
+        # Verify correct images returned with size >= expected
+        params = "size_min=-1"
+        path = "http://%s:%d/v1/images?%s" % (
+               "0.0.0.0", self.api_port, params)
+        response, content = http.request(path, 'GET')
+        self.assertEqual(response.status, 400)
+        self.assertTrue("filter size_min got -1" in content)
+
+        # 19. GET /images with size_min filter
+        # Verify correct images returned with size >= expected
+        params = "size_max=-1"
+        path = "http://%s:%d/v1/images?%s" % (
+               "0.0.0.0", self.api_port, params)
+        response, content = http.request(path, 'GET')
+        self.assertEqual(response.status, 400)
+        self.assertTrue("filter size_max got -1" in content)
+
+        # 20. GET /images with size_min filter
+        # Verify correct images returned with size >= expected
+        params = "min_ram=-1"
+        path = "http://%s:%d/v1/images?%s" % (
+               "0.0.0.0", self.api_port, params)
+        response, content = http.request(path, 'GET')
+        self.assertEqual(response.status, 400)
+        self.assertTrue("Bad value passed to filter min_ram got -1" in content)
+
+        # 21. GET /images with size_min filter
+        # Verify correct images returned with size >= expected
+        params = "protected=imalittleteapot"
+        path = "http://%s:%d/v1/images?%s" % (
+               "0.0.0.0", self.api_port, params)
+        response, content = http.request(path, 'GET')
+        self.assertEqual(response.status, 400)
+        self.assertTrue("protected got imalittleteapot" in content)
+
+        # 22. GET /images with size_min filter
+        # Verify correct images returned with size >= expected
+        params = "is_public=imalittleteapot"
+        path = "http://%s:%d/v1/images?%s" % (
+               "0.0.0.0", self.api_port, params)
+        response, content = http.request(path, 'GET')
+        self.assertEqual(response.status, 400)
+        self.assertTrue("is_public got imalittleteapot" in content)
 
         self.stop_servers()
 
@@ -946,27 +1012,21 @@ class TestApi(functional.FunctionalTest):
         image_ids = []
 
         # 1. POST /images with three public images with various attributes
-        headers = {'Content-Type': 'application/octet-stream',
-                   'X-Image-Meta-Name': 'Image1',
-                   'X-Image-Meta-Is-Public': 'True'}
+        headers = minimal_headers('Image1')
         path = "http://%s:%d/v1/images" % ("0.0.0.0", self.api_port)
         http = httplib2.Http()
         response, content = http.request(path, 'POST', headers=headers)
         self.assertEqual(response.status, 201)
         image_ids.append(json.loads(content)['image']['id'])
 
-        headers = {'Content-Type': 'application/octet-stream',
-                   'X-Image-Meta-Name': 'Image2',
-                   'X-Image-Meta-Is-Public': 'True'}
+        headers = minimal_headers('Image2')
         path = "http://%s:%d/v1/images" % ("0.0.0.0", self.api_port)
         http = httplib2.Http()
         response, content = http.request(path, 'POST', headers=headers)
         self.assertEqual(response.status, 201)
         image_ids.append(json.loads(content)['image']['id'])
 
-        headers = {'Content-Type': 'application/octet-stream',
-                   'X-Image-Meta-Name': 'Image3',
-                   'X-Image-Meta-Is-Public': 'True'}
+        headers = minimal_headers('Image3')
         path = "http://%s:%d/v1/images" % ("0.0.0.0", self.api_port)
         http = httplib2.Http()
         response, content = http.request(path, 'POST', headers=headers)
@@ -1247,9 +1307,101 @@ class TestApi(functional.FunctionalTest):
         to fail to start.
         """
         self.cleanup()
-        self.api_server.default_store = 'shouldnotexist'
+        self.default_store = 'shouldnotexist'
+
+        # ensure failure exit code is available to assert on
+        self.api_server.server_control_options += ' --await-child=1'
 
         # ensure that the API server fails to launch
         self.start_server(self.api_server,
                           expect_launch=False,
+                          expected_exitcode=255,
                           **self.__dict__.copy())
+
+    def _do_test_post_image_content_missing_format(self, format):
+        """
+        We test that missing container/disk format fails with 400 "Bad Request"
+
+        :see https://bugs.launchpad.net/glance/+bug/933702
+        """
+        self.cleanup()
+        self.start_servers(**self.__dict__.copy())
+
+        path = "http://%s:%d/v1/images" % ("0.0.0.0", self.api_port)
+
+        # POST /images without given format being specified
+        headers = minimal_headers('Image1')
+        del headers['X-Image-Meta-' + format]
+        with tempfile.NamedTemporaryFile() as test_data_file:
+            test_data_file.write("XXX")
+            test_data_file.flush()
+        http = httplib2.Http()
+        response, content = http.request(path, 'POST',
+                            headers=headers,
+                            body=test_data_file.name)
+        self.assertEqual(response.status, 400)
+        type = format.replace('_format', '')
+        expected = "Details: Invalid %s format 'None' for image" % type
+        self.assertTrue(expected in content,
+                        "Could not find '%s' in '%s'" % (expected, content))
+
+        self.stop_servers()
+
+    @skip_if_disabled
+    def _do_test_post_image_content_missing_diskformat(self):
+        self._do_test_post_image_content_missing_format('container_format')
+
+    @skip_if_disabled
+    def _do_test_post_image_content_missing_disk_format(self):
+        self._do_test_post_image_content_missing_format('disk_format')
+
+    def _do_test_put_image_content_missing_format(self, format):
+        """
+        We test that missing container/disk format only fails with
+        400 "Bad Request" when the image content is PUT (i.e. not
+        on the original POST of a queued image).
+
+        :see https://bugs.launchpad.net/glance/+bug/937216
+        """
+        self.cleanup()
+        self.start_servers(**self.__dict__.copy())
+
+        # POST queued image
+        path = "http://%s:%d/v1/images" % ("0.0.0.0", self.api_port)
+        headers = {
+           'X-Image-Meta-Name': 'Image1',
+           'X-Image-Meta-Is-Public': 'True',
+        }
+        http = httplib2.Http()
+        response, content = http.request(path, 'POST', headers=headers)
+        self.assertEqual(response.status, 201)
+        data = json.loads(content)
+        image_id = data['image']['id']
+
+        # PUT image content images without given format being specified
+        path = ("http://%s:%d/v1/images/%s" %
+                ("0.0.0.0", self.api_port, image_id))
+        headers = minimal_headers('Image1')
+        del headers['X-Image-Meta-' + format]
+        with tempfile.NamedTemporaryFile() as test_data_file:
+            test_data_file.write("XXX")
+            test_data_file.flush()
+        http = httplib2.Http()
+        response, content = http.request(path, 'PUT',
+                            headers=headers,
+                            body=test_data_file.name)
+        self.assertEqual(response.status, 400)
+        type = format.replace('_format', '')
+        expected = "Details: Invalid %s format 'None' for image" % type
+        self.assertTrue(expected in content,
+                        "Could not find '%s' in '%s'" % (expected, content))
+
+        self.stop_servers()
+
+    @skip_if_disabled
+    def _do_test_put_image_content_missing_diskformat(self):
+        self._do_test_put_image_content_missing_format('container_format')
+
+    @skip_if_disabled
+    def _do_test_put_image_content_missing_disk_format(self):
+        self._do_test_put_image_content_missing_format('disk_format')

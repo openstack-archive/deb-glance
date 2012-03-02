@@ -24,10 +24,12 @@ Thanks for some of the code, Swifties ;)
 from __future__ import with_statement
 
 import errno
+import fcntl
 import gettext
 import os
 import resource
 import signal
+import subprocess
 import sys
 import time
 
@@ -65,6 +67,17 @@ And command is one of:
 And CONFPATH is the optional configuration file to use."""
 
 
+def gated_by(predicate):
+    def wrap(f):
+        def wrapped_f(*args):
+            if predicate:
+                return f(*args)
+            else:
+                return None
+        return wrapped_f
+    return wrap
+
+
 def pid_files(server, conf):
     pid_files = []
     if conf.pid_file:
@@ -78,25 +91,26 @@ def pid_files(server, conf):
         yield pid_file, pid
 
 
-def do_start(server, conf, args):
-    server_type = '-'.join(server.split('-')[:-1])
+def do_start(verb, server, conf, args):
+    if verb != 'Respawn':
+        for pid_file, pid in pid_files(server, conf):
+            if os.path.exists('/proc/%s' % pid):
+                print "%s appears to already be running: %s" % \
+                      (server, pid_file)
+                return
+            else:
+                print "Removing stale pid file %s" % pid_file
+                os.unlink(pid_file)
 
-    for pid_file, pid in pid_files(server, conf):
-        if os.path.exists('/proc/%s' % pid):
-            print "%s appears to already be running: %s" % (server, pid_file)
-            return
-        else:
-            print "Removing stale pid file %s" % pid_file
-            os.unlink(pid_file)
-
-    try:
-        resource.setrlimit(resource.RLIMIT_NOFILE,
-                (MAX_DESCRIPTORS, MAX_DESCRIPTORS))
-        resource.setrlimit(resource.RLIMIT_DATA,
-                (MAX_MEMORY, MAX_MEMORY))
-    except ValueError:
-        print "Unable to increase file descriptor limit.  Running as non-root?"
-    os.environ['PYTHON_EGG_CACHE'] = '/tmp'
+        try:
+            resource.setrlimit(resource.RLIMIT_NOFILE,
+                    (MAX_DESCRIPTORS, MAX_DESCRIPTORS))
+            resource.setrlimit(resource.RLIMIT_DATA,
+                    (MAX_MEMORY, MAX_MEMORY))
+        except ValueError:
+            action = 'increase file descriptor limit'
+            print 'Unable to %s.  Running as non-root?' % action
+        os.environ['PYTHON_EGG_CACHE'] = '/tmp'
 
     def write_pid_file(pid_file, pid):
         dir, file = os.path.split(pid_file)
@@ -111,42 +125,89 @@ def do_start(server, conf, args):
         fp.write('%d\n' % pid)
         fp.close()
 
+    def redirect_to_null(fds):
+        with open(os.devnull, 'r+b') as nullfile:
+            for desc in fds:  # close fds
+                try:
+                    os.dup2(nullfile.fileno(), desc)
+                except OSError:
+                    pass
+
+    def redirect_to_syslog(fds, server):
+        log_cmd = '/usr/bin/logger -t "%s[%d]"' % (server, os.getpid())
+        process = subprocess.Popen(log_cmd,
+                                   shell=True,
+                                   stdin=subprocess.PIPE)
+        for desc in fds:  # pipe to logger command
+            try:
+                os.dup2(process.stdin.fileno(), desc)
+            except OSError:
+                pass
+
+    def redirect_stdio(conf, server):
+        input = [sys.stdin.fileno()]
+        output = [sys.stdout.fileno(), sys.stderr.fileno()]
+
+        redirect_to_null(input)
+        if conf.capture_output:
+            redirect_to_syslog(output, server)
+        else:
+            redirect_to_null(output)
+
+    @gated_by(conf.capture_output)
+    def close_stdio_on_exec():
+        fds = [sys.stdin.fileno(), sys.stdout.fileno(), sys.stderr.fileno()]
+        for desc in fds:  # set close on exec flag
+            fcntl.fcntl(desc, fcntl.F_SETFD, fcntl.FD_CLOEXEC)
+
     def launch(pid_file, conf_file=None):
         args = [server]
-        print 'Starting %s' % server,
+        print '%sing %s' % (verb, server),
         if conf_file:
             args += ['--config-file', conf_file]
             print 'with %s' % conf_file,
         print
 
+        close_stdio_on_exec()
+
         pid = os.fork()
         if pid == 0:
             os.setsid()
-            with open(os.devnull, 'r+b') as nullfile:
-                for desc in (0, 1, 2):  # close stdio
-                    try:
-                        os.dup2(nullfile.fileno(), desc)
-                    except OSError:
-                        pass
+            redirect_stdio(conf, server)
             try:
                 os.execlp('%s' % server, *args)
             except OSError, e:
-                sys.exit('unable to launch %s. Got error: %s'
-                         % (server, "%s" % e))
+                msg = 'unable to launch %s. Got error: %s' % (server, e)
+                sys.exit(msg)
             sys.exit(0)
         else:
             write_pid_file(pid_file, pid)
+            await_child(pid)
+            return pid
 
-    if not conf.pid_file:
-        pid_file = '/var/run/glance/%s.pid' % server
-    else:
-        pid_file = os.path.abspath(conf.pid_file)
+    @gated_by(conf.await_child)
+    def await_child(pid):
+        bail_time = time.time() + conf.await_child
+        while time.time() < bail_time:
+            reported_pid, status = os.waitpid(pid, os.WNOHANG)
+            if reported_pid == pid:
+                global exitcode
+                exitcode = os.WEXITSTATUS(status)
+                break
+            time.sleep(0.05)
+
+    pid_file = get_pid_file(server, conf)
 
     conf_file = None
     if args and os.path.exists(args[0]):
         conf_file = os.path.abspath(os.path.expanduser(args[0]))
 
-    launch(pid_file, conf_file)
+    return launch(pid_file, conf_file)
+
+
+def get_pid_file(pid, conf):
+    return os.path.abspath(conf.pid_file) if conf.pid_file else \
+           '/var/run/glance/%s.pid' % server
 
 
 def do_stop(server, conf, args, graceful=False):
@@ -160,14 +221,14 @@ def do_stop(server, conf, args, graceful=False):
     for pid_file, pid in pfiles:
         did_anything = True
         try:
+            os.unlink(pid_file)
+        except OSError:
+            pass
+        try:
             print 'Stopping %s  pid: %s  signal: %s' % (server, pid, sig)
             os.kill(pid, sig)
         except OSError:
             print "Process %d not running" % pid
-        try:
-            os.unlink(pid_file)
-        except OSError:
-            pass
     for pid_file, pid in pfiles:
         for _junk in xrange(150):  # 15 seconds
             if not os.path.exists('/proc/%s' % pid):
@@ -181,12 +242,40 @@ def do_stop(server, conf, args, graceful=False):
 
 
 if __name__ == '__main__':
+    exitcode = 0
+
     conf = config.GlanceConfigOpts(usage=USAGE)
-    conf.register_cli_opt(cfg.StrOpt('pid-file',
-                                     metavar='PATH',
-                                     help='File to use as pid file. Default: '
-                                          '/var/run/glance/$server.pid'))
+
+    opts = [
+            cfg.StrOpt('pid-file',
+                       metavar='PATH',
+                       help='File to use as pid file. Default: '
+                       '/var/run/glance/$server.pid'),
+            cfg.IntOpt('await-child',
+                       metavar='DELAY',
+                       default=0,
+                       help='Period to wait for service death '
+                            'in order to report exit code '
+                            '(default is to not wait at all)'),
+            cfg.BoolOpt('capture-output',
+                        default=False,
+                        help='Capture stdout/err in syslog '
+                        'instead of discarding'),
+            cfg.BoolOpt('respawn',
+                        default=False,
+                        help='Restart service on unexpected death'),
+        ]
+    conf.register_cli_opts(opts)
+
     args = conf()
+
+    @gated_by(conf.await_child)
+    @gated_by(conf.respawn)
+    def mutually_exclusive():
+        sys.stderr.write('--await-child and --respawn are mutually exclusive')
+        sys.exit(1)
+
+    mutually_exclusive()
 
     if len(args) < 2:
         conf.print_usage()
@@ -213,9 +302,33 @@ if __name__ == '__main__':
                "command in this list: %(command_list)s" % locals())
         sys.exit(msg)
 
+    @gated_by(conf.respawn)
+    def anticipate_respawn(children):
+        while children:
+            pid, status = os.wait()
+            if pid in children:
+                (server, conf, args) = children.pop(pid)
+                pid_file = get_pid_file(server, conf)
+                running = os.path.exists(pid_file)
+                one_second_ago = time.time() - 1
+                bouncing = (running and
+                            os.path.getmtime(pid_file) >= one_second_ago)
+                if running and not bouncing:
+                    args = (server, conf, args)
+                    new_pid = do_start('Respawn', *args)
+                    children[new_pid] = args
+                else:
+                    rsn = 'bouncing' if bouncing else 'deliberately stopped'
+                    print 'Supressed respawn as %s was %s.' % (server, rsn)
+
     if command == 'start':
+        children = {}
         for server in servers:
-            do_start(server, conf, args)
+            args = (server, conf, args)
+            pid = do_start('Start', *args)
+            children[pid] = args
+
+        anticipate_respawn(children)
 
     if command == 'stop':
         for server in servers:
@@ -229,9 +342,11 @@ if __name__ == '__main__':
         for server in servers:
             do_stop(server, conf, args)
         for server in servers:
-            do_start(server, conf, args)
+            do_start('Restart', server, conf, args)
 
     if command == 'reload' or command == 'force-reload':
         for server in servers:
             do_stop(server, conf, args, graceful=True)
             do_start(server, conf, args)
+
+    sys.exit(exitcode)

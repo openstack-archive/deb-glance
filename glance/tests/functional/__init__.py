@@ -87,11 +87,14 @@ class Server(object):
         self.server_control = './bin/glance-control'
         self.exec_env = None
         self.deployment_flavor = ''
+        self.server_control_options = ''
 
     def write_conf(self, **kwargs):
         """
         Writes the configuration file for the server to its intended
-        destination.  Returns the name of the configuration file.
+        destination.  Returns the name of the configuration file and
+        the over-ridden config content (may be useful for populating
+        error messages).
         """
 
         if self.conf_file_name:
@@ -111,24 +114,26 @@ class Server(object):
         paste_conf_filepath = conf_filepath.replace(".conf", "-paste.ini")
         utils.safe_mkdirs(conf_dir)
 
-        def override_conf(filepath, base, override):
+        def override_conf(filepath, overridden):
             with open(filepath, 'wb') as conf_file:
-                conf_file.write(base % override)
+                conf_file.write(overridden)
                 conf_file.flush()
                 return conf_file.name
 
-        self.conf_file_name = override_conf(conf_filepath,
-                                            self.conf_base,
-                                            conf_override)
+        overridden_core = self.conf_base % conf_override
+        self.conf_file_name = override_conf(conf_filepath, overridden_core)
 
+        overridden_paste = ''
         if self.paste_conf_base:
-            override_conf(paste_conf_filepath,
-                          self.paste_conf_base,
-                          conf_override)
+            overridden_paste = self.paste_conf_base % conf_override
+            override_conf(paste_conf_filepath, overridden_paste)
 
-        return self.conf_file_name
+        overridden = ('==Core config==\n%s\n==Paste config==\n%s' %
+                      (overridden_core, overridden_paste))
 
-    def start(self, **kwargs):
+        return self.conf_file_name, overridden
+
+    def start(self, expect_exit=True, expected_exitcode=0, **kwargs):
         """
         Starts the server.
 
@@ -137,12 +142,18 @@ class Server(object):
         """
 
         # Ensure the configuration file is written
-        self.write_conf(**kwargs)
+        overridden = self.write_conf(**kwargs)[1]
 
         cmd = ("%(server_control)s %(server_name)s start "
-               "%(conf_file_name)s --pid-file=%(pid_file)s"
+               "%(conf_file_name)s --pid-file=%(pid_file)s "
+               "%(server_control_options)s"
                % self.__dict__)
-        return execute(cmd, no_venv=self.no_venv, exec_env=self.exec_env)
+        return execute(cmd,
+                       no_venv=self.no_venv,
+                       exec_env=self.exec_env,
+                       expect_exit=expect_exit,
+                       expected_exitcode=expected_exitcode,
+                       context=overridden)
 
     def stop(self):
         """
@@ -151,7 +162,8 @@ class Server(object):
         cmd = ("%(server_control)s %(server_name)s stop "
                "%(conf_file_name)s --pid-file=%(pid_file)s"
                % self.__dict__)
-        return execute(cmd, no_venv=self.no_venv, exec_env=self.exec_env)
+        return execute(cmd, no_venv=self.no_venv, exec_env=self.exec_env,
+                       expect_exit=True)
 
 
 class ApiServer(Server):
@@ -198,6 +210,7 @@ class ApiServer(Server):
         self.image_cache_driver = 'sqlite'
         self.policy_file = policy_file
         self.policy_default_rule = 'default'
+        self.server_control_options = '--capture-output'
         self.conf_base = """[DEFAULT]
 verbose = %(verbose)s
 debug = %(debug)s
@@ -287,6 +300,7 @@ class RegistryServer(Server):
                                          "registry.pid")
         self.log_file = os.path.join(self.test_dir, "registry.log")
         self.owner_is_tenant = True
+        self.server_control_options = '--capture-output'
         self.conf_base = """[DEFAULT]
 verbose = %(verbose)s
 debug = %(debug)s
@@ -439,7 +453,12 @@ class FunctionalTest(unittest.TestCase):
             if os.path.exists(f):
                 os.unlink(f)
 
-    def start_server(self, server, expect_launch, **kwargs):
+    def start_server(self,
+                     server,
+                     expect_launch,
+                     expect_exit=True,
+                     expected_exitcode=0,
+                     **kwargs):
         """
         Starts a server on an unused port.
 
@@ -449,16 +468,22 @@ class FunctionalTest(unittest.TestCase):
         :param server: the server to launch
         :param expect_launch: true iff the server is expected to
                               successfully start
+        :param expect_exit: true iff the launched server is expected
+                            to exit in a timely fashion
+        :param expected_exitcode: expected exitcode from the launcher
         """
         self.cleanup()
 
         # Start up the requested server
-        exitcode, out, err = server.start(**kwargs)
+        exitcode, out, err = server.start(expect_exit=expect_exit,
+                                          expected_exitcode=expected_exitcode,
+                                          **kwargs)
+        if expect_exit:
+            self.assertEqual(expected_exitcode, exitcode,
+                             "Failed to spin up the requested server. "
+                             "Got: %s" % err)
 
-        self.assertEqual(0, exitcode,
-                         "Failed to spin up the requested server. "
-                         "Got: %s" % err)
-        self.assertTrue(re.search("Starting glance-[a-z]+ with", out))
+            self.assertTrue(re.search("Starting glance-[a-z]+ with", out))
 
         self.wait_for_servers([server.bind_port], expect_launch)
 
@@ -531,10 +556,25 @@ class FunctionalTest(unittest.TestCase):
                 if self.ping_server(port):
                     pinged += 1
             if pinged == len(ports):
+                self.assertTrue(expect_launch,
+                                "Unexpected server launch status")
                 return
             now = datetime.datetime.now()
             time.sleep(0.05)
         self.assertFalse(expect_launch, "Unexpected server launch status")
+
+    def stop_server(self, server, name):
+        """
+        Called to stop a single server in a normal fashion using the
+        glance-control stop method to gracefully shut the server down.
+
+        :param server: the server to stop
+        """
+        # Spin down the requested server
+        exitcode, out, err = server.stop()
+        self.assertEqual(0, exitcode,
+                         "Failed to spin down the %s server. Got: %s" %
+                         (err, name))
 
     def stop_servers(self):
         """
@@ -547,20 +587,10 @@ class FunctionalTest(unittest.TestCase):
         """
 
         # Spin down the API and default registry server
-        exitcode, out, err = self.api_server.stop()
-        self.assertEqual(0, exitcode,
-                         "Failed to spin down the API server. "
-                         "Got: %s" % err)
+        self.stop_server(self.api_server, 'API server')
+        self.stop_server(self.registry_server, 'Registry server')
+        self.stop_server(self.scrubber_daemon, 'Scrubber daemon')
 
-        exitcode, out, err = self.registry_server.stop()
-        self.assertEqual(0, exitcode,
-                         "Failed to spin down the Registry server. "
-                         "Got: %s" % err)
-
-        exitcode, out, err = self.scrubber_daemon.stop()
-        self.assertEqual(0, exitcode,
-                         "Failed to spin down the Scrubber daemon. "
-                         "Got: %s" % err)
         # If all went well, then just remove the test directory.
         # We only want to check the logs and stuff if something
         # went wrong...
