@@ -62,7 +62,8 @@ Depends: ${python:Depends}, ${misc:Depends},
     python-routes,
     python-sqlalchemy-ext | python-sqlalchemy (<< 0.6.3-2),
     python-xattr,
-    python-paste
+    python-paste,
+    python-iso8601
 Description: OpenStack Image Registry and Delivery Service - Common
  The Glance project provides an image registration, discovery and
  delivery service. These services may be used as stand-along services, and

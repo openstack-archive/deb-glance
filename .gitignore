@@ -10,3 +10,4 @@ glance.egg-info
 glance/vcsversion.py
 tests.sqlite
 .pc
+debian/po/templates.pot
