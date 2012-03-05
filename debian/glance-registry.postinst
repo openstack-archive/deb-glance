@@ -10,6 +10,8 @@ then
     db_get glance/paste-flavor || true
     FLAVOR="$RET"
 
+    sed -i "s,^flavor\s*=.*$,flavor = $FLAVOR," /etc/glance/glance-registry.conf
+
     case $FLAVOR in
         keystone*)
             FLAVOR=keystone
@@ -22,18 +24,6 @@ then
             FLAVOR=
             ;;
     esac
-
-    if ! grep -q '\[paste_deploy\]' /etc/glance/glance-registry.conf
-    then
-        echo >> /etc/glance/glance-registry.conf
-        echo '# This line has been added by debconf' >> /etc/glance/glance-registry.conf
-        echo '# Use dpkg-reconfigure glance-common and then' >> /etc/glance/glance-registry.conf
-        echo '# dpkg-reconfigure glance-registry to change it' >> /etc/glance/glance-registry.conf
-        echo '[paste_deploy]' >> /etc/glance/glance-registry.conf
-        echo "flavor = $FLAVOR" >> /etc/glance/glance-registry.conf
-    else
-        sed -i "s,^flavor\s*=.*$,flavor = $FLAVOR," /etc/glance/glance-registry.conf
-    fi
 
     dbc_dbfile_owner="glance:glance"
     dbc_go glance-registry $@

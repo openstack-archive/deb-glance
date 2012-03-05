@@ -1,1 +1,2 @@
+default_conf.patch
 sql_conn-registry.patch

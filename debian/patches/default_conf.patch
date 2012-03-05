@@ -1,0 +1,20 @@
+--- a/etc/glance-api.conf
++++ b/etc/glance-api.conf
+@@ -232,3 +232,6 @@
+ 
+ # Base directory that the Image Cache uses
+ image_cache_dir = /var/lib/glance/image-cache/
++
++[paste_deploy]
++flavor = caching
+\ No newline at end of file
+--- a/etc/glance-registry.conf
++++ b/etc/glance-registry.conf
+@@ -56,3 +56,6 @@
+ 
+ # Private key file to use when starting registry server securely
+ # key_file = /path/to/keyfile
++
++[paste_deploy]
++flavor = caching
+\ No newline at end of file
