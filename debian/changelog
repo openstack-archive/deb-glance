@@ -1,3 +1,10 @@
+glance (2012.1~e4-2) UNRELEASED; urgency=low
+
+  * Fixed default config. Closes: 662067
+    Default install and non-interactive doesn't change conf files.
+
+ -- Ghe Rivero <ghe@debian.org>  Mon, 05 Mar 2012 16:56:47 +0100
+
 glance (2012.1~e4-1) unstable; urgency=low
 
   * New upstream release

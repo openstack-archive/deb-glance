@@ -11,17 +11,7 @@ then
     db_get glance/paste-flavor || true
     FLAVOR="$RET"
 
-    if ! grep -q '\[paste_deploy\]' /etc/glance/glance-api.conf
-    then
-        echo >> /etc/glance/glance-api.conf
-        echo '# This line has been added by debconf' >> /etc/glance/glance-api.conf
-        echo '# Use dpkg-reconfigure glance-common and then' >> /etc/glance/glance-api.conf
-        echo '# dpkg-reconfigure glance-api to change it' >> /etc/glance/glance-api.conf
-        echo '[paste_deploy]' >> /etc/glance/glance-api.conf
-        echo "flavor = $FLAVOR" >> /etc/glance/glance-api.conf
-    else
-        sed -i "s,^flavor\s*=\s*.\+$,flavor = $FLAVOR," /etc/glance/glance-api.conf
-    fi
+    sed -i "s,^flavor\s*=\s*.\+$,flavor = $FLAVOR," /etc/glance/glance-api.conf
 
     case "$FLAVOR" in
         keystone*)
