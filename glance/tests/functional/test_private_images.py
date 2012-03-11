@@ -256,12 +256,12 @@ class TestPrivateImagesApi(keystone_utils.KeystoneTests):
 
         # Froggy still can't change is-public
         headers = {'X-Auth-Token': keystone_utils.froggy_token,
-                   'X-Image-Meta-Is-Public': 'True'}
+                   'X-Image-Meta-Is-Public': 'False'}
         path = "http://%s:%d/v1/images/%s" % ("0.0.0.0", self.api_port,
                                               image_id)
         http = httplib2.Http()
         response, content = http.request(path, 'PUT', headers=headers)
-        self.assertEqual(response.status, 404)
+        self.assertEqual(response.status, 403)
 
         # Or give themselves ownership
         headers = {'X-Auth-Token': keystone_utils.froggy_token,
@@ -270,7 +270,7 @@ class TestPrivateImagesApi(keystone_utils.KeystoneTests):
                                               image_id)
         http = httplib2.Http()
         response, content = http.request(path, 'PUT', headers=headers)
-        self.assertEqual(response.status, 404)
+        self.assertEqual(response.status, 403)
 
         # Froggy can't delete it, either
         headers = {'X-Auth-Token': keystone_utils.froggy_token}
@@ -278,7 +278,7 @@ class TestPrivateImagesApi(keystone_utils.KeystoneTests):
                                               image_id)
         http = httplib2.Http()
         response, content = http.request(path, 'DELETE', headers=headers)
-        self.assertEqual(response.status, 404)
+        self.assertEqual(response.status, 403)
 
         # But pattieblack can
         headers = {'X-Auth-Token': keystone_utils.pattieblack_token}
@@ -844,6 +844,7 @@ class TestPrivateImagesCli(keystone_utils.KeystoneTests):
         os.environ.pop('OS_AUTH_STRATEGY', None)
         os.environ.pop('OS_AUTH_USER', None)
         os.environ.pop('OS_AUTH_KEY', None)
+        os.environ.pop('OS_REGION_NAME', None)
 
     @skip_if_disabled
     def test_glance_cli_noauth_strategy(self):
@@ -878,6 +879,7 @@ class TestPrivateImagesCli(keystone_utils.KeystoneTests):
         os.environ['OS_AUTH_STRATEGY'] = 'keystone'
         os.environ['OS_AUTH_USER'] = 'pattieblack'
         os.environ['OS_AUTH_KEY'] = 'secrete'
+        os.environ['OS_REGION_NAME'] = 'RegionOne'
         cmd = minimal_add_command(self.api_port, 'MyImage', public=False)
         self._do_test_glance_cli(cmd)
 

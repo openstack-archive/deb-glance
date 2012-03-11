@@ -1,3 +1,28 @@
+glance (2012.1~e4-2) UNRELEASED; urgency=low
+
+  * Fixed default config. Closes: 662067
+    Default install and non-interactive doesn't change conf files.
+
+ -- Ghe Rivero <ghe@debian.org>  Mon, 05 Mar 2012 16:56:47 +0100
+
+glance (2012.1~e4-1) unstable; urgency=low
+
+  * New upstream release
+
+  [ Ghe Rivero ]
+  * Added glance-api-paste.ini and policy.json conf files to glance-common
+  * Added glance-registry-paste.ini to glance-registry
+  * Added python-iso8601 depends to glance-common
+  * Fix permissions on glance db
+
+  [ Julien Danjou ]
+  * Revert "mv debconf-updatepo to build phase"
+  * Revert "added po templates"
+  * Merge debian/unstable changes
+  * Fix sqlite database path
+
+ -- Ghe Rivero <ghe@debian.org>  Fri, 02 Mar 2012 08:04:31 +0100
+
 glance (2012.1~e3-4) unstable; urgency=low
 
   [ Julien Danjou ]

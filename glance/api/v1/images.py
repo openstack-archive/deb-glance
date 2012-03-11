@@ -227,12 +227,29 @@ class Controller(controller.BaseController):
         }
 
     @staticmethod
+    def _validate_source(source, req):
+        """
+        External sources (as specified via the location or copy-from headers)
+        are supported only over non-local store types, i.e. S3, Swift, HTTP.
+        Note the absence of file:// for security reasons, see LP bug #942118.
+        If the above constraint is violated, we reject with 400 "Bad Request".
+        """
+        if source:
+            for scheme in ['s3', 'swift', 'http']:
+                if source.lower().startswith(scheme):
+                    return source
+            msg = _("External sourcing not supported for store %s") % source
+            logger.error(msg)
+            raise HTTPBadRequest(msg, request=req, content_type="text/plain")
+
+    @staticmethod
     def _copy_from(req):
         return req.headers.get('x-glance-api-copy-from')
 
     @staticmethod
     def _external_source(image_meta, req):
-        return image_meta.get('location', Controller._copy_from(req))
+        source = image_meta.get('location', Controller._copy_from(req))
+        return Controller._validate_source(source, req)
 
     @staticmethod
     def _get_from_store(where):
@@ -286,8 +303,7 @@ class Controller(controller.BaseController):
             self.get_store_or_400(req, store)
 
             # retrieve the image size from remote store (if not provided)
-            image_meta['size'] = image_meta.get('size', 0) \
-                                 or get_size_from_backend(location)
+            image_meta['size'] = self._get_size(image_meta, location)
         else:
             # Ensure that the size attribute is set to zero for directly
             # uploadable images (if not provided). The size will be set
@@ -523,6 +539,19 @@ class Controller(controller.BaseController):
         location = self._upload(req, image_meta)
         return self._activate(req, image_id, location)
 
+    def _get_size(self, image_meta, location):
+        # retrieve the image size from remote store (if not provided)
+        return image_meta.get('size', 0) or get_size_from_backend(location)
+
+    def _handle_source(self, req, image_id, image_meta, image_data):
+        if image_data or self._copy_from(req):
+            image_meta = self._upload_and_activate(req, image_meta)
+        else:
+            location = image_meta.get('location')
+            if location:
+                image_meta = self._activate(req, image_id, location)
+        return image_meta
+
     def create(self, req, image_meta, image_data):
         """
         Adds a new image to Glance. Four scenarios exist when creating an
@@ -573,14 +602,9 @@ class Controller(controller.BaseController):
                                 content_type="text/plain")
 
         image_meta = self._reserve(req, image_meta)
-        image_id = image_meta['id']
+        id = image_meta['id']
 
-        if image_data or self._copy_from(req):
-            image_meta = self._upload_and_activate(req, image_meta)
-        else:
-            location = image_meta.get('location')
-            if location:
-                image_meta = self._activate(req, image_id, location)
+        image_meta = self._handle_source(req, id, image_meta, image_data)
 
         # Prevent client from learning the location, as it
         # could contain security credentials
@@ -627,17 +651,26 @@ class Controller(controller.BaseController):
         # POST /images but originally supply neither a Location|Copy-From
         # field NOR image data
         location = self._external_source(image_meta, req)
-        if not orig_status == 'queued' and location:
+        reactivating = orig_status != 'queued' and location
+        activating = orig_status == 'queued' and (location or image_data)
+
+        if reactivating:
             msg = _("Attempted to update Location field for an image "
                     "not in queued status.")
             raise HTTPBadRequest(msg, request=req, content_type="text/plain")
 
         try:
-            image_meta = registry.update_image_metadata(req.context, id,
+            if location:
+                image_meta['size'] = self._get_size(image_meta, location)
+
+            image_meta = registry.update_image_metadata(req.context,
+                                                        id,
                                                         image_meta,
                                                         purge_props)
-            if image_data is not None:
-                image_meta = self._upload_and_activate(req, image_meta)
+
+            if activating:
+                image_meta = self._handle_source(req, id, image_meta,
+                                                 image_data)
         except exception.Invalid, e:
             msg = (_("Failed to update image metadata. Got error: %(e)s")
                    % locals())
@@ -651,6 +684,12 @@ class Controller(controller.BaseController):
                 logger.info(line)
             self.notifier.info('image.update', msg)
             raise HTTPNotFound(msg, request=req, content_type="text/plain")
+        except exception.NotAuthorized, e:
+            msg = ("Unable to update image: %(e)s" % locals())
+            for line in msg.split('\n'):
+                logger.info(line)
+            self.notifier.info('image.update', msg)
+            raise HTTPForbidden(msg, request=req, content_type="text/plain")
         else:
             self.notifier.info('image.update', image_meta)
 
@@ -701,6 +740,12 @@ class Controller(controller.BaseController):
                 logger.info(line)
             self.notifier.info('image.delete', msg)
             raise HTTPNotFound(msg, request=req, content_type="text/plain")
+        except exception.NotAuthorized, e:
+            msg = ("Unable to delete image: %(e)s" % locals())
+            for line in msg.split('\n'):
+                logger.info(line)
+            self.notifier.info('image.delete', msg)
+            raise HTTPForbidden(msg, request=req, content_type="text/plain")
         else:
             self.notifier.info('image.delete', id)
 
