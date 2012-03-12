@@ -25,6 +25,12 @@ then
             ;;
     esac
 
+    db_get glance-registry/database-type
+    if [ $RET = "sqlite3" ]
+    then
+	dbc_name="glance.sqlite"
+	db_set glance-registry/db/dbname $dbc_name
+    fi
     dbc_dbfile_owner="glance:glance"
     dbc_go glance-registry $@
 
@@ -40,7 +46,7 @@ then
                 SQL_CONNECTION="pgsql://$dbc_dbuser:$dbc_dbpass@${dbc_dbserver:-localhost}$dbport/$dbc_dbname"
                 ;;
             *)
-                SQL_CONNECTION="sqlite:////$dbc_basepath/$dbc_dbname.db"
+                SQL_CONNECTION="sqlite:////$dbc_basepath/$dbc_dbname"
                 ;;
         esac
 
@@ -48,7 +54,7 @@ then
 
         if [ "$dbc_upgrade" = "true" ]
         then
-	    glance-manage db_sync || true
+	    su glance -c "glance-manage db_sync" || true
         fi
     fi
 fi
