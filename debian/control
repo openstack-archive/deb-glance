@@ -4,7 +4,7 @@ Priority: extra
 Maintainer: PKG OpenStack <openstack-devel@lists.alioth.debian.org>
 Uploaders: Julien Danjou <acid@debian.org>,
            Thomas Goirand <zigo@debian.org>,
-           Ghe Rivero <ghe@debian.org>
+           Ghe Rivero <ghe.rivero@stackops.com>
 Build-Depends: debhelper (>= 7.0.50),
  python-all (>= 2.6.6-3~),
  po-debconf
@@ -20,7 +20,7 @@ Build-Depends-Indep:
  python-boto,
  python-kombu,
  python-httplib2 (>= 0.6.0)
-Standards-Version: 3.9.2
+Standards-Version: 3.9.3
 X-Python-Version: >= 2.6
 Homepage: http://launchpad.net/glance
 Vcs-Browser: http://anonscm.debian.org/gitweb/?p=openstack/glance.git;a=summary

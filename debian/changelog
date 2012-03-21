@@ -1,3 +1,9 @@
+glance (2012.1~rc1-1) unstable; urgency=low
+
+  * New upstream release.
+
+ -- Ghe Rivero <ghe.rivero@stackops.com>  Wed, 21 Mar 2012 11:24:19 +0100
+
 glance (2012.1~e4-2) UNRELEASED; urgency=low
 
   * Fixed default config. Closes: 662067
