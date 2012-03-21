@@ -44,6 +44,13 @@ class V2Token(object):
     def __init__(self):
         self.tok = self.base_token
 
+    def add_service_no_type(self):
+        catalog = self.tok['access']['serviceCatalog']
+        service_type = {"name": "glance_no_type"}
+        catalog.append(service_type)
+        service = catalog[-1]
+        service['endpoints'] = [self.base_endpoint]
+
     def add_service(self, s_type, region_list=[]):
         catalog = self.tok['access']['serviceCatalog']
         service_type = {"type": s_type, "name": "glance"}
@@ -216,9 +223,9 @@ class TestKeystoneAuthPlugin(unittest.TestCase):
             try:
                 plugin = auth.KeystoneStrategy(creds)
                 plugin.authenticate()
-                self.fail("Failed to raise NotAuthorized when supplying bad "
-                          "credentials: %r" % creds)
-            except exception.NotAuthorized:
+                self.fail("Failed to raise NotAuthenticated when supplying "
+                          "bad credentials: %r" % creds)
+            except exception.NotAuthenticated:
                 continue  # Expected
 
         no_strategy_creds = {
@@ -309,9 +316,9 @@ class TestKeystoneAuthPlugin(unittest.TestCase):
             try:
                 plugin = auth.KeystoneStrategy(creds)
                 plugin.authenticate()
-                self.fail("Failed to raise NotAuthorized when supplying bad "
-                          "credentials: %r" % creds)
-            except exception.NotAuthorized:
+                self.fail("Failed to raise NotAuthenticated when supplying "
+                          "bad credentials: %r" % creds)
+            except exception.NotAuthenticated:
                 continue  # Expected
 
         no_region_creds = {
@@ -455,6 +462,17 @@ class TestKeystoneAuthPlugin(unittest.TestCase):
             'strategy': 'keystone',
             'region': 'RegionOne'
         }
+
+        try:
+            plugin = auth.KeystoneStrategy(good_creds)
+            plugin.authenticate()
+            self.fail("Failed to raise NoServiceEndpoint when bad service "
+                      "type encountered")
+        except exception.NoServiceEndpoint:
+            pass
+
+        mock_token = V2Token()
+        mock_token.add_service_no_type()
 
         try:
             plugin = auth.KeystoneStrategy(good_creds)

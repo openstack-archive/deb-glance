@@ -47,10 +47,7 @@ extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.ifconfig',
               'sphinx.ext.intersphinx',
               'sphinx.ext.pngmath',
-              'sphinx.ext.graphviz',
-              'sphinx.ext.todo']
-
-todo_include_todos = True
+              'sphinx.ext.graphviz']
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = []
@@ -138,8 +135,6 @@ man_pages = [
      u'Glance Cache Pre-fetcher', [u'OpenStack'], 1),
     ('man/glancecachepruner', 'glance-cache-pruner', u'Glance Cache Pruner',
      [u'OpenStack'], 1),
-    ('man/glancecachequeueimage', 'glance-cache-queue-image',
-     u'Glance Cache Queue Image', [u'OpenStack'], 1),
     ('man/glancecontrol', 'glance-control', u'Glance Daemon Control Helper ',
      [u'OpenStack'], 1),
     ('man/glancemanage', 'glance-manage', u'Glance Management Utility',
@@ -190,6 +185,8 @@ html_static_path = ['_static']
 # If not '', a 'Last updated on:' timestamp is inserted at every page bottom,
 # using the given strftime format.
 #html_last_updated_fmt = '%b %d, %Y'
+git_cmd = "git log --pretty=format:'%ad, commit %h' --date=local -n1"
+html_last_updated_fmt = os.popen(git_cmd).read()
 
 # If true, SmartyPants will be used to convert quotes and dashes to
 # typographically correct entities.

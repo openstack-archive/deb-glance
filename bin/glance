@@ -41,10 +41,10 @@ if os.path.exists(os.path.join(possible_topdir, 'glance', '__init__.py')):
 
 gettext.install('glance', unicode=1)
 
-from glance import version
 from glance import client as glance_client
 from glance.common import exception
 from glance.common import utils
+from glance import version
 
 
 SUCCESS = 0
@@ -62,7 +62,7 @@ def catch_error(action):
             try:
                 ret = func(*args, **kwargs)
                 return SUCCESS if ret is None else ret
-            except exception.NotAuthorized:
+            except exception.Forbidden:
                 print "Not authorized to make this request. Check "\
                       "your credentials (OS_AUTH_USER, OS_AUTH_KEY, ...)."
                 return FAILURE
@@ -164,7 +164,7 @@ Field names of note:
 
 id                  Optional. If not specified, an image identifier will be
                     automatically assigned.
-name                Required. A name for the image.
+name                Optional. A name for the image.
 size                Optional. Should be size in bytes of the image if
                     specified.
 is_public           Optional. If specified, interpreted as a boolean value
@@ -173,9 +173,10 @@ is_public           Optional. If specified, interpreted as a boolean value
 protected           Optional. If specified, interpreted as a boolean value
                     and enables or disables deletion protection.
                     The default value is False.
-disk_format         Required. Possible values are 'vhd','vmdk','raw', 'qcow2',
-                    and 'ami'.
-container_format    Required. Possible values are 'ovf' and 'ami'.
+disk_format         Required. Possible values are 'ami','ari','aki', 'vhd',
+                    'vmk', 'raw', 'qcow2' and 'vdi'.
+container_format    Required. Possible values are 'ami', 'ari', 'aki' 'bare'
+                    and 'ovf'.
 location            Optional. When specified, should be a readable location
                     in the form of a URI: $STORE://LOCATION. For example, if
                     the image data is stored in a file on the local
@@ -190,7 +191,7 @@ copy_from           Optional. An external location (HTTP, S3 or Swift URI) to
                     copy_from=s3://akey:skey@s3.amazonaws.com/images/fedora16
 
 Any other field names are considered to be custom properties so be careful
-to spell field names correctly. :)
+to spell field names correctly.
 
 STREAMING IMAGE DATA
 ===============================================================================
@@ -217,11 +218,8 @@ EXAMPLES
         print e
         return FAILURE
 
-    if 'name' not in fields.keys():
-        print "Please specify a name for the image using name=VALUE"
-        return FAILURE
-
-    image_meta = {'name': fields.pop('name'),
+    image_meta = {'id': fields.pop('id', None),
+                  'name': fields.pop('name', None),
                   'is_public': utils.bool_from_string(
                       fields.pop('is_public', False)),
                   'protected': utils.bool_from_string(
@@ -335,7 +333,7 @@ disk_format         Format of the disk image
 container_format    Format of the container
 
 All other field names are considered to be custom properties so be careful
-to spell field names correctly. :)"""
+to spell field names correctly."""
     c = get_client(options)
     try:
         image_id = args.pop(0)
@@ -395,7 +393,7 @@ to spell field names correctly. :)"""
         except exception.NotFound:
             print "No image with ID %s was found" % image_id
             return FAILURE
-        except exception.NotAuthorized:
+        except exception.Forbidden:
             print "You do not have permission to update image %s" % image_id
             return FAILURE
         except Exception, e:
@@ -446,7 +444,7 @@ Deletes an image from Glance"""
     except exception.NotFound:
         print "No image with ID %s was found" % image_id
         return FAILURE
-    except exception.NotAuthorized:
+    except exception.Forbidden:
         print "You do not have permission to delete image %s" % image_id
         return FAILURE
 
@@ -783,43 +781,17 @@ def get_client(options):
     specified by the --host and --port options
     supplied to the CLI
     """
-
-    if options.auth_url or os.getenv('OS_AUTH_URL'):
-        force_strategy = 'keystone'
-    else:
-        force_strategy = None
-
-    creds = dict(username=options.username or \
-                         os.getenv('OS_AUTH_USER', os.getenv('OS_USERNAME')),
-                 password=options.password or \
-                         os.getenv('OS_AUTH_KEY', os.getenv('OS_PASSWORD')),
-                 tenant=options.tenant or \
-                         os.getenv('OS_AUTH_TENANT',
-                                 os.getenv('OS_TENANT_NAME')),
-                 auth_url=options.auth_url or os.getenv('OS_AUTH_URL'),
-                 strategy=force_strategy or options.auth_strategy or \
-                          os.getenv('OS_AUTH_STRATEGY', 'noauth'),
-                 region=options.region or os.getenv('OS_REGION_NAME'),
-    )
-
-    if creds['strategy'] == 'keystone' and not creds['auth_url']:
-        msg = ("--auth_url option or OS_AUTH_URL environment variable "
-               "required when keystone authentication strategy is enabled\n")
-        raise exception.ClientConfigurationError(msg)
-
-    use_ssl = (options.use_ssl or (
-        creds['auth_url'] is not None and
-        creds['auth_url'].find('https') != -1))
-
-    client = (glance_client.ProgressClient if not options.is_silent_upload
-                                        else glance_client.Client)
-
-    return client(host=options.host,
+    return glance_client.get_client(host=options.host,
                 port=options.port,
-                use_ssl=use_ssl,
-                auth_tok=options.auth_token or
-                os.getenv('OS_TOKEN'),
-                creds=creds,
+                use_ssl=options.use_ssl,
+                username=options.os_username,
+                password=options.os_password,
+                tenant=options.os_tenant_name,
+                auth_url=options.os_auth_url,
+                auth_strategy=options.os_auth_strategy,
+                auth_token=options.os_auth_token,
+                region=options.os_region_name,
+                is_silent_upload=options.is_silent_upload,
                 insecure=options.insecure)
 
 
@@ -845,42 +817,47 @@ def create_options(parser):
                       type=int, default=DEFAULT_PORT,
                       help="Port the Glance API host listens on. "
                            "Default: %default")
+    parser.add_option('--ssl', dest='use_ssl',
+                      default=False, action="store_true",
+                      help="Use SSL when talking to Glance API host")
     parser.add_option('-U', '--url', metavar="URL", default=None,
                       help="URL of Glance service. This option can be used "
                            "to specify the hostname, port and protocol "
                            "(http/https) of the glance server, for example "
                            "-U https://localhost:" + str(DEFAULT_PORT) +
-                           "/v1 Default: None")
+                           "/v1 Default: None. If given, this option will "
+                           "override settings for --host, --port, and --ssl.")
     parser.add_option('-k', '--insecure', dest="insecure",
                       default=False, action="store_true",
                       help="Explicitly allow glance to perform \"insecure\" "
                       "SSL (https) requests. The server's certificate will "
                       "not be verified against any certificate authorities. "
                       "This option should be used with caution.")
-    parser.add_option('-A', '--auth_token', dest="auth_token",
-                      metavar="TOKEN", default=None,
+    parser.add_option('-A', '--os_auth_token', '--auth_token',
+                      dest="os_auth_token", metavar="TOKEN", default=None,
                       help="Authentication token to use to identify the "
-                           "client to the glance server")
-    parser.add_option('-I', '--username', dest="username",
+                           "client to the glance server.  --auth_token"
+                           "is deprecated and will be removed")
+    parser.add_option('-I', '--os_username', dest="os_username",
                       metavar="USER", default=None,
                       help="User name used to acquire an authentication token")
-    parser.add_option('-K', '--password', dest="password",
+    parser.add_option('-K', '--os_password', dest="os_password",
                       metavar="PASSWORD", default=None,
                       help="Password used to acquire an authentication token")
-    parser.add_option('-R', '--region', dest="region",
+    parser.add_option('-R', '--os_region_name', dest="os_region_name",
                       metavar="REGION", default=None,
                       help="Region name. When using keystone authentication "
                       "version 2.0 or later this identifies the region "
                       "name to use when selecting the service endpoint. A "
                       "region name must be provided if more than one "
                       "region endpoint is available")
-    parser.add_option('-T', '--tenant', dest="tenant",
+    parser.add_option('-T', '--os_tenant_name', dest="os_tenant_name",
                       metavar="TENANT", default=None,
                       help="Tenant name")
-    parser.add_option('-N', '--auth_url', dest="auth_url",
+    parser.add_option('-N', '--os_auth_url', dest="os_auth_url",
                       metavar="AUTH_URL", default=None,
                       help="Authentication URL")
-    parser.add_option('-S', '--auth_strategy', dest="auth_strategy",
+    parser.add_option('-S', '--os_auth_strategy', dest="os_auth_strategy",
                       metavar="STRATEGY", default=None,
                       help="Authentication strategy (keystone or noauth)")
     parser.add_option('--limit', dest="limit", metavar="LIMIT", default=10,
@@ -919,8 +896,7 @@ def parse_options(parser, cli_args):
         u = urlparse(options.url)
         options.port = u.port
         options.host = u.hostname
-
-    options.use_ssl = (options.url is not None and u.scheme == 'https')
+        options.use_ssl = (u.scheme == 'https')
 
     # HACK(sirp): Make the parser available to the print_help method
     # print_help is a command, so it only accepts (options, args); we could
@@ -998,6 +974,10 @@ def user_confirm(prompt, default=False):
         prompt_default = "[Y/n]"
     else:
         prompt_default = "[y/N]"
+
+    # for bug 884116, don't issue the prompt if stdin isn't a tty
+    if not hasattr(sys.stdin, 'isatty') or not sys.stdin.isatty():
+        return default
 
     answer = raw_input("%s %s " % (prompt, prompt_default))
 

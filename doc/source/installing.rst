@@ -47,11 +47,6 @@ Install Glance::
    $ su -
    # yum install openstack-glance
 
-Mac OSX
-#######
-
-.. todo:: No idea how to do install on Mac OSX. Somebody with a Mac should complete this section
-
 Installing from source tarballs
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -89,12 +84,12 @@ Debian, Ubuntu
    to install the python-sphinx package
 
 2. Clone Glance's trunk branch from GitHub::
-   
+
    $> git clone git://github.com/openstack/glance
    $> cd glance
 
 3. Install Glance::
-   
+
    $> sudo python setup.py install
 
 Red Hat, Fedora
@@ -140,8 +135,3 @@ Once Glance is built and tested, install it::
 
    $ su -
    # python setup.py install
-
-Mac OSX
-#######
-
-.. todo:: No idea how to do install on Mac OSX. Somebody with a Mac should complete this section

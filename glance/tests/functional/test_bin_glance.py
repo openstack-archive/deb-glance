@@ -31,6 +31,36 @@ from glance.tests.functional.store_utils import (setup_http,
                                                  get_http_uri)
 
 
+class TestBinGlanceAuth(functional.FunctionalTest):
+    """Functional tests for bin/glance with some amount of auth"""
+
+    def assertIn(self, key, bag):
+        msg = 'Expected to find substring "%s" in "%s"' % (key, bag)
+        self.assertTrue(key in bag, msg)
+
+    def assertNotIn(self, key, bag):
+        msg = 'Expected not to find substring "%s" in "%s"' % (key, bag)
+        self.assertFalse(key in bag, msg)
+
+    def test_index_with_https_auth(self):
+        self.cleanup()
+        self.start_servers(**self.__dict__.copy())
+
+        api_port = self.api_port
+        cmd = ("bin/glance --port=%d -N https://this.url.doesnt.matter/ "
+               "-A aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa index") % api_port
+        exitcode, out, err = execute(cmd, raise_error=False)
+
+        #NOTE(markwash): we should expect the command to fail because the
+        # testing glance api server is not configured to authenticate, and the
+        # token we provide is invalid. However, it should fail due to
+        # NotAuthenticated, rather than because of an SSL error.
+
+        self.assertNotEqual(0, exitcode)
+        self.assertNotIn('SSL23_GET_SERVER_HELLO', out)
+        self.assertIn('NotAuthenticated: You are not authenticated.', out)
+
+
 class TestBinGlance(functional.FunctionalTest):
     """Functional tests for the bin/glance CLI tool"""
 
@@ -46,6 +76,62 @@ class TestBinGlance(functional.FunctionalTest):
     def _assertStartsWith(self, str, prefix):
         msg = 'expected "%s" to start with "%s"' % (str, prefix)
         self.assertTrue(str.startswith(prefix), msg)
+
+    def test_add_with_location_and_id(self):
+        self.cleanup()
+        self.start_servers(**self.__dict__.copy())
+
+        api_port = self.api_port
+        registry_port = self.registry_port
+
+        # 0. Verify no public images
+        cmd = "bin/glance --port=%d index" % api_port
+
+        exitcode, out, err = execute(cmd)
+
+        self.assertEqual(0, exitcode)
+        self.assertEqual('', out.strip())
+
+        image_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+
+        # 1a. Add public image
+        cmd = minimal_add_command(api_port,
+                                  'MyImage',
+                                  'id=%s' % image_id,
+                                  'location=http://example.com')
+        exitcode, out, err = execute(cmd)
+
+        self.assertEqual(0, exitcode)
+        expected = 'Added new image with ID: %s' % image_id
+        self.assertTrue(expected in out)
+
+        # 1b. Add public image with non-uuid id
+        cmd = minimal_add_command(api_port,
+                                  'MyImage',
+                                  'id=12345',
+                                  'location=http://example.com')
+        exitcode, out, err = execute(cmd, expected_exitcode=1)
+
+        self.assertEqual(1, exitcode)
+        self.assertTrue('Invalid image id format' in out)
+
+        # 2. Verify image added as public image
+        cmd = "bin/glance --port=%d index" % api_port
+
+        exitcode, out, err = execute(cmd)
+
+        self.assertEqual(0, exitcode)
+        lines = out.split("\n")[2:-1]
+        self.assertEqual(1, len(lines))
+
+        line = lines[0]
+
+        image_id, name, disk_format, container_format, size = \
+            [c.strip() for c in line.split()]
+        self.assertEqual('MyImage', name)
+
+        self.assertEqual('0', size, "Expected image to be 0 bytes in size, "
+                                    "but got %s. " % size)
 
     def test_add_with_location(self):
         self.cleanup()
@@ -88,6 +174,47 @@ class TestBinGlance(functional.FunctionalTest):
 
         self.assertEqual('0', size, "Expected image to be 0 bytes in size, "
                                     "but got %s. " % size)
+
+    def test_add_no_name(self):
+        self.cleanup()
+        self.start_servers(**self.__dict__.copy())
+
+        api_port = self.api_port
+        registry_port = self.registry_port
+
+        # 0. Verify no public images
+        cmd = "bin/glance --port=%d index" % api_port
+
+        exitcode, out, err = execute(cmd)
+
+        self.assertEqual(0, exitcode)
+        self.assertEqual('', out.strip())
+
+        # 1. Add public image
+        # Can't use minimal_add_command since that uses
+        # name...
+        cmd = ("bin/glance --port=%d add is_public=True"
+               " disk_format=raw container_format=ovf"
+               " %s" % (api_port, 'location=http://example.com'))
+        exitcode, out, err = execute(cmd)
+
+        self.assertEqual(0, exitcode)
+        self.assertTrue(out.strip().startswith('Added new image with ID:'))
+
+        # 2. Verify image added as public image
+        cmd = "bin/glance --port=%d index" % api_port
+
+        exitcode, out, err = execute(cmd)
+
+        self.assertEqual(0, exitcode)
+        lines = out.split("\n")[2:-1]
+        self.assertEqual(1, len(lines))
+
+        line = lines[0]
+
+        image_id, name, disk_format, container_format, size = \
+            [c.strip() for c in line.split()]
+        self.assertEqual('None', name)
 
     @requires(setup_http, teardown_http)
     def test_add_copying_from(self):

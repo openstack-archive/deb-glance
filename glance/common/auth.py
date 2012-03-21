@@ -30,11 +30,16 @@ Keystone (an identity management system).
     > auth_plugin.management_url
     http://service_endpoint/
 """
-import httplib2
 import json
+import logging
 import urlparse
 
+import httplib2
+
 from glance.common import exception
+
+
+logger = logging.getLogger('glance.common.auth')
 
 
 class BaseStrategy(object):
@@ -173,7 +178,7 @@ class KeystoneStrategy(BaseStrategy):
         elif resp.status == 400:
             raise exception.AuthBadRequest(url=token_url)
         elif resp.status == 401:
-            raise exception.NotAuthorized()
+            raise exception.NotAuthenticated()
         elif resp.status == 404:
             raise exception.AuthUrlNotFound(url=token_url)
         else:
@@ -195,7 +200,14 @@ class KeystoneStrategy(BaseStrategy):
             endpoint = None
             region = self.creds.get('region')
             for service in service_catalog:
-                if service['type'] == 'image':
+                try:
+                    service_type = service['type']
+                except KeyError:
+                    msg = _('Encountered service with no "type": %s' % service)
+                    logger.warn(msg)
+                    continue
+
+                if service_type == 'image':
                     for ep in service['endpoints']:
                         if region is None or region == ep['region']:
                             if endpoint is not None:
@@ -234,7 +246,7 @@ class KeystoneStrategy(BaseStrategy):
         elif resp.status == 400:
             raise exception.AuthBadRequest(url=token_url)
         elif resp.status == 401:
-            raise exception.NotAuthorized()
+            raise exception.NotAuthenticated()
         elif resp.status == 404:
             raise exception.AuthUrlNotFound(url=token_url)
         else:

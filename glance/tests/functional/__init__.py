@@ -25,6 +25,7 @@ and spinning down the servers.
 
 import datetime
 import functools
+import json
 import os
 import re
 import shutil
@@ -370,6 +371,7 @@ class FunctionalTest(unittest.TestCase):
 
     inited = False
     disabled = False
+    log_files = []
 
     def setUp(self):
         self.test_id, self.test_dir = test_utils.get_isolated_test_env()
@@ -395,6 +397,7 @@ class FunctionalTest(unittest.TestCase):
                           self.registry_server.pid_file,
                           self.scrubber_daemon.pid_file]
         self.files_to_destroy = []
+        self.log_files = []
 
     def tearDown(self):
         if not self.disabled:
@@ -403,6 +406,11 @@ class FunctionalTest(unittest.TestCase):
             # and recreate it, which ensures that we have no side-effects
             # from the tests
             self._reset_database(self.registry_server.sql_connection)
+
+    def set_policy_rules(self, rules):
+        fap = open(self.policy_file, 'w')
+        fap.write(json.dumps(rules))
+        fap.close()
 
     def _reset_database(self, conn_string):
         conn_pieces = urlparse.urlparse(conn_string)
@@ -485,6 +493,8 @@ class FunctionalTest(unittest.TestCase):
 
             self.assertTrue(re.search("Starting glance-[a-z]+ with", out))
 
+        self.log_files.append(server.log_file)
+
         self.wait_for_servers([server.bind_port], expect_launch)
 
     def start_servers(self, **kwargs):
@@ -500,12 +510,16 @@ class FunctionalTest(unittest.TestCase):
         # Start up the API and default registry server
         exitcode, out, err = self.api_server.start(**kwargs)
 
+        self.log_files.append(self.api_server.log_file)
+
         self.assertEqual(0, exitcode,
                          "Failed to spin up the API server. "
                          "Got: %s" % err)
         self.assertTrue("Starting glance-api with" in out)
 
         exitcode, out, err = self.registry_server.start(**kwargs)
+
+        self.log_files.append(self.registry_server.log_file)
 
         self.assertEqual(0, exitcode,
                          "Failed to spin up the Registry server. "
@@ -619,3 +633,15 @@ class FunctionalTest(unittest.TestCase):
         shutil.copy(src_file_name, dst_dir)
         dst_file_name = os.path.join(dst_dir, file_name)
         return dst_file_name
+
+    def dump_logs(self):
+        dump = ''
+        for log in self.log_files:
+            dump += '\nContent of %s:\n\n' % log
+            if os.path.exists(log):
+                f = open(log, 'r')
+                for line in f:
+                    dump += line
+            else:
+                dump += '<empty>'
+        return dump

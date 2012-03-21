@@ -23,8 +23,8 @@ import collections
 import errno
 import functools
 import httplib
-import logging
 import os
+import select
 import urllib
 import urlparse
 
@@ -48,7 +48,7 @@ from glance.common import exception, utils
 CHUNKSIZE = 65536
 
 
-def handle_unauthorized(func):
+def handle_unauthenticated(func):
     """
     Wrap a function to re-authenticate and retry.
     """
@@ -56,7 +56,7 @@ def handle_unauthorized(func):
     def wrapped(self, *args, **kwargs):
         try:
             return func(self, *args, **kwargs)
-        except exception.NotAuthorized:
+        except exception.NotAuthenticated:
             self._authenticate(force_reauth=True)
             return func(self, *args, **kwargs)
     return wrapped
@@ -129,10 +129,23 @@ class SendFileIterator:
                 return self.len
 
         while self.sending:
-            sent = sendfile.sendfile(self.connection.sock.fileno(),
-                                     self.body.fileno(),
-                                     self.offset,
-                                     CHUNKSIZE)
+            try:
+                sent = sendfile.sendfile(self.connection.sock.fileno(),
+                                         self.body.fileno(),
+                                         self.offset,
+                                         CHUNKSIZE)
+            except OSError as e:
+                # suprisingly, sendfile may fail transiently instead of
+                # blocking, in which case we select on the socket in order
+                # to wait on its return to a writeable state before resuming
+                # the send loop
+                if e.errno in (errno.EAGAIN, errno.EBUSY):
+                    wlist = [self.connection.sock.fileno()]
+                    rfds, wfds, efds = select.select([], wlist, [])
+                    if wfds:
+                        continue
+                raise
+
             self.sending = (sent != 0)
             self.offset += sent
             yield OfLength(sent)
@@ -211,7 +224,8 @@ class BaseClient(object):
 
     def __init__(self, host, port=None, use_ssl=False, auth_tok=None,
                  creds=None, doc_root=None, key_file=None,
-                 cert_file=None, ca_file=None, insecure=False):
+                 cert_file=None, ca_file=None, insecure=False,
+                 configure_via_auth=True):
         """
         Creates a new client to some service.
 
@@ -247,23 +261,31 @@ class BaseClient(object):
         self.auth_tok = auth_tok
         self.creds = creds or {}
         self.connection = None
+        self.configure_via_auth = configure_via_auth
         # doc_root can be a nullstring, which is valid, and why we
         # cannot simply do doc_root or self.DEFAULT_DOC_ROOT below.
         self.doc_root = (doc_root if doc_root is not None
                          else self.DEFAULT_DOC_ROOT)
         self.auth_plugin = self.make_auth_plugin(self.creds)
-        self.connect_kwargs = {}
 
-        if use_ssl:
-            if key_file is None:
-                key_file = os.environ.get('GLANCE_CLIENT_KEY_FILE')
-            if cert_file is None:
-                cert_file = os.environ.get('GLANCE_CLIENT_CERT_FILE')
-            if ca_file is None:
-                ca_file = os.environ.get('GLANCE_CLIENT_CA_FILE')
+        self.key_file = key_file
+        self.cert_file = cert_file
+        self.ca_file = ca_file
+        self.insecure = insecure
+        self.connect_kwargs = self.get_connect_kwargs()
+
+    def get_connect_kwargs(self):
+        connect_kwargs = {}
+        if self.use_ssl:
+            if self.key_file is None:
+                self.key_file = os.environ.get('GLANCE_CLIENT_KEY_FILE')
+            if self.cert_file is None:
+                self.cert_file = os.environ.get('GLANCE_CLIENT_CERT_FILE')
+            if self.ca_file is None:
+                self.ca_file = os.environ.get('GLANCE_CLIENT_CA_FILE')
 
             # Check that key_file/cert_file are either both set or both unset
-            if cert_file is not None and key_file is None:
+            if self.cert_file is not None and self.key_file is None:
                 msg = _("You have selected to use SSL in connecting, "
                         "and you have supplied a cert, "
                         "however you have failed to supply either a "
@@ -271,7 +293,7 @@ class BaseClient(object):
                         "GLANCE_CLIENT_KEY_FILE environ variable")
                 raise exception.ClientConnectionError(msg)
 
-            if key_file is not None and cert_file is None:
+            if self.key_file is not None and self.cert_file is None:
                 msg = _("You have selected to use SSL in connecting, "
                         "and you have supplied a key, "
                         "however you have failed to supply either a "
@@ -279,31 +301,36 @@ class BaseClient(object):
                         "GLANCE_CLIENT_CERT_FILE environ variable")
                 raise exception.ClientConnectionError(msg)
 
-            if key_file is not None and not os.path.exists(key_file):
+            if (self.key_file is not None and
+                not os.path.exists(self.key_file)):
                 msg = _("The key file you specified %s does not "
-                        "exist") % key_file
+                        "exist") % self.key_file
                 raise exception.ClientConnectionError(msg)
-            self.connect_kwargs['key_file'] = key_file
+            connect_kwargs['key_file'] = self.key_file
 
-            if cert_file is not None and not os.path.exists(cert_file):
+            if (self.cert_file is not None and
+                not os.path.exists(self.cert_file)):
                 msg = _("The cert file you specified %s does not "
-                        "exist") % cert_file
+                        "exist") % self.cert_file
                 raise exception.ClientConnectionError(msg)
-            self.connect_kwargs['cert_file'] = cert_file
+            connect_kwargs['cert_file'] = self.cert_file
 
-            if ca_file is not None and not os.path.exists(ca_file):
+            if (self.ca_file is not None and
+                not os.path.exists(self.ca_file)):
                 msg = _("The CA file you specified %s does not "
-                        "exist") % ca_file
+                        "exist") % self.ca_file
                 raise exception.ClientConnectionError(msg)
 
-            if ca_file is None:
+            if self.ca_file is None:
                 for ca in self.DEFAULT_CA_FILE_PATH.split(":"):
                     if os.path.exists(ca):
-                        ca_file = ca
+                        self.ca_file = ca
                         break
 
-            self.connect_kwargs['ca_file'] = ca_file
-            self.connect_kwargs['insecure'] = insecure
+            connect_kwargs['ca_file'] = self.ca_file
+            connect_kwargs['insecure'] = self.insecure
+
+        return connect_kwargs
 
     def set_auth_token(self, auth_tok):
         """
@@ -333,6 +360,10 @@ class BaseClient(object):
         self.host = parsed.hostname
         self.port = parsed.port or 80
         self.doc_root = parsed.path
+
+        # ensure connection kwargs are re-evaluated after the service catalog
+        # publicURL is parsed for potential SSL usage
+        self.connect_kwargs = self.get_connect_kwargs()
 
     def make_auth_plugin(self, creds):
         """
@@ -365,10 +396,10 @@ class BaseClient(object):
         self.auth_tok = auth_plugin.auth_token
 
         management_url = auth_plugin.management_url
-        if management_url:
+        if management_url and self.configure_via_auth:
             self.configure_from_url(management_url)
 
-    @handle_unauthorized
+    @handle_unauthenticated
     def do_request(self, method, action, body=None, headers=None,
                    params=None):
         """
@@ -385,7 +416,6 @@ class BaseClient(object):
             self._authenticate()
 
         url = self._construct_url(action, params)
-
         return self._do_request(method=method, url=url, body=body,
                                 headers=headers)
 
@@ -491,15 +521,19 @@ class BaseClient(object):
                 raise TypeError('Unsupported image type: %s' % body.__class__)
 
             res = c.getresponse()
+
+            def _retry(res):
+                return res.getheader('Retry-After')
+
             status_code = self.get_status_code(res)
             if status_code in self.OK_RESPONSE_CODES:
                 return res
             elif status_code in self.REDIRECT_RESPONSE_CODES:
                 raise exception.RedirectException(res.getheader('Location'))
             elif status_code == httplib.UNAUTHORIZED:
-                raise exception.NotAuthorized(res.read())
+                raise exception.NotAuthenticated(res.read())
             elif status_code == httplib.FORBIDDEN:
-                raise exception.NotAuthorized(res.read())
+                raise exception.Forbidden(res.read())
             elif status_code == httplib.NOT_FOUND:
                 raise exception.NotFound(res.read())
             elif status_code == httplib.CONFLICT:
@@ -508,10 +542,16 @@ class BaseClient(object):
                 raise exception.Invalid(res.read())
             elif status_code == httplib.MULTIPLE_CHOICES:
                 raise exception.MultipleChoices(body=res.read())
+            elif status_code == httplib.REQUEST_ENTITY_TOO_LARGE:
+                raise exception.LimitExceeded(retry=_retry(res),
+                                              body=res.read())
             elif status_code == httplib.INTERNAL_SERVER_ERROR:
-                raise Exception("Internal Server error: %s" % res.read())
+                raise exception.ServerError(body=res.read())
+            elif status_code == httplib.SERVICE_UNAVAILABLE:
+                raise exception.ServiceUnavailable(retry=_retry(res))
             else:
-                raise Exception("Unknown error occurred! %s" % res.read())
+                raise exception.UnexpectedStatus(status=status_code,
+                                                 body=res.read())
 
         except (socket.error, IOError), e:
             raise exception.ClientConnectionError(e)

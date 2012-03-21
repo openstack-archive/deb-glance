@@ -24,9 +24,9 @@ Defines interface for DB access
 
 import logging
 
+import sqlalchemy
 from sqlalchemy import asc, create_engine, desc
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.exc import IntegrityError, DisconnectionError
 from sqlalchemy.orm import exc
 from sqlalchemy.orm import joinedload
 from sqlalchemy.orm import sessionmaker
@@ -65,6 +65,36 @@ db_opts = [
     ]
 
 
+class MySQLPingListener(object):
+
+    """
+    Ensures that MySQL connections checked out of the
+    pool are alive.
+
+    Borrowed from:
+    http://groups.google.com/group/sqlalchemy/msg/a4ce563d802c929f
+
+    Error codes caught:
+    * 2006 MySQL server has gone away
+    * 2013 Lost connection to MySQL server during query
+    * 2014 Commands out of sync; you can't run this command now
+    * 2045 Can't open shared memory; no answer from server (%lu)
+    * 2055 Lost connection to MySQL server at '%s', system error: %d
+
+    from http://dev.mysql.com/doc/refman/5.6/en/error-messages-client.html
+    """
+
+    def checkout(self, dbapi_con, con_record, con_proxy):
+        try:
+            dbapi_con.cursor().execute('select 1')
+        except dbapi_con.OperationalError, ex:
+            if ex.args[0] in (2006, 2013, 2014, 2045, 2055):
+                logging.warn('Got mysql server has gone away: %s', ex)
+                raise DisconnectionError("Database server went away")
+            else:
+                raise
+
+
 def configure_db(conf):
     """
     Establish the database, create an engine if needed, and
@@ -75,10 +105,16 @@ def configure_db(conf):
     global _ENGINE, sa_logger, logger
     if not _ENGINE:
         conf.register_opts(db_opts)
-        timeout = conf.sql_idle_timeout
         sql_connection = conf.sql_connection
+        connection_dict = sqlalchemy.engine.url.make_url(sql_connection)
+        engine_args = {'pool_recycle': conf.sql_idle_timeout,
+                       'echo': False,
+                       'convert_unicode': True
+                       }
+        if 'mysql' in connection_dict.drivername:
+            engine_args['listeners'] = [MySQLPingListener()]
         try:
-            _ENGINE = create_engine(sql_connection, pool_recycle=timeout)
+            _ENGINE = create_engine(sql_connection, **engine_args)
         except Exception, err:
             msg = _("Error configuring registry database with supplied "
                     "sql_connection '%(sql_connection)s'. "
@@ -100,9 +136,9 @@ def check_mutate_authorization(context, image_ref):
         logger.info(_("Attempted to modify image user did not own."))
         msg = _("You do not own this image")
         if image_ref.is_public:
-            exc_class = exception.NotAuthorizedPublicImage
+            exc_class = exception.ForbiddenPublicImage
         else:
-            exc_class = exception.NotAuthorized
+            exc_class = exception.Forbidden
 
         raise exc_class(msg)
 
@@ -171,7 +207,7 @@ def image_get(context, image_id, session=None, force_show_deleted=False):
 
     # Make sure they can look at it
     if not context.is_image_visible(image):
-        raise exception.NotAuthorized("Image not visible to you")
+        raise exception.Forbidden("Image not visible to you")
 
     return image
 
@@ -582,7 +618,7 @@ def image_member_get(context, member_id, session=None):
 
     # Make sure they can look at it
     if not context.is_image_visible(member.image):
-        raise exception.NotAuthorized("Image not visible to you")
+        raise exception.Forbidden("Image not visible to you")
 
     return member
 

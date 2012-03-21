@@ -2194,7 +2194,26 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req.headers['Content-Type'] = 'application/octet-stream'
         req.body = "chunk00000remainder"
         res = req.get_response(self.api)
-        self.assertEquals(res.status_int, 401)
+        self.assertEquals(res.status_int, 403)
+
+    def test_add_public_image_unauthorized(self):
+        rules = {"add_image": [], "publicize_image": [["false:false"]]}
+        self.set_policy_rules(rules)
+        fixture_headers = {'x-image-meta-store': 'file',
+                           'x-image-meta-is-public': 'true',
+                           'x-image-meta-disk-format': 'vhd',
+                           'x-image-meta-container-format': 'ovf',
+                           'x-image-meta-name': 'fake image #3'}
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+
+        req.headers['Content-Type'] = 'application/octet-stream'
+        req.body = "chunk00000remainder"
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 403)
 
     def _do_test_post_image_content_missing_format(self, missing):
         """Tests creation of an image with missing format"""
@@ -2405,6 +2424,31 @@ class TestGlanceAPI(base.IsolatedUnitTest):
                         "Did not find required property in headers. "
                         "Got headers: %r" % res.headers)
 
+    def test_publicize_image_unauthorized(self):
+        """Create a non-public image then fail to make public"""
+        rules = {"add_image": [], "publicize_image": [["false:false"]]}
+        self.set_policy_rules(rules)
+
+        fixture_headers = {'x-image-meta-store': 'file',
+                           'x-image-meta-disk-format': 'vhd',
+                           'x-image-meta-is-public': 'false',
+                           'x-image-meta-container-format': 'ovf',
+                           'x-image-meta-name': 'fake image #3'}
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, httplib.CREATED)
+
+        res_body = json.loads(res.body)['image']
+        req = webob.Request.blank("/images/%s" % res_body['id'])
+        req.method = 'PUT'
+        req.headers['x-image-meta-is-public'] = 'true'
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 403)
+
     def test_get_index_sort_name_asc(self):
         """
         Tests that the /images registry API returns list of
@@ -2563,14 +2607,14 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         self.set_policy_rules(rules)
         req = webob.Request.blank('/images/detail')
         res = req.get_response(self.api)
-        self.assertEquals(res.status_int, 401)
+        self.assertEquals(res.status_int, 403)
 
     def test_get_images_unauthorized(self):
         rules = {"get_images": [["false:false"]]}
         self.set_policy_rules(rules)
         req = webob.Request.blank('/images/detail')
         res = req.get_response(self.api)
-        self.assertEquals(res.status_int, 401)
+        self.assertEquals(res.status_int, 403)
 
     def test_store_location_not_revealed(self):
         """
@@ -2732,7 +2776,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req = webob.Request.blank("/images/%s" % UUID2)
         req.method = 'HEAD'
         res = req.get_response(self.api)
-        self.assertEquals(res.status_int, 401)
+        self.assertEquals(res.status_int, 403)
 
     def test_show_image_basic(self):
         req = webob.Request.blank("/images/%s" % UUID2)
@@ -2751,7 +2795,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         self.set_policy_rules(rules)
         req = webob.Request.blank("/images/%s" % UUID2)
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 401)
+        self.assertEqual(res.status_int, 403)
 
     def test_delete_image(self):
         req = webob.Request.blank("/images/%s" % UUID2)
@@ -2833,7 +2877,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req = webob.Request.blank("/images/%s" % UUID2)
         req.method = 'DELETE'
         res = req.get_response(self.api)
-        self.assertEquals(res.status_int, 401)
+        self.assertEquals(res.status_int, 403)
 
     def test_get_details_invalid_marker(self):
         """
@@ -3055,3 +3099,44 @@ class TestImageSerializer(base.IsolatedUnitTest):
         self.serializer.image_send_notification(17, 19, image_meta, req)
 
         self.assertTrue(called['notified'])
+
+
+class TestContextMiddleware(base.IsolatedUnitTest):
+    def _build_request(self, roles=None):
+        req = webob.Request.blank('/')
+        req.headers['x-auth-token'] = 'token1'
+        req.headers['x-identity-status'] = 'Confirmed'
+        req.headers['x-user-id'] = 'user1'
+        req.headers['x-tenant-id'] = 'tenant1'
+        _roles = roles or ['role1', 'role2']
+        req.headers['x-roles'] = ','.join(_roles)
+        return req
+
+    def _build_middleware(self, **extra_config):
+        for k, v in extra_config.items():
+            setattr(self.conf, k, v)
+        return context.ContextMiddleware(None, self.conf)
+
+    def test_header_parsing(self):
+        req = self._build_request()
+        self._build_middleware().process_request(req)
+        self.assertEqual(req.context.auth_tok, 'token1')
+        self.assertEqual(req.context.user, 'user1')
+        self.assertEqual(req.context.tenant, 'tenant1')
+        self.assertEqual(req.context.roles, ['role1', 'role2'])
+
+    def test_is_admin_flag(self):
+        # is_admin check should look for 'admin' role by default
+        req = self._build_request(roles=['admin', 'role2'])
+        self._build_middleware().process_request(req)
+        self.assertTrue(req.context.is_admin)
+
+        # without the 'admin' role, is_admin shoud be False
+        req = self._build_request()
+        self._build_middleware().process_request(req)
+        self.assertFalse(req.context.is_admin)
+
+        # if we change the admin_role attribute, we should be able to use it
+        req = self._build_request()
+        self._build_middleware(admin_role='role1').process_request(req)
+        self.assertTrue(req.context.is_admin)

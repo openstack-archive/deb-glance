@@ -109,11 +109,20 @@ class AuthorizationFailure(GlanceException):
     message = _("Authorization failed.")
 
 
-class NotAuthorized(GlanceException):
+class NotAuthenticated(GlanceException):
+    message = _("You are not authenticated.")
+
+
+class Forbidden(GlanceException):
     message = _("You are not authorized to complete this action.")
 
 
-class NotAuthorizedPublicImage(NotAuthorized):
+class ForbiddenPublicImage(Forbidden):
+    message = _("You are not authorized to complete this action.")
+
+
+#NOTE(bcwaldon): here for backwards-compatability, need to deprecate.
+class NotAuthorized(Forbidden):
     message = _("You are not authorized to complete this action.")
 
 
@@ -141,6 +150,38 @@ class MultipleChoices(GlanceException):
     message = _("The request returned a 302 Multiple Choices. This generally "
                 "means that you have not included a version indicator in a "
                 "request URI.\n\nThe body of response returned:\n%(body)s")
+
+
+class LimitExceeded(GlanceException):
+    message = _("The request returned a 413 Request Entity Too Large. This "
+                "generally means that rate limiting or a quota threshold was "
+                "breached.\n\nThe response body:\n%(body)s")
+
+    def __init__(self, *args, **kwargs):
+        self.retry_after = (int(kwargs['retry']) if kwargs.get('retry')
+                            else None)
+        super(LimitExceeded, self).__init__(*args, **kwargs)
+
+
+class ServiceUnavailable(GlanceException):
+    message = _("The request returned 503 Service Unavilable. This "
+                "generally occurs on service overload or other transient "
+                "outage.")
+
+    def __init__(self, *args, **kwargs):
+        self.retry_after = (int(kwargs['retry']) if kwargs.get('retry')
+                            else None)
+        super(ServiceUnavailable, self).__init__(*args, **kwargs)
+
+
+class ServerError(GlanceException):
+    message = _("The request returned 500 Internal Server Error"
+                "\n\nThe response body:\n%(body)s")
+
+
+class UnexpectedStatus(GlanceException):
+    message = _("The request returned an unexpected status: %(status)s."
+                "\n\nThe response body:\n%(body)s")
 
 
 class InvalidContentType(GlanceException):

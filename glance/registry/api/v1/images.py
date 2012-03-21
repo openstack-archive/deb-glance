@@ -156,12 +156,12 @@ class Controller(object):
         else:
             filters['is_public'] = True
 
-        for param in req.str_params:
+        for param in req.params:
             if param in SUPPORTED_FILTERS:
-                filters[param] = req.str_params.get(param)
+                filters[param] = req.params.get(param)
             if param.startswith('property-'):
                 _param = param[9:]
-                properties[_param] = req.str_params.get(param)
+                properties[_param] = req.params.get(param)
 
         if 'changes-since' in filters:
             isotime = filters['changes-since']
@@ -196,7 +196,7 @@ class Controller(object):
     def _get_limit(self, req):
         """Parse a limit query param into something usable."""
         try:
-            limit = int(req.str_params.get('limit',
+            limit = int(req.params.get('limit',
                                            self.conf.limit_param_default))
         except ValueError:
             raise exc.HTTPBadRequest(_("limit param must be an integer"))
@@ -208,7 +208,7 @@ class Controller(object):
 
     def _get_marker(self, req):
         """Parse a marker query param into something usable."""
-        marker = req.str_params.get('marker', None)
+        marker = req.params.get('marker', None)
 
         if marker and not utils.is_uuid_like(marker):
             msg = _('Invalid marker format')
@@ -218,7 +218,7 @@ class Controller(object):
 
     def _get_sort_key(self, req):
         """Parse a sort key query param from the request object."""
-        sort_key = req.str_params.get('sort_key', None)
+        sort_key = req.params.get('sort_key', None)
         if sort_key is not None and sort_key not in SUPPORTED_SORT_KEYS:
             _keys = ', '.join(SUPPORTED_SORT_KEYS)
             msg = _("Unsupported sort_key. Acceptable values: %s") % (_keys,)
@@ -227,7 +227,7 @@ class Controller(object):
 
     def _get_sort_dir(self, req):
         """Parse a sort direction query param from the request object."""
-        sort_dir = req.str_params.get('sort_dir', None)
+        sort_dir = req.params.get('sort_dir', None)
         if sort_dir is not None and sort_dir not in SUPPORTED_SORT_DIRS:
             _keys = ', '.join(SUPPORTED_SORT_DIRS)
             msg = _("Unsupported sort_dir. Acceptable values: %s") % (_keys,)
@@ -245,7 +245,7 @@ class Controller(object):
 
     def _get_is_public(self, req):
         """Parse is_public into something usable."""
-        is_public = req.str_params.get('is_public', None)
+        is_public = req.params.get('is_public', None)
 
         if is_public is None:
             # NOTE(vish): This preserves the default value of showing only
@@ -263,7 +263,7 @@ class Controller(object):
 
     def _parse_deleted_filter(self, req):
         """Parse deleted into something usable."""
-        deleted = req.str_params.get('deleted')
+        deleted = req.params.get('deleted')
         if deleted is None:
             return None
         return utils.bool_from_string(deleted)
@@ -274,7 +274,7 @@ class Controller(object):
             image = db_api.image_get(req.context, id)
         except exception.NotFound:
             raise exc.HTTPNotFound()
-        except exception.NotAuthorized:
+        except exception.Forbidden:
             # If it's private and doesn't belong to them, don't let on
             # that it exists
             msg = _("Access by %(user)s to image %(id)s "
@@ -300,7 +300,7 @@ class Controller(object):
         try:
             db_api.image_destroy(req.context, id)
 
-        except exception.NotAuthorizedPublicImage:
+        except exception.ForbiddenPublicImage:
             # If it's private and doesn't belong to them, don't let on
             # that it exists
             msg = _("Access by %(user)s to delete public image %(id)s denied")
@@ -308,7 +308,7 @@ class Controller(object):
             logger.info(msg % args)
             raise exc.HTTPForbidden()
 
-        except exception.NotAuthorized:
+        except exception.Forbidden:
             msg = _("Access by %(user)s to delete private image %(id)s denied")
             args = {'user': req.context.user, 'id': id}
             logger.info(msg % args)
@@ -397,12 +397,12 @@ class Controller(object):
             raise exc.HTTPNotFound(body='Image not found',
                                request=req,
                                content_type='text/plain')
-        except exception.NotAuthorizedPublicImage:
+        except exception.ForbiddenPublicImage:
             msg = _("Access by %(user)s to update public image %(id)s denied")
             logger.info(msg % {'user': req.context.user, 'id': id})
             raise exc.HTTPForbidden()
 
-        except exception.NotAuthorized:
+        except exception.Forbidden:
             # If it's private and doesn't belong to them, don't let on
             # that it exists
             msg = _("Access by %(user)s to update private image %(id)s denied")

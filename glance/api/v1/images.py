@@ -29,7 +29,6 @@ from webob.exc import (HTTPError,
                        HTTPConflict,
                        HTTPBadRequest,
                        HTTPForbidden,
-                       HTTPUnauthorized,
                        HTTPRequestEntityTooLarge,
                        HTTPServiceUnavailable,
                       )
@@ -103,8 +102,8 @@ class Controller(controller.BaseController):
         """Authorize an action against our policies"""
         try:
             self.policy.enforce(req.context, action, {})
-        except exception.NotAuthorized:
-            raise HTTPUnauthorized()
+        except exception.Forbidden:
+            raise HTTPForbidden()
 
     def index(self, req):
         """
@@ -187,8 +186,8 @@ class Controller(controller.BaseController):
         params = {'filters': self._get_filters(req)}
 
         for PARAM in SUPPORTED_PARAMS:
-            if PARAM in req.str_params:
-                params[PARAM] = req.str_params.get(PARAM)
+            if PARAM in req.params:
+                params[PARAM] = req.params.get(PARAM)
         return params
 
     def _get_filters(self, req):
@@ -199,9 +198,9 @@ class Controller(controller.BaseController):
         :retval a dict of key/value filters
         """
         query_filters = {}
-        for param in req.str_params:
+        for param in req.params:
             if param in SUPPORTED_FILTERS or param.startswith('property-'):
-                query_filters[param] = req.str_params.get(param)
+                query_filters[param] = req.params.get(param)
                 if not filters.validate(param, query_filters[param]):
                     raise HTTPBadRequest('Bad value passed to filter %s '
                                          'got %s' % (param,
@@ -325,11 +324,10 @@ class Controller(controller.BaseController):
             for line in msg.split('\n'):
                 logger.error(line)
             raise HTTPBadRequest(msg, request=req, content_type="text/plain")
-        except exception.NotAuthorized:
-            msg = _("Not authorized to reserve image.")
+        except exception.Forbidden:
+            msg = _("Forbidden to reserve image.")
             logger.error(msg)
-            raise HTTPForbidden(msg, request=req,
-                                content_type="text/plain")
+            raise HTTPForbidden(msg, request=req, content_type="text/plain")
 
     def _upload(self, req, image_meta):
         """
@@ -388,7 +386,7 @@ class Controller(controller.BaseController):
                         "%(max_image_size)d. Supplied image size was "
                         "%(image_size)d") % locals()
                 logger.warn(msg)
-                raise HTTPBadRequest(msg, request=request)
+                raise HTTPBadRequest(msg, request=req)
 
             location, size, checksum = store.add(image_meta['id'],
                                                  image_data,
@@ -426,13 +424,12 @@ class Controller(controller.BaseController):
             self.notifier.error('image.upload', msg)
             raise HTTPConflict(msg, request=req)
 
-        except exception.NotAuthorized, e:
-            msg = _("Unauthorized upload attempt: %s") % e
+        except exception.Forbidden, e:
+            msg = _("Forbidden upload attempt: %s") % e
             logger.error(msg)
             self._safe_kill(req, image_id)
             self.notifier.error('image.upload', msg)
-            raise HTTPForbidden(msg, request=req,
-                                content_type='text/plain')
+            raise HTTPForbidden(msg, request=req, content_type="text/plain")
 
         except exception.StorageFull, e:
             msg = _("Image storage media is full: %s") % e
@@ -595,6 +592,8 @@ class Controller(controller.BaseController):
                 image data.
         """
         self._enforce(req, 'add_image')
+        if image_meta.get('is_public'):
+            self._enforce(req, 'publicize_image')
         if req.context.read_only:
             msg = _("Read-only access")
             logger.debug(msg)
@@ -622,6 +621,8 @@ class Controller(controller.BaseController):
         :retval Returns the updated image information as a mapping
         """
         self._enforce(req, 'modify_image')
+        if image_meta.get('is_public'):
+            self._enforce(req, 'publicize_image')
         if req.context.read_only:
             msg = _("Read-only access")
             logger.debug(msg)
@@ -684,8 +685,8 @@ class Controller(controller.BaseController):
                 logger.info(line)
             self.notifier.info('image.update', msg)
             raise HTTPNotFound(msg, request=req, content_type="text/plain")
-        except exception.NotAuthorized, e:
-            msg = ("Unable to update image: %(e)s" % locals())
+        except exception.Forbidden, e:
+            msg = ("Forbidden to update image: %(e)s" % locals())
             for line in msg.split('\n'):
                 logger.info(line)
             self.notifier.info('image.update', msg)
@@ -708,7 +709,7 @@ class Controller(controller.BaseController):
 
         :raises HttpBadRequest if image registry is invalid
         :raises HttpNotFound if image or any chunk is not available
-        :raises HttpNotAuthorized if image or any chunk is not
+        :raises HttpUnauthorized if image or any chunk is not
                 deleteable by the requesting user
         """
         self._enforce(req, 'delete_image')
@@ -740,8 +741,8 @@ class Controller(controller.BaseController):
                 logger.info(line)
             self.notifier.info('image.delete', msg)
             raise HTTPNotFound(msg, request=req, content_type="text/plain")
-        except exception.NotAuthorized, e:
-            msg = ("Unable to delete image: %(e)s" % locals())
+        except exception.Forbidden, e:
+            msg = ("Forbidden to delete image: %(e)s" % locals())
             for line in msg.split('\n'):
                 logger.info(line)
             self.notifier.info('image.delete', msg)

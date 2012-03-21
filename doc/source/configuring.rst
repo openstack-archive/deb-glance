@@ -49,7 +49,7 @@ The PasteDeploy configuration (controlling the deployment of the WSGI
 application for each component) may be found by default in
 <component>-paste.ini alongside the main configuration file, <component>.conf.
 For example, ``glance-api-paste.ini`` corresponds to ``glance-api.conf``.
-This pathname for the paste config is configurable, as follows:
+This pathname for the paste config is configurable, as follows::
 
   [paste_deploy]
   config_file = /path/to/paste/config
@@ -278,7 +278,7 @@ Can only be specified in configuration files.
 
 Sets the authentication URL supplied to Swift when making calls to its storage
 system. For more information about the Swift authentication system, please
-see the `Swift auth <http://swift.openstack.org/overview_auth.html>`_ 
+see the `Swift auth <http://swift.openstack.org/overview_auth.html>`_
 documentation and the
 `overview of Swift authentication <http://docs.openstack.org/openstack-object-storage/admin/content/ch02s02.html>`_.
 
@@ -366,7 +366,7 @@ Default: s3.amazonaws.com
 
 Sets the main service URL supplied to S3 when making calls to its storage
 system. For more information about the S3 authentication system, please
-see the `S3 documentation <http://aws.amazon.com/documentation/s3/>`_ 
+see the `S3 documentation <http://aws.amazon.com/documentation/s3/>`_
 
 * ``s3_store_access_key=ACCESS_KEY``
 
@@ -597,14 +597,18 @@ image file would put the total cache size over this size. The
 ``glance-cache-pruner`` executable is what prunes the image cache to be equal
 to or less than this value. The ``glance-cache-pruner`` executable is designed
 to be run via cron on a regular basis. See more about this executable in
-`Controlling the Growth of the Image Cache`
+:doc:`Controlling the Growth of the Image Cache <cache>`
+
+.. note::
+
+  These configuration options must be set in both the glance-cache
+  and glance-api configuration files.
 
 Configuring the Glance Registry
 -------------------------------
 
-Glance ships with a default, reference implementation registry server. There
-are a number of configuration options in Glance that control how this registry
-server operates. These configuration options are specified in the
+There are a number of configuration options in Glance that control how 
+this registry server operates. These configuration options are specified in the
 ``glance-registry.conf`` config file in the section ``[DEFAULT]``.
 
 * ``sql_connection=CONNECTION_STRING`` (``--sql-connection`` when specified
