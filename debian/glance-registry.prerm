@@ -3,7 +3,11 @@
 set -e
 
 . /usr/share/debconf/confmodule
-. /usr/share/dbconfig-common/dpkg/prerm
-dbc_go glance-registry $@
+
+db_get glance-registry/configure_db
+if [ "$RET" = "true" ]; then
+    . /usr/share/dbconfig-common/dpkg/prerm
+    dbc_go glance-registry $@
+fi
 
 #DEBHELPER#

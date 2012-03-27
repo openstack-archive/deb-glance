@@ -11,11 +11,12 @@ then
     db_get glance/paste-flavor || true
     FLAVOR="$RET"
 
-    sed -i "s,^flavor\s*=\s*.\+$,flavor = $FLAVOR," /etc/glance/glance-api.conf
-
     case "$FLAVOR" in
+	caching)
+	    ;;
         keystone*)
-            db_get glance/auth-url
+            sed -i "s,^flavor\s*=\s*.\+$,flavor = $FLAVOR," /etc/glance/glance-api.conf
+	    db_get glance/auth-url
             sed -i "s,^auth_uri\s*=\s*.\+$,auth_uri = $RET," /etc/glance/glance-api-paste.ini
             db_get glance/auth-token
             sed -i "s/^admin_token\s*=\s*.\+$/admin_token = $RET/" /etc/glance/glance-api-paste.ini
