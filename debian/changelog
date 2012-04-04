@@ -1,3 +1,9 @@
+glance (2012.1~rc3-1) unstable; urgency=low
+
+  * New upstream release .
+
+ -- Ghe Rivero <ghe.rivero@stackops.com>  Wed, 04 Apr 2012 09:58:34 +0200
+
 glance (2012.1~rc1-2) unstable; urgency=low
 
   * [9df11b0] Fix interactive install. Closes: #662067
