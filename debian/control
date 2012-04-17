@@ -18,6 +18,7 @@ Build-Depends-Indep:
  python-httplib2 (>= 0.6.0),
  python-iso8601,
  python-kombu,
+ python-novaclient,
  python-migrate,
  python-mox,
  python-nose,
@@ -25,7 +26,7 @@ Build-Depends-Indep:
  python-routes,
  python-setuptools,
  python-sphinx,
- python-sqlalchemy (<< 0.6.3-2),
+ python-sqlalchemy,
  python-swift,
  python-webob,
  python-xattr
@@ -52,7 +53,6 @@ Depends: ${python:Depends}, ${misc:Depends},
  python-swift,
  python-webob,
  python-xattr
-Provides: ${python:Provides}
 Description: OpenStack Image Service - Python client library
  The Glance project provides services for discovering, registering, and
  retrieving virtual machine images over the cloud. They may be stand-alone

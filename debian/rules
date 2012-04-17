@@ -18,7 +18,7 @@ ifeq (,$(findstring nodocs, $(DEB_BUILD_OPTIONS)))
 	python setup.py build_sphinx
 else
 	mkdir -p doc/build/html
-	endif
+endif
 
 override_dh_auto_clean:
 	dh_auto_clean
