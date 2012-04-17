@@ -63,9 +63,5 @@ then
 	fi
     fi
 fi
-chown glance:glance -R /var/lib/glance /var/log/glance /etc/glance
-chmod 0750 /etc/glance
-chmod 0750 /var/log/glance
-
 
 #DEBHELPER#

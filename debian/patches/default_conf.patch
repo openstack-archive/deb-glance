@@ -1,6 +1,6 @@
 --- a/etc/glance-api.conf
 +++ b/etc/glance-api.conf
-@@ -235,3 +235,6 @@
+@@ -240,3 +240,6 @@
  
  # Base directory that the Image Cache uses
  image_cache_dir = /var/lib/glance/image-cache/

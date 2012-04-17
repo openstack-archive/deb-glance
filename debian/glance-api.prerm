@@ -3,8 +3,11 @@
 set -e
 
 case $1 in
-	remove|purge)
-		invoke-rc.d glance-api stop
+    remove|purge)
+	if [ -x /etc/init.d/glance-api ]; then
+	    invoke-rc.d glance-api stop || true
+	fi
+	;;
 esac
 
 #DEBHELPER#

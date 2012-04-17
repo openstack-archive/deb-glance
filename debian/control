@@ -15,7 +15,7 @@ Build-Depends-Indep:
  python-boto,
  python-crypto,
  python-eventlet,
- python-httplib2 (>= 0.6.0)
+ python-httplib2 (>= 0.6.0),
  python-iso8601,
  python-kombu,
  python-migrate,

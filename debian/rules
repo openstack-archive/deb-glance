@@ -6,10 +6,19 @@
 %:
 	dh $@ --with python2
 
+ifeq (,$(findstring nocheck, $(DEB_BUILD_OPTIONS)))
+override_dh_auto_test:
+	bash run_tests.sh -N
+endif
+
 override_dh_auto_build:
 	dh_auto_build
+ifeq (,$(findstring nodocs, $(DEB_BUILD_OPTIONS)))
 	mkdir -p doc/build
 	python setup.py build_sphinx
+else
+	mkdir -p doc/build/html
+	endif
 
 override_dh_auto_clean:
 	dh_auto_clean
