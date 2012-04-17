@@ -1,18 +1,29 @@
+# These templates have been reviewed by the debian-l10n-english
+# team
+#
+# If modifications/additions/rewording are needed, please ask
+# debian-l10n-english@lists.debian.org for advice.
+#
+# Even minor modifications require translation updates and such
+# changes should be coordinated with translators and reviewers.
+
 Template: glance/paste-flavor
 Type: select
 Choices: keystone, caching, keystone+caching, cachemanagement, keystone+cachemanagement
 Default: caching
 _Description: Pipeline flavor:
+ Please specify the flavor of pipeline to be used by Glance.
+ .
  If you use the OpenStack Identity Service (Keystone), you might want to
- select keystone. If you don't use this service, you can safely choose
- caching only.
+ select "keystone". If you don't use this service, you can safely choose
+ "caching" only.
 
 Template: glance/auth-url
 Type: string
 Default: http://localhost:5000
 _Description: Auth server URL:
- Type the URL of your auth server. This is typically the URL of your
- OpenStack Identity Service (Keystone).
+ Please specify the URL of your Glance authentication server. Typically
+ this is also the URL of your OpenStack Identity Service (Keystone).
 
 Template: glance/auth-token
 Type: string

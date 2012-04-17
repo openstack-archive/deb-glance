@@ -1,0 +1,63 @@
+# Dutch translation of glance debconf templates.
+# Copyright (C) 2012 THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the glance package.
+# Jeroen Schot <schot@a-eskwadraat.nl>, 2012.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: glance 2012.1~e3-4\n"
+"Report-Msgid-Bugs-To: glance@packages.debian.org\n"
+"POT-Creation-Date: 2012-04-17 09:11+0200\n"
+"PO-Revision-Date: 2012-03-14 16:59+0100\n"
+"Last-Translator: Jeroen Schot <schot@a-eskwadraat.nl>\n"
+"Language-Team: Debian l10n Dutch <debian-l10n-dutch@lists.debian.org>\n"
+"Language: nl\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. Type: select
+#. Description
+#: ../glance-common.templates:2001
+msgid "Pipeline flavor:"
+msgstr "Soort pijp:"
+
+#. Type: select
+#. Description
+#: ../glance-common.templates:2001
+msgid "Please specify the flavor of pipeline to be used by Glance."
+msgstr "Welk soort pijp moet Glance gebruiken?"
+
+#. Type: select
+#. Description
+#: ../glance-common.templates:2001
+msgid ""
+"If you use the OpenStack Identity Service (Keystone), you might want to "
+"select \"keystone\". If you don't use this service, you can safely choose "
+"\"caching\" only."
+msgstr ""
+"Als u de OpenStack identiteitsserver (Keystone) gebruikt wilt u hier "
+"wellicht \"keystone\" kiezen. Als u deze dienst niet gebruikt kunt u "
+"\"caching\" kiezen."
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:3001
+msgid "Auth server URL:"
+msgstr "URL van de auth-server:"
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:3001
+msgid ""
+"Please specify the URL of your Glance authentication server. Typically this "
+"is also the URL of your OpenStack Identity Service (Keystone)."
+msgstr ""
+"Wat is de URL van uw Glance authenticatieserver? Meestal is dit ook de URL "
+"van uw OpenStack identiteitsserver (Keystone)."
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:4001
+msgid "Auth server admin token:"
+msgstr "Admin-token van auth-server:"
