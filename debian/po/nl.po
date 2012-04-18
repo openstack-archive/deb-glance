@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: glance 2012.1~e3-4\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
-"POT-Creation-Date: 2012-04-17 09:11+0200\n"
+"POT-Creation-Date: 2012-04-18 11:29+0200\n"
 "PO-Revision-Date: 2012-03-14 16:59+0100\n"
 "Last-Translator: Jeroen Schot <schot@a-eskwadraat.nl>\n"
 "Language-Team: Debian l10n Dutch <debian-l10n-dutch@lists.debian.org>\n"
@@ -15,6 +15,46 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+
+#. Type: boolean
+#. Description
+#: ../glance-registry.templates:1001
+msgid "Set up a database for glance-registry?"
+msgstr ""
+
+#. Type: boolean
+#. Description
+#: ../glance-registry.templates:1001
+msgid ""
+"No database has been set up for glance-registry to use. Before continuing, "
+"you should make sure you have:"
+msgstr ""
+
+#. Type: boolean
+#. Description
+#: ../glance-registry.templates:1001
+msgid ""
+" - the server host name (that server must allow TCP connections\n"
+"   from this machine);\n"
+" - a username and password to access the database.\n"
+" - A database type that you want to use."
+msgstr ""
+
+#. Type: boolean
+#. Description
+#: ../glance-registry.templates:1001
+msgid ""
+"If some of these requirements are missing, reject this option and run with "
+"regular sqlite support."
+msgstr ""
+
+#. Type: boolean
+#. Description
+#: ../glance-registry.templates:1001
+msgid ""
+"Database configuration can be reconfigured later by running 'dpkg-"
+"reconfigure -plow glance-registry'."
+msgstr ""
 
 #. Type: select
 #. Description
