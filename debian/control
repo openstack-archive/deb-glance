@@ -22,6 +22,7 @@ Build-Depends-Indep:
  python-migrate,
  python-mox,
  python-nose,
+ python-paste,
  python-pastedeploy,
  python-routes,
  python-setuptools,
