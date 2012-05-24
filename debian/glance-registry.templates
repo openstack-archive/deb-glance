@@ -13,5 +13,5 @@ _Description: Set up a database for glance-registry?
  If some of these requirements are missing, reject this option and
  run with regular sqlite support.
  .
- Database configuration can be reconfigured later by running
- 'dpkg-reconfigure -plow glance-registry'.
+ You can change this setting later on by running 'dpkg-reconfigure
+ -plow glance-registry

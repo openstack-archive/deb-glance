@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: glance\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
-"POT-Creation-Date: 2012-04-18 11:29+0200\n"
+"POT-Creation-Date: 2012-05-24 09:08+0200\n"
 "PO-Revision-Date: 2012-03-03 00:43+0100\n"
 "Last-Translator: Martin Bagge / brother <brother@bsnet.se>\n"
 "Language-Team: Swedish <debian-l10n-swedish@lists.debian.org>\n"
@@ -54,8 +54,8 @@ msgstr ""
 #. Description
 #: ../glance-registry.templates:1001
 msgid ""
-"Database configuration can be reconfigured later by running 'dpkg-"
-"reconfigure -plow glance-registry'."
+"You can change this setting later on by running 'dpkg-reconfigure -plow "
+"glance-registry"
 msgstr ""
 
 #. Type: select
