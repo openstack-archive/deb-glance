@@ -2,15 +2,21 @@
 
 set -e
 
-. /usr/share/debconf/confmodule
-
 if [ "$1" = "configure" ]
 then
-    addgroup --quiet --system glance
-    adduser --quiet --system --home /var/lib/glance --ingroup glance --no-create-home --shell /bin/bash glance
+    if ! getent group glance > /dev/null 2>&1
+    then
+	addgroup --quiet --system glance >/dev/null
+    fi
+    if ! getent passwd glance > /dev/null 2>&1
+    then
+	adduser --quiet --system --home /var/lib/glance --ingroup glance --no-create-home --shell /bin/false glance
+    fi
 
-    chown glance:glance -R /var/lib/glance /var/log/glance /etc/glance
-    chmod 0750 /etc/glance /var/log/glance /var/lib/glance
+    chown -R glance:adm /var/log/glance/
+    chmod 0750 /var/log/glance/
+    chown glance:glance -R /var/lib/glance/ /etc/glance/
+    chmod 0700 /etc/glance/
 fi
 
 #DEBHELPER#

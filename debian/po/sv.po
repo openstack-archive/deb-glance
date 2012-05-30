@@ -1,0 +1,105 @@
+# Translation of glance debconf template to Swedish
+# Copyright (C) 2012 Martin Bagge <brother@bsnet.se>
+# This file is distributed under the same license as the glance package.
+#
+# Martin Bagge <brother@bsnet.se>, 2012
+msgid ""
+msgstr ""
+"Project-Id-Version: glance\n"
+"Report-Msgid-Bugs-To: glance@packages.debian.org\n"
+"POT-Creation-Date: 2012-05-24 09:08+0200\n"
+"PO-Revision-Date: 2012-03-03 00:43+0100\n"
+"Last-Translator: Martin Bagge / brother <brother@bsnet.se>\n"
+"Language-Team: Swedish <debian-l10n-swedish@lists.debian.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Poedit-Language: Swedish\n"
+"X-Poedit-Country: Sweden\n"
+
+#. Type: boolean
+#. Description
+#: ../glance-registry.templates:1001
+msgid "Set up a database for glance-registry?"
+msgstr ""
+
+#. Type: boolean
+#. Description
+#: ../glance-registry.templates:1001
+msgid ""
+"No database has been set up for glance-registry to use. Before continuing, "
+"you should make sure you have:"
+msgstr ""
+
+#. Type: boolean
+#. Description
+#: ../glance-registry.templates:1001
+msgid ""
+" - the server host name (that server must allow TCP connections\n"
+"   from this machine);\n"
+" - a username and password to access the database.\n"
+" - A database type that you want to use."
+msgstr ""
+
+#. Type: boolean
+#. Description
+#: ../glance-registry.templates:1001
+msgid ""
+"If some of these requirements are missing, reject this option and run with "
+"regular sqlite support."
+msgstr ""
+
+#. Type: boolean
+#. Description
+#: ../glance-registry.templates:1001
+msgid ""
+"You can change this setting later on by running 'dpkg-reconfigure -plow "
+"glance-registry"
+msgstr ""
+
+#. Type: select
+#. Description
+#: ../glance-common.templates:2001
+msgid "Pipeline flavor:"
+msgstr "Förmedlingstyp:"
+
+#. Type: select
+#. Description
+#: ../glance-common.templates:2001
+msgid "Please specify the flavor of pipeline to be used by Glance."
+msgstr "Ange vilken typ av förmedling som ska användas av Glance."
+
+#. Type: select
+#. Description
+#: ../glance-common.templates:2001
+msgid ""
+"If you use the OpenStack Identity Service (Keystone), you might want to "
+"select \"keystone\". If you don't use this service, you can safely choose "
+"\"caching\" only."
+msgstr ""
+"Om du använder OpenStack-identitetstjänsten (Keystone) vill du nog välja "
+"\"keystone\". Använder du inte den tjänsten är de säkert att bara välja "
+"\"caching\"."
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:3001
+msgid "Auth server URL:"
+msgstr "URL till identifieringsserver:"
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:3001
+msgid ""
+"Please specify the URL of your Glance authentication server. Typically this "
+"is also the URL of your OpenStack Identity Service (Keystone)."
+msgstr ""
+"Ange URL till din Glance-identifieringsserver. Detta är vanligtvis samma URL "
+"som till din OpenStack-identitetstjänst (Keystone)."
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:4001
+msgid "Auth server admin token:"
+msgstr "Identifieringsserverns adminstrationsidentitet:"

@@ -1,8 +1,7 @@
 /var/log/glance/glance-api.log {
     daily
-    compress
     missingok
-    postrotate
-        invoke-rc.d glance-api restart
-    endscript
+    compress
+    delaycompress
+    notifempty
 }

@@ -1,8 +1,7 @@
 /var/log/glance/glance-registry.log {
     daily
-    compress
     missingok
-    postrotate
-        invoke-rc.d glance-registry restart
-    endscript
+    compress
+    delaycompress
+    notifempty
 }

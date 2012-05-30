@@ -1,7 +1,7 @@
 Template: glance-registry/configure_db
 Type: boolean
 Default: false
-Description: Set up a database for glance-registry?
+_Description: Set up a database for glance-registry?
  No database has been set up for glance-registry to use. Before
  continuing, you should make sure you have:
  .
@@ -13,5 +13,5 @@ Description: Set up a database for glance-registry?
  If some of these requirements are missing, reject this option and
  run with regular sqlite support.
  .
- Database configuration can be reconfigured later by running
- 'dpkg-reconfigure -plow glance-registry'.
+ You can change this setting later on by running 'dpkg-reconfigure
+ -plow glance-registry

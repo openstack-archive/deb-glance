@@ -1,0 +1,106 @@
+# Translation of glance debconf templates to Polish.
+# Copyright (C) 2012
+# This file is distributed under the same license as the glance package.
+#
+# Michał Kułach <michal.kulach@gmail.com>, 2012.
+msgid ""
+msgstr ""
+"Project-Id-Version: glance\n"
+"Report-Msgid-Bugs-To: glance@packages.debian.org\n"
+"POT-Creation-Date: 2012-05-24 09:08+0200\n"
+"PO-Revision-Date: 2012-03-01 19:10+0100\n"
+"Last-Translator: Michał Kułach <michal.kulach@gmail.com>\n"
+"Language-Team: Polish <debian-l10n-polish@lists.debian.org>\n"
+"Language: pl\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Lokalize 1.2\n"
+"Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 "
+"|| n%100>=20) ? 1 : 2);\n"
+
+#. Type: boolean
+#. Description
+#: ../glance-registry.templates:1001
+msgid "Set up a database for glance-registry?"
+msgstr ""
+
+#. Type: boolean
+#. Description
+#: ../glance-registry.templates:1001
+msgid ""
+"No database has been set up for glance-registry to use. Before continuing, "
+"you should make sure you have:"
+msgstr ""
+
+#. Type: boolean
+#. Description
+#: ../glance-registry.templates:1001
+msgid ""
+" - the server host name (that server must allow TCP connections\n"
+"   from this machine);\n"
+" - a username and password to access the database.\n"
+" - A database type that you want to use."
+msgstr ""
+
+#. Type: boolean
+#. Description
+#: ../glance-registry.templates:1001
+msgid ""
+"If some of these requirements are missing, reject this option and run with "
+"regular sqlite support."
+msgstr ""
+
+#. Type: boolean
+#. Description
+#: ../glance-registry.templates:1001
+msgid ""
+"You can change this setting later on by running 'dpkg-reconfigure -plow "
+"glance-registry"
+msgstr ""
+
+#. Type: select
+#. Description
+#: ../glance-common.templates:2001
+msgid "Pipeline flavor:"
+msgstr "Odmiana potoku:"
+
+#. Type: select
+#. Description
+#: ../glance-common.templates:2001
+msgid "Please specify the flavor of pipeline to be used by Glance."
+msgstr "Proszę określić odmianę potoku, który ma być używany przez Glance."
+
+#. Type: select
+#. Description
+#: ../glance-common.templates:2001
+msgid ""
+"If you use the OpenStack Identity Service (Keystone), you might want to "
+"select \"keystone\". If you don't use this service, you can safely choose "
+"\"caching\" only."
+msgstr ""
+"Jeśli używana jest OpenStack Identity Service (Keystone), można wybrać opcję "
+"\"keystone\". Jeśli ta usługa nie jest używana, bezpiecznym wyborem będzie "
+"\"caching\"."
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:3001
+msgid "Auth server URL:"
+msgstr "URL serwera uwierzytelniania:"
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:3001
+msgid ""
+"Please specify the URL of your Glance authentication server. Typically this "
+"is also the URL of your OpenStack Identity Service (Keystone)."
+msgstr ""
+"Proszę podać adres URL serwera uwierzytelniania Glance. Z reguły jest to "
+"adres OpenStack Identity Service (Keystone) danego użytkownika."
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:4001
+msgid "Auth server admin token:"
+msgstr "Token administratora serwera uwierzytelniania:"

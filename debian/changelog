@@ -1,3 +1,27 @@
+glance (2012.1-2) unstable; urgency=low
+
+  * Debconf templates and debian/control reviewed by the debian-l10n-
+    english team as part of the Smith review project. Closes: #659277
+  * [Debconf translation updates]
+  * Polish (Michał Kułach).  Closes: #661895
+  * Danish (Joe Hansen).  Closes: #661945
+  * Swedish (Martin Bagge / brother).  Closes: #661965
+  * Russian (Yuri Kozlov).  Closes: #661982
+  * German (Chris Leick).  Closes: #662872
+  * French (Julien Patriarca).  Closes: #663061
+  * Dutch; (Jeroen Schot).  Closes: #663987
+  * Italian (Beatrice Torracca).  Closes: #664133
+  * Portuguese (Pedro Ribeiro).  Closes: #664274
+  * Czech (Michal Simunek).  Closes: #664458
+
+ -- Christian Perrier <bubulle@debian.org>  Tue, 17 Apr 2012 08:52:16 +0200
+
+glance (2012.1-1) unstable; urgency=low
+
+  * New upstream release
+
+ -- Ghe Rivero <ghe.rivero@stackops.com>  Mon, 09 Apr 2012 09:00:19 +0200
+
 glance (2012.1~rc3-1) unstable; urgency=low
 
   * New upstream release .
