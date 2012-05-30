@@ -1,4 +1,3 @@
 default_conf.patch
 disable-network-for-docs.patch
-omit_content_lenght_on_chunked.patch
 sql_conn-registry.patch
