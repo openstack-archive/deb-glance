@@ -40,18 +40,13 @@ Configuring the Glance servers to use Keystone
 
 Keystone is integrated with Glance through the use of middleware. The
 default configuration files for both the Glance API and the Glance
-Registry use a single piece of middleware called ``context``, which
-generates a request context containing all the necesary authorization
+Registry use a single piece of middleware called ``unauthenticated-context``, 
+which generates a request context containing blank authentication
 information. In order to configure Glance to use Keystone, the
-``authtoken`` middleware must also be deployed (which may be found in the
-Keystone distribution). The ``authtoken`` middleware performs the Keystone
-token validation, which is the heart of Keystone authentication.
-
-It is important to note that the Glance API and the Glance Registry
-use two different context classes; this is because the registry needs
-advanced methods that are not available in the default context class.
-The implications of this will be obvious in the below example for
-configuring the Glance Registry.
+``authtoken`` and ``context`` middlewares must be deployed in place of the
+``unauthenticated-context`` middleware. The ``authtoken`` middleware performs
+the authentication token validation and retrieves actual user authentication
+information. It can be found in the Keystone distribution.
 
 Configuring Glance API to use Keystone
 --------------------------------------
@@ -63,13 +58,9 @@ an example for ``authtoken``::
 
   [filter:authtoken]
   paste.filter_factory = keystone.middleware.auth_token:filter_factory
-  service_protocol = http
-  service_host = 127.0.0.1
-  service_port = 5000
   auth_host = 127.0.0.1
   auth_port = 35357
   auth_protocol = http
-  auth_uri = http://127.0.0.1:5000/
   admin_user = glance_admin
   admin_tenant_name = service_admins
   admin_password = password1234
@@ -78,17 +69,10 @@ The actual values for these variables will need to be set depending on
 your situation.  For more information, please refer to the Keystone
 documentation on the ``auth_token`` middleware, but in short:
 
-* Those variables beginning with ``service_`` are only needed if you
-  are using a proxy; they define the actual location of Glance.  That
-  said, they must be present.
-* Except for ``auth_uri``, those variables beginning with ``auth_``
-  point to the Keystone Admin service.  This information is used by
-  the middleware to actually query Keystone about the validity of the
+* Those variables beginning with ``auth_`` point to the Keystone 
+  Admin service.  This information is used by the middleware to actually 
+  query Keystone about the validity of the
   authentication tokens.
-* The ``auth_uri`` variable must point to the Keystone Auth service,
-  which is the service users use to obtain Keystone tokens.  If the
-  user does not have a valid Keystone token, they will be redirected
-  to this URI to obtain one.
 * The admin auth credentials (``admin_user``, ``admin_tenant_name``,
   ``admin_password``) will be used to retrieve an admin token. That
   token will be used to authorize user tokens behind the scenes.
@@ -97,11 +81,11 @@ Finally, to actually enable using Keystone authentication, the
 application pipeline must be modified.  By default, it looks like::
 
   [pipeline:glance-api]
-  pipeline = versionnegotiation context apiv1app
+  pipeline = versionnegotiation unauthenticated-context apiv1app
 
-(Your particular pipeline may vary depending on other options, such as
-the image cache.)  This must be changed by inserting ``authtoken``
-before ``context``::
+Your particular pipeline may vary depending on other options, such as
+the image cache. This must be changed by replacing ``unauthenticated-context``
+with ``authtoken`` and ``context``::
 
   [pipeline:glance-api]
   pipeline = versionnegotiation authtoken context apiv1app

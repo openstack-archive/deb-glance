@@ -232,3 +232,16 @@ class RegionAmbiguity(GlanceException):
     message = _("Multiple 'image' service matches for region %(region)s. This "
                 "generally means that a region is required and you have not "
                 "supplied one.")
+
+
+class WorkerCreationFailure(GlanceException):
+    message = _("Server worker creation failed: %(reason)s.")
+
+
+class SchemaLoadError(GlanceException):
+    message = _("Unable to load schema: %(reason)s")
+
+
+class InvalidObject(GlanceException):
+    message = _("Provided object does not match schema "
+                "'%(schema)s': %(reason)s")

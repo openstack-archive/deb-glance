@@ -25,9 +25,9 @@ import logging
 import os
 import urlparse
 
-from glance.common import cfg
 from glance.common import exception
 from glance.common import utils
+from glance.openstack.common import cfg
 import glance.store
 import glance.store.base
 import glance.store.location
@@ -98,6 +98,9 @@ class Store(glance.store.base.Store):
 
     datadir_opt = cfg.StrOpt('filesystem_store_datadir')
 
+    def get_schemes(self):
+        return ('file', 'filesystem')
+
     def configure_add(self):
         """
         Configure the Store to use the stored configuration options
@@ -109,8 +112,8 @@ class Store(glance.store.base.Store):
 
         self.datadir = self.conf.filesystem_store_datadir
         if self.datadir is None:
-            reason = _("Could not find %s in configuration options.") % \
-                'filesystem_store_datadir'
+            reason = (_("Could not find %s in configuration options.") %
+                      'filesystem_store_datadir')
             logger.error(reason)
             raise exception.BadStoreConfiguration(store_name="filesystem",
                                                   reason=reason)
@@ -216,6 +219,3 @@ class Store(glance.store.base.Store):
         logger.debug(_("Wrote %(bytes_written)d bytes to %(filepath)s with "
                      "checksum %(checksum_hex)s") % locals())
         return ('file://%s' % filepath, bytes_written, checksum_hex)
-
-
-glance.store.register_store(__name__, ['filesystem', 'file'])

@@ -229,7 +229,9 @@ Here is how we'd upload this image to Glance::
        container_format=bare disk_format=qcow2 < /tmp/images/myimage.img
 
 Note that the disk container formats are no longer defaulted and are thus
-strictly required.
+strictly required. However, if only one of disk or container format is specified
+and is in Amazon format, the other parameter defaults to the specified
+disk or container format value.
 
 If Glance was able to successfully upload and store your VM image data and
 metadata attributes, you would see something like this::
@@ -580,8 +582,8 @@ The ``member-add`` command grants a member, specified with ``<MEMBER>``, access
 to a private image, specified with ``<ID>``.  The ``--can-share`` flag can be
 given to allow the member to share the image, as shown below::
 
-  $> glance member-add ab15b8d3-8f33-4467-abf2-9f89a042a8c4 tenant1
-  $> glance member-add ab15b8d3-8f33-4467-abf2-9f89a042a8c4 tenant2 --can-share
+  $> glance member-add ab15b8d3-8f33-4467-abf2-9f89a042a8c4 tenantId1
+  $> glance member-add ab15b8d3-8f33-4467-abf2-9f89a042a8c4 tenantId2 --can-share
 
 The ``member-delete`` Command
 -----------------------------

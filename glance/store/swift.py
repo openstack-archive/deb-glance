@@ -23,10 +23,11 @@ import hashlib
 import httplib
 import logging
 import math
+import urllib
 import urlparse
 
-from glance.common import cfg
 from glance.common import exception
+from glance.openstack.common import cfg
 import glance.store
 import glance.store.base
 import glance.store.location
@@ -70,7 +71,7 @@ class StoreLocation(glance.store.location.StoreLocation):
 
     def _get_credstring(self):
         if self.user:
-            return '%s:%s@' % (self.user, self.key)
+            return '%s:%s@' % (urllib.quote(self.user), urllib.quote(self.key))
         return ''
 
     def get_uri(self):
@@ -133,21 +134,13 @@ class StoreLocation(glance.store.location.StoreLocation):
             path = path[path.find('/'):].strip('/')
         if creds:
             cred_parts = creds.split(':')
-
-            # User can be account:user, in which case cred_parts[0:2] will be
-            # the account and user. Combine them into a single username of
-            # account:user
-            if len(cred_parts) == 1:
+            if len(cred_parts) != 2:
                 reason = (_("Badly formed credentials '%(creds)s' in Swift "
                             "URI") % locals())
                 raise exception.BadStoreUri(uri, reason)
-            elif len(cred_parts) == 3:
-                user = ':'.join(cred_parts[0:2])
-            else:
-                user = cred_parts[0]
-            key = cred_parts[-1]
-            self.user = user
-            self.key = key
+            user, key = cred_parts
+            self.user = urllib.unquote(user)
+            self.key = urllib.unquote(key)
         else:
             self.user = None
         path_parts = path.split('/')
@@ -202,6 +195,9 @@ class Store(glance.store.base.Store):
         cfg.BoolOpt('swift_store_create_container_on_put', default=False),
         ]
 
+    def get_schemes(self):
+        return ('swift+https', 'swift', 'swift+http')
+
     def configure(self):
         self.conf.register_opts(self.opts)
         self.snet = self.conf.swift_enable_snet
@@ -222,10 +218,10 @@ class Store(glance.store.base.Store):
             # The config file has swift_store_large_object_*size in MB, but
             # internally we store it in bytes, since the image_size parameter
             # passed to add() is also in bytes.
-            self.large_object_size = \
-                self.conf.swift_store_large_object_size * ONE_MB
-            self.large_object_chunk_size = \
-                self.conf.swift_store_large_object_chunk_size * ONE_MB
+            _obj_size = self.conf.swift_store_large_object_size
+            self.large_object_size = _obj_size * ONE_MB
+            _obj_chunk_size = self.conf.swift_store_large_object_chunk_size
+            self.large_object_chunk_size = _obj_chunk_size * ONE_MB
         except cfg.ConfigFileValueError, e:
             reason = _("Error in configuration conf: %s") % e
             logger.error(reason)
@@ -303,13 +299,24 @@ class Store(glance.store.base.Store):
         """
         snet = self.snet
         auth_version = self.auth_version
+        full_auth_url = (auth_url if not auth_url or auth_url.endswith('/')
+                         else auth_url + '/')
         logger.debug(_("Creating Swift connection with "
-                     "(auth_address=%(auth_url)s, user=%(user)s, "
+                     "(auth_address=%(full_auth_url)s, user=%(user)s, "
                      "snet=%(snet)s, auth_version=%(auth_version)s)") %
                      locals())
+        tenant_name = None
+        if self.auth_version == '2':
+            tenant_user = user.split(':')
+            if len(tenant_user) != 2:
+                reason = (_("Badly formed tenant:user '%(tenant_user)s' in "
+                            "Swift URI") % locals())
+                raise exception.BadStoreUri(auth_url, reason)
+            (tenant_name, user) = tenant_user
+
         return swift_client.Connection(
-            authurl=auth_url, user=user, key=key, snet=snet,
-            auth_version=auth_version)
+            authurl=full_auth_url, user=user, key=key, snet=snet,
+            tenant_name=tenant_name, auth_version=auth_version)
 
     def _option_get(self, param):
         result = getattr(self.conf, param)
@@ -560,6 +567,3 @@ def create_container_if_missing(container, swift_conn, conf):
                 raise glance.store.BackendException(msg)
         else:
             raise
-
-
-glance.store.register_store(__name__, ['swift', 'swift+http', 'swift+https'])

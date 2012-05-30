@@ -27,16 +27,16 @@ import time
 
 import sqlalchemy
 from sqlalchemy import asc, create_engine, desc
-from sqlalchemy.exc import IntegrityError, OperationalError, DBAPIError,\
-    DisconnectionError
+from sqlalchemy.exc import (IntegrityError, OperationalError, DBAPIError,
+                            DisconnectionError)
 from sqlalchemy.orm import exc
 from sqlalchemy.orm import joinedload
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import or_, and_
 
-from glance.common import cfg
 from glance.common import exception
 from glance.common import utils
+from glance.openstack.common import cfg
 from glance.registry.db import migration
 from glance.registry.db import models
 
@@ -68,7 +68,8 @@ db_opts = [
     cfg.IntOpt('sql_idle_timeout', default=3600),
     cfg.StrOpt('sql_connection', default='sqlite:///glance.sqlite'),
     cfg.IntOpt('sql_max_retries', default=10),
-    cfg.IntOpt('sql_retry_interval', default=1)
+    cfg.IntOpt('sql_retry_interval', default=1),
+    cfg.BoolOpt('db_auto_create', default=True),
     ]
 
 
@@ -102,7 +103,10 @@ def configure_db(conf):
     """
     global _ENGINE, sa_logger, logger, _MAX_RETRIES, _RETRY_INTERVAL
     if not _ENGINE:
-        conf.register_opts(db_opts)
+        for opt in db_opts:
+            # avoid duplicate registration
+            if not opt.name in conf:
+                conf.register_opt(opt)
         sql_connection = conf.sql_connection
         _MAX_RETRIES = conf.sql_max_retries
         _RETRY_INTERVAL = conf.sql_retry_interval
@@ -131,12 +135,16 @@ def configure_db(conf):
         elif conf.verbose:
             sa_logger.setLevel(logging.INFO)
 
-        models.register_models(_ENGINE)
-        try:
-            migration.version_control(conf)
-        except exception.DatabaseMigrationError:
-            # only arises when the DB exists and is under version control
-            pass
+        if conf.db_auto_create:
+            logger.info('auto-creating glance registry DB')
+            models.register_models(_ENGINE)
+            try:
+                migration.version_control(conf)
+            except exception.DatabaseMigrationError:
+                # only arises when the DB exists and is under version control
+                pass
+        else:
+            logger.info('not auto-creating glance registry DB')
 
 
 def check_mutate_authorization(context, image_ref):
@@ -193,8 +201,8 @@ def wrap_db_error(f):
                 try:
                     return f(*args, **kwargs)
                 except OperationalError, e:
-                    if remaining_attempts == 0 or \
-                       not is_db_connection_error(e.args[0]):
+                    if (remaining_attempts == 0 or
+                        not is_db_connection_error(e.args[0])):
                         raise
                 except DBAPIError:
                     raise
@@ -296,7 +304,7 @@ def paginate_query(query, model, limit, sort_keys, marker=None,
 
     if 'id' not in sort_keys:
         # TODO(justinsb): If this ever gives a false-positive, check
-        # the actual primary key, rather than assuming it's id
+        # the actual primary key, rather than assuming its id
         logger.warn(_('Id not in sort_keys; is sort_keys unique?'))
 
     assert(not (sort_dir and sort_dirs))
@@ -374,8 +382,8 @@ def image_get_all(context, filters=None, marker=None, limit=None,
 
     session = get_session()
     query = session.query(models.Image).\
-                   options(joinedload(models.Image.properties)).\
-                   options(joinedload(models.Image.members))
+                    options(joinedload(models.Image.properties)).\
+                    options(joinedload(models.Image.members))
 
     if 'size_min' in filters:
         query = query.filter(models.Image.size >= filters['size_min'])
@@ -742,8 +750,8 @@ def image_member_get_memberships(context, member, marker=None, limit=None,
 
     session = get_session()
     query = session.query(models.ImageMember).\
-                   options(joinedload(models.ImageMember.image)).\
-                   filter_by(member=member)
+                    options(joinedload(models.ImageMember.image)).\
+                    filter_by(member=member)
 
     if not can_show_deleted(context):
         query = query.filter_by(deleted=False)
@@ -773,3 +781,36 @@ def can_show_deleted(context):
     if not hasattr(context, 'get'):
         return False
     return context.get('deleted', False)
+
+
+def image_tag_create(context, image_id, value):
+    """Create an image tag."""
+    session = get_session()
+    tag_ref = models.ImageTag(image_id=image_id, value=value)
+    tag_ref.save(session=session)
+    return tag_ref
+
+
+def image_tag_delete(context, image_id, value):
+    """Delete an image tag."""
+    session = get_session()
+    query = session.query(models.ImageTag).\
+                    filter_by(image_id=image_id).\
+                    filter_by(value=value).\
+                    filter_by(deleted=False)
+    try:
+        tag_ref = query.one()
+    except exc.NoResultFound:
+        raise exception.NotFound()
+
+    tag_ref.delete(session=session)
+
+
+def image_tag_get_all(context, image_id):
+    """Get a list of tags for a specific image."""
+    session = get_session()
+    tags = session.query(models.ImageTag).\
+                   filter_by(image_id=image_id).\
+                   filter_by(deleted=False).\
+                   all()
+    return tags

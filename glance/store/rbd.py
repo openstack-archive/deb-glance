@@ -24,8 +24,8 @@ import hashlib
 import logging
 import math
 
-from glance.common import cfg
 from glance.common import exception
+from glance.openstack.common import cfg
 import glance.store
 import glance.store.base
 import glance.store.location
@@ -107,6 +107,9 @@ class Store(glance.store.base.Store):
         cfg.StrOpt('rbd_store_user', default=DEFAULT_USER),
         cfg.StrOpt('rbd_store_ceph_conf', default=DEFAULT_CONFFILE),
         ]
+
+    def get_schemes(self):
+        return ('rbd',)
 
     def configure_add(self):
         """
@@ -200,6 +203,3 @@ class Store(glance.store.base.Store):
                 except rbd.ImageNotFound:
                     raise exception.NotFound(
                         _('RBD image %s does not exist') % loc.image)
-
-
-glance.store.register_store(__name__, ['rbd'])

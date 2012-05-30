@@ -16,26 +16,20 @@
 #    under the License.
 
 import datetime
-import json
 import os
-import StringIO
 import tempfile
 import unittest
 
-import stubout
-import webob
-
 from glance import client
+from glance.common import client as base_client
 from glance.common import context
 from glance.common import exception
 from glance.common import utils
 from glance.registry.db import api as db_api
 from glance.registry.db import models as db_models
 from glance.registry import client as rclient
-from glance.registry import context as rcontext
-from glance.tests import stubs
-from glance.tests import utils as test_utils
 from glance.tests.unit import base
+from glance.tests import utils as test_utils
 
 CONF = {'sql_connection': 'sqlite://'}
 
@@ -155,7 +149,7 @@ class TestRegistryClient(base.IsolatedUnitTest):
         """Establish a clean test environment"""
         super(TestRegistryClient, self).setUp()
         db_api.configure_db(self.conf)
-        self.context = rcontext.RequestContext(is_admin=True)
+        self.context = context.RequestContext(is_admin=True)
         self.FIXTURES = [
             {'id': UUID1,
              'name': 'fake image #1',
@@ -1234,7 +1228,7 @@ class TestClient(base.IsolatedUnitTest):
              'size': 19,
              'location': "file:///%s/%s" % (self.test_dir, UUID2),
              'properties': {}}]
-        self.context = rcontext.RequestContext(is_admin=True)
+        self.context = context.RequestContext(is_admin=True)
         self.destroy_fixtures()
         self.create_fixtures()
 
@@ -1842,7 +1836,7 @@ class TestClient(base.IsolatedUnitTest):
         for k, v in fixture.items():
             self.assertEquals(v, new_meta[k])
 
-    def test_add_image_with_image_data_as_file(self):
+    def add_image_with_image_data_as_file(self, sendfile):
         """Tests can add image by passing image data as file"""
         fixture = {'name': 'fake public image',
                    'is_public': True,
@@ -1851,6 +1845,8 @@ class TestClient(base.IsolatedUnitTest):
                    'size': 19,
                    'properties': {'distro': 'Ubuntu 10.04 LTS'},
                   }
+
+        self.client.stub_force_sendfile = sendfile
 
         image_data_fixture = r"chunk00000remainder"
 
@@ -1878,6 +1874,14 @@ class TestClient(base.IsolatedUnitTest):
         self.assertEquals(image_data_fixture, new_image_data)
         for k, v in fixture.items():
             self.assertEquals(v, new_meta[k])
+
+    @test_utils.skip_if(not base_client.SENDFILE_SUPPORTED,
+                        'sendfile not supported')
+    def test_add_image_with_image_data_as_file_with_sendfile(self):
+        self.add_image_with_image_data_as_file(sendfile=True)
+
+    def test_add_image_with_image_data_as_file_without_sendfile(self):
+        self.add_image_with_image_data_as_file(sendfile=False)
 
     def _add_image_as_iterable(self):
         fixture = {'name': 'fake public image',
@@ -2059,7 +2063,7 @@ class TestClient(base.IsolatedUnitTest):
 
 class TestConfigureClientFromURL(unittest.TestCase):
     def setUp(self):
-        self.client = client.Client("0.0.0.0", doc_root="")
+        self.client = client.Client("0.0.0.0")
 
     def assertConfiguration(self, url, host, port, use_ssl, doc_root):
         self.client.configure_from_url(url)
@@ -2068,13 +2072,22 @@ class TestConfigureClientFromURL(unittest.TestCase):
         self.assertEquals(use_ssl, self.client.use_ssl)
         self.assertEquals(doc_root, self.client.doc_root)
 
+    def test_version_specified_in_url(self):
+        self.assertConfiguration(
+            url='http://www.example.com/v1',
+            host='www.example.com',
+            port=80,
+            use_ssl=False,
+            doc_root='/v1'
+        )
+
     def test_no_port_no_ssl_no_doc_root(self):
         self.assertConfiguration(
             url='http://www.example.com',
             host='www.example.com',
             port=80,
             use_ssl=False,
-            doc_root=''
+            doc_root='/v1'
         )
 
     def test_port_ssl_doc_root(self):
@@ -2083,5 +2096,5 @@ class TestConfigureClientFromURL(unittest.TestCase):
             host='www.example.com',
             port=8000,
             use_ssl=True,
-            doc_root='/prefix/'
+            doc_root='/prefix/v1'
         )

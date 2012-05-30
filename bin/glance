@@ -63,8 +63,8 @@ def catch_error(action):
                 ret = func(*args, **kwargs)
                 return SUCCESS if ret is None else ret
             except exception.Forbidden:
-                print "Not authorized to make this request. Check "\
-                      "your credentials (OS_AUTH_USER, OS_AUTH_KEY, ...)."
+                print ("Not authorized to make this request. Check "
+                       "your credentials (OS_AUTH_USER, OS_AUTH_KEY, ...).")
                 return FAILURE
             except exception.ClientConfigurationError:
                 raise
@@ -173,10 +173,20 @@ is_public           Optional. If specified, interpreted as a boolean value
 protected           Optional. If specified, interpreted as a boolean value
                     and enables or disables deletion protection.
                     The default value is False.
-disk_format         Required. Possible values are 'ami','ari','aki', 'vhd',
-                    'vmk', 'raw', 'qcow2' and 'vdi'.
-container_format    Required. Possible values are 'ami', 'ari', 'aki' 'bare'
-                    and 'ovf'.
+min_disk            Optional. The minimum disk size in gigabytes required to
+                    boot the image. If unspecified, this value defaults to 0
+                    (no minimum).
+min_ram             Optional. The minimum ram size in megabytes required to
+                    boot the image. If unspecified, this value defaults to 0
+                    (no minimum).
+disk_format         Required. If unspecified and container_format is specified
+                    as 'ami', 'ari' or 'aki', disk_format will default to the
+                    container_format value. Possible values are 'ami', 'ari',
+                    'aki', 'vhd', 'vmk', 'raw', 'qcow2' and 'vdi'.
+container_format    Required. If unspecified and disk_format is specified as
+                    'ami', 'ari' or 'aki', container_format will default to the
+                    disk_format value. Possible values are 'ami', 'ari', 'aki',
+                    'bare' and 'ovf'.
 location            Optional. When specified, should be a readable location
                     in the form of a URI: $STORE://LOCATION. For example, if
                     the image data is stored in a file on the local
@@ -204,11 +214,11 @@ the command line using standard redirection. For example:
 EXAMPLES
 ===============================================================================
 
-%(prog)s add name="My Image" disk_format=raw container_format=ovf \\
-    location=http://images.ubuntu.org/images/lucid-10.04-i686.iso \\
+%(prog)s add name="My Image" disk_format=raw container_format=ovf \
+    location=http://images.ubuntu.org/images/lucid-10.04-i686.iso \
     distro="Ubuntu 10.04 LTS"
 
-%(prog)s add name="My Image" disk_format=raw container_format=ovf \\
+%(prog)s add name="My Image" disk_format=raw container_format=ovf \
     distro="Ubuntu 10.04 LTS" < /tmp/myimage.iso"""
     c = get_client(options)
 
@@ -335,6 +345,10 @@ protected           If specified, interpreted as a boolean value
                     and enables or disables deletion protection for the image.
 disk_format         Format of the disk image
 container_format    Format of the container
+min_disk            If specified, gives the minimum number of gigabytes of
+                    space a disk must have to successfully boot the image.
+min_ram             If specified, gives the minimum number of megabytes of
+                    ram required to successfully boot the image.
 
 All other field names are considered to be custom properties so be careful
 to spell field names correctly."""
@@ -434,8 +448,8 @@ Deletes an image from Glance"""
         print "as the first argument"
         return FAILURE
 
-    if not options.force and \
-       not user_confirm("Delete image %s?" % (image_id,), default=False):
+    if not (options.force or
+            user_confirm("Delete image %s?" % (image_id,), default=False)):
         print 'Not deleting image %s' % (image_id,)
         return FAILURE
 
@@ -516,8 +530,12 @@ def _images_index(client, filters, limit, print_header=False, **kwargs):
                                     image['container_format'],
                                     image['size'])
 
-    if not options.force and len(images) == limit and \
-       not user_confirm("Fetch next page?", True):
+    # suppress pagination when output is redirected
+    suppress_pagination = (options.force or
+        (getattr(os, 'isatty') and not os.isatty(sys.stdout.fileno())))
+
+    if not (suppress_pagination or len(images) != limit or
+            user_confirm("Fetch next page?", True)):
         return SUCCESS
 
     parameters['marker'] = images[-1]['id']
@@ -575,8 +593,8 @@ def _images_details(client, filters, limit, print_header=False, **kwargs):
         print_image_formatted(client, image)
         print "=" * 80
 
-    if not options.force and len(images) == limit and \
-       not user_confirm("Fetch next page?", True):
+    if not (options.force or len(images) != limit or
+            user_confirm("Fetch next page?", True)):
         return SUCCESS
 
     parameters["marker"] = images[-1]['id']
@@ -615,8 +633,8 @@ def images_clear(options, args):
 %(prog)s clear [options]
 
 Deletes all images from a Glance server"""
-    if not options.force and \
-       not user_confirm("Delete all images?", default=False):
+    if not (options.force or
+            user_confirm("Delete all images?", default=False)):
         print 'Not deleting any images'
         return FAILURE
 
@@ -787,6 +805,7 @@ def get_client(options):
     """
     return glance_client.get_client(host=options.host,
                 port=options.port,
+                timeout=options.timeout,
                 use_ssl=options.use_ssl,
                 username=options.os_username,
                 password=options.os_password,
@@ -821,6 +840,9 @@ def create_options(parser):
                       type=int, default=DEFAULT_PORT,
                       help="Port the Glance API host listens on. "
                            "Default: %default")
+    parser.add_option('-t', '--timeout', dest="timeout", metavar="TIMEOUT",
+                      type=int, default=None,
+                      help="Connection timeout.")
     parser.add_option('--ssl', dest='use_ssl',
                       default=False, action="store_true",
                       help="Use SSL when talking to Glance API host")
@@ -840,7 +862,7 @@ def create_options(parser):
     parser.add_option('-A', '--os_auth_token', '--auth_token',
                       dest="os_auth_token", metavar="TOKEN", default=None,
                       help="Authentication token to use to identify the "
-                           "client to the glance server.  --auth_token"
+                           "client to the glance server.  --auth_token "
                            "is deprecated and will be removed")
     parser.add_option('-I', '--os_username', dest="os_username",
                       metavar="USER", default=None,
@@ -980,7 +1002,7 @@ def user_confirm(prompt, default=False):
         prompt_default = "[y/N]"
 
     # for bug 884116, don't issue the prompt if stdin isn't a tty
-    if not hasattr(sys.stdin, 'isatty') or not sys.stdin.isatty():
+    if not (hasattr(sys.stdin, 'isatty') and sys.stdin.isatty()):
         return default
 
     answer = raw_input("%s %s " % (prompt, prompt_default))

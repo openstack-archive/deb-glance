@@ -18,7 +18,6 @@
 """Stubouts, mocks and fixtures for the test suite"""
 
 import os
-import shutil
 
 try:
     import sendfile
@@ -28,11 +27,9 @@ except ImportError:
 
 import webob
 
-from glance.api.middleware import version_negotiation
 from glance.api.v1 import router
 import glance.common.client
 from glance.common import context
-from glance.common import exception
 from glance.registry.api import v1 as rserver
 from glance.tests import utils
 
@@ -41,7 +38,7 @@ VERBOSE = False
 DEBUG = False
 
 
-def stub_out_registry_and_store_server(stubs, base_dir):
+def stub_out_registry_and_store_server(stubs, conf, base_dir):
     """
     Mocks calls to 127.0.0.1 on 9191 and 9292 for testing so
     that a real Glance server does not need to be up and
@@ -59,7 +56,7 @@ def stub_out_registry_and_store_server(stubs, base_dir):
         def close(self):
             return True
 
-        def request(self, method, url, body=None, headers={}):
+        def request(self, method, url, body=None, headers=None):
             self.req = webob.Request.blank("/" + url.lstrip("/"))
             self.req.method = method
             if headers:
@@ -70,14 +67,8 @@ def stub_out_registry_and_store_server(stubs, base_dir):
         def getresponse(self):
             sql_connection = os.environ.get('GLANCE_SQL_CONNECTION',
                                             "sqlite://")
-            context_class = 'glance.registry.context.RequestContext'
-            conf = utils.TestConfigOpts({
-                    'sql_connection': sql_connection,
-                    'verbose': VERBOSE,
-                    'debug': DEBUG
-                    })
-            api = context.ContextMiddleware(rserver.API(conf),
-                                            conf, context_class=context_class)
+            api = context.UnauthenticatedContextMiddleware(
+                    rserver.API(conf), conf)
             res = self.req.get_response(api)
 
             # httplib.Response has a read() method...fake it out
@@ -110,7 +101,8 @@ def stub_out_registry_and_store_server(stubs, base_dir):
 
         def __init__(self, *args, **kwargs):
             self.sock = FakeSocket()
-            pass
+            self.stub_force_sendfile = kwargs.get('stub_force_sendfile',
+                                                  SENDFILE_SUPPORTED)
 
         def connect(self):
             return True
@@ -118,9 +110,13 @@ def stub_out_registry_and_store_server(stubs, base_dir):
         def close(self):
             return True
 
+        def _clean_url(self, url):
+            #TODO(bcwaldon): Fix the hack that strips off v1
+            return url.replace('/v1', '', 1) if url.startswith('/v1') else url
+
         def putrequest(self, method, url):
-            self.req = webob.Request.blank("/" + url.lstrip("/"))
-            if SENDFILE_SUPPORTED:
+            self.req = webob.Request.blank(self._clean_url(url))
+            if self.stub_force_sendfile:
                 fake_sendfile = FakeSendFile(self.req)
                 stubs.Set(sendfile, 'sendfile', fake_sendfile.sendfile)
             self.req.method = method
@@ -129,7 +125,10 @@ def stub_out_registry_and_store_server(stubs, base_dir):
             self.req.headers[key] = value
 
         def endheaders(self):
-            pass
+            hl = [i.lower() for i in self.req.headers.keys()]
+            assert not ('content-length' in hl and
+                        'transfer-encoding' in hl), \
+                'Content-Length and Transfer-Encoding are mutually exclusive'
 
         def send(self, data):
             # send() is called during chunked-transfer encoding, and
@@ -137,8 +136,8 @@ def stub_out_registry_and_store_server(stubs, base_dir):
             # only write the actual data in tests.
             self.req.body += data.split("\r\n")[1]
 
-        def request(self, method, url, body=None, headers={}):
-            self.req = webob.Request.blank("/" + url.lstrip("/"))
+        def request(self, method, url, body=None, headers=None):
+            self.req = webob.Request.blank(self._clean_url(url))
             self.req.method = method
             if headers:
                 self.req.headers = headers
@@ -146,20 +145,9 @@ def stub_out_registry_and_store_server(stubs, base_dir):
                 self.req.body = body
 
         def getresponse(self):
-            conf = utils.TestConfigOpts({
-                    'verbose': VERBOSE,
-                    'debug': DEBUG,
-                    'bind_host': '0.0.0.0',
-                    'bind_port': '9999999',
-                    'registry_host': '0.0.0.0',
-                    'registry_port': '9191',
-                    'default_store': 'file',
-                    'filesystem_store_datadir': base_dir,
-                    'policy_file': os.path.join(base_dir, 'policy.json'),
-                    })
-            api = version_negotiation.VersionNegotiationFilter(
-                context.ContextMiddleware(router.API(conf), conf),
-                conf)
+
+            api = context.UnauthenticatedContextMiddleware(
+                    router.API(conf), conf)
             res = self.req.get_response(api)
 
             # httplib.Response has a read() method...fake it out
@@ -187,13 +175,26 @@ def stub_out_registry_and_store_server(stubs, base_dir):
         for i in self.source.app_iter:
             yield i
 
+    def fake_sendable(self, body):
+        force = getattr(self, 'stub_force_sendfile', None)
+        if force is None:
+            return self._stub_orig_sendable(body)
+        else:
+            if force:
+                assert glance.common.client.SENDFILE_SUPPORTED
+            return force
+
     stubs.Set(glance.common.client.BaseClient, 'get_connection_type',
               fake_get_connection_type)
+    setattr(glance.common.client.BaseClient, '_stub_orig_sendable',
+              glance.common.client.BaseClient._sendable)
+    stubs.Set(glance.common.client.BaseClient, '_sendable',
+              fake_sendable)
     stubs.Set(glance.common.client.ImageBodyIterator, '__iter__',
               fake_image_iter)
 
 
-def stub_out_registry_server(stubs, **kwargs):
+def stub_out_registry_server(stubs, conf, **kwargs):
     """
     Mocks calls to 127.0.0.1 on 9191 for testing so
     that a real Glance Registry server does not need to be up and
@@ -211,7 +212,7 @@ def stub_out_registry_server(stubs, **kwargs):
         def close(self):
             return True
 
-        def request(self, method, url, body=None, headers={}):
+        def request(self, method, url, body=None, headers=None):
             self.req = webob.Request.blank("/" + url.lstrip("/"))
             self.req.method = method
             if headers:
@@ -221,14 +222,8 @@ def stub_out_registry_server(stubs, **kwargs):
 
         def getresponse(self):
             sql_connection = kwargs.get('sql_connection', "sqlite:///")
-            context_class = 'glance.registry.context.RequestContext'
-            conf = utils.TestConfigOpts({
-                    'sql_connection': sql_connection,
-                    'verbose': VERBOSE,
-                    'debug': DEBUG
-                    })
-            api = context.ContextMiddleware(rserver.API(conf),
-                                            conf, context_class=context_class)
+            api = context.UnauthenticatedContextMiddleware(
+                    rserver.API(conf), conf)
             res = self.req.get_response(api)
 
             # httplib.Response has a read() method...fake it out

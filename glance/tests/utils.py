@@ -30,6 +30,7 @@ import nose.plugins.skip
 from glance.common import config
 from glance.common import utils
 from glance.common import wsgi
+from glance import store
 
 
 def get_isolated_test_env():
@@ -81,12 +82,13 @@ class TestConfigOpts(config.GlanceConfigOpts):
         self.temp_file = os.path.join(tempfile.mkdtemp(), 'testcfg.conf')
 
         self()
+        store.create_stores(self)
 
     def __call__(self):
         self._write_tmp_config_file()
         try:
-            super(TestConfigOpts, self).\
-                __call__(['--config-file', self.temp_file])
+            super(TestConfigOpts, self).__call__(['--config-file',
+                                                  self.temp_file])
         finally:
             if self.clean:
                 os.remove(self.temp_file)
@@ -173,6 +175,24 @@ class requires(object):
             func(*args, **kw)
             if self.teardown:
                 self.teardown(args[0])
+        _runner.__name__ = func.__name__
+        _runner.__doc__ = func.__doc__
+        return _runner
+
+
+class depends_on_exe(object):
+    """Decorator to skip test if an executable is unavailable"""
+    def __init__(self, exe):
+        self.exe = exe
+
+    def __call__(self, func):
+        def _runner(*args, **kw):
+            cmd = 'which %s' % self.exe
+            exitcode, out, err = execute(cmd, raise_error=False)
+            if exitcode != 0:
+                args[0].disabled_message = 'test requires exe: %s' % self.exe
+                args[0].disabled = True
+            func(*args, **kw)
         _runner.__name__ = func.__name__
         _runner.__doc__ = func.__doc__
         return _runner
@@ -296,6 +316,19 @@ def find_executable(cmdname):
     return None
 
 
+def get_default_stores():
+    # Default test stores
+    known_stores = [
+        "glance.store.filesystem.Store",
+        "glance.store.http.Store",
+        "glance.store.rbd.Store",
+        "glance.store.s3.Store",
+        "glance.store.swift.Store",
+    ]
+    # Made in a format that the config can read
+    return ", ".join(known_stores)
+
+
 def get_unused_port():
     """
     Returns an unused port on localhost.
@@ -366,8 +399,8 @@ class FakeAuthMiddleware(wsgi.Middleware):
     def process_request(self, req):
         auth_tok = req.headers.get('X-Auth-Token')
         if auth_tok:
-            status, user, tenant, role = auth_tok.split(':')
-            req.headers['X-Identity-Status'] = status
+            user, tenant, role = auth_tok.split(':')
             req.headers['X-User-Id'] = user
             req.headers['X-Tenant-Id'] = tenant
-            req.headers['X-Role'] = role
+            req.headers['X-Roles'] = role
+            req.headers['X-Identity-Status'] = 'Confirmed'

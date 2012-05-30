@@ -17,15 +17,11 @@
 
 """Functional test case that utilizes the bin/glance-cache-manage CLI tool"""
 
-import datetime
 import hashlib
 import httplib2
 import json
 import os
-import time
-import unittest
 
-from glance.common import utils
 from glance.tests import functional
 from glance.tests.utils import execute, minimal_headers
 
@@ -47,6 +43,7 @@ class TestBinGlanceCacheManage(functional.FunctionalTest):
         # spin up won't have keystone support, so we need to switch to the
         # NoAuth strategy.
         os.environ['OS_AUTH_STRATEGY'] = 'noauth'
+        os.environ['OS_AUTH_URL'] = ''
 
     def add_image(self, name):
         """
@@ -228,8 +225,8 @@ paste.app_factory = glance.common.wsgi:app_factory
 glance.app_factory = glance.image_cache.queue_image:Queuer
 """)
 
-        cmd = "bin/glance-cache-prefetcher --config-file %s" % \
-            cache_config_filepath
+        cmd = ("bin/glance-cache-prefetcher --config-file %s" %
+               cache_config_filepath)
 
         exitcode, out, err = execute(cmd)
 

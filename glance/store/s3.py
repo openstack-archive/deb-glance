@@ -24,9 +24,9 @@ import re
 import tempfile
 import urlparse
 
-from glance.common import cfg
 from glance.common import exception
 from glance.common import utils
+from glance.openstack.common import cfg
 import glance.store
 import glance.store.base
 import glance.store.location
@@ -198,6 +198,9 @@ class Store(glance.store.base.Store):
         cfg.BoolOpt('s3_store_create_bucket_on_put', default=False),
         ]
 
+    def get_schemes(self):
+        return ('s3', 's3+http', 's3+https')
+
     def configure_add(self):
         """
         Configure the Store to use the stored configuration options
@@ -226,8 +229,7 @@ class Store(glance.store.base.Store):
         else:  # Defaults http
             self.full_s3_host = 'http://' + self.s3_host
 
-        self.s3_store_object_buffer_dir = \
-            self.conf.s3_store_object_buffer_dir
+        self.s3_store_object_buffer_dir = self.conf.s3_store_object_buffer_dir
 
     def _option_get(self, param):
         result = getattr(self.conf, param)
@@ -504,6 +506,3 @@ def get_key(bucket, obj):
         logger.error(msg)
         raise exception.NotFound(msg)
     return key
-
-
-glance.store.register_store(__name__, ['s3', 's3+http', 's3+https'])

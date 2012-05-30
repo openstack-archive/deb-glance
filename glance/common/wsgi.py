@@ -40,9 +40,9 @@ import routes.middleware
 import webob.dec
 import webob.exc
 
-from glance.common import cfg
 from glance.common import exception
 from glance.common import utils
+from glance.openstack.common import cfg
 
 
 bind_opts = [
@@ -152,8 +152,9 @@ class Server(object):
         """
         def kill_children(*args):
             """Kills the entire process group."""
-            self.logger.error(_('SIGTERM received'))
+            self.logger.error(_('SIGTERM or SIGINT received'))
             signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
             self.running = False
             os.killpg(0, signal.SIGTERM)
 
@@ -179,6 +180,7 @@ class Server(object):
 
         self.logger.info(_("Starting %d workers") % conf.workers)
         signal.signal(signal.SIGTERM, kill_children)
+        signal.signal(signal.SIGINT, kill_children)
         signal.signal(signal.SIGHUP, hup)
         while len(self.children) < conf.workers:
             self.run_child()
@@ -190,12 +192,19 @@ class Server(object):
                 if os.WIFEXITED(status) or os.WIFSIGNALED(status):
                     self.logger.error(_('Removing dead child %s') % pid)
                     self.children.remove(pid)
-                    self.run_child()
+                    if os.WIFEXITED(status) and os.WEXITSTATUS(status) == 2:
+                        self.logger.error(_('Not respawning child %d, cannot '
+                                            'recover from termination') % pid)
+                        if not self.children:
+                            self.logger.error(
+                                _('All workers have terminated. Exiting'))
+                            self.running = False
+                    else:
+                        self.run_child()
             except OSError, err:
                 if err.errno not in (errno.EINTR, errno.ECHILD):
                     raise
             except KeyboardInterrupt:
-                sys.exit(1)
                 self.logger.info(_('Caught keyboard interrupt. Exiting.'))
                 break
         eventlet.greenio.shutdown_safe(self.sock)
@@ -217,6 +226,10 @@ class Server(object):
         if pid == 0:
             signal.signal(signal.SIGHUP, signal.SIG_DFL)
             signal.signal(signal.SIGTERM, signal.SIG_DFL)
+            # ignore the interrupt signal to avoid a race whereby
+            # a child worker receives the signal before the parent
+            # and is respawned unneccessarily as a result
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
             self.run_server()
             self.logger.info(_('Child %d exiting normally') % os.getpid())
             return
@@ -227,7 +240,11 @@ class Server(object):
     def run_server(self):
         """Run a WSGI server."""
         eventlet.wsgi.HttpProtocol.default_request_version = "HTTP/1.0"
-        eventlet.hubs.use_hub('poll')
+        try:
+            eventlet.hubs.use_hub('poll')
+        except Exception:
+            msg = _("eventlet 'poll' hub is not available on this platform")
+            raise exception.WorkerCreationFailure(reason=msg)
         eventlet.patcher.monkey_patch(all=False, socket=True)
         self.pool = eventlet.GreenPool(size=self.threads)
         try:
@@ -451,7 +468,7 @@ class Resource(object):
     may raise a webob.exc exception or return a dict, which will be
     serialized by requested content type.
     """
-    def __init__(self, controller, deserializer, serializer):
+    def __init__(self, controller, deserializer=None, serializer=None):
         """
         :param controller: object that implement methods created by routes lib
         :param deserializer: object that supports webob request deserialization
@@ -460,8 +477,8 @@ class Resource(object):
                            through controller-like actions
         """
         self.controller = controller
-        self.serializer = serializer
-        self.deserializer = deserializer
+        self.serializer = serializer or JSONResponseSerializer()
+        self.deserializer = deserializer or JSONRequestDeserializer()
 
     @webob.dec.wsgify(RequestClass=Request)
     def __call__(self, request):
@@ -533,7 +550,7 @@ class BasePasteFactory(object):
         """Import an app/filter class.
 
         Lookup the KEY from the PasteDeploy local conf and import the
-        class named there. This class can then be used as an app or
+        class named therein. This class can then be used as an app or
         filter factory.
 
         Note we support the <module>:<class> format.

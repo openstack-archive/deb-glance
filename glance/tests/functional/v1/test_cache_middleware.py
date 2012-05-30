@@ -26,7 +26,6 @@ import hashlib
 import json
 import os
 import shutil
-import thread
 import time
 
 import httplib2
@@ -496,8 +495,8 @@ glance.app_factory = glance.image_cache.queue_image:Queuer
 
         self.verify_no_cached_images()
 
-        cmd = "bin/glance-cache-prefetcher --config-file %s" % \
-            cache_config_filepath
+        cmd = ("bin/glance-cache-prefetcher --config-file %s" %
+               cache_config_filepath)
 
         exitcode, out, err = execute(cmd)
 
@@ -559,6 +558,7 @@ class TestImageCacheXattr(functional.FunctionalTest,
             return
 
     def tearDown(self):
+        super(TestImageCacheXattr, self).tearDown()
         if os.path.exists(self.api_server.image_cache_dir):
             shutil.rmtree(self.api_server.image_cache_dir)
 
@@ -604,6 +604,7 @@ class TestImageCacheManageXattr(functional.FunctionalTest,
             return
 
     def tearDown(self):
+        super(TestImageCacheManageXattr, self).tearDown()
         if os.path.exists(self.api_server.image_cache_dir):
             shutil.rmtree(self.api_server.image_cache_dir)
 
@@ -642,6 +643,7 @@ class TestImageCacheSqlite(functional.FunctionalTest,
         self.api_server.deployment_flavor = "caching"
 
     def tearDown(self):
+        super(TestImageCacheSqlite, self).tearDown()
         if os.path.exists(self.api_server.image_cache_dir):
             shutil.rmtree(self.api_server.image_cache_dir)
 
@@ -681,5 +683,6 @@ class TestImageCacheManageSqlite(functional.FunctionalTest,
         self.api_server.deployment_flavor = "cachemanagement"
 
     def tearDown(self):
+        super(TestImageCacheManageSqlite, self).tearDown()
         if os.path.exists(self.api_server.image_cache_dir):
             shutil.rmtree(self.api_server.image_cache_dir)

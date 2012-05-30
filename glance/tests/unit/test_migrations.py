@@ -34,8 +34,8 @@ from migrate.versioning.repository import Repository
 from sqlalchemy import *
 from sqlalchemy.pool import NullPool
 
-from glance.common import cfg
 from glance.common import exception
+from glance.openstack.common import cfg
 import glance.registry.db.migration as migration_api
 from glance.registry.db import models
 from glance.tests import utils
@@ -89,10 +89,19 @@ class TestMigrations(unittest.TestCase):
         self._reset_databases()
 
     def _reset_databases(self):
+        def _is_sqlite(conn_string):
+            return conn_string.startswith('sqlite')
+
+        def _is_mysql(conn_string):
+            return conn_string.startswith('mysql')
+
+        def _is_postgresql(conn_string):
+            return conn_string.startswith('postgresql')
+
         for key, engine in self.engines.items():
             conn_string = TestMigrations.TEST_DATABASES[key]
             conn_pieces = urlparse.urlparse(conn_string)
-            if conn_string.startswith('sqlite'):
+            if _is_sqlite(conn_string):
                 # We can just delete the SQLite database, which is
                 # the easiest and cleanest solution
                 db_path = conn_pieces.path.strip('/')
@@ -100,7 +109,7 @@ class TestMigrations(unittest.TestCase):
                     os.unlink(db_path)
                 # No need to recreate the SQLite DB. SQLite will
                 # create it for us if it's not there...
-            elif conn_string.startswith('mysql'):
+            elif _is_mysql(conn_string) or _is_postgresql(conn_string):
                 # We can execute the MySQL client to destroy and re-create
                 # the MYSQL database, which is easier and less error-prone
                 # than using SQLAlchemy to do this via MetaData...trust me.
@@ -113,10 +122,20 @@ class TestMigrations(unittest.TestCase):
                 if len(auth_pieces) > 1:
                     if auth_pieces[1].strip():
                         password = "-p%s" % auth_pieces[1]
-                sql = ("drop database if exists %(database)s; "
-                       "create database %(database)s;") % locals()
-                cmd = ("mysql -u%(user)s %(password)s -h%(host)s "
-                       "-e\"%(sql)s\"") % locals()
+                if _is_mysql(conn_string):
+                    sql = ("drop database if exists %(database)s; "
+                           "create database %(database)s;") % locals()
+                    cmd = ("mysql -u%(user)s %(password)s -h%(host)s "
+                           "-e\"%(sql)s\"") % locals()
+                if _is_postgresql(conn_string):
+                    cmd = ("dropdb %(database)s ; "
+                           "createdb %(database)s -O %(user)s ; "
+                           "echo \"select 'drop table if exists ' "
+                           "|| tablename || ' cascade;' "
+                           "from pg_tables where schemaname = 'public';\" | "
+                           "psql -d %(database)s | grep '^\s*drop' | "
+                           "psql -d %(database)s"
+                          ) % locals()
                 exitcode, out, err = utils.execute(cmd)
                 self.assertEqual(0, exitcode)
 
@@ -297,3 +316,63 @@ class TestMigrations(unittest.TestCase):
         last_num_image_properties = conn.execute(sel).scalar()
 
         self.assertEqual(num_image_properties - 2, last_num_image_properties)
+
+    def test_no_data_loss_14_to_15(self):
+        for key, engine in self.engines.items():
+            conf = utils.TestConfigOpts({
+                    'sql_connection': TestMigrations.TEST_DATABASES[key]})
+            conf.register_opt(cfg.StrOpt('sql_connection'))
+            self._check_no_data_loss_14_to_15(engine, conf)
+
+    def _check_no_data_loss_14_to_15(self, engine, conf):
+        """
+        Check that migrating swift location credentials to quoted form
+        and back does not result in data loss.
+        """
+        migration_api.version_control(conf, version=0)
+        migration_api.upgrade(conf, 14)
+
+        conn = engine.connect()
+        images_table = Table('images', MetaData(), autoload=True,
+                             autoload_with=engine)
+
+        def get_locations():
+            conn = engine.connect()
+            locations = [x[0] for x in
+                         conn.execute(
+                             select(['location'], from_obj=[images_table]))]
+            conn.close()
+            return locations
+
+        unquoted_locations = [
+            'swift://acct:usr:pass@example.com/container/obj-id',
+            'file://foo',
+            ]
+        quoted_locations = [
+            'swift://acct%3Ausr:pass@example.com/container/obj-id',
+            'file://foo',
+            ]
+
+        # Insert images with an unquoted image location
+        now = datetime.datetime.now()
+        kwargs = dict(
+            deleted=False,
+            created_at=now,
+            updated_at=now,
+            status='active',
+            is_public=True,
+            min_disk=0,
+            min_ram=0,
+            )
+        for i, location in enumerate(unquoted_locations):
+            kwargs.update(location=location, id=i)
+            conn.execute(images_table.insert(), [kwargs])
+        conn.close()
+
+        migration_api.upgrade(conf, 15)
+
+        self.assertEqual(get_locations(), quoted_locations)
+
+        migration_api.downgrade(conf, 14)
+
+        self.assertEqual(get_locations(), unquoted_locations)

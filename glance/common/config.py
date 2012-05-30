@@ -26,8 +26,8 @@ import logging.handlers
 import os
 import sys
 
-from glance.common import cfg
 from glance.common import wsgi
+from glance.openstack.common import cfg
 from glance import version
 
 
@@ -36,6 +36,11 @@ paste_deploy_opts = [
     cfg.StrOpt('flavor'),
     cfg.StrOpt('config_file'),
     ]
+common_opts = [
+    cfg.BoolOpt('allow_additional_image_properties', default=True,
+                help='Whether to allow users to specify image properties '
+                'beyond what the image schema provides'),
+]
 
 
 class GlanceConfigOpts(cfg.CommonConfigOpts):
@@ -46,6 +51,8 @@ class GlanceConfigOpts(cfg.CommonConfigOpts):
             version='%%prog %s' % version.version_string(),
             default_config_files=default_config_files,
             **kwargs)
+        self.register_opts(common_opts)
+        self.default_paste_file = self.prog + '-paste.ini'
 
 
 class GlanceCacheConfigOpts(GlanceConfigOpts):
@@ -54,6 +61,7 @@ class GlanceCacheConfigOpts(GlanceConfigOpts):
         config_files = cfg.find_config_files(project='glance',
                                              prog='glance-cache')
         super(GlanceCacheConfigOpts, self).__init__(config_files, **kwargs)
+        self.default_paste_file = 'glance-cache-paste.ini'
 
 
 def setup_logging(conf):
@@ -125,6 +133,18 @@ def _get_deployment_flavor(conf):
     return '' if not flavor else ('-' + flavor)
 
 
+def _get_paste_config_path(conf):
+    paste_suffix = '-paste.ini'
+    conf_suffix = '.conf'
+    if conf.config_file:
+        # Assume paste config is in a paste.ini file corresponding
+        # to the last config file
+        path = conf.config_file[-1].replace(conf_suffix, paste_suffix)
+    else:
+        path = conf.default_paste_file
+    return conf.find_file(os.path.basename(path))
+
+
 def _get_deployment_config_file(conf):
     """
     Retrieve the deployment_config_file config item, formatted as an
@@ -134,12 +154,12 @@ def _get_deployment_config_file(conf):
     """
     _register_paste_deploy_opts(conf)
     config_file = conf.paste_deploy.config_file
-    if not config_file:
-        # Assume paste config is in a paste.ini file corresponding
-        # to the last config file
-        path = conf.config_file[-1].replace(".conf", "-paste.ini")
-    else:
-        path = config_file
+    path = _get_paste_config_path(conf) if not config_file else config_file
+
+    if not path:
+        msg = "Unable to locate paste config file for %s." % conf.prog
+        raise RuntimeError(msg)
+
     return os.path.abspath(path)
 
 
@@ -168,12 +188,16 @@ def load_paste_app(conf, app_name=None):
     try:
         # Setup logging early
         setup_logging(conf)
+        logger = logging.getLogger(app_name)
+
+        logger.debug(_("Loading %(app_name)s from %(conf_file)s"),
+                     {'conf_file': conf_file, 'app_name': app_name})
 
         app = wsgi.paste_deploy_app(conf_file, app_name, conf)
 
         # Log the options used when starting if we're in debug mode...
         if conf.debug:
-            conf.log_opt_values(logging.getLogger(app_name), logging.DEBUG)
+            conf.log_opt_values(logger, logging.DEBUG)
 
         return app
     except (LookupError, ImportError), e:

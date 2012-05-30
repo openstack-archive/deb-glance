@@ -15,10 +15,12 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from glance.common import cfg
+import webob.exc
+
 from glance.common import exception
-from glance.common import utils
 from glance.common import wsgi
+from glance.openstack.common import cfg
+from glance.registry.db import api as db_api
 
 
 class RequestContext(object):
@@ -51,72 +53,139 @@ class RequestContext(object):
             return True
         return False
 
+    def is_image_visible(self, image):
+        """Return True if the image is visible in this context."""
+        # Is admin == image visible
+        if self.is_admin:
+            return True
+
+        # No owner == image visible
+        if image['owner'] is None:
+            return True
+
+        # Image is_public == image visible
+        if image['is_public']:
+            return True
+
+        # Perform tests based on whether we have an owner
+        if self.owner is not None:
+            if self.owner == image['owner']:
+                return True
+
+            # Figure out if this image is shared with that tenant
+            try:
+                tmp = db_api.image_member_find(self, image['id'], self.owner)
+                return not tmp['deleted']
+            except exception.NotFound:
+                pass
+
+        # Private image
+        return False
+
+    def is_image_mutable(self, image):
+        """Return True if the image is mutable in this context."""
+        # Is admin == image mutable
+        if self.is_admin:
+            return True
+
+        # No owner == image not mutable
+        if image['owner'] is None or self.owner is None:
+            return False
+
+        # Image only mutable by its owner
+        return image['owner'] == self.owner
+
+    def is_image_sharable(self, image, **kwargs):
+        """Return True if the image can be shared to others in this context."""
+        # Only allow sharing if we have an owner
+        if self.owner is None:
+            return False
+
+        # Is admin == image sharable
+        if self.is_admin:
+            return True
+
+        # If we own the image, we can share it
+        if self.owner == image['owner']:
+            return True
+
+        # Let's get the membership association
+        if 'membership' in kwargs:
+            membership = kwargs['membership']
+            if membership is None:
+                # Not shared with us anyway
+                return False
+        else:
+            try:
+                membership = db_api.image_member_find(self, image['id'],
+                                                      self.owner)
+            except exception.NotFound:
+                # Not shared with us anyway
+                return False
+
+        # It's the can_share attribute we're now interested in
+        return membership['can_share']
+
 
 class ContextMiddleware(wsgi.Middleware):
 
     opts = [
         cfg.BoolOpt('owner_is_tenant', default=True),
         cfg.StrOpt('admin_role', default='admin'),
-        ]
+    ]
 
     def __init__(self, app, conf, **local_conf):
         self.conf = conf
         self.conf.register_opts(self.opts)
-
-        # Determine the context class to use
-        self.ctxcls = RequestContext
-        if 'context_class' in local_conf:
-            self.ctxcls = utils.import_class(local_conf['context_class'])
-
         super(ContextMiddleware, self).__init__(app)
 
-    def make_context(self, *args, **kwargs):
-        """
-        Create a context with the given arguments.
-        """
-        kwargs.setdefault('owner_is_tenant', self.conf.owner_is_tenant)
+    def process_request(self, req):
+        """Convert authentication informtion into a request context
 
-        return self.ctxcls(*args, **kwargs)
+        Generate a RequestContext object from the available
+        authentication headers and store on the 'context' attribute
+        of the req object.
+
+        :param req: wsgi request object that will be given the context object
+        :raises webob.exc.HTTPUnauthorized: when value of the X-Identity-Status
+                                            header is not 'Confirmed'
+        """
+        if req.headers.get('X-Identity-Status') != 'Confirmed':
+            raise webob.exc.HTTPUnauthorized()
+
+        #NOTE(bcwaldon): X-Roles is a csv string, but we need to parse
+        # it into a list to be useful
+        roles_header = req.headers.get('X-Roles', '')
+        roles = [r.strip() for r in roles_header.split(',')]
+
+        #NOTE(bcwaldon): This header is deprecated in favor of X-Auth-Token
+        deprecated_token = req.headers.get('X-Storage-Token')
+
+        kwargs = {
+            'user': req.headers.get('X-User-Id'),
+            'tenant': req.headers.get('X-Tenant-Id'),
+            'roles': roles,
+            'is_admin': self.conf.admin_role in roles,
+            'auth_tok': req.headers.get('X-Auth-Token', deprecated_token),
+            'owner_is_tenant': self.conf.owner_is_tenant,
+        }
+
+        req.context = RequestContext(**kwargs)
+
+
+class UnauthenticatedContextMiddleware(wsgi.Middleware):
+
+    def __init__(self, app, conf, **local_conf):
+        self.conf = conf
+        super(UnauthenticatedContextMiddleware, self).__init__(app)
 
     def process_request(self, req):
-        """
-        Extract any authentication information in the request and
-        construct an appropriate context from it.
+        """Create a context without an authorized user."""
+        kwargs = {
+            'user': None,
+            'tenant': None,
+            'roles': [],
+            'is_admin': True,
+        }
 
-        A few scenarios exist:
-
-        1. If X-Auth-Token is passed in, then consult TENANT and ROLE headers
-           to determine permissions.
-
-        2. An X-Auth-Token was passed in, but the Identity-Status is not
-           confirmed. For now, just raising a NotAuthenticated exception.
-
-        3. X-Auth-Token is omitted. If we were using Keystone, then the
-           tokenauth middleware would have rejected the request, so we must be
-           using NoAuth. In that case, assume that is_admin=True.
-        """
-        auth_tok = req.headers.get('X-Auth-Token',
-                                   req.headers.get('X-Storage-Token'))
-        if auth_tok:
-            if req.headers.get('X-Identity-Status') == 'Confirmed':
-                # 1. Auth-token is passed, check other headers
-                user = req.headers.get('X-User-Id')
-                tenant = req.headers.get('X-Tenant-Id')
-                roles = [r.strip()
-                         for r in req.headers.get('X-Roles', '').split(',')]
-                is_admin = self.conf.admin_role in roles
-            else:
-                # 2. Indentity-Status not confirmed
-                # FIXME(sirp): not sure what the correct behavior in this case
-                # is; just raising NotAuthenticated for now
-                raise exception.NotAuthenticated()
-        else:
-            # 3. Auth-token is ommited, assume NoAuth
-            user = None
-            tenant = None
-            roles = []
-            is_admin = True
-
-        req.context = self.make_context(
-            auth_tok=auth_tok, user=user, tenant=tenant, roles=roles,
-            is_admin=is_admin)
+        req.context = RequestContext(**kwargs)

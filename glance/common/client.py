@@ -23,7 +23,9 @@ import collections
 import errno
 import functools
 import httplib
+import logging
 import os
+import re
 import select
 import urllib
 import urlparse
@@ -43,9 +45,12 @@ except ImportError:
 from glance.common import auth
 from glance.common import exception, utils
 
+LOG = logging.getLogger(__name__)
 
 # common chunk size for get and put
 CHUNKSIZE = 65536
+
+VERSION_REGEX = re.compile(r"/?v[0-9\.]+")
 
 
 def handle_unauthenticated(func):
@@ -202,10 +207,10 @@ class BaseClient(object):
     DEFAULT_DOC_ROOT = None
     # Standard CA file locations for Debian/Ubuntu, RedHat/Fedora,
     # Suse, FreeBSD/OpenBSD
-    DEFAULT_CA_FILE_PATH = '/etc/ssl/certs/ca-certificates.crt:'\
-        '/etc/pki/tls/certs/ca-bundle.crt:'\
-        '/etc/ssl/ca-bundle.pem:'\
-        '/etc/ssl/cert.pem'
+    DEFAULT_CA_FILE_PATH = ('/etc/ssl/certs/ca-certificates.crt:'
+                            '/etc/pki/tls/certs/ca-bundle.crt:'
+                            '/etc/ssl/ca-bundle.pem:'
+                            '/etc/ssl/cert.pem')
 
     OK_RESPONSE_CODES = (
         httplib.OK,
@@ -222,8 +227,8 @@ class BaseClient(object):
         httplib.TEMPORARY_REDIRECT,
     )
 
-    def __init__(self, host, port=None, use_ssl=False, auth_tok=None,
-                 creds=None, doc_root=None, key_file=None,
+    def __init__(self, host, port=None, timeout=None, use_ssl=False,
+                 auth_tok=None, creds=None, doc_root=None, key_file=None,
                  cert_file=None, ca_file=None, insecure=False,
                  configure_via_auth=True):
         """
@@ -231,6 +236,7 @@ class BaseClient(object):
 
         :param host: The host where service resides
         :param port: The port where service resides
+        :param timeout: Connection timeout.
         :param use_ssl: Should we use HTTPS?
         :param auth_tok: The auth token to pass to the server
         :param creds: The credentials to pass to the auth plugin
@@ -254,9 +260,14 @@ class BaseClient(object):
                         GLANCE_CLIENT_CA_FILE is looked for.
         :param insecure: Optional. If set then the server's certificate
                          will not be verified.
+        :param configure_via_auth: Optional. Defaults to True. If set, the
+                         URL returned from the service catalog for the image
+                         endpoint will **override** the URL supplied to in
+                         the host parameter.
         """
         self.host = host
         self.port = port or self.DEFAULT_PORT
+        self.timeout = timeout
         self.use_ssl = use_ssl
         self.auth_tok = auth_tok
         self.creds = creds or {}
@@ -276,6 +287,10 @@ class BaseClient(object):
 
     def get_connect_kwargs(self):
         connect_kwargs = {}
+
+        # Both secure and insecure connections have a timeout option
+        connect_kwargs['timeout'] = self.timeout
+
         if self.use_ssl:
             if self.key_file is None:
                 self.key_file = os.environ.get('GLANCE_CLIENT_KEY_FILE')
@@ -355,11 +370,20 @@ class BaseClient(object):
 
             <http|https>://<host>:port/doc_root
         """
+        LOG.debug(_("Configuring from URL: %s"), url)
         parsed = urlparse.urlparse(url)
         self.use_ssl = parsed.scheme == 'https'
         self.host = parsed.hostname
         self.port = parsed.port or 80
-        self.doc_root = parsed.path
+        self.doc_root = parsed.path.rstrip('/')
+
+        # We need to ensure a version identifier is appended to the doc_root
+        if not VERSION_REGEX.match(self.doc_root):
+            if self.DEFAULT_DOC_ROOT:
+                doc_root = self.DEFAULT_DOC_ROOT.lstrip('/')
+                self.doc_root += '/' + doc_root
+                msg = _("Appending doc_root %(doc_root)s to URL %(url)s")
+                LOG.debug(msg % locals())
 
         # ensure connection kwargs are re-evaluated after the service catalog
         # publicURL is parsed for potential SSL usage
@@ -435,7 +459,10 @@ class BaseClient(object):
         else:
             query = None
 
-        return urlparse.ParseResult(scheme, netloc, path, '', query, '')
+        url = urlparse.ParseResult(scheme, netloc, path, '', query, '')
+        log_msg = _("Constructed URL: %s")
+        LOG.debug(log_msg, url.geturl())
+        return url
 
     @handle_redirects
     def _do_request(self, method, url, body, headers):
@@ -506,12 +533,17 @@ class BaseClient(object):
             elif _filelike(body) or self._iterable(body):
                 c.putrequest(method, path)
 
+                use_sendfile = self._sendable(body)
+
+                # According to HTTP/1.1, Content-Length and Transfer-Encoding
+                # conflict.
                 for header, value in headers.items():
-                    c.putheader(header, value)
+                    if use_sendfile or header.lower() != 'content-length':
+                        c.putheader(header, value)
 
                 iter = self.image_iterator(c, headers, body)
 
-                if self._sendable(body):
+                if use_sendfile:
                     # send actual file without copying into userspace
                     _sendbody(c, iter)
                 else:
@@ -567,9 +599,9 @@ class BaseClient(object):
             return (e.errno != errno.ESPIPE)
 
     def _sendable(self, body):
-        return (SENDFILE_SUPPORTED      and
+        return (SENDFILE_SUPPORTED and
                 hasattr(body, 'fileno') and
-                self._seekable(body)    and
+                self._seekable(body) and
                 not self.use_ssl)
 
     def _iterable(self, body):

@@ -43,27 +43,6 @@ from glance.tests import utils as test_utils
 execute, get_unused_port = test_utils.execute, test_utils.get_unused_port
 
 
-def runs_sql(func):
-    """
-    Decorator for a test case method that ensures that the
-    sql_connection setting is overridden to ensure a disk-based
-    SQLite database so that arbitrary SQL statements can be
-    executed out-of-process against the datastore...
-    """
-    @functools.wraps(func)
-    def wrapped(*a, **kwargs):
-        test_obj = a[0]
-        orig_sql_connection = test_obj.registry_server.sql_connection
-        try:
-            if orig_sql_connection.startswith('sqlite'):
-                test_obj.registry_server.sql_connection =\
-                        "sqlite:///tests.sqlite"
-            func(*a, **kwargs)
-        finally:
-            test_obj.registry_server.sql_connection = orig_sql_connection
-    return wrapped
-
-
 class Server(object):
     """
     Class used to easily manage starting and stopping
@@ -89,6 +68,7 @@ class Server(object):
         self.exec_env = None
         self.deployment_flavor = ''
         self.server_control_options = ''
+        self.needs_database = False
 
     def write_conf(self, **kwargs):
         """
@@ -145,6 +125,8 @@ class Server(object):
         # Ensure the configuration file is written
         overridden = self.write_conf(**kwargs)[1]
 
+        self.create_database()
+
         cmd = ("%(server_control)s %(server_name)s start "
                "%(conf_file_name)s --pid-file=%(pid_file)s "
                "%(server_control_options)s"
@@ -155,6 +137,23 @@ class Server(object):
                        expect_exit=expect_exit,
                        expected_exitcode=expected_exitcode,
                        context=overridden)
+
+    def create_database(self):
+        """Create database if required for this server"""
+        if self.needs_database:
+            conf_dir = os.path.join(self.test_dir, 'etc')
+            utils.safe_mkdirs(conf_dir)
+            conf_filepath = os.path.join(conf_dir, 'glance-manage.conf')
+
+            with open(conf_filepath, 'wb') as conf_file:
+                conf_file.write('[DEFAULT]\n')
+                conf_file.write('sql_connection = %s' % self.sql_connection)
+                conf_file.flush()
+
+            cmd = ('bin/glance-manage db_sync --config-file %s'
+                   % conf_filepath)
+            execute(cmd, no_venv=self.no_venv, exec_env=self.exec_env,
+                    expect_exit=True)
 
     def stop(self):
         """
@@ -178,6 +177,7 @@ class ApiServer(Server):
         super(ApiServer, self).__init__(test_dir, port)
         self.server_name = 'api'
         self.default_store = 'file'
+        self.known_stores = test_utils.get_default_stores()
         self.key_file = ""
         self.cert_file = ""
         self.metadata_encryption_key = "012345678901234567890123456789ab"
@@ -212,11 +212,18 @@ class ApiServer(Server):
         self.policy_file = policy_file
         self.policy_default_rule = 'default'
         self.server_control_options = '--capture-output'
+
+        self.needs_database = True
+        default_sql_connection = 'sqlite:////%s/tests.sqlite' % self.test_dir
+        self.sql_connection = os.environ.get('GLANCE_TEST_SQL_CONNECTION',
+                                             default_sql_connection)
+
         self.conf_base = """[DEFAULT]
 verbose = %(verbose)s
 debug = %(debug)s
 filesystem_store_datadir=%(image_dir)s
 default_store = %(default_store)s
+known_stores = %(known_stores)s
 bind_host = 0.0.0.0
 bind_port = %(bind_port)s
 key_file = %(key_file)s
@@ -248,24 +255,47 @@ image_cache_dir = %(image_cache_dir)s
 image_cache_driver = %(image_cache_driver)s
 policy_file = %(policy_file)s
 policy_default_rule = %(policy_default_rule)s
+db_auto_create = False
+sql_connection = %(sql_connection)s
 [paste_deploy]
 flavor = %(deployment_flavor)s
 """
         self.paste_conf_base = """[pipeline:glance-api]
-pipeline = versionnegotiation context apiv1app
+pipeline = versionnegotiation unauthenticated-context rootapp
 
 [pipeline:glance-api-caching]
-pipeline = versionnegotiation context cache apiv1app
+pipeline = versionnegotiation unauthenticated-context cache rootapp
 
 [pipeline:glance-api-cachemanagement]
-pipeline = versionnegotiation context cache cache_manage apiv1app
+pipeline =
+    versionnegotiation
+    unauthenticated-context
+    cache
+    cache_manage
+    rootapp
 
 [pipeline:glance-api-fakeauth]
-pipeline = versionnegotiation fakeauth context apiv1app
+pipeline = versionnegotiation fakeauth context rootapp
+
+[pipeline:glance-api-noauth]
+pipeline = versionnegotiation context rootapp
+
+[composite:rootapp]
+use = egg:Paste#urlmap
+/: apiversions
+/v1: apiv1app
+/v2: apiv2app
+
+[app:apiversions]
+paste.app_factory = glance.api.versions:create_resource
 
 [app:apiv1app]
 paste.app_factory = glance.common.wsgi:app_factory
 glance.app_factory = glance.api.v1.router:API
+
+[app:apiv2app]
+paste.app_factory = glance.common.wsgi:app_factory
+glance.app_factory = glance.api.v2.router:API
 
 [filter:versionnegotiation]
 paste.filter_factory = glance.common.wsgi:filter_factory
@@ -284,6 +314,10 @@ glance.filter_factory = glance.api.middleware.cache_manage:CacheManageFilter
 paste.filter_factory = glance.common.wsgi:filter_factory
 glance.filter_factory = glance.common.context:ContextMiddleware
 
+[filter:unauthenticated-context]
+paste.filter_factory = glance.common.wsgi:filter_factory
+glance.filter_factory = glance.common.context:UnauthenticatedContextMiddleware
+
 [filter:fakeauth]
 paste.filter_factory = glance.common.wsgi:filter_factory
 glance.filter_factory = glance.tests.utils:FakeAuthMiddleware
@@ -300,7 +334,8 @@ class RegistryServer(Server):
         super(RegistryServer, self).__init__(test_dir, port)
         self.server_name = 'registry'
 
-        default_sql_connection = 'sqlite:///'
+        self.needs_database = True
+        default_sql_connection = 'sqlite:////%s/tests.sqlite' % self.test_dir
         self.sql_connection = os.environ.get('GLANCE_TEST_SQL_CONNECTION',
                                              default_sql_connection)
 
@@ -315,6 +350,7 @@ debug = %(debug)s
 bind_host = 0.0.0.0
 bind_port = %(bind_port)s
 log_file = %(log_file)s
+db_auto_create = False
 sql_connection = %(sql_connection)s
 sql_idle_timeout = 3600
 api_limit_max = 1000
@@ -324,7 +360,7 @@ owner_is_tenant = %(owner_is_tenant)s
 flavor = %(deployment_flavor)s
 """
         self.paste_conf_base = """[pipeline:glance-registry]
-pipeline = context registryapp
+pipeline = unauthenticated-context registryapp
 
 [pipeline:glance-registry-fakeauth]
 pipeline = fakeauth context registryapp
@@ -334,9 +370,12 @@ paste.app_factory = glance.common.wsgi:app_factory
 glance.app_factory = glance.registry.api.v1:API
 
 [filter:context]
-context_class = glance.registry.context.RequestContext
 paste.filter_factory = glance.common.wsgi:filter_factory
 glance.filter_factory = glance.common.context:ContextMiddleware
+
+[filter:unauthenticated-context]
+paste.filter_factory = glance.common.wsgi:filter_factory
+glance.filter_factory = glance.common.context:UnauthenticatedContextMiddleware
 
 [filter:fakeauth]
 paste.filter_factory = glance.common.wsgi:filter_factory
@@ -394,8 +433,12 @@ class FunctionalTest(unittest.TestCase):
         self.api_port = get_unused_port()
         self.registry_port = get_unused_port()
 
-        self.copy_data_file('policy.json', self.test_dir)
-        self.policy_file = os.path.join(self.test_dir, 'policy.json')
+        conf_dir = os.path.join(self.test_dir, 'etc')
+        utils.safe_mkdirs(conf_dir)
+        self.copy_data_file('schema-image.json', conf_dir)
+        self.copy_data_file('schema-access.json', conf_dir)
+        self.copy_data_file('policy.json', conf_dir)
+        self.policy_file = os.path.join(conf_dir, 'policy.json')
 
         self.api_server = ApiServer(self.test_dir,
                                     self.api_port,
@@ -420,6 +463,7 @@ class FunctionalTest(unittest.TestCase):
             # and recreate it, which ensures that we have no side-effects
             # from the tests
             self._reset_database(self.registry_server.sql_connection)
+            self._reset_database(self.api_server.sql_connection)
 
     def set_policy_rules(self, rules):
         fap = open(self.policy_file, 'w')
@@ -429,13 +473,11 @@ class FunctionalTest(unittest.TestCase):
     def _reset_database(self, conn_string):
         conn_pieces = urlparse.urlparse(conn_string)
         if conn_string.startswith('sqlite'):
-            # We can just delete the SQLite database, which is
-            # the easiest and cleanest solution
-            db_path = conn_pieces.path.strip('/')
-            if db_path and os.path.exists(db_path):
-                os.unlink(db_path)
-            # No need to recreate the SQLite DB. SQLite will
-            # create it for us if it's not there...
+            # We leave behind the sqlite DB for failing tests to aid
+            # in diagnosis, as the file size is relatively small and
+            # won't interfere with subsequent tests as it's in a per-
+            # test directory (which is blown-away if the test is green)
+            pass
         elif conn_string.startswith('mysql'):
             # We can execute the MySQL client to destroy and re-create
             # the MYSQL database, which is easier and less error-prone
@@ -625,11 +667,6 @@ class FunctionalTest(unittest.TestCase):
         if os.path.exists(self.test_dir):
             shutil.rmtree(self.test_dir)
 
-        # We do this here because the @runs_sql decorator above
-        # actually resets the registry server's sql_connection
-        # to the original (usually memory-based SQLite connection)
-        # and this block of code is run *before* the finally:
-        # block in that decorator...
         self._reset_database(self.registry_server.sql_connection)
 
     def run_sql_cmd(self, sql):

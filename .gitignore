@@ -4,8 +4,10 @@
 .glance-venv
 .venv
 .tox
+AUTHORS
 build
 dist
+*.egg
 glance.egg-info
 glance/vcsversion.py
 tests.sqlite

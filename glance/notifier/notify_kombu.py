@@ -21,8 +21,8 @@ import time
 import kombu.connection
 import kombu.entity
 
-from glance.common import cfg
 from glance.notifier import strategy
+from glance.openstack.common import cfg
 
 
 logger = logging.getLogger('glance.notifier.notify_kombu')
@@ -166,8 +166,9 @@ class RabbitStrategy(strategy.Strategy):
 
     def log_failure(self, msg, priority):
         """Fallback to logging when we can't send to rabbit."""
-        logger.error(_('Notification with priority %(priority)s failed; '
-                'msg=%s') % msg)
+        message = _('Notification with priority %(priority)s failed: '
+                    'msg=%(msg)s')
+        logger.error(message % {'msg': msg, 'priority': priority})
 
     def _send_message(self, msg, routing_key):
         """Send a message.  Caller needs to catch exceptions for retry."""

@@ -67,13 +67,13 @@ class TestPasteApp(unittest.TestCase):
             os.rmdir(os.path.dirname(conf.temp_file))
 
     def test_load_paste_app(self):
-        expected_middleware = context.ContextMiddleware
+        expected_middleware = context.UnauthenticatedContextMiddleware
         self._do_test_load_paste_app(expected_middleware)
 
     def test_load_paste_app_with_paste_flavor(self):
         paste_group = {'paste_deploy': {'flavor': 'incomplete'}}
-        pipeline = '[pipeline:glance-registry-incomplete]\n' + \
-                   'pipeline = context registryapp'
+        pipeline = ('[pipeline:glance-registry-incomplete]\n'
+                    'pipeline = context registryapp')
 
         type = context.ContextMiddleware
         self._do_test_load_paste_app(type, paste_group, paste_append=pipeline)
@@ -83,15 +83,15 @@ class TestPasteApp(unittest.TestCase):
                                          'etc/glance-registry-paste.ini')
         paste_group = {'paste_deploy': {'config_file': paste_config_file}}
 
-        expected_middleware = context.ContextMiddleware
+        expected_middleware = context.UnauthenticatedContextMiddleware
         self._do_test_load_paste_app(expected_middleware,
                                      paste_group, paste_copy=False)
 
     def test_load_paste_app_with_conf_name(self):
         def fake_join(*args):
-            if len(args) == 2 and \
-                    args[0].endswith('.glance') and \
-                    args[1] == 'glance-cache.conf':
+            if (len(args) == 2 and
+                args[0].endswith('.glance') and
+                args[1] == 'glance-cache.conf'):
                 return os.path.join(os.getcwd(), 'etc', args[1])
             else:
                 return orig_join(*args)

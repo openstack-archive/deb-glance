@@ -15,12 +15,9 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import os
 import time
-import unittest
 
 from glance.tests import functional
-from glance.tests.utils import execute
 
 from glance import client
 from glance.registry import client as registry_client
@@ -50,7 +47,7 @@ class TestScrubber(functional.FunctionalTest):
         """
 
         self.cleanup()
-        self.start_servers()
+        self.start_servers(**self.__dict__.copy())
 
         client = self._get_client()
         registry = self._get_registry_client()
