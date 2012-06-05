@@ -14,7 +14,7 @@ glance (2012.1-2) unstable; urgency=low
   * Portuguese (Pedro Ribeiro).  Closes: #664274
   * Czech (Michal Simunek).  Closes: #664458
 
- -- Christian Perrier <bubulle@debian.org>  Tue, 17 Apr 2012 08:52:16 +0200
+ -- Ghe Rivero <ghe.rivero@stackops.com>  Tue, 05 Jun 2012 08:29:57 +0200
 
 glance (2012.1-1) unstable; urgency=low
 

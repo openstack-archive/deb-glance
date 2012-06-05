@@ -4,8 +4,8 @@ Source: https://code.launchpad.net/glance
 
 Files: *
 Copyright: 2010 United States Government as represented by the Administrator of the National Aeronautics and Space Administration.
-Copyright: 2010-2011 OpenStack LLC
-Copyright: Others (See individual files for more details)
+  2010-2011 OpenStack LLC
+  Others (See individual files for more details)
 License: Apache-2
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.

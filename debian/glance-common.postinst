@@ -4,6 +4,9 @@ set -e
 
 if [ "$1" = "configure" ]
 then
+    . /usr/share/debconf/confmodule
+    . /usr/share/dbconfig-common/dpkg/postinst
+
     if ! getent group glance > /dev/null 2>&1
     then
 	addgroup --quiet --system glance >/dev/null
