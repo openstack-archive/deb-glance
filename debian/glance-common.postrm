@@ -4,7 +4,7 @@ set -e
 
 case $1 in
     purge)
-	echo "Purging glance. Backup of /var/lib/glance can be found at /var/lib/glance.tar.bz2"
+	echo "Purging glance. Backup of /var/lib/glance can be found at /var/lib/glance.tar.bz2" >&2
 	if ( getent passwd glance) > /dev/null 2>&1; then
 	    userdel glance || true
 	fi
