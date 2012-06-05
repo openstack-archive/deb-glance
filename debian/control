@@ -50,7 +50,7 @@ Depends: ${python:Depends}, ${misc:Depends},
  python-migrate,
  python-pastedeploy,
  python-routes,
- python-sqlalchemy (<< 0.6.3-2),
+ python-sqlalchemy,
  python-swift,
  python-webob,
  python-xattr
