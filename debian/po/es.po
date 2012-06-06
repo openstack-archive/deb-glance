@@ -1,0 +1,127 @@
+# glance po-debconf translation to Spanish
+# Copyright (C) 2010 Software in the Public Interest
+# This file is distributed under the same license as the glance package.
+# 
+# Changes:
+# - Initial translation
+# Camaleón <noelamac@gmail.com>, 2012
+# 
+# - Updates
+# 
+# 
+# Traductores, si no conocen el formato PO, merece la pena leer la
+# documentación de gettext, especialmente las secciones dedicadas a este
+# formato, por ejemplo ejecutando:
+# info -n '(gettext)PO Files'
+# info -n '(gettext)Header Entry'
+# 
+# Equipo de traducción al español, por favor lean antes de traducir
+# los siguientes documentos:
+# 
+# - El proyecto de traducción de Debian al español
+# http://www.debian.org/intl/spanish/
+# especialmente las notas y normas de traducción en
+# http://www.debian.org/intl/spanish/notas
+# 
+# - La guía de traducción de po's de debconf:
+# /usr/share/doc/po-debconf/README-trans
+# o http://www.debian.org/intl/l10n/po-debconf/README-trans
+# 
+msgid ""
+msgstr ""
+"Project-Id-Version: glance 2012.1~e4-1\n"
+"Report-Msgid-Bugs-To: glance@packages.debian.org\n"
+"POT-Creation-Date: 2012-06-05 14:19+0200\n"
+"PO-Revision-Date: 2012-06-05 22:46+0200\n"
+"Last-Translator: Camaleón <noelamac@gmail.com>\n"
+"Language-Team: Debian Spanish <debian-l10n-spanish@lists.debian.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. Type: boolean
+#. Description
+#: ../glance-registry.templates:1001
+msgid "Set up a database for glance-registry?"
+msgstr ""
+
+#. Type: boolean
+#. Description
+#: ../glance-registry.templates:1001
+msgid ""
+"No database has been set up for glance-registry to use. Before continuing, "
+"you should make sure you have:"
+msgstr ""
+
+#. Type: boolean
+#. Description
+#: ../glance-registry.templates:1001
+msgid ""
+" - the server host name (that server must allow TCP connections\n"
+"   from this machine);\n"
+" - a username and password to access the database.\n"
+" - A database type that you want to use."
+msgstr ""
+
+#. Type: boolean
+#. Description
+#: ../glance-registry.templates:1001
+msgid ""
+"If some of these requirements are missing, reject this option and run with "
+"regular sqlite support."
+msgstr ""
+
+#. Type: boolean
+#. Description
+#: ../glance-registry.templates:1001
+msgid ""
+"You can change this setting later on by running 'dpkg-reconfigure -plow "
+"glance-registry"
+msgstr ""
+
+#. Type: select
+#. Description
+#: ../glance-common.templates:2001
+msgid "Pipeline flavor:"
+msgstr "Tipo de conexión:"
+
+#. Type: select
+#. Description
+#: ../glance-common.templates:2001
+msgid "Please specify the flavor of pipeline to be used by Glance."
+msgstr "Especifique el tipo de conexión que debe utilizar Glance."
+
+#. Type: select
+#. Description
+#: ../glance-common.templates:2001
+msgid ""
+"If you use the OpenStack Identity Service (Keystone), you might want to "
+"select \"keystone\". If you don't use this service, you can safely choose "
+"\"caching\" only."
+msgstr ""
+"Si utiliza el Servicio de Identidad de OpenStack (Keystone) es posible que "
+"quiera seleccionar «keystone». Si no utiliza este servicio, puede elegir "
+"«sólo caché»."
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:3001
+msgid "Auth server URL:"
+msgstr "URL del servidor de autentificación:"
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:3001
+msgid ""
+"Please specify the URL of your Glance authentication server. Typically this "
+"is also the URL of your OpenStack Identity Service (Keystone)."
+msgstr ""
+"Especifique la URL del servidor de autentificación de Glance. Suele ser la "
+"URL del Servicio de Identidad de OpenStack (Keystone)."
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:4001
+msgid "Auth server admin token:"
+msgstr "Token de administración del servidor de autentificación:"
