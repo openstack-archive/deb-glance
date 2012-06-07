@@ -1,4 +1,4 @@
-glance (2012.1-3) UNRELEASED; urgency=low
+glance (2012.1-3) unstable; urgency=low
 
   * Removed python-glance version depends on python-sqlalchemy. Closes: #676458
   * Fixed glance-common.postrm script
