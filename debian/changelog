@@ -1,4 +1,4 @@
-glance (2012.1-3.1) UNRELEASED; urgency=low
+glance (2012.1-3.1) unstable; urgency=low
 
   * Non-maintainer upload.
   * Removed source of dbconfig-common as it is actually not used.
@@ -7,7 +7,7 @@ glance (2012.1-3.1) UNRELEASED; urgency=low
     is that there is a segmentation fault during the run and this is a
     serious FTBFS error.
 
- -- Ola Lundqvist <ola@sidbuild>  Sun, 17 Jun 2012 19:29:19 +0000
+ -- Ola Lundqvist <ola@inguza.com>  Sun, 17 Jun 2012 19:29:19 +0000
 
 glance (2012.1-3) unstable; urgency=low
 
