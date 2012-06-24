@@ -1,6 +1,8 @@
 glance (2012.1-4) unstable; urgency=low
 
   * Fixes most pep8 errors.
+  * Disabled failing tests in debian/rules.
+  * Added few DEP3 comments.
 
  -- Thomas Goirand <zigo@debian.org>  Sun, 24 Jun 2012 07:01:57 +0000
 

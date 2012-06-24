@@ -1,3 +1,7 @@
+Description: Fixes default sql_connection in glance-registry.conf
+Author: Julien Danjou
+Forwarded: no
+
 --- a/etc/glance-registry.conf
 +++ b/etc/glance-registry.conf
 @@ -21,7 +21,7 @@
