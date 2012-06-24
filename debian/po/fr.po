@@ -8,7 +8,7 @@ msgstr ""
 "Project-Id-Version: glance\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
 "POT-Creation-Date: 2012-05-24 09:08+0200\n"
-"PO-Revision-Date: 2012-03-08 22:04+0100\n"
+"PO-Revision-Date: 2012-06-08 08:56+0100\n"
 "Last-Translator: Julien Patriarca <patriarcaj@gmail.com>\n"
 "Language-Team: FRENCH <debian-l10n-french@lists.debian.org>\n"
 "Language: \n"
@@ -20,7 +20,7 @@ msgstr ""
 #. Description
 #: ../glance-registry.templates:1001
 msgid "Set up a database for glance-registry?"
-msgstr ""
+msgstr "ParamÃ©trer une base de donnÃ©es pour le registre de glanceÂ ?"
 
 #. Type: boolean
 #. Description
@@ -29,6 +29,8 @@ msgid ""
 "No database has been set up for glance-registry to use. Before continuing, "
 "you should make sure you have:"
 msgstr ""
+"Aucune base de donnÃ©es n'a Ã©tÃ© spÃ©cifiÃ©e pour le registre de glance. Avant  "
+"de continuer, assurez vous de connaÃ®treÂ : "
 
 #. Type: boolean
 #. Description
@@ -39,6 +41,11 @@ msgid ""
 " - a username and password to access the database.\n"
 " - A database type that you want to use."
 msgstr ""
+"- le nom d'hÃ´te du serveur (ce serveur doit autoriser les connexions TCP\n"
+"   depuis cette machine);\n"
+"- un identifiant et un mot de passe permettant d'accÃ©der Ã  cette base de "
+"donnÃ©es.\n"
+"- le type de base de donnÃ©es que vous souhaitez utiliser."
 
 #. Type: boolean
 #. Description
@@ -47,6 +54,8 @@ msgid ""
 "If some of these requirements are missing, reject this option and run with "
 "regular sqlite support."
 msgstr ""
+"Si certains de ces prÃ©requis sont manquants, ne tenez pas compte de cette "
+"option. Une base de donnÃ©es SQLite sera alors utilisÃ©e."
 
 #. Type: boolean
 #. Description
@@ -55,12 +64,14 @@ msgid ""
 "You can change this setting later on by running 'dpkg-reconfigure -plow "
 "glance-registry"
 msgstr ""
+"Vous pouvez changer ce rÃ©glage plus tard en exÃ©cutant Â«Â dpkg-reconfigure -"
+"plow glance-registryÂ Â»"
 
 #. Type: select
 #. Description
 #: ../glance-common.templates:2001
 msgid "Pipeline flavor:"
-msgstr "Type d'acheminement des paquets :"
+msgstr "Type d'acheminement des paquetsÂ :"
 
 #. Type: select
 #. Description
@@ -78,15 +89,15 @@ msgid ""
 "select \"keystone\". If you don't use this service, you can safely choose "
 "\"caching\" only."
 msgstr ""
-"Si vous utilisez le service d'identité  d'Openstack (Keystone), vous devriez "
-"choisir « keystone ». Si vous n'utilisez pas ce service, vous pouvez choisir "
-"la mise en cache uniquement en toute sécurité."
+"Si vous utilisez le service d'identitÃ©  d'Openstack (Keystone), vous devriez "
+"choisir Â« keystone Â». Si vous n'utilisez pas ce service, vous pouvez choisir "
+"la mise en cache uniquement en toute sÃ©curitÃ©."
 
 #. Type: string
 #. Description
 #: ../glance-common.templates:3001
 msgid "Auth server URL:"
-msgstr "URL du serveur d'authentification :"
+msgstr "URL du serveur d'authentificationÂ :"
 
 #. Type: string
 #. Description
@@ -96,11 +107,11 @@ msgid ""
 "is also the URL of your OpenStack Identity Service (Keystone)."
 msgstr ""
 "Veuillez indiquer l'adresse URL du serveur d'authentification de Glance. "
-"Généralement cela correspond également à l'adresse URL du service d'identité "
+"GÃ©nÃ©ralement cela correspond Ã©galement Ã  l'adresse URL du service d'identitÃ© "
 "Openstack (Keystone)."
 
 #. Type: string
 #. Description
 #: ../glance-common.templates:4001
 msgid "Auth server admin token:"
-msgstr "Jeton d'administration du serveur d'authentification :"
+msgstr "Jeton d'administration du serveur d'authentificationÂ :"

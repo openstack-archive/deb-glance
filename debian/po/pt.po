@@ -1,5 +1,5 @@
 # glance debconf portuguese messages
-# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# Copyright (C) 2012 THE PACKAGE'S COPYRIGHT HOLDER
 # This file is distributed under the same license as the glance package.
 # Pedro Ribeiro <p.m42.ribeiro@gmail.com>, 2012
 #
@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: glance\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
-"POT-Creation-Date: 2012-05-24 09:08+0200\n"
-"PO-Revision-Date: 2012-03-17 13:56+0000\n"
+"POT-Creation-Date: 2012-06-24 06:00+0000\n"
+"PO-Revision-Date: 2012-06-10 18:14+0100\n"
 "Last-Translator: Pedro Ribeiro <p.m42.ribeiro@gmail.com>\n"
 "Language-Team: Potuguese <traduz@debianpt.org>\n"
 "Language: \n"
@@ -66,7 +66,7 @@ msgstr "Tipo de pipeline:"
 #. Description
 #: ../glance-common.templates:2001
 msgid "Please specify the flavor of pipeline to be used by Glance."
-msgstr "Indique por favor o tipo de pipeline a ser usado pelo Glance."
+msgstr "Por favor especifique o tipo de pipeline a ser utilizado por Glance."
 
 #. Type: select
 #. Description

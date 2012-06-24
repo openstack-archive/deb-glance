@@ -5,10 +5,10 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: glance 2012.1~e3-4\n"
+"Project-Id-Version: glance 2012.1-2\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
 "POT-Creation-Date: 2012-05-24 09:08+0200\n"
-"PO-Revision-Date: 2012-03-01 18:31+0100\n"
+"PO-Revision-Date: 2012-06-08 11:31+0100\n"
 "Last-Translator: Chris Leick <c.leick@vollbio.de>\n"
 "Language-Team: German <debian-l10n-german@lists.debian.org>\n"
 "Language: de\n"
@@ -20,7 +20,7 @@ msgstr ""
 #. Description
 #: ../glance-registry.templates:1001
 msgid "Set up a database for glance-registry?"
-msgstr ""
+msgstr "Eine Datenbank fÃ¼r die Glance-Registry einrichten?"
 
 #. Type: boolean
 #. Description
@@ -29,16 +29,24 @@ msgid ""
 "No database has been set up for glance-registry to use. Before continuing, "
 "you should make sure you have:"
 msgstr ""
+"Es wurde keine Datenbank fÃ¼r die Benutzung mit der Glance-Registry "
+"eingerichtet. Bevor Sie fortfahren, sollten Sie sicherstellen, dass Sie "
+"Folgendes haben:"
 
 #. Type: boolean
 #. Description
 #: ../glance-registry.templates:1001
+# FIXME s/the database./the database;/ and s/A/a/
 msgid ""
 " - the server host name (that server must allow TCP connections\n"
 "   from this machine);\n"
 " - a username and password to access the database.\n"
 " - A database type that you want to use."
 msgstr ""
+" - den Rechnernamen des Servers (dieser Server muss TCP-Verbindungen von\n"
+"   diesem Rechner erlauben)\n"
+" - einen Benutzernamen und ein Passwort, um auf die Datenbank zuzugreifen\n"
+" - einen Datenbaktyp, den Sie verwenden mÃ¶chten"
 
 #. Type: boolean
 #. Description
@@ -47,27 +55,32 @@ msgid ""
 "If some of these requirements are missing, reject this option and run with "
 "regular sqlite support."
 msgstr ""
+"Falls einige dieser Anforderungen nicht erfÃ¼llt sind, lehnen Sie diese Option "
+"ab und verwenden Sie die regulÃ¤re Sqlite-UnterstÃ¼tzung."
 
 #. Type: boolean
 #. Description
 #: ../glance-registry.templates:1001
+# FIXME missing '
 msgid ""
 "You can change this setting later on by running 'dpkg-reconfigure -plow "
 "glance-registry"
 msgstr ""
+"Sie kÃ¶nnen diese Einstellung spÃ¤ter Ã¤ndern, indem Sie Â»dpkg-reconfigure -plow "
+"glance-registryÂ« ausfÃ¼hren."
 
 #. Type: select
 #. Description
 #: ../glance-common.templates:2001
 msgid "Pipeline flavor:"
-msgstr "Pipeline-Geschmacksrichtung:"
+msgstr "Pipeline-Variante:"
 
 #. Type: select
 #. Description
 #: ../glance-common.templates:2001
 msgid "Please specify the flavor of pipeline to be used by Glance."
 msgstr ""
-"Bitte geben Sie die Geschmacksrichtung der von Glance benutzten Pipeline an."
+"Bitte geben Sie die Variante der von Glance zu benutzenden Pipeline an."
 
 #. Type: select
 #. Description
@@ -77,9 +90,9 @@ msgid ""
 "select \"keystone\". If you don't use this service, you can safely choose "
 "\"caching\" only."
 msgstr ""
-"Falls Sie den OpenStack-Identitätsdienst (Keystone) verwenden, möchten Sie "
-"möglicherweise »keystone« auswählen. Falls Sie diesen Dienst nicht nutzen, "
-"können Sie auf sichere Art reines »caching« auswählen."
+"Falls Sie den OpenStack-IdentitÃ¤tsdienst (Keystone) verwenden, mÃ¶chten Sie "
+"mÃ¶glicherweise Â»keystoneÂ« auswÃ¤hlen. Falls Sie diesen Dienst nicht nutzen, "
+"kÃ¶nnen Sie problemlos Â»cachingÂ« auswÃ¤hlen."
 
 #. Type: string
 #. Description
@@ -95,7 +108,7 @@ msgid ""
 "is also the URL of your OpenStack Identity Service (Keystone)."
 msgstr ""
 "Bitte geben Sie die URL des Glance-Authentifizierungsservers an. "
-"Typischerweise ist das außerdem die URL Ihres OpenStack-Identitätsdienstes "
+"Typischerweise ist das auÃerdem die URL Ihres OpenStack-IdentitÃ¤tsdienstes "
 "(Keystone)."
 
 #. Type: string

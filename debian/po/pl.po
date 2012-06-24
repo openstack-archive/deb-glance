@@ -8,7 +8,7 @@ msgstr ""
 "Project-Id-Version: glance\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
 "POT-Creation-Date: 2012-05-24 09:08+0200\n"
-"PO-Revision-Date: 2012-03-01 19:10+0100\n"
+"PO-Revision-Date: 2012-06-09 10:11+0200\n"
 "Last-Translator: Michał Kułach <michal.kulach@gmail.com>\n"
 "Language-Team: Polish <debian-l10n-polish@lists.debian.org>\n"
 "Language: pl\n"
@@ -23,7 +23,7 @@ msgstr ""
 #. Description
 #: ../glance-registry.templates:1001
 msgid "Set up a database for glance-registry?"
-msgstr ""
+msgstr "Skonfigurować bazę danych do glance-registry?"
 
 #. Type: boolean
 #. Description
@@ -32,6 +32,8 @@ msgid ""
 "No database has been set up for glance-registry to use. Before continuing, "
 "you should make sure you have:"
 msgstr ""
+"Nie skonfigurowano bazy danych do użycia z glance-registry. Przed "
+"kontynuowaniem, proszę upewnić się, że posiada się:"
 
 #. Type: boolean
 #. Description
@@ -42,6 +44,10 @@ msgid ""
 " - a username and password to access the database.\n"
 " - A database type that you want to use."
 msgstr ""
+" - nazwę serwera (serwer musi pozwalać na połączenia TCP\n"
+"   z tego komputera),\n"
+" - nazwę użytkownika i hasło dostępowe do bazy danych,\n"
+" - typ bazy danych, który chce się wykorzystać."
 
 #. Type: boolean
 #. Description
@@ -50,6 +56,8 @@ msgid ""
 "If some of these requirements are missing, reject this option and run with "
 "regular sqlite support."
 msgstr ""
+"Jeśli nie zna się któregoś z powyższych punktów, proszę wybrać \"nie\" i "
+"skorzystać ze zwykłego trybu, używającego sqlite."
 
 #. Type: boolean
 #. Description
@@ -58,6 +66,8 @@ msgid ""
 "You can change this setting later on by running 'dpkg-reconfigure -plow "
 "glance-registry"
 msgstr ""
+"Można zmienić to ustawienie później, wykonując \"dpkg-reconfigure -plow "
+"glance-registry\"."
 
 #. Type: select
 #. Description
@@ -104,3 +114,4 @@ msgstr ""
 #: ../glance-common.templates:4001
 msgid "Auth server admin token:"
 msgstr "Token administratora serwera uwierzytelniania:"
+

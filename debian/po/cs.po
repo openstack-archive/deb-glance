@@ -5,10 +5,10 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: glance 2012.1~e3-4\n"
+"Project-Id-Version: glance 2012.1-2\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
 "POT-Creation-Date: 2012-05-24 09:08+0200\n"
-"PO-Revision-Date: 2012-03-17 18:01+0100\n"
+"PO-Revision-Date: 2012-06-23 13:01+0200\n"
 "Last-Translator: Michal Simunek <michal.simunek@gmail.com>\n"
 "Language-Team: Czech <debian-l10n-czech@lists.debian.org>\n"
 "Language: cs\n"
@@ -20,7 +20,7 @@ msgstr ""
 #. Description
 #: ../glance-registry.templates:1001
 msgid "Set up a database for glance-registry?"
-msgstr ""
+msgstr "Nastavit databÃ¡zi pro glance-registry?"
 
 #. Type: boolean
 #. Description
@@ -29,6 +29,8 @@ msgid ""
 "No database has been set up for glance-registry to use. Before continuing, "
 "you should make sure you have:"
 msgstr ""
+"glance-registry nemÃ¡ nastavenu Å¾Ã¡dnou databÃ¡zi k pouÅ¾Ã­vÃ¡nÃ­. PÅed tÃ­m, neÅ¾ "
+"budete pokraÄovat se ujistÄte Å¾e mÃ¡te:"
 
 #. Type: boolean
 #. Description
@@ -39,6 +41,10 @@ msgid ""
 " - a username and password to access the database.\n"
 " - A database type that you want to use."
 msgstr ""
+" - nÃ¡zev hostitelskÃ©ho serveru (tento server musÃ­ pÅijÃ­mat TCP spojenÃ­\n"
+"   z tohoto poÄÃ­taÄe);\n"
+" - uÅ¾ivatelskÃ© jmÃ©no a heslo pro pÅÃ­stup k databÃ¡zi.\n"
+" - Typ databÃ¡ze, kterou chcete pouÅ¾Ã­vat."
 
 #. Type: boolean
 #. Description
@@ -47,6 +53,8 @@ msgid ""
 "If some of these requirements are missing, reject this option and run with "
 "regular sqlite support."
 msgstr ""
+"Pokud nÄkterou z tÄchto povinnÃ½ch voleb neznÃ¡te, pÅeskoÄte ji a glance "
+"spouÅ¡tÄjte s bÄÅ¾nou podporou pro sqlite."
 
 #. Type: boolean
 #. Description
@@ -55,18 +63,20 @@ msgid ""
 "You can change this setting later on by running 'dpkg-reconfigure -plow "
 "glance-registry"
 msgstr ""
+"Toto nastavenÃ­ mÅ¯Å¾ete pozdÄji zmÄnit spuÅ¡tÄnÃ­m 'dpkg-reconfigure -plow "
+"glance-registry"
 
 #. Type: select
 #. Description
 #: ../glance-common.templates:2001
 msgid "Pipeline flavor:"
-msgstr "Příznak pro rouru:"
+msgstr "PÅÃ­znak pro rouru:"
 
 #. Type: select
 #. Description
 #: ../glance-common.templates:2001
 msgid "Please specify the flavor of pipeline to be used by Glance."
-msgstr "Zadejte prosím příznak roury, který má Glance používat."
+msgstr "Zadejte prosÃ­m pÅÃ­znak roury, kterÃ½ mÃ¡ Glance pouÅ¾Ã­vat."
 
 #. Type: select
 #. Description
@@ -76,15 +86,15 @@ msgid ""
 "select \"keystone\". If you don't use this service, you can safely choose "
 "\"caching\" only."
 msgstr ""
-"Používáte-li OpenStack Identity Service (Keystone), budete zřejmě chtít "
-"vybrat \"keystone\". Pokud tuto službu nepoužíváte, můžete zvolit pouze "
-"možnost \"caching\"."
+"PouÅ¾Ã­vÃ¡te-li OpenStack Identity Service (Keystone), budete zÅejmÄ chtÃ­t "
+"vybrat \"keystone\". Pokud tuto sluÅ¾bu nepouÅ¾Ã­vÃ¡te, mÅ¯Å¾ete zvolit pouze "
+"moÅ¾nost \"caching\"."
 
 #. Type: string
 #. Description
 #: ../glance-common.templates:3001
 msgid "Auth server URL:"
-msgstr "URL serveru pro ověřování:"
+msgstr "URL serveru pro ovÄÅovÃ¡nÃ­:"
 
 #. Type: string
 #. Description
@@ -93,11 +103,11 @@ msgid ""
 "Please specify the URL of your Glance authentication server. Typically this "
 "is also the URL of your OpenStack Identity Service (Keystone)."
 msgstr ""
-"Zadejte prosím URL Glance serveru pro ověřování. Většinou je to také URL "
+"Zadejte prosÃ­m URL Glance serveru pro ovÄÅovÃ¡nÃ­. VÄtÅ¡inou je to takÃ© URL "
 "OpenStack Identity Service (Keystone)."
 
 #. Type: string
 #. Description
 #: ../glance-common.templates:4001
 msgid "Auth server admin token:"
-msgstr "Správcovský token serveru pro ověřování:"
+msgstr "SprÃ¡vcovskÃ½ token serveru pro ovÄÅovÃ¡nÃ­:"

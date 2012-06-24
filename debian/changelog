@@ -4,6 +4,21 @@ glance (2012.1-4) unstable; urgency=low
   * Disabled failing tests in debian/rules.
   * Added few DEP3 comments.
   * Fixed format 1.0 URL in debian/copyright.
+  * Updated the following debconf translations (thanks to):
+    - ru: Yuri Kozlov <yuray@komyakino.ru> (Closes: #676663).
+    - cs: Michal Simunek <michal.simunek@gmail.com> (Closes: #678656).
+    - fr: Julien Patriarca <patriarcaj@gmail.com> (Closes: #677179).
+    - de: Chris Leick <c.leick@vollbio.de> (Closes: #677151).
+    - it: Beatrice Torracca <beatricet@libero.it> (Closes: #677133).
+    - da: Joe Dalton <joedalton2@yahoo.dk> (Closes: #676951).
+    - pt: Traduz <traduz@debianpt.org> (Closes: #676945).
+    - pl: "Michał Kułach" <michalkulach@gmail.com> (Closes: #676772).
+    - es: Camaleón <noelamac@gmail.com> (Closes: #676670, #676359).
+    - ru: Yuri Kozlov <yuray@komyakino.ru> (Closes: #676663).
+  * Added the following debconf translations (thanks to):
+    - gl: Jorge Barreiro <yortx.barry@gmail.com> (Closes: #678620).
+    - sv: Martin Bagge <brother@bsnet.se> (Closes: #676603).
+    - pt_BR: Adriano Rafael Gomes <adrianorg@gmail.com> (Closes: #677794).
 
  -- Thomas Goirand <zigo@debian.org>  Sun, 24 Jun 2012 07:01:57 +0000
 
