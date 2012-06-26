@@ -30,7 +30,8 @@ Build-Depends-Indep:
  python-sqlalchemy,
  python-swift,
  python-webob,
- python-xattr
+ python-xattr,
+ procps
 Standards-Version: 3.9.3
 X-Python-Version: >= 2.6
 Homepage: http://launchpad.net/glance
