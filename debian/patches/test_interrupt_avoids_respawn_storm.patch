@@ -16,3 +16,12 @@ Forwarded: no
          _, out, _ = execute(cmd, raise_error=True)
          return out.split('\n')[0:-2]
  
+@@ -58,7 +59,7 @@
+ 
+         children = self._get_children()
+         cmd = "kill -INT %s" % ' '.join(children)
+-        execute(cmd, raise_error=True)
++        execute(cmd, raise_error=False)
+ 
+         for _ in range(0, 9):
+             time.sleep(0.05)
