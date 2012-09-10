@@ -14,20 +14,13 @@ argparse
 boto==2.1.1
 sqlalchemy-migrate>=0.7
 httplib2
-xattr>=0.6.0
 kombu
 pycrypto>=2.1.0alpha1
-pysendfile==2.0.0
 iso8601>=0.1.4
 
 
-# The following allow Keystone to be installed in the venv
-# along with all of Keystone's dependencies. We target a specific
-# commit hash so we can code to a constant version of keystone.
-# Trying to hit a moving target causes our local unittests to fail 
-# when they should remain unaffected.
--e git://github.com/openstack/keystone.git@ab6be05068068b0902db44b1d60f56eea4fe1215#egg=keystone
--e git://github.com/openstack/swift.git@208b8e85a80e46ddb49dc2035cb292570a20c7db#egg=swift
+# For Swift storage backend.
+python-swiftclient>=1,<2
 
 # Note you will need gcc buildtools installed and must
 # have installed libxml headers for lxml to be successfully

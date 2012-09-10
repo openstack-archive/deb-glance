@@ -19,18 +19,20 @@
 Reference implementation registry server WSGI controller
 """
 
-import logging
-
 from webob import exc
 
 from glance.common import exception
 from glance.common import utils
 from glance.common import wsgi
+import glance.db
 from glance.openstack.common import cfg
-from glance.registry.db import api as db_api
+import glance.openstack.common.log as logging
+from glance.openstack.common import timeutils
 
 
-logger = logging.getLogger('glance.registry.api.v1.images')
+LOG = logging.getLogger(__name__)
+
+CONF = cfg.CONF
 
 DISPLAY_FIELDS_IN_INDEX = ['id', 'name', 'size',
                            'disk_format', 'container_format',
@@ -50,22 +52,16 @@ SUPPORTED_PARAMS = ('limit', 'marker', 'sort_key', 'sort_dir')
 
 class Controller(object):
 
-    opts = [
-        cfg.IntOpt('limit_param_default', default=25),
-        cfg.IntOpt('api_limit_max', default=1000),
-        ]
-
-    def __init__(self, conf):
-        self.conf = conf
-        self.conf.register_opts(self.opts)
-        db_api.configure_db(conf)
+    def __init__(self):
+        self.db_api = glance.db.get_api()
+        self.db_api.configure_db()
 
     def _get_images(self, context, **params):
         """
         Get images, wrapping in exception if necessary.
         """
         try:
-            return db_api.image_get_all(context, **params)
+            return self.db_api.image_get_all(context, **params)
         except exception.NotFound, e:
             msg = _("Invalid marker. Image could not be found.")
             raise exc.HTTPBadRequest(explanation=msg)
@@ -166,7 +162,7 @@ class Controller(object):
         if 'changes-since' in filters:
             isotime = filters['changes-since']
             try:
-                filters['changes-since'] = utils.parse_isotime(isotime)
+                filters['changes-since'] = timeutils.parse_isotime(isotime)
             except ValueError:
                 raise exc.HTTPBadRequest(_("Unrecognized changes-since value"))
 
@@ -196,15 +192,14 @@ class Controller(object):
     def _get_limit(self, req):
         """Parse a limit query param into something usable."""
         try:
-            limit = int(req.params.get('limit',
-                                           self.conf.limit_param_default))
+            limit = int(req.params.get('limit', CONF.limit_param_default))
         except ValueError:
             raise exc.HTTPBadRequest(_("limit param must be an integer"))
 
         if limit < 0:
             raise exc.HTTPBadRequest(_("limit param must be positive"))
 
-        return min(self.conf.api_limit_max, limit)
+        return min(CONF.api_limit_max, limit)
 
     def _get_marker(self, req):
         """Parse a marker query param into something usable."""
@@ -271,7 +266,7 @@ class Controller(object):
     def show(self, req, id):
         """Return data about the given image id."""
         try:
-            image = db_api.image_get(req.context, id)
+            image = self.db_api.image_get(req.context, id)
         except exception.NotFound:
             raise exc.HTTPNotFound()
         except exception.Forbidden:
@@ -280,11 +275,12 @@ class Controller(object):
             msg = _("Access by %(user)s to image %(id)s "
                     "denied") % ({'user': req.context.user,
                     'id': id})
-            logger.info(msg)
+            LOG.info(msg)
             raise exc.HTTPNotFound()
 
         return dict(image=make_image_dict(image))
 
+    @utils.mutating
     def delete(self, req, id):
         """
         Deletes an existing image with the registry.
@@ -292,31 +288,31 @@ class Controller(object):
         :param req: wsgi Request object
         :param id:  The opaque internal identifier for the image
 
-        :retval Returns 200 if delete was successful, a fault if not.
+        :retval Returns 200 if delete was successful, a fault if not. On
+        success, the body contains the deleted image information as a mapping.
         """
-        if req.context.read_only:
-            raise exc.HTTPForbidden()
-
         try:
-            db_api.image_destroy(req.context, id)
+            deleted_image = self.db_api.image_destroy(req.context, id)
+            return dict(image=make_image_dict(deleted_image))
 
         except exception.ForbiddenPublicImage:
             # If it's private and doesn't belong to them, don't let on
             # that it exists
             msg = _("Access by %(user)s to delete public image %(id)s denied")
             args = {'user': req.context.user, 'id': id}
-            logger.info(msg % args)
+            LOG.info(msg % args)
             raise exc.HTTPForbidden()
 
         except exception.Forbidden:
             msg = _("Access by %(user)s to delete private image %(id)s denied")
             args = {'user': req.context.user, 'id': id}
-            logger.info(msg % args)
+            LOG.info(msg % args)
             return exc.HTTPNotFound()
 
         except exception.NotFound:
             return exc.HTTPNotFound()
 
+    @utils.mutating
     def create(self, req, body):
         """
         Registers a new image with the registry.
@@ -328,9 +324,6 @@ class Controller(object):
                 which will include the newly-created image's internal id
                 in the 'id' field
         """
-        if req.context.read_only:
-            raise exc.HTTPForbidden()
-
         image_data = body['image']
 
         # Ensure the image has a status set
@@ -346,18 +339,19 @@ class Controller(object):
             return exc.HTTPBadRequest(explanation=msg)
 
         try:
-            image_data = db_api.image_create(req.context, image_data)
+            image_data = self.db_api.image_create(req.context, image_data)
             return dict(image=make_image_dict(image_data))
         except exception.Duplicate:
-            msg = (_("Image with identifier %s already exists!") % id)
-            logger.error(msg)
+            msg = (_("Image with identifier %s already exists!") % image_id)
+            LOG.error(msg)
             return exc.HTTPConflict(msg)
         except exception.Invalid, e:
             msg = (_("Failed to add image metadata. "
                      "Got error: %(e)s") % locals())
-            logger.error(msg)
+            LOG.error(msg)
             return exc.HTTPBadRequest(msg)
 
+    @utils.mutating
     def update(self, req, id, body):
         """
         Updates an existing image with the registry.
@@ -368,9 +362,6 @@ class Controller(object):
 
         :retval Returns the updated image information as a mapping,
         """
-        if req.context.read_only:
-            raise exc.HTTPForbidden()
-
         image_data = body['image']
 
         # Prohibit modification of 'owner'
@@ -379,19 +370,19 @@ class Controller(object):
 
         purge_props = req.headers.get("X-Glance-Registry-Purge-Props", "false")
         try:
-            logger.debug(_("Updating image %(id)s with metadata: "
-                           "%(image_data)r") % locals())
+            LOG.debug(_("Updating image %(id)s with metadata: "
+                        "%(image_data)r") % locals())
             if purge_props == "true":
-                updated_image = db_api.image_update(req.context, id,
-                                                    image_data, True)
+                updated_image = self.db_api.image_update(req.context, id,
+                                                         image_data, True)
             else:
-                updated_image = db_api.image_update(req.context, id,
-                                                    image_data)
+                updated_image = self.db_api.image_update(req.context, id,
+                                                         image_data)
             return dict(image=make_image_dict(updated_image))
         except exception.Invalid, e:
             msg = (_("Failed to update image metadata. "
                      "Got error: %(e)s") % locals())
-            logger.error(msg)
+            LOG.error(msg)
             return exc.HTTPBadRequest(msg)
         except exception.NotFound:
             raise exc.HTTPNotFound(body='Image not found',
@@ -399,14 +390,14 @@ class Controller(object):
                                content_type='text/plain')
         except exception.ForbiddenPublicImage:
             msg = _("Access by %(user)s to update public image %(id)s denied")
-            logger.info(msg % {'user': req.context.user, 'id': id})
+            LOG.info(msg % {'user': req.context.user, 'id': id})
             raise exc.HTTPForbidden()
 
         except exception.Forbidden:
             # If it's private and doesn't belong to them, don't let on
             # that it exists
             msg = _("Access by %(user)s to update private image %(id)s denied")
-            logger.info(msg % {'user': req.context.user, 'id': id})
+            LOG.info(msg % {'user': req.context.user, 'id': id})
             raise exc.HTTPNotFound(body='Image not found',
                                request=req,
                                content_type='text/plain')
@@ -428,14 +419,14 @@ def make_image_dict(image):
     properties = dict((p['name'], p['value'])
                       for p in image['properties'] if not p['deleted'])
 
-    image_dict = _fetch_attrs(image, db_api.IMAGE_ATTRS)
+    image_dict = _fetch_attrs(image, glance.db.IMAGE_ATTRS)
 
     image_dict['properties'] = properties
     return image_dict
 
 
-def create_resource(conf):
+def create_resource():
     """Images resource factory method."""
     deserializer = wsgi.JSONRequestDeserializer()
     serializer = wsgi.JSONResponseSerializer()
-    return wsgi.Resource(Controller(conf), deserializer, serializer)
+    return wsgi.Resource(Controller(), deserializer, serializer)

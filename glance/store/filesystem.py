@@ -21,18 +21,23 @@ A simple filesystem-backed store
 
 import errno
 import hashlib
-import logging
 import os
 import urlparse
 
 from glance.common import exception
 from glance.common import utils
 from glance.openstack.common import cfg
+import glance.openstack.common.log as logging
 import glance.store
 import glance.store.base
 import glance.store.location
 
-logger = logging.getLogger('glance.store.filesystem')
+LOG = logging.getLogger(__name__)
+
+datadir_opt = cfg.StrOpt('filesystem_store_datadir')
+
+CONF = cfg.CONF
+CONF.register_opt(datadir_opt)
 
 
 class StoreLocation(glance.store.location.StoreLocation):
@@ -57,8 +62,9 @@ class StoreLocation(glance.store.location.StoreLocation):
         self.scheme = pieces.scheme
         path = (pieces.netloc + pieces.path).strip()
         if path == '':
-            reason = _("No path specified")
-            raise exception.BadStoreUri(uri, reason)
+            reason = _("No path specified in URI: %s") % uri
+            LOG.error(reason)
+            raise exception.BadStoreUri('No path specified')
         self.path = path
 
 
@@ -96,8 +102,6 @@ class ChunkedFile(object):
 
 class Store(glance.store.base.Store):
 
-    datadir_opt = cfg.StrOpt('filesystem_store_datadir')
-
     def get_schemes(self):
         return ('file', 'filesystem')
 
@@ -108,25 +112,23 @@ class Store(glance.store.base.Store):
         this method. If the store was not able to successfully configure
         itself, it should raise `exception.BadStoreConfiguration`
         """
-        self.conf.register_opt(self.datadir_opt)
-
-        self.datadir = self.conf.filesystem_store_datadir
+        self.datadir = CONF.filesystem_store_datadir
         if self.datadir is None:
             reason = (_("Could not find %s in configuration options.") %
                       'filesystem_store_datadir')
-            logger.error(reason)
+            LOG.error(reason)
             raise exception.BadStoreConfiguration(store_name="filesystem",
                                                   reason=reason)
 
         if not os.path.exists(self.datadir):
             msg = _("Directory to write image files does not exist "
                     "(%s). Creating.") % self.datadir
-            logger.info(msg)
+            LOG.info(msg)
             try:
                 os.makedirs(self.datadir)
             except IOError:
                 reason = _("Unable to create datadir: %s") % self.datadir
-                logger.error(reason)
+                LOG.error(reason)
                 raise exception.BadStoreConfiguration(store_name="filesystem",
                                                       reason=reason)
 
@@ -146,7 +148,7 @@ class Store(glance.store.base.Store):
             raise exception.NotFound(_("Image file %s not found") % filepath)
         else:
             msg = _("Found image at %s. Returning in ChunkedFile.") % filepath
-            logger.debug(msg)
+            LOG.debug(msg)
             return (ChunkedFile(filepath), None)
 
     def delete(self, location):
@@ -164,7 +166,7 @@ class Store(glance.store.base.Store):
         fn = loc.path
         if os.path.exists(fn):
             try:
-                logger.debug(_("Deleting image at %(fn)s") % locals())
+                LOG.debug(_("Deleting image at %(fn)s") % locals())
                 os.unlink(fn)
             except OSError:
                 raise exception.Forbidden(_("You cannot delete file %s") % fn)
@@ -216,6 +218,6 @@ class Store(glance.store.base.Store):
 
         checksum_hex = checksum.hexdigest()
 
-        logger.debug(_("Wrote %(bytes_written)d bytes to %(filepath)s with "
-                     "checksum %(checksum_hex)s") % locals())
+        LOG.debug(_("Wrote %(bytes_written)d bytes to %(filepath)s with "
+                    "checksum %(checksum_hex)s") % locals())
         return ('file://%s' % filepath, bytes_written, checksum_hex)

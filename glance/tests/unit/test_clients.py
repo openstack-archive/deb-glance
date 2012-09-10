@@ -18,19 +18,19 @@
 import datetime
 import os
 import tempfile
-import unittest
 
 from glance import client
 from glance.common import client as base_client
 from glance.common import exception
 from glance.common import utils
-from glance.registry.db import api as db_api
-from glance.registry.db import models as db_models
+from glance import context
+from glance.db.sqlalchemy import api as db_api
+from glance.db.sqlalchemy import models as db_models
+from glance.openstack.common import timeutils
 from glance.registry import client as rclient
 from glance.tests.unit import base
 from glance.tests import utils as test_utils
 
-CONF = {'sql_connection': 'sqlite://'}
 
 _gen_uuid = utils.generate_uuid
 
@@ -38,7 +38,7 @@ UUID1 = _gen_uuid()
 UUID2 = _gen_uuid()
 
 
-class TestBadClients(unittest.TestCase):
+class TestBadClients(test_utils.BaseTestCase):
 
     """Test exceptions raised for bad clients"""
 
@@ -147,7 +147,7 @@ class TestRegistryClient(base.IsolatedUnitTest):
     def setUp(self):
         """Establish a clean test environment"""
         super(TestRegistryClient, self).setUp()
-        db_api.configure_db(self.conf)
+        db_api.configure_db()
         self.context = context.RequestContext(is_admin=True)
         self.FIXTURES = [
             {'id': UUID1,
@@ -156,8 +156,8 @@ class TestRegistryClient(base.IsolatedUnitTest):
              'disk_format': 'ami',
              'container_format': 'ami',
              'is_public': False,
-             'created_at': datetime.datetime.utcnow(),
-             'updated_at': datetime.datetime.utcnow(),
+             'created_at': timeutils.utcnow(),
+             'updated_at': timeutils.utcnow(),
              'deleted_at': None,
              'deleted': False,
              'checksum': None,
@@ -170,8 +170,8 @@ class TestRegistryClient(base.IsolatedUnitTest):
              'disk_format': 'vhd',
              'container_format': 'ovf',
              'is_public': True,
-             'created_at': datetime.datetime.utcnow(),
-             'updated_at': datetime.datetime.utcnow(),
+             'created_at': timeutils.utcnow(),
+             'updated_at': timeutils.utcnow(),
              'deleted_at': None,
              'deleted': False,
              'checksum': None,
@@ -418,7 +418,7 @@ class TestRegistryClient(base.IsolatedUnitTest):
         Tests that the /images registry API returns list of
         public images sorted by created_at in ascending order.
         """
-        now = datetime.datetime.utcnow()
+        now = timeutils.utcnow()
         time1 = now + datetime.timedelta(seconds=5)
         time2 = now
 
@@ -460,7 +460,7 @@ class TestRegistryClient(base.IsolatedUnitTest):
         Tests that the /images registry API returns list of
         public images sorted by updated_at in descending order.
         """
-        now = datetime.datetime.utcnow()
+        now = timeutils.utcnow()
         time1 = now + datetime.timedelta(seconds=5)
         time2 = now
 
@@ -816,17 +816,17 @@ class TestRegistryClient(base.IsolatedUnitTest):
 
     def test_get_image_details_with_changes_since(self):
         """Tests that a detailed call can be filtered by size_min"""
-        dt1 = datetime.datetime.utcnow() - datetime.timedelta(1)
-        iso1 = utils.isotime(dt1)
+        dt1 = timeutils.utcnow() - datetime.timedelta(1)
+        iso1 = timeutils.isotime(dt1)
 
-        dt2 = datetime.datetime.utcnow() + datetime.timedelta(1)
-        iso2 = utils.isotime(dt2)
+        dt2 = timeutils.utcnow() + datetime.timedelta(1)
+        iso2 = timeutils.isotime(dt2)
 
-        dt3 = datetime.datetime.utcnow() + datetime.timedelta(2)
-        iso3 = utils.isotime(dt3)
+        dt3 = timeutils.utcnow() + datetime.timedelta(2)
+        iso3 = timeutils.isotime(dt3)
 
-        dt4 = datetime.datetime.utcnow() + datetime.timedelta(3)
-        iso4 = utils.isotime(dt4)
+        dt4 = timeutils.utcnow() + datetime.timedelta(3)
+        iso4 = timeutils.isotime(dt4)
 
         UUID3 = _gen_uuid()
         extra_fixture = {'id': UUID3,
@@ -1138,7 +1138,12 @@ class TestRegistryClient(base.IsolatedUnitTest):
         orig_num_images = len(self.client.get_images())
 
         # Delete image #2
-        self.assertTrue(self.client.delete_image(UUID2))
+        image = self.FIXTURES[1]
+        deleted_image = self.client.delete_image(image['id'])
+        self.assertTrue(deleted_image)
+        self.assertEquals(image['id'], deleted_image['id'])
+        self.assertTrue(deleted_image['deleted'])
+        self.assertTrue(deleted_image['deleted_at'])
 
         # Verify one less image
         new_num_images = len(self.client.get_images())
@@ -1169,21 +1174,16 @@ class TestRegistryClient(base.IsolatedUnitTest):
         num_members = len(memb_list)
         self.assertEquals(num_members, 0)
 
-    def test_replace_members(self):
+    def test_add_replace_members(self):
         """Tests replacing image members"""
-        self.assertRaises(exception.NotAuthenticated,
-                          self.client.replace_members, UUID2,
-                          dict(member_id='pattieblack'))
+        self.assertTrue(self.client.add_member(UUID2, 'pattieblack'))
+        self.assertTrue(self.client.replace_members(UUID2,
+                          dict(member_id='pattieblack2')))
 
-    def test_add_member(self):
-        """Tests adding image members"""
-        self.assertRaises(exception.NotAuthenticated,
-                          self.client.add_member, UUID2, 'pattieblack')
-
-    def test_delete_member(self):
+    def test_add_delete_member(self):
         """Tests deleting image members"""
-        self.assertRaises(exception.NotAuthenticated,
-                          self.client.delete_member, UUID2, 'pattieblack')
+        self.client.add_member(UUID2, 'pattieblack')
+        self.assertTrue(self.client.delete_member(UUID2, 'pattieblack'))
 
 
 class TestClient(base.IsolatedUnitTest):
@@ -1196,7 +1196,7 @@ class TestClient(base.IsolatedUnitTest):
     def setUp(self):
         """Establish a clean test environment"""
         super(TestClient, self).setUp()
-        db_api.configure_db(self.conf)
+        db_api.configure_db()
         self.client = client.Client("0.0.0.0")
         self.FIXTURES = [
             {'id': UUID1,
@@ -1205,8 +1205,8 @@ class TestClient(base.IsolatedUnitTest):
              'disk_format': 'ami',
              'container_format': 'ami',
              'is_public': False,
-             'created_at': datetime.datetime.utcnow(),
-             'updated_at': datetime.datetime.utcnow(),
+             'created_at': timeutils.utcnow(),
+             'updated_at': timeutils.utcnow(),
              'deleted_at': None,
              'deleted': False,
              'checksum': None,
@@ -1219,8 +1219,8 @@ class TestClient(base.IsolatedUnitTest):
              'disk_format': 'vhd',
              'container_format': 'ovf',
              'is_public': True,
-             'created_at': datetime.datetime.utcnow(),
-             'updated_at': datetime.datetime.utcnow(),
+             'created_at': timeutils.utcnow(),
+             'updated_at': timeutils.utcnow(),
              'deleted_at': None,
              'deleted': False,
              'checksum': None,
@@ -1534,17 +1534,17 @@ class TestClient(base.IsolatedUnitTest):
 
     def test_get_image_details_with_changes_since(self):
         """Tests that a detailed call can be filtered by size_min"""
-        dt1 = datetime.datetime.utcnow() - datetime.timedelta(1)
-        iso1 = utils.isotime(dt1)
+        dt1 = timeutils.utcnow() - datetime.timedelta(1)
+        iso1 = timeutils.isotime(dt1)
 
-        dt2 = datetime.datetime.utcnow() + datetime.timedelta(1)
-        iso2 = utils.isotime(dt2)
+        dt2 = timeutils.utcnow() + datetime.timedelta(1)
+        iso2 = timeutils.isotime(dt2)
 
-        dt3 = datetime.datetime.utcnow() + datetime.timedelta(2)
-        iso3 = utils.isotime(dt3)
+        dt3 = timeutils.utcnow() + datetime.timedelta(2)
+        iso3 = timeutils.isotime(dt3)
 
-        dt4 = datetime.datetime.utcnow() + datetime.timedelta(3)
-        iso4 = utils.isotime(dt4)
+        dt4 = timeutils.utcnow() + datetime.timedelta(3)
+        iso4 = timeutils.isotime(dt4)
 
         UUID3 = _gen_uuid()
         extra_fixture = {'id': UUID3,
@@ -2004,6 +2004,29 @@ class TestClient(base.IsolatedUnitTest):
                           fixture,
                           image_data_fixture)
 
+    def test_add_image_with_unsupported_feature(self):
+        """Tests that UnsupportedHeaderFeature is raised when image is added"""
+        fixture = {
+            'name': 'fake public image',
+            'is_public': True,
+            'disk_format': 'vhd',
+            'container_format': 'ovf',
+            'size': 19,
+            'location': "http://localhost/glance-tests/2"
+        }
+
+        feature_fixture = {
+            'content-type': 'bad content type',
+            'content-length': '0',
+            'x-image-meta-size': '0'
+        }
+
+        for k, v in feature_fixture.items():
+            self.assertRaises(exception.UnsupportedHeaderFeature,
+                              self.client.add_image,
+                              None,
+                              features={k: v})
+
     def test_update_image(self):
         """Tests that the /images PUT registry API updates the image"""
         fixture = {'name': 'fake public image #2',
@@ -2030,6 +2053,25 @@ class TestClient(base.IsolatedUnitTest):
                           self.client.update_image,
                           _gen_uuid(),
                           fixture)
+
+    def test_update_image_with_unsupported_feature(self):
+        """Tests that UnsupportedHeaderFeature is raised during update"""
+        fixture = {
+            'name': 'fake public image #2'
+        }
+
+        feature_fixture = {
+            'content-type': 'bad content-type',
+            'content-length': '0',
+            'x-image-meta-size': '0'
+        }
+
+        for k, v in feature_fixture.items():
+            self.assertRaises(exception.UnsupportedHeaderFeature,
+                              self.client.update_image,
+                              UUID2,
+                              image_meta=fixture,
+                              features={k: v})
 
     def test_delete_image(self):
         """Tests that image metadata is deleted properly"""
@@ -2068,25 +2110,22 @@ class TestClient(base.IsolatedUnitTest):
         num_members = len(memb_list)
         self.assertEquals(num_members, 0)
 
-    def test_replace_members(self):
+    def test_add_replace_members(self):
         """Tests replacing image members"""
-        self.assertRaises(exception.NotAuthenticated,
-                          self.client.replace_members, UUID2,
-                          dict(member_id='pattieblack'))
+        self.assertTrue(self.client.add_member(UUID2, 'pattieblack'))
+        self.assertTrue(self.client.replace_members(UUID2,
+                          dict(member_id='pattieblack2')))
 
-    def test_add_member(self):
-        """Tests adding image members"""
-        self.assertRaises(exception.NotAuthenticated,
-                          self.client.add_member, UUID2, 'pattieblack')
-
-    def test_delete_member(self):
+    def test_add_delete_member(self):
         """Tests deleting image members"""
-        self.assertRaises(exception.NotAuthenticated,
-                          self.client.delete_member, UUID2, 'pattieblack')
+        self.assertTrue(self.client.add_member(UUID2, 'pattieblack'))
+        self.assertTrue(self.client.delete_member(UUID2, 'pattieblack'))
 
 
-class TestConfigureClientFromURL(unittest.TestCase):
+class TestConfigureClientFromURL(test_utils.BaseTestCase):
+
     def setUp(self):
+        super(TestConfigureClientFromURL, self).setUp()
         self.client = client.Client("0.0.0.0")
 
     def assertConfiguration(self, url, host, port, use_ssl, doc_root):

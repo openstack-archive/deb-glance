@@ -18,13 +18,13 @@
 """Tests the filesystem backend store"""
 
 import errno
-import StringIO
 import hashlib
+import StringIO
 
 from glance.common import exception
 from glance.common import utils
-from glance.store.location import get_location_from_uri
 from glance.store.filesystem import Store, ChunkedFile
+from glance.store.location import get_location_from_uri
 from glance.tests.unit import base
 
 
@@ -35,7 +35,7 @@ class TestStore(base.IsolatedUnitTest):
         super(TestStore, self).setUp()
         self.orig_chunksize = ChunkedFile.CHUNKSIZE
         ChunkedFile.CHUNKSIZE = 10
-        self.store = Store(self.conf)
+        self.store = Store()
 
     def tearDown(self):
         """Clear the test environment"""

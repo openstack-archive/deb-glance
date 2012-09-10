@@ -19,8 +19,6 @@
 Controller for Image Cache Management API
 """
 
-import logging
-
 import webob.exc
 
 from glance.api import policy
@@ -29,18 +27,15 @@ from glance.common import exception
 from glance.common import wsgi
 from glance import image_cache
 
-logger = logging.getLogger(__name__)
-
 
 class Controller(controller.BaseController):
     """
     A controller for managing cached images.
     """
 
-    def __init__(self, conf):
-        self.conf = conf
-        self.cache = image_cache.ImageCache(self.conf)
-        self.policy = policy.Enforcer(conf)
+    def __init__(self):
+        self.cache = image_cache.ImageCache()
+        self.policy = policy.Enforcer()
 
     def _enforce(self, req):
         """Authorize request against 'manage_image_cache' policy"""
@@ -125,8 +120,8 @@ class CachedImageSerializer(wsgi.JSONResponseSerializer):
     pass
 
 
-def create_resource(conf):
+def create_resource():
     """Cached Images resource factory method"""
     deserializer = CachedImageDeserializer()
     serializer = CachedImageSerializer()
-    return wsgi.Resource(Controller(conf), deserializer, serializer)
+    return wsgi.Resource(Controller(), deserializer, serializer)

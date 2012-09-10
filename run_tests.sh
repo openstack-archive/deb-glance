@@ -39,25 +39,35 @@ noseargs=
 wrapper=""
 just_pep8=0
 
+export NOSE_WITH_OPENSTACK=1
+export NOSE_OPENSTACK_COLOR=1
+export NOSE_OPENSTACK_RED=0.05
+export NOSE_OPENSTACK_YELLOW=0.025
+export NOSE_OPENSTACK_SHOW_ELAPSED=1
+export NOSE_OPENSTACK_STDOUT=1
+
 for arg in "$@"; do
   process_option $arg
 done
 
 function run_tests {
+  # Cleanup *pyc
+  ${wrapper} find . -type f -name "*.pyc" -delete
   # Just run the test suites in current environment
   ${wrapper} rm -f tests.sqlite
-  ${wrapper} $NOSETESTS 2> run_tests.err.log
+  ${wrapper} $NOSETESTS
 }
 
 function run_pep8 {
   echo "Running pep8 ..."
+  PEP8_EXCLUDE=".venv,.tox,dist,doc,openstack"
   PEP8_OPTIONS="--exclude=$PEP8_EXCLUDE --repeat"
-  PEP8_INCLUDE="bin/* glance tools setup.py run_tests.py"
+  PEP8_INCLUDE="."
   ${wrapper} pep8 $PEP8_OPTIONS $PEP8_INCLUDE
 }
 
 
-NOSETESTS="python run_tests.py $noseargs"
+NOSETESTS="nosetests $noseargs"
 
 if [ $never_venv -eq 0 ]
 then

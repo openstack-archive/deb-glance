@@ -13,37 +13,33 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import unittest
-
-from glance.api.v2 import schemas
-import glance.schema
-import glance.tests.unit.utils as test_utils
-import glance.tests.utils
+import glance.api.v2.schemas
+import glance.tests.unit.utils as unit_test_utils
+import glance.tests.utils as test_utils
 
 
-class TestSchemasController(unittest.TestCase):
+class TestSchemasController(test_utils.BaseTestCase):
 
     def setUp(self):
         super(TestSchemasController, self).setUp()
-        conf = glance.tests.utils.TestConfigOpts()
-        self.schema_api = glance.schema.API(conf)
-        self.controller = schemas.Controller({}, self.schema_api)
-
-    def test_index(self):
-        req = test_utils.FakeRequest()
-        output = self.controller.index(req)
-        expected = {'links': [
-            {'rel': 'image', 'href': '/v2/schemas/image'},
-            {'rel': 'access', 'href': '/v2/schemas/image/access'},
-        ]}
-        self.assertEqual(expected, output)
+        self.controller = glance.api.v2.schemas.Controller()
 
     def test_image(self):
-        req = test_utils.FakeRequest()
+        req = unit_test_utils.get_fake_request()
         output = self.controller.image(req)
-        self.assertEqual(self.schema_api.get_schema('image'), output)
+        self.assertEqual(output['name'], 'image')
+        expected = set(['status', 'name', 'tags', 'checksum', 'created_at',
+                        'disk_format', 'updated_at', 'visibility', 'self',
+                        'file', 'container_format', 'schema', 'id', 'size',
+                        'direct_url', 'min_ram', 'min_disk', 'protected'])
+        self.assertEqual(set(output['properties'].keys()), expected)
 
-    def test_access(self):
-        req = test_utils.FakeRequest()
-        output = self.controller.access(req)
-        self.assertEqual(self.schema_api.get_schema('access'), output)
+    def test_images(self):
+        req = unit_test_utils.get_fake_request()
+        output = self.controller.images(req)
+        self.assertEqual(output['name'], 'images')
+        expected = set(['images', 'schema', 'first', 'next'])
+        self.assertEqual(set(output['properties'].keys()), expected)
+        expected = set(['{schema}', '{first}', '{next}'])
+        actual = set([link['href'] for link in output['links']])
+        self.assertEqual(actual, expected)

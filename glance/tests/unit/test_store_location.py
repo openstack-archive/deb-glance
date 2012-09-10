@@ -15,15 +15,14 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import unittest
-
+from glance import context
 from glance.common import exception
 import glance.store
-import glance.store.location as location
-import glance.store.http
 import glance.store.filesystem
-import glance.store.swift
+import glance.store.http
+import glance.store.location as location
 import glance.store.s3
+import glance.store.swift
 from glance.tests.unit import base
 from glance.tests import utils
 
@@ -31,11 +30,8 @@ from glance.tests import utils
 class TestStoreLocation(base.StoreClearingUnitTest):
 
     def setUp(self):
+        self.config(default_store='file')
         super(TestStoreLocation, self).setUp()
-        self.conf = utils.TestConfigOpts({
-            'known_stores': utils.get_default_stores(),
-            'default_store': 'file',
-        })
 
     def test_get_location_from_uri_back_to_uri(self):
         """
@@ -47,12 +43,17 @@ class TestStoreLocation(base.StoreClearingUnitTest):
             'https://user:pass@example.com:80/images/some-id',
             'http://images.oracle.com/123456',
             'swift://account%3Auser:pass@authurl.com/container/obj-id',
+            'swift://storeurl.com/container/obj-id',
             'swift+https://account%3Auser:pass@authurl.com/container/obj-id',
             's3://accesskey:secretkey@s3.amazonaws.com/bucket/key-id',
             's3://accesskey:secretwith/aslash@s3.amazonaws.com/bucket/key-id',
             's3+http://accesskey:secret@s3.amazonaws.com/bucket/key-id',
             's3+https://accesskey:secretkey@s3.amazonaws.com/bucket/key-id',
-            'file:///var/lib/glance/images/1']
+            'file:///var/lib/glance/images/1',
+            'rbd://imagename',
+            'rbd://fsid/pool/image/snap',
+            'rbd://%2F/%2F/%2F/%2F',
+            ]
 
         for uri in good_store_uris:
             loc = location.get_location_from_uri(uri)
@@ -147,8 +148,8 @@ class TestStoreLocation(base.StoreClearingUnitTest):
         loc.parse_uri(uri)
 
         self.assertEqual("swift", loc.scheme)
-        self.assertEqual("example.com", loc.authurl)
-        self.assertEqual("https://example.com", loc.swift_auth_url)
+        self.assertEqual("example.com", loc.auth_or_store_url)
+        self.assertEqual("https://example.com", loc.swift_url)
         self.assertEqual("images", loc.container)
         self.assertEqual("1", loc.obj)
         self.assertEqual(None, loc.user)
@@ -158,8 +159,8 @@ class TestStoreLocation(base.StoreClearingUnitTest):
         loc.parse_uri(uri)
 
         self.assertEqual("swift+https", loc.scheme)
-        self.assertEqual("authurl.com", loc.authurl)
-        self.assertEqual("https://authurl.com", loc.swift_auth_url)
+        self.assertEqual("authurl.com", loc.auth_or_store_url)
+        self.assertEqual("https://authurl.com", loc.swift_url)
         self.assertEqual("images", loc.container)
         self.assertEqual("1", loc.obj)
         self.assertEqual("user", loc.user)
@@ -170,8 +171,8 @@ class TestStoreLocation(base.StoreClearingUnitTest):
         loc.parse_uri(uri)
 
         self.assertEqual("swift+https", loc.scheme)
-        self.assertEqual("authurl.com/v1", loc.authurl)
-        self.assertEqual("https://authurl.com/v1", loc.swift_auth_url)
+        self.assertEqual("authurl.com/v1", loc.auth_or_store_url)
+        self.assertEqual("https://authurl.com/v1", loc.swift_url)
         self.assertEqual("container", loc.container)
         self.assertEqual("12345", loc.obj)
         self.assertEqual("user", loc.user)
@@ -183,12 +184,25 @@ class TestStoreLocation(base.StoreClearingUnitTest):
         loc.parse_uri(uri)
 
         self.assertEqual("swift+http", loc.scheme)
-        self.assertEqual("authurl.com/v1", loc.authurl)
-        self.assertEqual("http://authurl.com/v1", loc.swift_auth_url)
+        self.assertEqual("authurl.com/v1", loc.auth_or_store_url)
+        self.assertEqual("http://authurl.com/v1", loc.swift_url)
         self.assertEqual("container", loc.container)
         self.assertEqual("12345", loc.obj)
         self.assertEqual("a:user@example.com", loc.user)
         self.assertEqual("p@ss", loc.key)
+        self.assertEqual(uri, loc.get_uri())
+
+        # multitenant puts store URL in the location (not auth)
+        uri = ('swift+http://storeurl.com/v1/container/12345')
+        loc.parse_uri(uri)
+
+        self.assertEqual("swift+http", loc.scheme)
+        self.assertEqual("storeurl.com/v1", loc.auth_or_store_url)
+        self.assertEqual("http://storeurl.com/v1", loc.swift_url)
+        self.assertEqual("container", loc.container)
+        self.assertEqual("12345", loc.obj)
+        self.assertEqual(None, loc.user)
+        self.assertEqual(None, loc.key)
         self.assertEqual(uri, loc.get_uri())
 
         bad_uri = 'swif://'
@@ -263,6 +277,61 @@ class TestStoreLocation(base.StoreClearingUnitTest):
         bad_uri = 's3://user:pass@http://example.com:8080/images/1'
         self.assertRaises(exception.BadStoreUri, loc.parse_uri, bad_uri)
 
+    def test_rbd_store_location(self):
+        """
+        Test the specific StoreLocation for the RBD store
+        """
+        uri = 'rbd://imagename'
+        loc = glance.store.rbd.StoreLocation({})
+        loc.parse_uri(uri)
+
+        self.assertEqual('imagename', loc.image)
+        self.assertEqual(None, loc.fsid)
+        self.assertEqual(None, loc.pool)
+        self.assertEqual(None, loc.snapshot)
+
+        uri = 'rbd://fsid/pool/image/snap'
+        loc = glance.store.rbd.StoreLocation({})
+        loc.parse_uri(uri)
+
+        self.assertEqual('image', loc.image)
+        self.assertEqual('fsid', loc.fsid)
+        self.assertEqual('pool', loc.pool)
+        self.assertEqual('snap', loc.snapshot)
+
+        uri = 'rbd://%2f/%2f/%2f/%2f'
+        loc = glance.store.rbd.StoreLocation({})
+        loc.parse_uri(uri)
+
+        self.assertEqual('/', loc.image)
+        self.assertEqual('/', loc.fsid)
+        self.assertEqual('/', loc.pool)
+        self.assertEqual('/', loc.snapshot)
+
+        bad_uri = 'rbd:/image'
+        self.assertRaises(exception.BadStoreUri, loc.parse_uri, bad_uri)
+
+        bad_uri = 'rbd://image/extra'
+        self.assertRaises(exception.BadStoreUri, loc.parse_uri, bad_uri)
+
+        bad_uri = 'rbd://image/'
+        self.assertRaises(exception.BadStoreUri, loc.parse_uri, bad_uri)
+
+        bad_uri = 'http://image'
+        self.assertRaises(exception.BadStoreUri, loc.parse_uri, bad_uri)
+
+        bad_uri = 'http://fsid/pool/image/snap'
+        self.assertRaises(exception.BadStoreUri, loc.parse_uri, bad_uri)
+
+        bad_uri = 'rbd://fsid/pool/image/'
+        self.assertRaises(exception.BadStoreUri, loc.parse_uri, bad_uri)
+
+        bad_uri = 'rbd://fsid/pool/image/snap/'
+        self.assertRaises(exception.BadStoreUri, loc.parse_uri, bad_uri)
+
+        bad_uri = 'http://///'
+        self.assertRaises(exception.BadStoreUri, loc.parse_uri, bad_uri)
+
     def test_get_store_from_scheme(self):
         """
         Test that the backend returned by glance.store.get_backend_class
@@ -278,10 +347,12 @@ class TestStoreLocation(base.StoreClearingUnitTest):
             'file': glance.store.filesystem.Store,
             'filesystem': glance.store.filesystem.Store,
             'http': glance.store.http.Store,
-            'https': glance.store.http.Store}
+            'https': glance.store.http.Store,
+            'rbd': glance.store.rbd.Store}
 
+        ctx = context.RequestContext()
         for scheme, store in good_results.items():
-            store_obj = glance.store.get_store_from_scheme(scheme)
+            store_obj = glance.store.get_store_from_scheme(ctx, scheme)
             self.assertEqual(store_obj.__class__, store)
 
         bad_results = ['fil', 'swift+h', 'unknown']
@@ -289,4 +360,5 @@ class TestStoreLocation(base.StoreClearingUnitTest):
         for store in bad_results:
             self.assertRaises(exception.UnknownScheme,
                               glance.store.get_store_from_scheme,
+                              ctx,
                               store)

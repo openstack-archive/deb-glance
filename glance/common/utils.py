@@ -20,9 +20,14 @@
 System-level utilities and helper functions.
 """
 
-import datetime
 import errno
-import logging
+
+try:
+    from eventlet import sleep
+except ImportError:
+    from time import sleep
+
+import functools
 import os
 import platform
 import subprocess
@@ -30,13 +35,15 @@ import sys
 import uuid
 
 import iso8601
+from webob import exc
 
 from glance.common import exception
+import glance.openstack.common.log as logging
 
 
-logger = logging.getLogger(__name__)
+LOG = logging.getLogger(__name__)
 
-TIME_FORMAT = "%Y-%m-%dT%H:%M:%S"
+FEATURE_BLACKLIST = ['content-length', 'content-type', 'x-image-meta-size']
 
 
 def chunkreadable(iter, chunk_size=65536):
@@ -63,6 +70,59 @@ def chunkiter(fp, chunk_size=65536):
             yield chunk
         else:
             break
+
+
+def cooperative_iter(iter):
+    """
+    Return an iterator which schedules after each
+    iteration. This can prevent eventlet thread starvation.
+
+    :param iter: an iterator to wrap
+    """
+    try:
+        for chunk in iter:
+            sleep(0)
+            yield chunk
+    except Exception, err:
+        msg = _("Error: cooperative_iter exception %s") % err
+        LOG.error(msg)
+        raise
+
+
+def cooperative_read(fd):
+    """
+    Wrap a file descriptor's read with a partial function which schedules
+    after each read. This can prevent eventlet thread starvation.
+
+    :param fd: a file descriptor to wrap
+    """
+    def readfn(*args):
+        result = fd.read(*args)
+        sleep(0)
+        return result
+    return readfn
+
+
+class CooperativeReader(object):
+    """
+    An eventlet thread friendly class for reading in image data.
+
+    When accessing data either through the iterator or the read method
+    we perform a sleep to allow a co-operative yield. When there is more than
+    one image being uploaded/downloaded this prevents eventlet thread
+    starvation, ie allows all threads to be scheduled periodically rather than
+    having the same thread be continuously active.
+    """
+    def __init__(self, fd):
+        """
+        :param fd: Underlying image file object
+        """
+        self.fd = fd
+        if hasattr(fd, 'read'):
+            self.read = cooperative_read(fd)
+
+    def __iter__(self):
+        return cooperative_iter(self.fd.__iter__())
 
 
 def image_meta_to_http_headers(image_meta):
@@ -95,6 +155,8 @@ def add_features_to_http_headers(features, headers):
     """
     if features:
         for k, v in features.items():
+            if k.lower() in FEATURE_BLACKLIST:
+                raise exception.UnsupportedHeaderFeature(feature=k)
             if v is not None:
                 headers[k.lower()] = unicode(v)
 
@@ -147,27 +209,6 @@ def bool_from_string(subject):
     return False
 
 
-def import_class(import_str):
-    """Returns a class from a string including module and class"""
-    mod_str, _sep, class_str = import_str.rpartition('.')
-    try:
-        __import__(mod_str)
-        return getattr(sys.modules[mod_str], class_str)
-    except (ImportError, ValueError, AttributeError), e:
-        raise exception.ImportFailure(import_str=import_str,
-                                      reason=e)
-
-
-def import_object(import_str):
-    """Returns an object including a module or module and class"""
-    try:
-        __import__(import_str)
-        return sys.modules[import_str]
-    except ImportError:
-        cls = import_class(import_str)
-        return cls()
-
-
 def generate_uuid():
     return str(uuid.uuid4())
 
@@ -178,32 +219,6 @@ def is_uuid_like(value):
         return True
     except Exception:
         return False
-
-
-def isotime(at=None):
-    """Stringify time in ISO 8601 format"""
-    if not at:
-        at = datetime.datetime.utcnow()
-    str = at.strftime(TIME_FORMAT)
-    tz = at.tzinfo.tzname(None) if at.tzinfo else 'UTC'
-    str += ('Z' if tz == 'UTC' else tz)
-    return str
-
-
-def parse_isotime(timestr):
-    """Parse time from ISO 8601 format"""
-    try:
-        return iso8601.parse_date(timestr)
-    except iso8601.ParseError as e:
-        raise ValueError(e.message)
-    except TypeError as e:
-        raise ValueError(e.message)
-
-
-def normalize_time(timestamp):
-    """Normalize time in arbitrary timezone to UTC"""
-    offset = timestamp.utcoffset()
-    return timestamp.replace(tzinfo=None) - offset if offset else timestamp
 
 
 def safe_mkdirs(path):
@@ -349,3 +364,16 @@ def get_terminal_size():
             raise exception.Invalid()
 
     return height_width[0], height_width[1]
+
+
+def mutating(func):
+    """Decorator to enforce read-only logic"""
+    @functools.wraps(func)
+    def wrapped(self, req, *args, **kwargs):
+        if req.context.read_only:
+            msg = _("Read-only access")
+            LOG.debug(msg)
+            raise exc.HTTPForbidden(msg, request=req,
+                                    content_type="text/plain")
+        return func(self, req, *args, **kwargs)
+    return wrapped

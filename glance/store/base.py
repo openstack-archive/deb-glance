@@ -1,6 +1,7 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
 # Copyright 2011 OpenStack, LLC
+# Copyright 2012 RedHat Inc.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -17,26 +18,23 @@
 
 """Base class for all storage backends"""
 
-import logging
-
 from glance.common import exception
-from glance.common import utils
+from glance.openstack.common import importutils
+import glance.openstack.common.log as logging
 
-logger = logging.getLogger('glance.store.base')
+LOG = logging.getLogger(__name__)
 
 
 class Store(object):
 
     CHUNKSIZE = (16 * 1024 * 1024)  # 16M
 
-    def __init__(self, conf):
+    def __init__(self, context=None):
         """
         Initialize the Store
-
-        :param conf: Optional dictionary of configuration options
         """
-        self.conf = conf
         self.store_location_class = None
+        self.context = context
         self.configure()
 
         try:
@@ -44,7 +42,7 @@ class Store(object):
         except exception.BadStoreConfiguration:
             msg = _("Failed to configure store correctly. "
                     "Disabling add method.")
-            logger.error(msg)
+            LOG.error(msg)
             self.add = self.add_disabled
 
     def configure(self):
@@ -67,8 +65,8 @@ class Store(object):
         """
         if not self.store_location_class:
             class_name = "%s.StoreLocation" % (self.__module__)
-            logger.debug("Late loading location class %s", class_name)
-            self.store_location_class = utils.import_class(class_name)
+            LOG.debug("Late loading location class %s", class_name)
+            self.store_location_class = importutils.import_class(class_name)
         return self.store_location_class
 
     def configure_add(self):
@@ -136,5 +134,21 @@ class Store(object):
         :location `glance.store.location.Location` object, supplied
                   from glance.store.location.get_location_from_uri()
         :raises `glance.exception.NotFound` if image does not exist
+        """
+        raise NotImplementedError
+
+    def set_acls(self, location, public=False, read_tenants=[],
+                 write_tenants=[]):
+        """
+        Sets the read and write access control list for an image in the
+        backend store.
+
+        :location `glance.store.location.Location` object, supplied
+                  from glance.store.location.get_location_from_uri()
+        :public A boolean indicating whether the image should be public.
+        :read_tenants A list of tenant strings which should be granted
+                      read access for an image.
+        :write_tenants A list of tenant strings which should be granted
+                      write access for an image.
         """
         raise NotImplementedError

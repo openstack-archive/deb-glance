@@ -19,21 +19,24 @@ import datetime
 import hashlib
 import httplib
 import json
-import unittest
 
+import routes
+from sqlalchemy import exc
 import stubout
 import webob
 
-from sqlalchemy import exc
+import glance.api.middleware.context as context_middleware
+import glance.api.common
 from glance.api.v1 import images
 from glance.api.v1 import router
-from glance.common import context
 from glance.common import utils
+import glance.context
+from glance.db.sqlalchemy import api as db_api
+from glance.db.sqlalchemy import models as db_models
+from glance.openstack.common import timeutils
 from glance.registry.api import v1 as rserver
-from glance.registry.db import api as db_api
-from glance.registry.db import models as db_models
-from glance.tests import utils as test_utils
 from glance.tests.unit import base
+from glance.tests import utils as test_utils
 
 
 _gen_uuid = utils.generate_uuid
@@ -42,10 +45,11 @@ UUID1 = _gen_uuid()
 UUID2 = _gen_uuid()
 
 
-class TestRegistryDb(unittest.TestCase):
+class TestRegistryDb(test_utils.BaseTestCase):
 
     def setUp(self):
         """Establish a clean test environment"""
+        super(TestRegistryDb, self).setUp()
         self.stubs = stubout.StubOutForTesting()
         self.orig_engine = db_api._ENGINE
 
@@ -55,16 +59,13 @@ class TestRegistryDb(unittest.TestCase):
         API controller results in a) an Exception being thrown and b)
         a message being logged to the registry log file...
         """
-        bad_conf = test_utils.TestConfigOpts({
-                'verbose': True,
-                'debug': True,
-                'sql_connection': 'baddriver:///'
-                })
+        self.config(verbose=True, debug=True, sql_connection='baddriver:///')
+
         # We set this to None to trigger a reconfigure, otherwise
         # other modules may have already correctly configured the DB
         db_api._ENGINE = None
         self.assertRaises((ImportError, exc.ArgumentError),
-            db_api.configure_db, bad_conf)
+                          db_api.configure_db)
         exc_raised = False
         self.log_written = False
 
@@ -72,9 +73,9 @@ class TestRegistryDb(unittest.TestCase):
             if 'Error configuring registry database' in msg:
                 self.log_written = True
 
-        self.stubs.Set(db_api.logger, 'error', fake_log_error)
+        self.stubs.Set(db_api.LOG, 'error', fake_log_error)
         try:
-            api_obj = rserver.API(bad_conf)
+            api_obj = rserver.API(routes.Mapper())
         except exc.ArgumentError:
             exc_raised = True
         except ImportError:
@@ -85,6 +86,7 @@ class TestRegistryDb(unittest.TestCase):
 
     def tearDown(self):
         """Clear the test environment"""
+        super(TestRegistryDb, self).setUp()
         db_api._ENGINE = self.orig_engine
         self.stubs.UnsetAll()
 
@@ -93,8 +95,8 @@ class TestRegistryAPI(base.IsolatedUnitTest):
     def setUp(self):
         """Establish a clean test environment"""
         super(TestRegistryAPI, self).setUp()
-        self.api = context.UnauthenticatedContextMiddleware(
-                rserver.API(self.conf), self.conf)
+        self.mapper = routes.Mapper()
+        self.api = test_utils.FakeAuthMiddleware(rserver.API(self.mapper))
         self.FIXTURES = [
             {'id': UUID1,
              'name': 'fake image #1',
@@ -102,8 +104,8 @@ class TestRegistryAPI(base.IsolatedUnitTest):
              'disk_format': 'ami',
              'container_format': 'ami',
              'is_public': False,
-             'created_at': datetime.datetime.utcnow(),
-             'updated_at': datetime.datetime.utcnow(),
+             'created_at': timeutils.utcnow(),
+             'updated_at': timeutils.utcnow(),
              'deleted_at': None,
              'deleted': False,
              'checksum': None,
@@ -118,8 +120,8 @@ class TestRegistryAPI(base.IsolatedUnitTest):
              'disk_format': 'vhd',
              'container_format': 'ovf',
              'is_public': True,
-             'created_at': datetime.datetime.utcnow(),
-             'updated_at': datetime.datetime.utcnow(),
+             'created_at': timeutils.utcnow(),
+             'updated_at': timeutils.utcnow(),
              'deleted_at': None,
              'deleted': False,
              'checksum': None,
@@ -128,8 +130,8 @@ class TestRegistryAPI(base.IsolatedUnitTest):
              'size': 19,
              'location': "file:///%s/%s" % (self.test_dir, UUID2),
              'properties': {}}]
-        self.context = context.RequestContext(is_admin=True)
-        db_api.configure_db(self.conf)
+        self.context = glance.context.RequestContext(is_admin=True)
+        db_api.configure_db()
         self.destroy_fixtures()
         self.create_fixtures()
 
@@ -233,9 +235,9 @@ class TestRegistryAPI(base.IsolatedUnitTest):
         Tests that the /images registry API returns list of
         public images that conforms to a marker query param
         """
-        time1 = datetime.datetime.utcnow() + datetime.timedelta(seconds=5)
-        time2 = datetime.datetime.utcnow() + datetime.timedelta(seconds=4)
-        time3 = datetime.datetime.utcnow()
+        time1 = timeutils.utcnow() + datetime.timedelta(seconds=5)
+        time2 = timeutils.utcnow() + datetime.timedelta(seconds=4)
+        time3 = timeutils.utcnow()
 
         UUID3 = _gen_uuid()
         extra_fixture = {'id': UUID3,
@@ -453,9 +455,9 @@ class TestRegistryAPI(base.IsolatedUnitTest):
         Tests that the /images registry API returns list of
         public images that conforms to a default sort key/dir
         """
-        time1 = datetime.datetime.utcnow() + datetime.timedelta(seconds=5)
-        time2 = datetime.datetime.utcnow() + datetime.timedelta(seconds=4)
-        time3 = datetime.datetime.utcnow()
+        time1 = timeutils.utcnow() + datetime.timedelta(seconds=5)
+        time2 = timeutils.utcnow() + datetime.timedelta(seconds=4)
+        time3 = timeutils.utcnow()
 
         UUID3 = _gen_uuid()
         extra_fixture = {'id': UUID3,
@@ -731,7 +733,7 @@ class TestRegistryAPI(base.IsolatedUnitTest):
         Tests that the /images registry API returns list of
         public images sorted by created_at in ascending order.
         """
-        now = datetime.datetime.utcnow()
+        now = timeutils.utcnow()
         time1 = now + datetime.timedelta(seconds=5)
         time2 = now
 
@@ -777,7 +779,7 @@ class TestRegistryAPI(base.IsolatedUnitTest):
         Tests that the /images registry API returns list of
         public images sorted by updated_at in descending order.
         """
-        now = datetime.datetime.utcnow()
+        now = timeutils.utcnow()
         time1 = now + datetime.timedelta(seconds=5)
         time2 = now
 
@@ -1259,18 +1261,18 @@ class TestRegistryAPI(base.IsolatedUnitTest):
         Tests that the /images/detail registry API returns list of
         public images that have a size less than or equal to size_max
         """
-        dt1 = datetime.datetime.utcnow() - datetime.timedelta(1)
-        iso1 = utils.isotime(dt1)
+        dt1 = timeutils.utcnow() - datetime.timedelta(1)
+        iso1 = timeutils.isotime(dt1)
 
-        dt2 = datetime.datetime.utcnow() + datetime.timedelta(1)
-        iso2 = utils.isotime(dt2)
+        dt2 = timeutils.utcnow() + datetime.timedelta(1)
+        iso2 = timeutils.isotime(dt2)
 
-        image_ts = datetime.datetime.utcnow() + datetime.timedelta(2)
+        image_ts = timeutils.utcnow() + datetime.timedelta(2)
         hour_before = image_ts.strftime('%Y-%m-%dT%H:%M:%S%%2B01:00')
         hour_after = image_ts.strftime('%Y-%m-%dT%H:%M:%S-01:00')
 
-        dt4 = datetime.datetime.utcnow() + datetime.timedelta(3)
-        iso4 = utils.isotime(dt4)
+        dt4 = timeutils.utcnow() + datetime.timedelta(3)
+        iso4 = timeutils.isotime(dt4)
 
         UUID3 = _gen_uuid()
         extra_fixture = {'id': UUID3,
@@ -1856,6 +1858,21 @@ class TestRegistryAPI(base.IsolatedUnitTest):
         new_num_images = len(res_dict['images'])
         self.assertEquals(new_num_images, orig_num_images - 1)
 
+    def test_delete_image_response(self):
+        """Tests that the registry API delete returns the image metadata"""
+
+        image = self.FIXTURES[0]
+        req = webob.Request.blank('/images/%s' % image['id'])
+        req.method = 'DELETE'
+        res = req.get_response(self.api)
+
+        self.assertEquals(res.status_int, 200)
+        deleted_image = json.loads(res.body)['image']
+
+        self.assertEquals(image['id'], deleted_image['id'])
+        self.assertTrue(deleted_image['deleted'])
+        self.assertTrue(deleted_image['deleted_at'])
+
     def test_delete_image_not_existing(self):
         """
         Tests proper exception is raised if attempt to delete
@@ -1912,6 +1929,8 @@ class TestRegistryAPI(base.IsolatedUnitTest):
         """
         Tests replacing image members raises right exception
         """
+        self.api = test_utils.FakeAuthMiddleware(rserver.API(self.mapper),
+                                                     is_admin=False)
         fixture = dict(member_id='pattieblack')
 
         req = webob.Request.blank('/images/%s/members' % UUID2)
@@ -1926,6 +1945,8 @@ class TestRegistryAPI(base.IsolatedUnitTest):
         """
         Tests adding image members raises right exception
         """
+        self.api = test_utils.FakeAuthMiddleware(rserver.API(self.mapper),
+                                                     is_admin=False)
         req = webob.Request.blank('/images/%s/members/pattieblack' % UUID2)
         req.method = 'PUT'
 
@@ -1936,6 +1957,8 @@ class TestRegistryAPI(base.IsolatedUnitTest):
         """
         Tests deleting image members raises right exception
         """
+        self.api = test_utils.FakeAuthMiddleware(rserver.API(self.mapper),
+                                                     is_admin=False)
         req = webob.Request.blank('/images/%s/members/pattieblack' % UUID2)
         req.method = 'DELETE'
 
@@ -1947,8 +1970,8 @@ class TestGlanceAPI(base.IsolatedUnitTest):
     def setUp(self):
         """Establish a clean test environment"""
         super(TestGlanceAPI, self).setUp()
-        self.api = context.UnauthenticatedContextMiddleware(
-                router.API(self.conf), self.conf)
+        self.mapper = routes.Mapper()
+        self.api = test_utils.FakeAuthMiddleware(router.API(self.mapper))
         self.FIXTURES = [
             {'id': UUID1,
              'name': 'fake image #1',
@@ -1956,8 +1979,8 @@ class TestGlanceAPI(base.IsolatedUnitTest):
              'disk_format': 'ami',
              'container_format': 'ami',
              'is_public': False,
-             'created_at': datetime.datetime.utcnow(),
-             'updated_at': datetime.datetime.utcnow(),
+             'created_at': timeutils.utcnow(),
+             'updated_at': timeutils.utcnow(),
              'deleted_at': None,
              'deleted': False,
              'checksum': None,
@@ -1970,16 +1993,16 @@ class TestGlanceAPI(base.IsolatedUnitTest):
              'disk_format': 'vhd',
              'container_format': 'ovf',
              'is_public': True,
-             'created_at': datetime.datetime.utcnow(),
-             'updated_at': datetime.datetime.utcnow(),
+             'created_at': timeutils.utcnow(),
+             'updated_at': timeutils.utcnow(),
              'deleted_at': None,
              'deleted': False,
              'checksum': None,
              'size': 19,
              'location': "file:///%s/%s" % (self.test_dir, UUID2),
              'properties': {}}]
-        self.context = context.RequestContext(is_admin=True)
-        db_api.configure_db(self.conf)
+        self.context = glance.context.RequestContext(is_admin=True)
+        db_api.configure_db()
         self.destroy_fixtures()
         self.create_fixtures()
 
@@ -2003,7 +2026,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
 
     def _do_test_defaulted_format(self, format_key, format_value):
         fixture_headers = {'x-image-meta-name': 'defaulted',
-                           'x-image-meta-location': 'http://foo.com/image',
+                           'x-image-meta-location': 'http://localhost:0/image',
                            format_key: format_value}
 
         req = webob.Request.blank("/images")
@@ -2026,7 +2049,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
     def test_bad_disk_format(self):
         fixture_headers = {'x-image-meta-store': 'bad',
                    'x-image-meta-name': 'bogus',
-                   'x-image-meta-location': 'http://example.com/image.tar.gz',
+                   'x-image-meta-location': 'http://localhost:0/image.tar.gz',
                    'x-image-meta-disk-format': 'invalid',
                    'x-image-meta-container-format': 'ami'}
 
@@ -2042,7 +2065,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
     def test_bad_container_format(self):
         fixture_headers = {'x-image-meta-store': 'bad',
                    'x-image-meta-name': 'bogus',
-                   'x-image-meta-location': 'http://example.com/image.tar.gz',
+                   'x-image-meta-location': 'http://localhost:0/image.tar.gz',
                    'x-image-meta-disk-format': 'vhd',
                    'x-image-meta-container-format': 'invalid'}
 
@@ -2095,7 +2118,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
 
         req = webob.Request.blank("/images/%s" % image_id)
         req.method = 'PUT'
-        req.headers['x-image-meta-location'] = 'http://example.com/images/123'
+        req.headers['x-image-meta-location'] = 'http://localhost:0/images/123'
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, httplib.OK)
 
@@ -2135,6 +2158,30 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req.body = "chunk00000remainder"
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, webob.exc.HTTPBadRequest.code)
+
+    def test_add_image_zero_size(self):
+        """Tests creating an active image with explicitly zero size"""
+        fixture_headers = {'x-image-meta-disk-format': 'ami',
+                           'x-image-meta-container-format': 'ami',
+                           'x-image-meta-size': '0',
+                           'x-image-meta-name': 'empty image'}
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, httplib.CREATED)
+
+        res_body = json.loads(res.body)['image']
+        self.assertEquals('active', res_body['status'])
+        image_id = res_body['id']
+
+        # GET empty image
+        req = webob.Request.blank("/images/%s" % image_id)
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 200)
+        self.assertEqual(len(res.body), 0)
 
     def test_add_image_bad_store(self):
         """Tests raises BadRequest for invalid store header"""
@@ -2506,18 +2553,18 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         Tests that the /images/detail registry API returns list of
         public images that have a size less than or equal to size_max
         """
-        dt1 = datetime.datetime.utcnow() - datetime.timedelta(1)
-        iso1 = utils.isotime(dt1)
+        dt1 = timeutils.utcnow() - datetime.timedelta(1)
+        iso1 = timeutils.isotime(dt1)
 
-        dt2 = datetime.datetime.utcnow() + datetime.timedelta(1)
-        iso2 = utils.isotime(dt2)
+        dt2 = timeutils.utcnow() + datetime.timedelta(1)
+        iso2 = timeutils.isotime(dt2)
 
-        image_ts = datetime.datetime.utcnow() + datetime.timedelta(2)
+        image_ts = timeutils.utcnow() + datetime.timedelta(2)
         hour_before = image_ts.strftime('%Y-%m-%dT%H:%M:%S%%2B01:00')
         hour_after = image_ts.strftime('%Y-%m-%dT%H:%M:%S-01:00')
 
-        dt4 = datetime.datetime.utcnow() + datetime.timedelta(3)
-        iso4 = utils.isotime(dt4)
+        dt4 = timeutils.utcnow() + datetime.timedelta(3)
+        iso4 = timeutils.isotime(dt4)
 
         UUID3 = _gen_uuid()
         extra_fixture = {'id': UUID3,
@@ -2943,6 +2990,8 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         """
         Tests replacing image members raises right exception
         """
+        self.api = test_utils.FakeAuthMiddleware(router.API(self.mapper),
+                                                     is_admin=False)
         fixture = dict(member_id='pattieblack')
 
         req = webob.Request.blank('/images/%s/members' % UUID2)
@@ -2957,6 +3006,8 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         """
         Tests adding image members raises right exception
         """
+        self.api = test_utils.FakeAuthMiddleware(router.API(self.mapper),
+                                                     is_admin=False)
         req = webob.Request.blank('/images/%s/members/pattieblack' % UUID2)
         req.method = 'PUT'
 
@@ -2967,6 +3018,8 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         """
         Tests deleting image members raises right exception
         """
+        self.api = test_utils.FakeAuthMiddleware(router.API(self.mapper),
+                                                     is_admin=False)
         req = webob.Request.blank('/images/%s/members/pattieblack' % UUID2)
         req.method = 'DELETE'
 
@@ -2980,10 +3033,11 @@ class TestImageSerializer(base.IsolatedUnitTest):
         super(TestImageSerializer, self).setUp()
         self.receiving_user = 'fake_user'
         self.receiving_tenant = 2
-        self.context = context.RequestContext(is_admin=True,
-                                              user=self.receiving_user,
-                                              tenant=self.receiving_tenant)
-        self.serializer = images.ImageSerializer(self.conf)
+        self.context = glance.context.RequestContext(
+                is_admin=True,
+                user=self.receiving_user,
+                tenant=self.receiving_tenant)
+        self.serializer = images.ImageSerializer()
 
         def image_iter():
             for x in ['chunk', '678911234', '56789']:
@@ -2998,8 +3052,8 @@ class TestImageSerializer(base.IsolatedUnitTest):
                  'disk_format': 'vhd',
                  'container_format': 'ovf',
                  'is_public': True,
-                 'created_at': datetime.datetime.utcnow(),
-                 'updated_at': datetime.datetime.utcnow(),
+                 'created_at': timeutils.utcnow(),
+                 'updated_at': timeutils.utcnow(),
                  'deleted_at': None,
                  'deleted': False,
                  'checksum': None,
@@ -3077,7 +3131,8 @@ class TestImageSerializer(base.IsolatedUnitTest):
 
         self.stubs.Set(self.serializer.notifier, 'info', fake_info)
 
-        self.serializer.image_send_notification(19, 19, image_meta, req)
+        glance.api.common.image_send_notification(19, 19, image_meta, req,
+                                                  self.serializer.notifier)
 
         self.assertTrue(called['notified'])
 
@@ -3106,47 +3161,7 @@ class TestImageSerializer(base.IsolatedUnitTest):
         self.stubs.Set(self.serializer.notifier, 'error', fake_error)
 
         #expected and actually sent bytes differ
-        self.serializer.image_send_notification(17, 19, image_meta, req)
+        glance.api.common.image_send_notification(17, 19, image_meta, req,
+                                                  self.serializer.notifier)
 
         self.assertTrue(called['notified'])
-
-
-class TestContextMiddleware(base.IsolatedUnitTest):
-    def _build_request(self, roles=None):
-        req = webob.Request.blank('/')
-        req.headers['x-auth-token'] = 'token1'
-        req.headers['x-identity-status'] = 'Confirmed'
-        req.headers['x-user-id'] = 'user1'
-        req.headers['x-tenant-id'] = 'tenant1'
-        _roles = roles or ['role1', 'role2']
-        req.headers['x-roles'] = ','.join(_roles)
-        return req
-
-    def _build_middleware(self, **extra_config):
-        for k, v in extra_config.items():
-            setattr(self.conf, k, v)
-        return context.ContextMiddleware(None, self.conf)
-
-    def test_header_parsing(self):
-        req = self._build_request()
-        self._build_middleware().process_request(req)
-        self.assertEqual(req.context.auth_tok, 'token1')
-        self.assertEqual(req.context.user, 'user1')
-        self.assertEqual(req.context.tenant, 'tenant1')
-        self.assertEqual(req.context.roles, ['role1', 'role2'])
-
-    def test_is_admin_flag(self):
-        # is_admin check should look for 'admin' role by default
-        req = self._build_request(roles=['admin', 'role2'])
-        self._build_middleware().process_request(req)
-        self.assertTrue(req.context.is_admin)
-
-        # without the 'admin' role, is_admin shoud be False
-        req = self._build_request()
-        self._build_middleware().process_request(req)
-        self.assertFalse(req.context.is_admin)
-
-        # if we change the admin_role attribute, we should be able to use it
-        req = self._build_request()
-        self._build_middleware(admin_role='role1').process_request(req)
-        self.assertTrue(req.context.is_admin)

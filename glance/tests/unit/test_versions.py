@@ -19,9 +19,9 @@ import json
 
 import webob
 
+from glance.api.middleware import version_negotiation
 from glance.api import versions
 from glance.tests.unit import base
-from glance.tests import utils
 
 
 class VersionsTest(base.IsolatedUnitTest):
@@ -29,29 +29,79 @@ class VersionsTest(base.IsolatedUnitTest):
     """Test the version information returned from the API service."""
 
     def test_get_version_list(self):
-        req = webob.Request.blank('/', base_url='http://0.0.0.0:9292/')
+        req = webob.Request.blank('/', base_url='http://127.0.0.1:9292/')
         req.accept = 'application/json'
-        config_opts = {'bind_host': '0.0.0.0', 'bind_port': 9292}
-        conf = utils.TestConfigOpts(config_opts)
-        res = versions.Controller(conf).index(req)
+        self.config(bind_host='127.0.0.1', bind_port=9292)
+        res = versions.Controller().index(req)
         self.assertEqual(res.status_int, 300)
         self.assertEqual(res.content_type, 'application/json')
         results = json.loads(res.body)['versions']
         expected = [
             {
-                'id': 'v2',
+                'id': 'v2.0',
                 'status': 'EXPERIMENTAL',
-                'links': [{'rel': 'self', 'href': 'http://0.0.0.0:9292/v2/'}],
+                'links': [{'rel': 'self',
+                           'href': 'http://127.0.0.1:9292/v2/'}],
             },
             {
                 'id': 'v1.1',
                 'status': 'CURRENT',
-                'links': [{'rel': 'self', 'href': 'http://0.0.0.0:9292/v1/'}],
+                'links': [{'rel': 'self',
+                           'href': 'http://127.0.0.1:9292/v1/'}],
             },
             {
                 'id': 'v1.0',
                 'status': 'SUPPORTED',
-                'links': [{'rel': 'self', 'href': 'http://0.0.0.0:9292/v1/'}],
+                'links': [{'rel': 'self',
+                           'href': 'http://127.0.0.1:9292/v1/'}],
             },
         ]
         self.assertEqual(results, expected)
+
+
+class VersionNegotiationTest(base.IsolatedUnitTest):
+
+    def setUp(self):
+        super(VersionNegotiationTest, self).setUp()
+        self.middleware = version_negotiation.VersionNegotiationFilter(None)
+
+    def test_request_url_v1(self):
+        request = webob.Request.blank('/v1/images')
+        self.middleware.process_request(request)
+        self.assertEqual('/v1/images', request.path_info)
+
+    def test_request_url_v1_0(self):
+        request = webob.Request.blank('/v1.0/images')
+        self.middleware.process_request(request)
+        self.assertEqual('/v1/images', request.path_info)
+
+    def test_request_url_v1_1(self):
+        request = webob.Request.blank('/v1.1/images')
+        self.middleware.process_request(request)
+        self.assertEqual('/v1/images', request.path_info)
+
+    def test_request_accept_v1(self):
+        request = webob.Request.blank('/images')
+        request.headers = {'accept': 'application/vnd.openstack.images-v1'}
+        self.middleware.process_request(request)
+        self.assertEqual('/v1/images', request.path_info)
+
+    def test_request_url_v2(self):
+        request = webob.Request.blank('/v2/images')
+        self.middleware.process_request(request)
+        self.assertEqual('/v2/images', request.path_info)
+
+    def test_request_url_v2_0(self):
+        request = webob.Request.blank('/v2.0/images')
+        self.middleware.process_request(request)
+        self.assertEqual('/v2/images', request.path_info)
+
+    def test_request_url_v2_1_unsupported(self):
+        request = webob.Request.blank('/v2.1/images')
+        resp = self.middleware.process_request(request)
+        self.assertTrue(isinstance(resp, versions.Controller))
+
+    def test_request_url_v3_unsupported(self):
+        request = webob.Request.blank('/v3/images')
+        resp = self.middleware.process_request(request)
+        self.assertTrue(isinstance(resp, versions.Controller))

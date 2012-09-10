@@ -14,17 +14,15 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-
-import logging
-
 from glance.notifier import strategy
+import glance.openstack.common.log as logging
 
 
 class LoggingStrategy(strategy.Strategy):
     """A notifier that calls logging when called."""
 
-    def __init__(self, conf):
-        self.logger = logging.getLogger('glance.notifier.logging_notifier')
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
 
     def warn(self, msg):
         self.logger.warn(msg)

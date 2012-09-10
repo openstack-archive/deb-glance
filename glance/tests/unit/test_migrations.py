@@ -27,7 +27,6 @@ if possible.
 import ConfigParser
 import datetime
 import os
-import unittest
 import urlparse
 
 from migrate.versioning.repository import Repository
@@ -35,13 +34,13 @@ from sqlalchemy import *
 from sqlalchemy.pool import NullPool
 
 from glance.common import exception
+import glance.db.sqlalchemy.migration as migration_api
+from glance.db.sqlalchemy import models
 from glance.openstack.common import cfg
-import glance.registry.db.migration as migration_api
-from glance.registry.db import models
 from glance.tests import utils
 
 
-class TestMigrations(unittest.TestCase):
+class TestMigrations(utils.BaseTestCase):
 
     """Test sqlalchemy-migrate migrations"""
 
@@ -51,13 +50,14 @@ class TestMigrations(unittest.TestCase):
     CONFIG_FILE_PATH = os.environ.get('GLANCE_TEST_MIGRATIONS_CONF',
                                       os.path.join('glance', 'tests', 'unit',
                                                    'test_migrations.conf'))
-    REPOSITORY_PATH = os.path.join('glance', 'registry', 'db', 'migrate_repo')
+    REPOSITORY_PATH = 'glance/db/sqlalchemy/migrate_repo'
     REPOSITORY = Repository(REPOSITORY_PATH)
 
     def __init__(self, *args, **kwargs):
         super(TestMigrations, self).__init__(*args, **kwargs)
 
     def setUp(self):
+        super(TestMigrations, self).setUp()
         # Load test databases from the config file. Only do this
         # once. No need to re-run this on each test...
         if not TestMigrations.TEST_DATABASES:
@@ -83,6 +83,7 @@ class TestMigrations(unittest.TestCase):
         self._reset_databases()
 
     def tearDown(self):
+        super(TestMigrations, self).tearDown()
         # We destroy the test data store between each test case,
         # and recreate it, which ensures that we have no side-effects
         # from the tests
@@ -145,10 +146,8 @@ class TestMigrations(unittest.TestCase):
         that there are no errors in the version scripts for each engine
         """
         for key, engine in self.engines.items():
-            conf = utils.TestConfigOpts({
-                    'sql_connection': TestMigrations.TEST_DATABASES[key]})
-            conf.register_opt(cfg.StrOpt('sql_connection'))
-            self._walk_versions(conf)
+            self.config(sql_connection=TestMigrations.TEST_DATABASES[key])
+            self._walk_versions()
 
     def test_version_control_existing_db(self):
         """
@@ -157,11 +156,9 @@ class TestMigrations(unittest.TestCase):
         without errors.
         """
         for key, engine in self.engines.items():
-            conf = utils.TestConfigOpts({
-                    'sql_connection': TestMigrations.TEST_DATABASES[key]})
-            conf.register_opt(cfg.StrOpt('sql_connection'))
+            self.config(sql_connection=TestMigrations.TEST_DATABASES[key])
             self._create_unversioned_001_db(engine)
-            self._walk_versions(conf, initial_version=1)
+            self._walk_versions(initial_version=1)
 
     def _create_unversioned_001_db(self, engine):
         # Create the initial version of the images table
@@ -181,7 +178,7 @@ class TestMigrations(unittest.TestCase):
             Column('deleted', Boolean(), nullable=False, default=False))
         images_001.create()
 
-    def _walk_versions(self, conf, initial_version=0):
+    def _walk_versions(self, initial_version=0):
         # Determine latest version script from the repo, then
         # upgrade from 1 through to the latest, with no data
         # in the databases. This just checks that the schema itself
@@ -189,26 +186,25 @@ class TestMigrations(unittest.TestCase):
 
         # Assert we are not under version control...
         self.assertRaises(exception.DatabaseMigrationError,
-                          migration_api.db_version,
-                          conf)
+                          migration_api.db_version)
         # Place the database under version control
-        migration_api.version_control(conf, version=initial_version)
+        migration_api.version_control(version=initial_version)
 
-        cur_version = migration_api.db_version(conf)
+        cur_version = migration_api.db_version()
         self.assertEqual(initial_version, cur_version)
 
         for version in xrange(initial_version + 1,
                               TestMigrations.REPOSITORY.latest + 1):
-            migration_api.db_sync(conf, version)
-            cur_version = migration_api.db_version(conf)
+            migration_api.db_sync(version)
+            cur_version = migration_api.db_version()
             self.assertEqual(cur_version, version)
 
         # Now walk it back down to 0 from the latest, testing
         # the downgrade paths.
         for version in reversed(
             xrange(0, TestMigrations.REPOSITORY.latest)):
-            migration_api.downgrade(conf, version)
-            cur_version = migration_api.db_version(conf)
+            migration_api.downgrade(version)
+            cur_version = migration_api.db_version()
             self.assertEqual(cur_version, version)
 
     def test_no_data_loss_2_to_3_to_2(self):
@@ -220,16 +216,14 @@ class TestMigrations(unittest.TestCase):
         the image_properties table back into the base image table.
         """
         for key, engine in self.engines.items():
-            conf = utils.TestConfigOpts({
-                    'sql_connection': TestMigrations.TEST_DATABASES[key]})
-            conf.register_opt(cfg.StrOpt('sql_connection'))
-            self._no_data_loss_2_to_3_to_2(engine, conf)
+            self.config(sql_connection=TestMigrations.TEST_DATABASES[key])
+            self._no_data_loss_2_to_3_to_2(engine)
 
-    def _no_data_loss_2_to_3_to_2(self, engine, conf):
-        migration_api.version_control(conf, version=0)
-        migration_api.upgrade(conf, 2)
+    def _no_data_loss_2_to_3_to_2(self, engine):
+        migration_api.version_control(version=0)
+        migration_api.upgrade(2)
 
-        cur_version = migration_api.db_version(conf)
+        cur_version = migration_api.db_version()
         self.assertEquals(2, cur_version)
 
         # We are now on version 2. Check that the images table does
@@ -271,9 +265,9 @@ class TestMigrations(unittest.TestCase):
         # Now let's upgrade to 3. This should move the type column
         # to the image_properties table as type properties.
 
-        migration_api.upgrade(conf, 3)
+        migration_api.upgrade(3)
 
-        cur_version = migration_api.db_version(conf)
+        cur_version = migration_api.db_version()
         self.assertEquals(3, cur_version)
 
         images_table = Table('images', MetaData(), autoload=True,
@@ -297,7 +291,7 @@ class TestMigrations(unittest.TestCase):
         # Downgrade to 2 and check that the type properties were moved
         # to the main image table
 
-        migration_api.downgrade(conf, 2)
+        migration_api.downgrade(2)
 
         images_table = Table('images', MetaData(), autoload=True,
                              autoload_with=engine)
@@ -319,18 +313,16 @@ class TestMigrations(unittest.TestCase):
 
     def test_no_data_loss_14_to_15(self):
         for key, engine in self.engines.items():
-            conf = utils.TestConfigOpts({
-                    'sql_connection': TestMigrations.TEST_DATABASES[key]})
-            conf.register_opt(cfg.StrOpt('sql_connection'))
-            self._check_no_data_loss_14_to_15(engine, conf)
+            self.config(sql_connection=TestMigrations.TEST_DATABASES[key])
+            self._check_no_data_loss_14_to_15(engine)
 
-    def _check_no_data_loss_14_to_15(self, engine, conf):
+    def _check_no_data_loss_14_to_15(self, engine):
         """
         Check that migrating swift location credentials to quoted form
         and back does not result in data loss.
         """
-        migration_api.version_control(conf, version=0)
-        migration_api.upgrade(conf, 14)
+        migration_api.version_control(version=0)
+        migration_api.upgrade(14)
 
         conn = engine.connect()
         images_table = Table('images', MetaData(), autoload=True,
@@ -369,10 +361,10 @@ class TestMigrations(unittest.TestCase):
             conn.execute(images_table.insert(), [kwargs])
         conn.close()
 
-        migration_api.upgrade(conf, 15)
+        migration_api.upgrade(15)
 
         self.assertEqual(get_locations(), quoted_locations)
 
-        migration_api.downgrade(conf, 14)
+        migration_api.downgrade(14)
 
         self.assertEqual(get_locations(), unquoted_locations)

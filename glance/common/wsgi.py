@@ -31,10 +31,9 @@ import sys
 import time
 
 import eventlet
-import eventlet.greenio
 from eventlet.green import socket, ssl
+import eventlet.greenio
 import eventlet.wsgi
-from paste import deploy
 import routes
 import routes.middleware
 import webob.dec
@@ -43,6 +42,7 @@ import webob.exc
 from glance.common import exception
 from glance.common import utils
 from glance.openstack.common import cfg
+import glance.openstack.common.log as os_logging
 
 
 bind_opts = [
@@ -52,11 +52,18 @@ bind_opts = [
 
 socket_opts = [
     cfg.IntOpt('backlog', default=4096),
+    cfg.IntOpt('tcp_keepidle', default=600),
+    cfg.StrOpt('ca_file'),
     cfg.StrOpt('cert_file'),
     cfg.StrOpt('key_file'),
 ]
 
 workers_opt = cfg.IntOpt('workers', default=0)
+
+CONF = cfg.CONF
+CONF.register_opts(bind_opts)
+CONF.register_opts(socket_opts)
+CONF.register_opt(workers_opt)
 
 
 class WritableLogger(object):
@@ -70,25 +77,23 @@ class WritableLogger(object):
         self.logger.log(self.level, msg.strip("\n"))
 
 
-def get_bind_addr(conf, default_port=None):
+def get_bind_addr(default_port=None):
     """Return the host and port to bind to."""
-    conf.register_opts(bind_opts)
-    return (conf.bind_host, conf.bind_port or default_port)
+    return (CONF.bind_host, CONF.bind_port or default_port)
 
 
-def get_socket(conf, default_port):
+def get_socket(default_port):
     """
     Bind socket to bind ip:port in conf
 
     note: Mostly comes from Swift with a few small changes...
 
-    :param conf: a cfg.ConfigOpts object
     :param default_port: port to bind to if none is specified in conf
 
     :returns : a socket object as returned from socket.listen or
                ssl.wrap_socket if conf specifies cert_file
     """
-    bind_addr = get_bind_addr(conf, default_port)
+    bind_addr = get_bind_addr(default_port)
 
     # TODO(jaypipes): eventlet's greened socket module does not actually
     # support IPv6 in getaddrinfo(). We need to get around this in the
@@ -97,25 +102,38 @@ def get_socket(conf, default_port):
             bind_addr[1], socket.AF_UNSPEC, socket.SOCK_STREAM)
             if addr[0] in (socket.AF_INET, socket.AF_INET6)][0]
 
-    conf.register_opts(socket_opts)
-
-    cert_file = conf.cert_file
-    key_file = conf.key_file
+    cert_file = CONF.cert_file
+    key_file = CONF.key_file
     use_ssl = cert_file or key_file
     if use_ssl and (not cert_file or not key_file):
         raise RuntimeError(_("When running server in SSL mode, you must "
                              "specify both a cert_file and key_file "
                              "option value in your configuration file"))
 
+    def wrap_ssl(sock):
+        ssl_kwargs = {
+            'server_side': True,
+            'certfile': cert_file,
+            'keyfile': key_file,
+            'cert_reqs': ssl.CERT_NONE,
+        }
+
+        if CONF.ca_file:
+            ssl_kwargs['ca_certs'] = CONF.ca_file
+            ssl_kwargs['cert_reqs'] = ssl.CERT_REQUIRED
+
+        return ssl.wrap_socket(sock, **ssl_kwargs)
+
     sock = None
     retry_until = time.time() + 30
     while not sock and time.time() < retry_until:
         try:
-            sock = eventlet.listen(bind_addr, backlog=conf.backlog,
+            sock = eventlet.listen(bind_addr,
+                                   backlog=CONF.backlog,
                                    family=address_family)
             if use_ssl:
-                sock = ssl.wrap_socket(sock, certfile=cert_file,
-                                       keyfile=key_file)
+                sock = wrap_ssl(sock)
+
         except socket.error, err:
             if err.args[0] != errno.EADDRINUSE:
                 raise
@@ -129,7 +147,8 @@ def get_socket(conf, default_port):
 
     # This option isn't available in the OS X version of eventlet
     if hasattr(socket, 'TCP_KEEPIDLE'):
-        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 600)
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE,
+                        CONF.tcp_keepidle)
 
     return sock
 
@@ -142,12 +161,11 @@ class Server(object):
         self.children = []
         self.running = True
 
-    def start(self, application, conf, default_port):
+    def start(self, application, default_port):
         """
         Run a WSGI server with the given application.
 
         :param application: The application to run in the WSGI server
-        :param conf: a cfg.ConfigOpts object
         :param default_port: Port to bind to if none is specified in conf
         """
         def kill_children(*args):
@@ -167,22 +185,22 @@ class Server(object):
             self.running = False
 
         self.application = application
-        self.sock = get_socket(conf, default_port)
-        conf.register_opt(workers_opt)
+        self.sock = get_socket(default_port)
 
-        self.logger = logging.getLogger('eventlet.wsgi.server')
+        os.umask(027)  # ensure files are created with the correct privileges
+        self.logger = os_logging.getLogger('eventlet.wsgi.server')
 
-        if conf.workers == 0:
+        if CONF.workers == 0:
             # Useful for profiling, test, debug etc.
             self.pool = eventlet.GreenPool(size=self.threads)
             self.pool.spawn_n(self._single_run, application, self.sock)
             return
 
-        self.logger.info(_("Starting %d workers") % conf.workers)
+        self.logger.info(_("Starting %d workers") % CONF.workers)
         signal.signal(signal.SIGTERM, kill_children)
         signal.signal(signal.SIGINT, kill_children)
         signal.signal(signal.SIGHUP, hup)
-        while len(self.children) < conf.workers:
+        while len(self.children) < CONF.workers:
             self.run_child()
 
     def wait_on_children(self):
@@ -272,6 +290,12 @@ class Middleware(object):
 
     def __init__(self, application):
         self.application = application
+
+    @classmethod
+    def factory(cls, global_conf, **local_conf):
+        def filter(app):
+            return cls(app)
+        return filter
 
     def process_request(self, req):
         """
@@ -366,6 +390,10 @@ class Router(object):
         self.map = mapper
         self._router = routes.middleware.RoutesMiddleware(self._dispatch,
                                                           self.map)
+
+    @classmethod
+    def factory(cls, global_conf, **local_conf):
+        return cls(routes.Mapper())
 
     @webob.dec.wsgify
     def __call__(self, req):
@@ -528,139 +556,3 @@ class Resource(object):
             pass
 
         return args
-
-
-class BasePasteFactory(object):
-
-    """A base class for paste app and filter factories.
-
-    Sub-classes must override the KEY class attribute and provide
-    a __call__ method.
-    """
-
-    KEY = None
-
-    def __init__(self, conf):
-        self.conf = conf
-
-    def __call__(self, global_conf, **local_conf):
-        raise NotImplementedError
-
-    def _import_factory(self, local_conf):
-        """Import an app/filter class.
-
-        Lookup the KEY from the PasteDeploy local conf and import the
-        class named therein. This class can then be used as an app or
-        filter factory.
-
-        Note we support the <module>:<class> format.
-
-        Note also that if you do e.g.
-
-          key =
-              value
-
-        then ConfigParser returns a value with a leading newline, so
-        we strip() the value before using it.
-        """
-        class_name = local_conf[self.KEY].replace(':', '.').strip()
-        return utils.import_class(class_name)
-
-
-class AppFactory(BasePasteFactory):
-
-    """A Generic paste.deploy app factory.
-
-    This requires glance.app_factory to be set to a callable which returns a
-    WSGI app when invoked. The format of the name is <module>:<callable> e.g.
-
-      [app:apiv1app]
-      paste.app_factory = glance.common.wsgi:app_factory
-      glance.app_factory = glance.api.v1:API
-
-    The WSGI app constructor must accept a ConfigOpts object and a local config
-    dict as its two arguments.
-    """
-
-    KEY = 'glance.app_factory'
-
-    def __call__(self, global_conf, **local_conf):
-        """The actual paste.app_factory protocol method."""
-        factory = self._import_factory(local_conf)
-        return factory(self.conf, **local_conf)
-
-
-class FilterFactory(AppFactory):
-
-    """A Generic paste.deploy filter factory.
-
-    This requires glance.filter_factory to be set to a callable which returns a
-    WSGI filter when invoked. The format is <module>:<callable> e.g.
-
-      [filter:cache]
-      paste.filter_factory = glance.common.wsgi:filter_factory
-      glance.filter_factory = glance.api.middleware.cache:CacheFilter
-
-    The WSGI filter constructor must accept a WSGI app, a ConfigOpts object and
-    a local config dict as its three arguments.
-    """
-
-    KEY = 'glance.filter_factory'
-
-    def __call__(self, global_conf, **local_conf):
-        """The actual paste.filter_factory protocol method."""
-        factory = self._import_factory(local_conf)
-
-        def filter(app):
-            return factory(app, self.conf, **local_conf)
-
-        return filter
-
-
-def setup_paste_factories(conf):
-    """Set up the generic paste app and filter factories.
-
-    Set things up so that:
-
-      paste.app_factory = glance.common.wsgi:app_factory
-
-    and
-
-      paste.filter_factory = glance.common.wsgi:filter_factory
-
-    work correctly while loading PasteDeploy configuration.
-
-    The app factories are constructed at runtime to allow us to pass a
-    ConfigOpts object to the WSGI classes.
-
-    :param conf: a ConfigOpts object
-    """
-    global app_factory, filter_factory
-    app_factory = AppFactory(conf)
-    filter_factory = FilterFactory(conf)
-
-
-def teardown_paste_factories():
-    """Reverse the effect of setup_paste_factories()."""
-    global app_factory, filter_factory
-    del app_factory
-    del filter_factory
-
-
-def paste_deploy_app(paste_config_file, app_name, conf):
-    """Load a WSGI app from a PasteDeploy configuration.
-
-    Use deploy.loadapp() to load the app from the PasteDeploy configuration,
-    ensuring that the supplied ConfigOpts object is passed to the app and
-    filter constructors.
-
-    :param paste_config_file: a PasteDeploy config file
-    :param app_name: the name of the app/pipeline to load from the file
-    :param conf: a ConfigOpts object to supply to the app and its filters
-    :returns: the WSGI app
-    """
-    setup_paste_factories(conf)
-    try:
-        return deploy.loadapp("config:%s" % paste_config_file, name=app_name)
-    finally:
-        teardown_paste_factories()

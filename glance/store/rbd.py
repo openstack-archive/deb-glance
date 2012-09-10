@@ -21,11 +21,13 @@ from __future__ import absolute_import
 from __future__ import with_statement
 
 import hashlib
-import logging
 import math
+import urllib
+import urlparse
 
 from glance.common import exception
 from glance.openstack.common import cfg
+import glance.openstack.common.log as logging
 import glance.store
 import glance.store.base
 import glance.store.location
@@ -40,8 +42,19 @@ DEFAULT_POOL = 'rbd'
 DEFAULT_CONFFILE = ''  # librados will locate the default conf file
 DEFAULT_USER = None    # let librados decide based on the Ceph conf file
 DEFAULT_CHUNKSIZE = 4  # in MiB
+DEFAULT_SNAPNAME = 'snap'
 
-logger = logging.getLogger('glance.store.rbd')
+LOG = logging.getLogger(__name__)
+
+rbd_opts = [
+    cfg.IntOpt('rbd_store_chunk_size', default=DEFAULT_CHUNKSIZE),
+    cfg.StrOpt('rbd_store_pool', default=DEFAULT_POOL),
+    cfg.StrOpt('rbd_store_user', default=DEFAULT_USER),
+    cfg.StrOpt('rbd_store_ceph_conf', default=DEFAULT_CONFFILE),
+    ]
+
+CONF = cfg.CONF
+CONF.register_opts(rbd_opts)
 
 
 class StoreLocation(glance.store.location.StoreLocation):
@@ -50,18 +63,50 @@ class StoreLocation(glance.store.location.StoreLocation):
 
         rbd://image
 
+        or
+
+        rbd://fsid/pool/image/snapshot
     """
 
     def process_specs(self):
+        self.fsid = self.specs.get('fsid')
+        self.pool = self.specs.get('pool')
         self.image = self.specs.get('image')
+        self.snapshot = self.specs.get('snapshot')
 
     def get_uri(self):
-        return ("rbd://%s" % self.image)
+        if self.fsid and self.pool and self.snapshot:
+            # ensure nothing contains / or any other url-unsafe character
+            safe_fsid = urllib.quote(self.fsid, '')
+            safe_pool = urllib.quote(self.pool, '')
+            safe_image = urllib.quote(self.image, '')
+            safe_snapshot = urllib.quote(self.snapshot, '')
+            return "rbd://%s/%s/%s/%s" % (safe_fsid, safe_pool,
+                                          safe_image, safe_snapshot)
+        else:
+            return "rbd://%s" % self.image
 
     def parse_uri(self, uri):
-        if not uri.startswith('rbd://'):
-            raise exception.BadStoreUri(uri, _('URI must start with rbd://'))
-        self.image = uri[6:]
+        prefix = 'rbd://'
+        if not uri.startswith(prefix):
+            reason = _('URI must start with rbd://')
+            LOG.error(_("Invalid URI: %(uri)s: %(reason)s") % locals())
+            raise exception.BadStoreUri(message=reason)
+        pieces = uri[len(prefix):].split('/')
+        if len(pieces) == 1:
+            self.fsid, self.pool, self.image, self.snapshot = \
+                (None, None, pieces[0], None)
+        elif len(pieces) == 4:
+            self.fsid, self.pool, self.image, self.snapshot = \
+                map(urllib.unquote, pieces)
+        else:
+            reason = _('URI must have exactly 1 or 4 components')
+            LOG.error(_("Invalid URI: %(uri)s: %(reason)s") % locals())
+            raise exception.BadStoreUri(message=reason)
+        if any(map(lambda p: p == '', pieces)):
+            reason = _('URI cannot contain empty components')
+            LOG.error(_("Invalid URI: %(uri)s: %(reason)s") % locals())
+            raise exception.BadStoreUri(message=reason)
 
 
 class ImageIterator(object):
@@ -99,14 +144,7 @@ class ImageIterator(object):
 class Store(glance.store.base.Store):
     """An implementation of the RBD backend adapter."""
 
-    EXAMPLE_URL = "rbd://<IMAGE>"
-
-    opts = [
-        cfg.IntOpt('rbd_store_chunk_size', default=DEFAULT_CHUNKSIZE),
-        cfg.StrOpt('rbd_store_pool', default=DEFAULT_POOL),
-        cfg.StrOpt('rbd_store_user', default=DEFAULT_USER),
-        cfg.StrOpt('rbd_store_ceph_conf', default=DEFAULT_CONFFILE),
-        ]
+    EXAMPLE_URL = "rbd://<FSID>/<POOL>/<IMAGE>/<SNAP>"
 
     def get_schemes(self):
         return ('rbd',)
@@ -118,18 +156,17 @@ class Store(glance.store.base.Store):
         this method. If the store was not able to successfully configure
         itself, it should raise `exception.BadStoreConfiguration`
         """
-        self.conf.register_opts(self.opts)
         try:
-            self.chunk_size = self.conf.rbd_store_chunk_size * 1024 * 1024
+            self.chunk_size = CONF.rbd_store_chunk_size * 1024 * 1024
 
             # these must not be unicode since they will be passed to a
             # non-unicode-aware C library
-            self.pool = str(self.conf.rbd_store_pool)
-            self.user = str(self.conf.rbd_store_user)
-            self.conf_file = str(self.conf.rbd_store_ceph_conf)
+            self.pool = str(CONF.rbd_store_pool)
+            self.user = str(CONF.rbd_store_user)
+            self.conf_file = str(CONF.rbd_store_ceph_conf)
         except cfg.ConfigFileValueError, e:
             reason = _("Error in store configuration: %s") % e
-            logger.error(reason)
+            LOG.error(reason)
             raise exception.BadStoreConfiguration(store_name='rbd',
                                                   reason=reason)
 
@@ -146,6 +183,28 @@ class Store(glance.store.base.Store):
         loc = location.store_location
         return (ImageIterator(str(loc.image), self), None)
 
+    def _create_image(self, fsid, ioctx, name, size, order):
+        """
+        Create an rbd image. If librbd supports it,
+        make it a cloneable snapshot, so that copy-on-write
+        volumes can be created from it.
+
+        :retval `glance.store.rbd.StoreLocation` object
+        """
+        librbd = rbd.RBD()
+        if hasattr(rbd, 'RBD_FEATURE_LAYERING'):
+            librbd.create(ioctx, name, size, order, old_format=False,
+                          features=rbd.RBD_FEATURE_LAYERING)
+            return StoreLocation({
+                    'fsid': fsid,
+                    'pool': self.pool,
+                    'image': name,
+                    'snapshot': DEFAULT_SNAPNAME,
+                    })
+        else:
+            librbd.create(ioctx, name, size, order, old_format=True)
+            return StoreLocation({'image': name})
+
     def add(self, image_id, image_file, image_size):
         """
         Stores an image file with supplied identifier to the backend
@@ -160,16 +219,19 @@ class Store(glance.store.base.Store):
         :raises `glance.common.exception.Duplicate` if the image already
                 existed
         """
-        location = StoreLocation({'image': image_id})
         checksum = hashlib.md5()
         image_name = str(image_id)
         with rados.Rados(conffile=self.conf_file, rados_id=self.user) as conn:
+            fsid = None
+            if hasattr(conn, 'get_fsid'):
+                fsid = conn.get_fsid()
             with conn.open_ioctx(self.pool) as ioctx:
                 order = int(math.log(self.chunk_size, 2))
-                logger.debug('creating image %s with order %d',
-                             image_name, order)
+                LOG.debug('creating image %s with order %d',
+                          image_name, order)
                 try:
-                    rbd.RBD().create(ioctx, image_name, image_size, order)
+                    location = self._create_image(fsid, ioctx, image_name,
+                                                  image_size, order)
                 except rbd.ImageExists:
                     raise exception.Duplicate(
                         _('RBD image %s already exists') % image_id)
@@ -181,6 +243,9 @@ class Store(glance.store.base.Store):
                         image.write(data, image_size - bytes_left)
                         bytes_left -= length
                         checksum.update(data)
+                    if location.snapshot:
+                        image.create_snap(location.snapshot)
+                        image.protect_snap(location.snapshot)
 
         return (location.get_uri(), image_size, checksum.hexdigest())
 
@@ -198,8 +263,23 @@ class Store(glance.store.base.Store):
 
         with rados.Rados(conffile=self.conf_file, rados_id=self.user) as conn:
             with conn.open_ioctx(self.pool) as ioctx:
+                if loc.snapshot:
+                    with rbd.Image(ioctx, loc.image) as image:
+                        try:
+                            image.unprotect_snap(loc.snapshot)
+                        except rbd.ImageBusy:
+                            log_msg = _("snapshot %s@%s could not be "
+                                        "unprotected because it is in use")
+                            LOG.error(log_msg % (loc.image, loc.snapshot))
+                            raise exception.InUseByStore()
+                        image.remove_snap(loc.snapshot)
                 try:
                     rbd.RBD().remove(ioctx, str(loc.image))
                 except rbd.ImageNotFound:
                     raise exception.NotFound(
                         _('RBD image %s does not exist') % loc.image)
+                except rbd.ImageBusy:
+                    log_msg = _("image %s could not be removed"
+                                "because it is in use")
+                    LOG.error(log_msg % loc.image)
+                    raise exception.InUseByStore()

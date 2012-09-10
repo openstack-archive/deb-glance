@@ -21,19 +21,17 @@ and/or Accept headers and attempts to negotiate an API controller to
 return
 """
 
-import logging
-
 from glance.api import versions
 from glance.common import wsgi
+import glance.openstack.common.log as logging
 
-logger = logging.getLogger('glance.api.middleware.version_negotiation')
+LOG = logging.getLogger(__name__)
 
 
 class VersionNegotiationFilter(wsgi.Middleware):
 
-    def __init__(self, app, conf, **local_conf):
-        self.versions_app = versions.Controller(conf)
-        self.conf = conf
+    def __init__(self, app):
+        self.versions_app = versions.Controller()
         super(VersionNegotiationFilter, self).__init__(app)
 
     def process_request(self, req):
@@ -41,7 +39,7 @@ class VersionNegotiationFilter(wsgi.Middleware):
         msg = _("Determining version of request: %(method)s %(path)s"
                 " Accept: %(accept)s")
         args = {'method': req.method, 'path': req.path, 'accept': req.accept}
-        logger.debug(msg % args)
+        LOG.debug(msg % args)
 
         # If the request is for /versions, just return the versions container
         #TODO(bcwaldon): deprecate this behavior
@@ -50,24 +48,24 @@ class VersionNegotiationFilter(wsgi.Middleware):
 
         accept = str(req.accept)
         if accept.startswith('application/vnd.openstack.images-'):
-            logger.debug(_("Using media-type versioning"))
+            LOG.debug(_("Using media-type versioning"))
             token_loc = len('application/vnd.openstack.images-')
             req_version = accept[token_loc:]
         else:
-            logger.debug(_("Using url versioning"))
+            LOG.debug(_("Using url versioning"))
             # Remove version in url so it doesn't conflict later
             req_version = req.path_info_pop()
 
         try:
             version = self._match_version_string(req_version)
         except ValueError:
-            logger.debug(_("Unknown version. Returning version choices."))
+            LOG.debug(_("Unknown version. Returning version choices."))
             return self.versions_app
 
         req.environ['api.version'] = version
         req.path_info = ''.join(('/v', str(version), req.path_info))
-        logger.debug(_("Matched version: v%d"), version)
-        logger.debug('new uri %s' % req.path_info)
+        LOG.debug(_("Matched version: v%d"), version)
+        LOG.debug('new uri %s' % req.path_info)
         return None
 
     def _match_version_string(self, subject):
@@ -81,7 +79,7 @@ class VersionNegotiationFilter(wsgi.Middleware):
         """
         if subject in ('v1', 'v1.0', 'v1.1'):
             major_version = 1
-        elif subject == 'v2':
+        elif subject in ('v2', 'v2.0'):
             major_version = 2
         else:
             raise ValueError()

@@ -21,28 +21,49 @@ from __future__ import absolute_import
 
 import hashlib
 import httplib
-import logging
 import math
 import urllib
 import urlparse
 
+from glance.common import auth
 from glance.common import exception
 from glance.openstack.common import cfg
+import glance.openstack.common.log as logging
 import glance.store
 import glance.store.base
 import glance.store.location
 
 try:
-    from swift.common import client as swift_client
+    import swiftclient
 except ImportError:
     pass
+
+LOG = logging.getLogger(__name__)
 
 DEFAULT_CONTAINER = 'glance'
 DEFAULT_LARGE_OBJECT_SIZE = 5 * 1024  # 5GB
 DEFAULT_LARGE_OBJECT_CHUNK_SIZE = 200  # 200M
 ONE_MB = 1000 * 1024
 
-logger = logging.getLogger('glance.store.swift')
+swift_opts = [
+    cfg.BoolOpt('swift_enable_snet', default=False),
+    cfg.StrOpt('swift_store_auth_address'),
+    cfg.StrOpt('swift_store_user', secret=True),
+    cfg.StrOpt('swift_store_key', secret=True),
+    cfg.StrOpt('swift_store_auth_version', default='2'),
+    cfg.StrOpt('swift_store_container',
+               default=DEFAULT_CONTAINER),
+    cfg.IntOpt('swift_store_large_object_size',
+               default=DEFAULT_LARGE_OBJECT_SIZE),
+    cfg.IntOpt('swift_store_large_object_chunk_size',
+               default=DEFAULT_LARGE_OBJECT_CHUNK_SIZE),
+    cfg.BoolOpt('swift_store_create_container_on_put', default=False),
+    cfg.BoolOpt('swift_store_multi_tenant', default=False),
+    cfg.ListOpt('swift_store_admin_tenants', default=[]),
+    ]
+
+CONF = cfg.CONF
+CONF.register_opts(swift_opts)
 
 
 class StoreLocation(glance.store.location.StoreLocation):
@@ -56,6 +77,10 @@ class StoreLocation(glance.store.location.StoreLocation):
         swift+http://user:pass@authurl.com/container/obj-id
         swift+https://user:pass@authurl.com/container/obj-id
 
+    When using multi-tenant a URI might look like this (a storage URL):
+
+        swift+https://example.com/container/obj-id
+
     The swift+http:// URIs indicate there is an HTTP authentication URL.
     The default for Swift is an HTTPS authentication URL, so swift:// and
     swift+https:// are the same...
@@ -65,28 +90,28 @@ class StoreLocation(glance.store.location.StoreLocation):
         self.scheme = self.specs.get('scheme', 'swift+https')
         self.user = self.specs.get('user')
         self.key = self.specs.get('key')
-        self.authurl = self.specs.get('authurl')
+        self.auth_or_store_url = self.specs.get('auth_or_store_url')
         self.container = self.specs.get('container')
         self.obj = self.specs.get('obj')
 
     def _get_credstring(self):
-        if self.user:
+        if self.user and self.key:
             return '%s:%s@' % (urllib.quote(self.user), urllib.quote(self.key))
         return ''
 
     def get_uri(self):
-        authurl = self.authurl
-        if authurl.startswith('http://'):
-            authurl = authurl[7:]
-        elif authurl.startswith('https://'):
-            authurl = authurl[8:]
+        auth_or_store_url = self.auth_or_store_url
+        if auth_or_store_url.startswith('http://'):
+            auth_or_store_url = auth_or_store_url[len('http://'):]
+        elif auth_or_store_url.startswith('https://'):
+            auth_or_store_url = auth_or_store_url[len('https://'):]
 
         credstring = self._get_credstring()
-        authurl = authurl.strip('/')
+        auth_or_store_url = auth_or_store_url.strip('/')
         container = self.container.strip('/')
         obj = self.obj.strip('/')
 
-        return '%s://%s%s/%s/%s' % (self.scheme, credstring, authurl,
+        return '%s://%s%s/%s/%s' % (self.scheme, credstring, auth_or_store_url,
                                     container, obj)
 
     def parse_uri(self, uri):
@@ -110,7 +135,8 @@ class StoreLocation(glance.store.location.StoreLocation):
                     "like so: "
                     "swift+http://user:pass@authurl.com/v1/container/obj"
                     )
-            raise exception.BadStoreUri(uri, reason)
+            LOG.error(_("Invalid store uri %(uri)s: %(reason)s") % locals())
+            raise exception.BadStoreUri(message=reason)
 
         pieces = urlparse.urlparse(uri)
         assert pieces.scheme in ('swift', 'swift+http', 'swift+https')
@@ -137,12 +163,14 @@ class StoreLocation(glance.store.location.StoreLocation):
             if len(cred_parts) != 2:
                 reason = (_("Badly formed credentials '%(creds)s' in Swift "
                             "URI") % locals())
-                raise exception.BadStoreUri(uri, reason)
+                LOG.error(reason)
+                raise exception.BadStoreUri()
             user, key = cred_parts
             self.user = urllib.unquote(user)
             self.key = urllib.unquote(key)
         else:
             self.user = None
+            self.key = None
         path_parts = path.split('/')
         try:
             self.obj = path_parts.pop()
@@ -150,13 +178,14 @@ class StoreLocation(glance.store.location.StoreLocation):
             if not netloc.startswith('http'):
                 # push hostname back into the remaining to build full authurl
                 path_parts.insert(0, netloc)
-                self.authurl = '/'.join(path_parts)
+                self.auth_or_store_url = '/'.join(path_parts)
         except IndexError:
-            reason = _("Badly formed Swift URI")
-            raise exception.BadStoreUri(uri, reason)
+            reason = _("Badly formed Swift URI: %s") % uri
+            LOG.error(reason)
+            raise exception.BadStoreUri()
 
     @property
-    def swift_auth_url(self):
+    def swift_url(self):
         """
         Creates a fully-qualified auth url that the Swift client library can
         use. The scheme for the auth_url is determined using the scheme
@@ -169,7 +198,7 @@ class StoreLocation(glance.store.location.StoreLocation):
         else:
             auth_scheme = 'http://'
 
-        full_url = ''.join([auth_scheme, self.authurl])
+        full_url = ''.join([auth_scheme, self.auth_or_store_url])
         return full_url
 
 
@@ -180,28 +209,16 @@ class Store(glance.store.base.Store):
 
     CHUNKSIZE = 65536
 
-    opts = [
-        cfg.BoolOpt('swift_enable_snet', default=False),
-        cfg.StrOpt('swift_store_auth_address'),
-        cfg.StrOpt('swift_store_user', secret=True),
-        cfg.StrOpt('swift_store_key', secret=True),
-        cfg.StrOpt('swift_store_auth_version', default='2'),
-        cfg.StrOpt('swift_store_container',
-                   default=DEFAULT_CONTAINER),
-        cfg.IntOpt('swift_store_large_object_size',
-                   default=DEFAULT_LARGE_OBJECT_SIZE),
-        cfg.IntOpt('swift_store_large_object_chunk_size',
-                   default=DEFAULT_LARGE_OBJECT_CHUNK_SIZE),
-        cfg.BoolOpt('swift_store_create_container_on_put', default=False),
-        ]
-
     def get_schemes(self):
         return ('swift+https', 'swift', 'swift+http')
 
     def configure(self):
-        self.conf.register_opts(self.opts)
-        self.snet = self.conf.swift_enable_snet
+        self.snet = CONF.swift_enable_snet
+        self.multi_tenant = CONF.swift_store_multi_tenant
+        self.admin_tenants = CONF.swift_store_admin_tenants
         self.auth_version = self._option_get('swift_store_auth_version')
+        self.storage_url = None
+        self.token = None
 
     def configure_add(self):
         """
@@ -213,18 +230,32 @@ class Store(glance.store.base.Store):
         self.auth_address = self._option_get('swift_store_auth_address')
         self.user = self._option_get('swift_store_user')
         self.key = self._option_get('swift_store_key')
-        self.container = self.conf.swift_store_container
+        self.container = CONF.swift_store_container
+
+        if self.multi_tenant:
+            if context is None:
+                reason = _("Multi-tenant Swift storage requires a context.")
+                raise exception.BadStoreConfiguration(store_name="swift",
+                                                      reason=reason)
+            self.token = context.auth_tok
+            self.key = None  # multi-tenant uses tokens, not (passwords)
+            if context.tenant and context.user:
+                self.user = context.tenant + ':' + context.user
+            if context.service_catalog:
+                service_catalog = context.service_catalog
+                self.storage_url = self._get_swift_endpoint(service_catalog)
+
         try:
             # The config file has swift_store_large_object_*size in MB, but
             # internally we store it in bytes, since the image_size parameter
             # passed to add() is also in bytes.
-            _obj_size = self.conf.swift_store_large_object_size
+            _obj_size = CONF.swift_store_large_object_size
             self.large_object_size = _obj_size * ONE_MB
-            _obj_chunk_size = self.conf.swift_store_large_object_chunk_size
+            _obj_chunk_size = CONF.swift_store_large_object_chunk_size
             self.large_object_chunk_size = _obj_chunk_size * ONE_MB
         except cfg.ConfigFileValueError, e:
             reason = _("Error in configuration conf: %s") % e
-            logger.error(reason)
+            LOG.error(reason)
             raise exception.BadStoreConfiguration(store_name="swift",
                                                   reason=reason)
 
@@ -237,6 +268,9 @@ class Store(glance.store.base.Store):
         else:  # Defaults https
             self.full_auth_address = 'https://' + self.auth_address
 
+    def _get_swift_endpoint(self, service_catalog):
+        return auth.get_endpoint(service_catalog, service_type='object-store')
+
     def get(self, location):
         """
         Takes a `glance.store.location.Location` object that indicates
@@ -248,14 +282,13 @@ class Store(glance.store.base.Store):
         :raises `glance.exception.NotFound` if image does not exist
         """
         loc = location.store_location
-        swift_conn = self._make_swift_connection(
-            auth_url=loc.swift_auth_url, user=loc.user, key=loc.key)
+        swift_conn = self._swift_connection_for_location(loc)
 
         try:
             (resp_headers, resp_body) = swift_conn.get_object(
                 container=loc.container, obj=loc.obj,
                 resp_chunk_size=self.CHUNKSIZE)
-        except swift_client.ClientException, e:
+        except swiftclient.ClientException, e:
             if e.http_status == httplib.NOT_FOUND:
                 uri = location.get_store_uri()
                 raise exception.NotFound(_("Swift could not find image at "
@@ -283,8 +316,7 @@ class Store(glance.store.base.Store):
                         from glance.store.location.get_location_from_uri()
         """
         loc = location.store_location
-        swift_conn = self._make_swift_connection(
-            auth_url=loc.swift_auth_url, user=loc.user, key=loc.key)
+        swift_conn = self._swift_connection_for_location(loc)
 
         try:
             resp_headers = swift_conn.head_object(container=loc.container,
@@ -293,37 +325,66 @@ class Store(glance.store.base.Store):
         except Exception:
             return 0
 
-    def _make_swift_connection(self, auth_url, user, key):
+    def _swift_connection_for_location(self, loc):
+        if loc.user:
+            return self._make_swift_connection(
+                loc.swift_url, loc.user, loc.key)
+        else:
+            if self.multi_tenant:
+                return self._make_swift_connection(
+                    None, self.user, None,
+                    storage_url=loc.swift_url, token=self.token)
+            else:
+                reason = (_("Location is missing user:password information."))
+                LOG.error(reason)
+                raise exception.BadStoreUri(message=reason)
+
+    def _make_swift_connection(self, auth_url, user, key, storage_url=None,
+                               token=None):
         """
         Creates a connection using the Swift client library.
+
+        :param auth_url The authentication for v1 style Swift auth or
+                        v2 style Keystone auth.
+        :param user A string containing the tenant:user information.
+        :param key  A string containing the key/password for the connection.
+        :param storage_url A string containing the storage URL.
+        :param token A string containing the token
         """
         snet = self.snet
         auth_version = self.auth_version
         full_auth_url = (auth_url if not auth_url or auth_url.endswith('/')
                          else auth_url + '/')
-        logger.debug(_("Creating Swift connection with "
-                     "(auth_address=%(full_auth_url)s, user=%(user)s, "
-                     "snet=%(snet)s, auth_version=%(auth_version)s)") %
-                     locals())
+        LOG.debug(_("Creating Swift connection with "
+                    "(auth_address=%(full_auth_url)s, user=%(user)s, "
+                    "snet=%(snet)s, auth_version=%(auth_version)s)") %
+                  locals())
         tenant_name = None
         if self.auth_version == '2':
             tenant_user = user.split(':')
             if len(tenant_user) != 2:
                 reason = (_("Badly formed tenant:user '%(tenant_user)s' in "
                             "Swift URI") % locals())
-                raise exception.BadStoreUri(auth_url, reason)
+                LOG.error(reason)
+                raise exception.BadStoreUri()
             (tenant_name, user) = tenant_user
 
-        return swift_client.Connection(
-            authurl=full_auth_url, user=user, key=key, snet=snet,
-            auth_version=auth_version)
+        if self.multi_tenant:
+            #NOTE: multi-tenant supports v2 auth only
+            return swiftclient.Connection(
+                None, user, None, preauthurl=storage_url, preauthtoken=token,
+                snet=snet, tenant_name=tenant_name, auth_version='2')
+        else:
+            return swiftclient.Connection(
+                full_auth_url, user, key, snet=snet,
+                tenant_name=tenant_name, auth_version=auth_version)
 
     def _option_get(self, param):
-        result = getattr(self.conf, param)
+        result = getattr(CONF, param)
         if not result:
             reason = (_("Could not find %(param)s in configuration "
                         "options.") % locals())
-            logger.error(reason)
+            LOG.error(reason)
             raise exception.BadStoreConfiguration(store_name="swift",
                                                   reason=reason)
         return result
@@ -364,25 +425,35 @@ class Store(glance.store.base.Store):
               fail if the image turns out to be greater than 5GB.
         """
         swift_conn = self._make_swift_connection(
-            auth_url=self.full_auth_address, user=self.user, key=self.key)
-
-        create_container_if_missing(self.container, swift_conn, self.conf)
+            self.full_auth_address, self.user, self.key,
+            storage_url=self.storage_url, token=self.token)
 
         obj_name = str(image_id)
+        if self.multi_tenant:
+            # NOTE: When using multi-tenant we create containers for each
+            # image so we can set permissions on each image in swift
+            container = self.container + '_' + obj_name
+            auth_or_store_url = self.storage_url
+        else:
+            container = self.container
+            auth_or_store_url = self.auth_address
+
+        create_container_if_missing(container, swift_conn)
+
         location = StoreLocation({'scheme': self.scheme,
-                                  'container': self.container,
+                                  'container': container,
                                   'obj': obj_name,
-                                  'authurl': self.auth_address,
+                                  'auth_or_store_url': auth_or_store_url,
                                   'user': self.user,
                                   'key': self.key})
 
-        logger.debug(_("Adding image object '%(obj_name)s' "
-                       "to Swift") % locals())
+        LOG.debug(_("Adding image object '%(obj_name)s' "
+                    "to Swift") % locals())
         try:
             if image_size > 0 and image_size < self.large_object_size:
                 # Image size is known, and is less than large_object_size.
                 # Send to Swift with regular PUT.
-                obj_etag = swift_conn.put_object(self.container, obj_name,
+                obj_etag = swift_conn.put_object(container, obj_name,
                                                  image_file,
                                                  content_length=image_size)
             else:
@@ -396,8 +467,8 @@ class Store(glance.store.base.Store):
                     # image_size == 0 is when we don't know the size
                     # of the image. This can occur with older clients
                     # that don't inspect the payload size.
-                    logger.debug(_("Cannot determine image size. Adding as a "
-                                   "segmented object to Swift."))
+                    LOG.debug(_("Cannot determine image size. Adding as a "
+                                "segmented object to Swift."))
                     total_chunks = '?'
 
                 checksum = hashlib.md5()
@@ -417,20 +488,20 @@ class Store(glance.store.base.Store):
                     chunk_name = "%s-%05d" % (obj_name, chunk_id)
                     reader = ChunkReader(image_file, checksum, chunk_size)
                     chunk_etag = swift_conn.put_object(
-                        self.container, chunk_name, reader,
+                        container, chunk_name, reader,
                         content_length=content_length)
                     bytes_read = reader.bytes_read
-                    logger.debug(_("Wrote chunk %(chunk_id)d/"
-                                   "%(total_chunks)s of length %(bytes_read)d "
-                                   "to Swift returning MD5 of content: "
-                                   "%(chunk_etag)s")
-                                 % locals())
+                    msg = _("Wrote chunk %(chunk_name)s (%(chunk_id)d/"
+                            "%(total_chunks)s) of length %(bytes_read)d "
+                            "to Swift returning MD5 of content: "
+                            "%(chunk_etag)s")
+                    LOG.debug(msg % locals())
 
                     if bytes_read == 0:
                         # Delete the last chunk, because it's of zero size.
                         # This will happen if image_size == 0.
-                        logger.debug(_("Deleting final zero-length chunk"))
-                        swift_conn.delete_object(self.container, chunk_name)
+                        LOG.debug(_("Deleting final zero-length chunk"))
+                        swift_conn.delete_object(container, chunk_name)
                         break
 
                     chunk_id += 1
@@ -443,7 +514,7 @@ class Store(glance.store.base.Store):
 
                 # Now we write the object manifest and return the
                 # manifest's etag...
-                manifest = "%s/%s" % (self.container, obj_name)
+                manifest = "%s/%s" % (container, obj_name)
                 headers = {'ETag': hashlib.md5("").hexdigest(),
                            'X-Object-Manifest': manifest}
 
@@ -452,7 +523,7 @@ class Store(glance.store.base.Store):
                 # of each chunk...so we ignore this result in favour of
                 # the MD5 of the entire image file contents, so that
                 # users can verify the image file contents accordingly
-                swift_conn.put_object(self.container, obj_name,
+                swift_conn.put_object(container, obj_name,
                                       None, headers=headers)
                 obj_etag = checksum.hexdigest()
 
@@ -463,13 +534,13 @@ class Store(glance.store.base.Store):
             # GET /images/details
 
             return (location.get_uri(), image_size, obj_etag)
-        except swift_client.ClientException, e:
+        except swiftclient.ClientException, e:
             if e.http_status == httplib.CONFLICT:
                 raise exception.Duplicate(_("Swift already has an image at "
                                           "location %s") % location.get_uri())
             msg = (_("Failed to add object to Swift.\n"
-                   "Got error from Swift: %(e)s") % locals())
-            logger.error(msg)
+                     "Got error from Swift: %(e)s") % locals())
+            LOG.error(msg)
             raise glance.store.BackendException(msg)
 
     def delete(self, location):
@@ -483,8 +554,7 @@ class Store(glance.store.base.Store):
         :raises NotFound if image does not exist
         """
         loc = location.store_location
-        swift_conn = self._make_swift_connection(
-            auth_url=loc.swift_auth_url, user=loc.user, key=loc.key)
+        swift_conn = self._swift_connection_for_location(loc)
 
         try:
             # We request the manifest for the object. If one exists,
@@ -495,7 +565,7 @@ class Store(glance.store.base.Store):
             try:
                 headers = swift_conn.head_object(loc.container, loc.obj)
                 manifest = headers.get('x-object-manifest')
-            except swift_client.ClientException, e:
+            except swiftclient.ClientException, e:
                 if e.http_status != httplib.NOT_FOUND:
                     raise
             if manifest:
@@ -512,13 +582,59 @@ class Store(glance.store.base.Store):
             else:
                 swift_conn.delete_object(loc.container, loc.obj)
 
-        except swift_client.ClientException, e:
+            if self.multi_tenant:
+                #NOTE: In multi-tenant mode containers are specific to
+                # each object (Glance image)
+                swift_conn.delete_container(loc.container)
+
+        except swiftclient.ClientException, e:
             if e.http_status == httplib.NOT_FOUND:
                 uri = location.get_store_uri()
                 raise exception.NotFound(_("Swift could not find image at "
                                          "uri %(uri)s") % locals())
             else:
                 raise
+
+    def set_acls(self, location, public=False, read_tenants=[],
+                     write_tenants=[]):
+        """
+        Sets the read and write access control list for an image in the
+        backend store.
+
+        :location `glance.store.location.Location` object, supplied
+                  from glance.store.location.get_location_from_uri()
+        :public A boolean indicating whether the image should be public.
+        :read_tenants A list of tenant strings which should be granted
+                      read access for an image.
+        :write_tenants A list of tenant strings which should be granted
+                      write access for an image.
+        """
+        if self.multi_tenant:
+            loc = location.store_location
+            swift_conn = self._swift_connection_for_location(loc)
+            headers = {}
+            if public:
+                headers['X-Container-Read'] = ".r:*"
+            elif read_tenants:
+                headers['X-Container-Read'] = ','.join(read_tenants)
+            else:
+                headers['X-Container-Read'] = ''
+
+            write_tenants.extend(self.admin_tenants)
+            if write_tenants:
+                headers['X-Container-Write'] = ','.join(write_tenants)
+            else:
+                headers['X-Container-Write'] = ''
+
+            try:
+                swift_conn.post_container(loc.container, headers=headers)
+            except swiftclient.ClientException, e:
+                if e.http_status == httplib.NOT_FOUND:
+                    uri = location.get_store_uri()
+                    raise exception.NotFound(_("Swift could not find image at "
+                                             "uri %(uri)s") % locals())
+                else:
+                    raise
 
 
 class ChunkReader(object):
@@ -538,23 +654,22 @@ class ChunkReader(object):
         return result
 
 
-def create_container_if_missing(container, swift_conn, conf):
+def create_container_if_missing(container, swift_conn):
     """
     Creates a missing container in Swift if the
     ``swift_store_create_container_on_put`` option is set.
 
     :param container: Name of container to create
     :param swift_conn: Connection to Swift
-    :param conf: Option mapping
     """
     try:
         swift_conn.head_container(container)
-    except swift_client.ClientException, e:
+    except swiftclient.ClientException, e:
         if e.http_status == httplib.NOT_FOUND:
-            if conf.swift_store_create_container_on_put:
+            if CONF.swift_store_create_container_on_put:
                 try:
                     swift_conn.put_container(container)
-                except swift_client.ClientException, e:
+                except swiftclient.ClientException, e:
                     msg = _("Failed to add container to Swift.\n"
                            "Got error from Swift: %(e)s") % locals()
                     raise glance.store.BackendException(msg)

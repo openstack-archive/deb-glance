@@ -17,24 +17,24 @@
 
 """Tests the Swift backend store"""
 
-import StringIO
 import hashlib
 import httplib
+import StringIO
 import tempfile
-import unittest
 import urllib
 
 import stubout
-import swift.common.client
+import swiftclient
 
 from glance.common import exception
 from glance.common import utils
+from glance.openstack.common import cfg
 from glance.store import BackendException
-import glance.store.swift
 from glance.store.location import get_location_from_uri
+import glance.store.swift
 from glance.tests.unit import base
-from glance.tests import utils as test_utils
 
+CONF = cfg.CONF
 
 FAKE_UUID = utils.generate_uuid
 
@@ -45,7 +45,7 @@ MAX_SWIFT_OBJECT_SIZE = FIVE_GB
 SWIFT_PUT_OBJECT_CALLS = 0
 SWIFT_CONF = {'verbose': True,
               'debug': True,
-              'known_stores': "glance.store.swift.Store",
+              'known_stores': ['glance.store.swift.Store'],
               'default_store': 'swift',
               'swift_store_user': 'user',
               'swift_store_key': 'key',
@@ -54,11 +54,11 @@ SWIFT_CONF = {'verbose': True,
 
 
 # We stub out as little as possible to ensure that the code paths
-# between glance.store.swift and swift.common.client are tested
+# between glance.store.swift and swiftclient are tested
 # thoroughly
-def stub_out_swift_common_client(stubs, conf):
-
+def stub_out_swiftclient(stubs, swift_store_auth_version):
     fixture_containers = ['glance']
+    fixture_container_headers = {}
     fixture_headers = {'glance/%s' % FAKE_UUID:
                 {'content-length': FIVE_KB,
                  'etag': 'c2e5db72bd7fd153f53ede5da5a06de3'}}
@@ -68,11 +68,16 @@ def stub_out_swift_common_client(stubs, conf):
     def fake_head_container(url, token, container, **kwargs):
         if container not in fixture_containers:
             msg = "No container %s found" % container
-            raise swift.common.client.ClientException(msg,
+            raise swiftclient.ClientException(msg,
                         http_status=httplib.NOT_FOUND)
+        return fixture_container_headers
 
     def fake_put_container(url, token, container, **kwargs):
         fixture_containers.append(container)
+
+    def fake_post_container(url, token, container, headers, http_conn=None):
+        for key, value in headers.iteritems():
+            fixture_container_headers[key] = value
 
     def fake_put_object(url, token, container, name, contents, **kwargs):
         # PUT returns the ETag header for the newly-added object
@@ -102,7 +107,7 @@ def stub_out_swift_common_client(stubs, conf):
             if read_len > MAX_SWIFT_OBJECT_SIZE:
                 msg = ('Image size:%d exceeds Swift max:%d' %
                         (read_len, MAX_SWIFT_OBJECT_SIZE))
-                raise swift.common.client.ClientException(
+                raise swiftclient.ClientException(
                         msg, http_status=httplib.REQUEST_ENTITY_TOO_LARGE)
             fixture_objects[fixture_key] = fixture_object
             fixture_headers[fixture_key] = {
@@ -112,7 +117,7 @@ def stub_out_swift_common_client(stubs, conf):
         else:
             msg = ("Object PUT failed - Object with key %s already exists"
                    % fixture_key)
-            raise swift.common.client.ClientException(msg,
+            raise swiftclient.ClientException(msg,
                         http_status=httplib.CONFLICT)
 
     def fake_get_object(url, token, container, name, **kwargs):
@@ -120,7 +125,7 @@ def stub_out_swift_common_client(stubs, conf):
         fixture_key = "%s/%s" % (container, name)
         if not fixture_key in fixture_headers:
             msg = "Object GET failed"
-            raise swift.common.client.ClientException(msg,
+            raise swiftclient.ClientException(msg,
                         http_status=httplib.NOT_FOUND)
 
         fixture = fixture_headers[fixture_key]
@@ -145,7 +150,7 @@ def stub_out_swift_common_client(stubs, conf):
             return fixture_headers[fixture_key]
         except KeyError:
             msg = "Object HEAD failed - Object does not exist"
-            raise swift.common.client.ClientException(msg,
+            raise swiftclient.ClientException(msg,
                         http_status=httplib.NOT_FOUND)
 
     def fake_delete_object(url, token, container, name, **kwargs):
@@ -153,7 +158,7 @@ def stub_out_swift_common_client(stubs, conf):
         fixture_key = "%s/%s" % (container, name)
         if fixture_key not in fixture_headers.keys():
             msg = "Object DELETE failed - Object does not exist"
-            raise swift.common.client.ClientException(msg,
+            raise swiftclient.ClientException(msg,
                         http_status=httplib.NOT_FOUND)
         else:
             del fixture_headers[fixture_key]
@@ -163,29 +168,33 @@ def stub_out_swift_common_client(stubs, conf):
         return None
 
     def fake_get_auth(url, user, key, snet, auth_version, **kwargs):
+        if url is None:
+            return None, None
         if 'http' in url and '://' not in url:
             raise ValueError('Invalid url %s' % url)
         # Check the auth version against the configured value
-        if conf['swift_store_auth_version'] != auth_version:
+        if swift_store_auth_version != auth_version:
             msg = 'AUTHENTICATION failed (version mismatch)'
-            raise swift.common.client.ClientException(msg)
+            raise swiftclient.ClientException(msg)
         return None, None
 
-    stubs.Set(swift.common.client,
+    stubs.Set(swiftclient.client,
               'head_container', fake_head_container)
-    stubs.Set(swift.common.client,
+    stubs.Set(swiftclient.client,
               'put_container', fake_put_container)
-    stubs.Set(swift.common.client,
+    stubs.Set(swiftclient.client,
+              'post_container', fake_post_container)
+    stubs.Set(swiftclient.client,
               'put_object', fake_put_object)
-    stubs.Set(swift.common.client,
+    stubs.Set(swiftclient.client,
               'delete_object', fake_delete_object)
-    stubs.Set(swift.common.client,
+    stubs.Set(swiftclient.client,
               'head_object', fake_head_object)
-    stubs.Set(swift.common.client,
+    stubs.Set(swiftclient.client,
               'get_object', fake_get_object)
-    stubs.Set(swift.common.client,
+    stubs.Set(swiftclient.client,
               'get_auth', fake_get_auth)
-    stubs.Set(swift.common.client,
+    stubs.Set(swiftclient.client,
               'http_connection', fake_http_connection)
 
 
@@ -193,7 +202,7 @@ class SwiftTests(object):
 
     @property
     def swift_store_user(self):
-        return urllib.quote(self.conf['swift_store_user'])
+        return urllib.quote(CONF.swift_store_user)
 
     def test_get_size(self):
         """
@@ -315,14 +324,14 @@ class SwiftTests(object):
             expected_swift_contents = "*" * expected_swift_size
             expected_checksum = \
                     hashlib.md5(expected_swift_contents).hexdigest()
-            self.conf['swift_store_auth_address'] = variation
 
             image_swift = StringIO.StringIO(expected_swift_contents)
 
             global SWIFT_PUT_OBJECT_CALLS
             SWIFT_PUT_OBJECT_CALLS = 0
 
-            self.store = Store(test_utils.TestConfigOpts(self.conf))
+            self.config(swift_store_auth_address=variation)
+            self.store = Store()
             location, size, checksum = self.store.add(image_id, image_swift,
                                                       expected_swift_size)
 
@@ -344,10 +353,11 @@ class SwiftTests(object):
         Tests that adding an image with a non-existing container
         raises an appropriate exception
         """
-        self.conf['swift_store_create_container_on_put'] = 'False'
-        self.conf['swift_store_container'] = 'noexist'
+        self.config(swift_store_create_container_on_put=False,
+                    swift_store_container='noexist')
+        self.store = Store()
+
         image_swift = StringIO.StringIO("nevergonnamakeit")
-        self.store = Store(test_utils.TestConfigOpts(self.conf))
 
         global SWIFT_PUT_OBJECT_CALLS
         SWIFT_PUT_OBJECT_CALLS = 0
@@ -370,8 +380,6 @@ class SwiftTests(object):
         Tests that adding an image with a non-existing container
         creates the container automatically if flag is set
         """
-        self.conf['swift_store_create_container_on_put'] = 'True'
-        self.conf['swift_store_container'] = 'noexist'
         expected_swift_size = FIVE_KB
         expected_swift_contents = "*" * expected_swift_size
         expected_checksum = hashlib.md5(expected_swift_contents).hexdigest()
@@ -384,7 +392,9 @@ class SwiftTests(object):
         global SWIFT_PUT_OBJECT_CALLS
         SWIFT_PUT_OBJECT_CALLS = 0
 
-        self.store = Store(test_utils.TestConfigOpts(self.conf))
+        self.config(swift_store_create_container_on_put=True,
+                    swift_store_container='noexist')
+        self.store = Store()
         location, size, checksum = self.store.add(expected_image_id,
                                                   image_swift,
                                                   expected_swift_size)
@@ -409,7 +419,6 @@ class SwiftTests(object):
         and then verify that there have been a number of calls to
         put_object()...
         """
-        self.conf['swift_store_container'] = 'glance'
         expected_swift_size = FIVE_KB
         expected_swift_contents = "*" * expected_swift_size
         expected_checksum = hashlib.md5(expected_swift_contents).hexdigest()
@@ -422,7 +431,8 @@ class SwiftTests(object):
         global SWIFT_PUT_OBJECT_CALLS
         SWIFT_PUT_OBJECT_CALLS = 0
 
-        self.store = Store(test_utils.TestConfigOpts(self.conf))
+        self.config(swift_store_container='glance')
+        self.store = Store()
         orig_max_size = self.store.large_object_size
         orig_temp_size = self.store.large_object_chunk_size
         try:
@@ -461,8 +471,6 @@ class SwiftTests(object):
 
         Bug lp:891738
         """
-        self.conf['swift_store_container'] = 'glance'
-
         # Set up a 'large' image of 5KB
         expected_swift_size = FIVE_KB
         expected_swift_contents = "*" * expected_swift_size
@@ -478,7 +486,8 @@ class SwiftTests(object):
 
         # Temporarily set Swift MAX_SWIFT_OBJECT_SIZE to 1KB and add our image,
         # explicitly setting the image_length to 0
-        self.store = Store(test_utils.TestConfigOpts(self.conf))
+        self.config(swift_store_container='glance')
+        self.store = Store()
         orig_max_size = self.store.large_object_size
         orig_temp_size = self.store.large_object_chunk_size
         global MAX_SWIFT_OBJECT_SIZE
@@ -522,10 +531,12 @@ class SwiftTests(object):
                           FAKE_UUID, image_swift, 0)
 
     def _option_required(self, key):
-        del self.conf[key]
+        conf = self.getConfig()
+        conf[key] = None
 
         try:
-            self.store = Store(test_utils.TestConfigOpts(self.conf))
+            self.config(**conf)
+            self.store = Store()
             return self.store.add == self.store.add_disabled
         except:
             return False
@@ -569,6 +580,49 @@ class SwiftTests(object):
                 self.swift_store_user))
         self.assertRaises(exception.NotFound, self.store.delete, loc)
 
+    def test_read_acl_public(self):
+        """
+        Test that we can set a public read acl.
+        """
+        self.config(swift_store_multi_tenant=True)
+        uri = "swift+http://storeurl/glance/%s" % FAKE_UUID
+        loc = get_location_from_uri(uri)
+        self.store.multi_tenant = True
+        self.store.set_acls(loc, public=True)
+        container_headers = swiftclient.client.head_container('x', 'y',
+                                                              'glance')
+        self.assertEqual(container_headers['X-Container-Read'], ".r:*")
+
+    def test_read_acl_tenants(self):
+        """
+        Test that we can set read acl for tenants.
+        """
+        self.config(swift_store_multi_tenant=True)
+        uri = "swift+http://storeurl/glance/%s" % FAKE_UUID
+        loc = get_location_from_uri(uri)
+        self.store.multi_tenant = True
+        read_tenants = ['matt', 'mark']
+        self.store.set_acls(loc, read_tenants=read_tenants)
+        container_headers = swiftclient.client.head_container('x', 'y',
+                                                              'glance')
+        self.assertEqual(container_headers['X-Container-Read'],
+                         ','.join(read_tenants))
+
+    def test_read_write_public(self):
+        """
+        Test that we can set write acl for tenants.
+        """
+        self.config(swift_store_multi_tenant=True)
+        uri = "swift+http://storeurl/glance/%s" % FAKE_UUID
+        loc = get_location_from_uri(uri)
+        self.store.multi_tenant = True
+        read_tenants = ['frank', 'jim']
+        self.store.set_acls(loc, write_tenants=read_tenants)
+        container_headers = swiftclient.client.head_container('x', 'y',
+                                                              'glance')
+        self.assertEqual(container_headers['X-Container-Write'],
+                         ','.join(read_tenants))
+
 
 class TestStoreAuthV1(base.StoreClearingUnitTest, SwiftTests):
 
@@ -580,11 +634,13 @@ class TestStoreAuthV1(base.StoreClearingUnitTest, SwiftTests):
 
     def setUp(self):
         """Establish a clean test environment"""
+        conf = self.getConfig()
+        self.config(**conf)
         super(TestStoreAuthV1, self).setUp()
-        self.conf = self.getConfig()
         self.stubs = stubout.StubOutForTesting()
-        stub_out_swift_common_client(self.stubs, self.conf)
-        self.store = Store(test_utils.TestConfigOpts(self.conf))
+        stub_out_swiftclient(self.stubs,
+                                     conf['swift_store_auth_version'])
+        self.store = Store()
 
     def tearDown(self):
         """Clear the test environment"""
@@ -609,6 +665,13 @@ class TestStoreAuthV2(TestStoreAuthV1):
         self.assertRaises(exception.BadStoreUri,
                           self.store.get,
                           loc)
+
+    def test_v2_multi_tenant_location(self):
+        conf = self.getConfig()
+        conf['swift_store_multi_tenant'] = True
+        uri = "swift://auth_address/glance/%s" % (FAKE_UUID)
+        loc = get_location_from_uri(uri)
+        self.assertEqual('swift', loc.store_name)
 
 
 class TestChunkReader(base.StoreClearingUnitTest):

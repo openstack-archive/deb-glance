@@ -28,7 +28,7 @@ import optparse
 import os
 import sys
 import time
-
+import warnings
 from urlparse import urlparse
 
 # If ../glance/__init__.py exists, add ../ to Python search path, so that
@@ -41,10 +41,13 @@ if os.path.exists(os.path.join(possible_topdir, 'glance', '__init__.py')):
 
 gettext.install('glance', unicode=1)
 
-from glance import client as glance_client
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    from glance import client as glance_client
+
 from glance.common import exception
 from glance.common import utils
-from glance import version
+from glance.version import version_info as version
 
 
 SUCCESS = 0
@@ -146,6 +149,11 @@ def print_image_formatted(client, image):
     if len(image['properties']) > 0:
         for k, v in image['properties'].items():
             print "Property '%s': %s" % (k, v)
+    print "Created at: %s" % image['created_at']
+    if image.get('deleted_at'):
+        print "Deleted at: %s" % image['deleted_at']
+    if image.get('updated_at'):
+        print "Updated at: %s" % image['updated_at']
 
 
 def image_add(options, args):
@@ -826,7 +834,7 @@ def create_options(parser):
     parser.add_option('-v', '--verbose', default=False, action="store_true",
                       help="Print more verbose output")
     parser.add_option('-d', '--debug', default=False, action="store_true",
-                      help="Print more verbose output")
+                      help="Print debugging output")
     parser.add_option('-H', '--host', metavar="ADDRESS", default="0.0.0.0",
                       help="Address of Glance API host. "
                            "Default: %default")
@@ -1011,6 +1019,9 @@ if __name__ == '__main__':
     usage = """
 %prog <command> [options] [args]
 
+WARNING! This tool is deprecated in favor of python-glanceclient (see
+http://github.com/openstack/python-glanceclient).
+
 Commands:
 
     help <command>  Output help for one of the commands below
@@ -1044,6 +1055,10 @@ Member Commands:
 
     members-replace  Replaces all membership for an image
 """
+
+    print >> sys.stderr, ("WARNING! This tool is deprecated in favor of "
+                          "python-glanceclient (see "
+                          "http://github.com/openstack/python-glanceclient).")
 
     oparser = optparse.OptionParser(version='%%prog %s'
                                     % version.version_string(),

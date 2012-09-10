@@ -152,6 +152,13 @@ Number of backlog requests to configure the socket with.
 
 Optional. Default: ``4096``
 
+* ``tcp_keepidle=SECONDS``
+
+Sets the value of TCP_KEEPIDLE in seconds for each server socket.
+Not supported on OS X.
+
+Optional. Default: ``600``
+
 * ``workers=PROCESSES``
 
 Number of Glance API worker processes to start. Each worker
@@ -177,6 +184,14 @@ Optional. Default: not enabled.
 
 Path to the private key file the server should use when binding to an
 SSL-wrapped socket.
+
+Optional. Default: not enabled.
+
+* ``ca_file=PATH``
+
+Path to the CA certificate file the server should use to validate client
+certificates provided during an SSL handshake. This is ignored if
+``cert_file`` and ''key_file`` are not set.
 
 Optional. Default: not enabled.
 
@@ -380,6 +395,30 @@ Can only be specified in configuration files.
 When doing a large object manifest, what size, in MB, should
 Glance write chunks to Swift?  The default is 200MB.
 
+* ``swift_store_multi_tenant=False``
+
+Optional. Default: ``False``
+
+Can only be specified in configuration files.
+
+`This option is specific to the Swift storage backend.`
+
+If set to True enables multi-tenant storage mode which causes Glance images
+to be stored in tenant specific Swift accounts. When set to False Glance
+stores all images in a single Swift account.
+
+* ``swift_store_admin_tenants``
+
+Can only be specified in configuration files.
+
+`This option is specific to the Swift storage backend.`
+
+Optional. Default: ``[]``
+
+A list of tenants that will be granted read/write access on all Swift containers
+created by Glance in multi tenant mode.
+
+
 Configuring the S3 Storage Backend
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -554,8 +593,7 @@ The cache middleware should be in your ``glance-api-paste.ini`` in a section
 titled ``[filter:cache]``. It should look like this::
 
   [filter:cache]
-  paste.filter_factory = glance.common.wsgi:filter_factory
-  glance.filter_factory = glance.api.middleware.cache:CacheFilter
+  paste.filter_factory = glance.api.middleware.cache:CacheFilter.factory
 
 A ready-made application pipeline including this filter is defined in
 the ``glance-api-paste.ini`` file, looking like so::

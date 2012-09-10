@@ -44,13 +44,13 @@ class TestLogging(functional.FunctionalTest):
 
         api_log_out = open(self.api_server.log_file, 'r').read()
 
-        self.assertTrue('DEBUG [glance-api]' in api_log_out)
+        self.assertTrue('DEBUG glance' in api_log_out)
 
         self.assertTrue(os.path.exists(self.registry_server.log_file))
 
         registry_log_out = open(self.registry_server.log_file, 'r').read()
 
-        self.assertTrue('DEBUG [glance-registry]' in registry_log_out)
+        self.assertTrue('DEBUG glance' in registry_log_out)
 
         self.stop_servers()
 
@@ -66,13 +66,13 @@ class TestLogging(functional.FunctionalTest):
 
         api_log_out = open(self.api_server.log_file, 'r').read()
 
-        self.assertFalse('DEBUG [glance-api]' in api_log_out)
+        self.assertFalse('DEBUG glance' in api_log_out)
 
         self.assertTrue(os.path.exists(self.registry_server.log_file))
 
         registry_log_out = open(self.registry_server.log_file, 'r').read()
 
-        self.assertFalse('DEBUG [glance-registry]' in registry_log_out)
+        self.assertFalse('DEBUG glance' in registry_log_out)
 
         self.stop_servers()
 
@@ -91,7 +91,7 @@ class TestLogging(functional.FunctionalTest):
 
         os.rename(self.api_server.log_file, self.api_server.log_file + ".1")
 
-        path = "http://%s:%d/" % ("0.0.0.0", self.api_port)
+        path = "http://%s:%d/" % ("127.0.0.1", self.api_port)
         response, content = httplib2.Http().request(path, 'GET')
         self.assertEqual(response.status, 300)
 

@@ -15,22 +15,23 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import logging
-
 import webob.exc
 
 from glance.common import exception
+from glance.api.v1 import controller
+from glance.common import utils
 from glance.common import wsgi
+import glance.openstack.common.log as logging
 from glance import registry
 
+LOG = logging.getLogger(__name__)
 
-logger = logging.getLogger('glance.api.v1.members')
 
+class Controller(controller.BaseController):
 
-class Controller(object):
-
-    def __init__(self, conf):
-        self.conf = conf
+    def _check_can_access_image_members(self, context):
+        if context.owner is None and not context.is_admin:
+            raise webob.exc.HTTPUnauthorized(_("No authenticated user"))
 
     def index(self, req, image_id):
         """
@@ -50,32 +51,31 @@ class Controller(object):
             members = registry.get_image_members(req.context, image_id)
         except exception.NotFound:
             msg = _("Image with identifier %s not found") % image_id
-            logger.debug(msg)
+            LOG.debug(msg)
             raise webob.exc.HTTPNotFound(msg)
         except exception.Forbidden:
             msg = _("Unauthorized image access")
-            logger.debug(msg)
+            LOG.debug(msg)
             raise webob.exc.HTTPForbidden(msg)
         return dict(members=members)
 
+    @utils.mutating
     def delete(self, req, image_id, id):
         """
         Removes a membership from the image.
         """
-        if req.context.read_only:
-            raise webob.exc.HTTPForbidden()
-        elif req.context.owner is None:
-            raise webob.exc.HTTPUnauthorized(_("No authenticated user"))
+        self._check_can_access_image_members(req.context)
 
         try:
             registry.delete_member(req.context, image_id, id)
+            self._update_store_acls(req, image_id)
         except exception.NotFound, e:
             msg = "%s" % e
-            logger.debug(msg)
+            LOG.debug(msg)
             raise webob.exc.HTTPNotFound(msg)
         except exception.Forbidden, e:
             msg = "%s" % e
-            logger.debug(msg)
+            LOG.debug(msg)
             raise webob.exc.HTTPNotFound(msg)
 
         return webob.exc.HTTPNoContent()
@@ -84,6 +84,7 @@ class Controller(object):
         """This will cover the missing 'show' and 'create' actions"""
         raise webob.exc.HTTPMethodNotAllowed()
 
+    @utils.mutating
     def update(self, req, image_id, id, body=None):
         """
         Adds a membership to the image, or updates an existing one.
@@ -97,10 +98,7 @@ class Controller(object):
         set accordingly.  If it is not provided, existing memberships
         remain unchanged and new memberships default to False.
         """
-        if req.context.read_only:
-            raise webob.exc.HTTPForbidden()
-        elif req.context.owner is None:
-            raise webob.exc.HTTPUnauthorized(_("No authenticated user"))
+        self._check_can_access_image_members(req.context)
 
         # Figure out can_share
         can_share = None
@@ -108,21 +106,23 @@ class Controller(object):
             can_share = bool(body['member']['can_share'])
         try:
             registry.add_member(req.context, image_id, id, can_share)
+            self._update_store_acls(req, image_id)
         except exception.Invalid, e:
             msg = "%s" % e
-            logger.debug(msg)
+            LOG.debug(msg)
             raise webob.exc.HTTPBadRequest(explanation=msg)
         except exception.NotFound, e:
             msg = "%s" % e
-            logger.debug(msg)
+            LOG.debug(msg)
             raise webob.exc.HTTPNotFound(msg)
         except exception.Forbidden, e:
             msg = "%s" % e
-            logger.debug(msg)
+            LOG.debug(msg)
             raise webob.exc.HTTPNotFound(msg)
 
         return webob.exc.HTTPNoContent()
 
+    @utils.mutating
     def update_all(self, req, image_id, body):
         """
         Replaces the members of the image with those specified in the
@@ -133,24 +133,22 @@ class Controller(object):
                  ["can_share": [True|False]]}, ...
             ]}
         """
-        if req.context.read_only:
-            raise webob.exc.HTTPForbidden()
-        elif req.context.owner is None:
-            raise webob.exc.HTTPUnauthorized(_("No authenticated user"))
+        self._check_can_access_image_members(req.context)
 
         try:
             registry.replace_members(req.context, image_id, body)
+            self._update_store_acls(req, image_id)
         except exception.Invalid, e:
             msg = "%s" % e
-            logger.debug(msg)
+            LOG.debug(msg)
             raise webob.exc.HTTPBadRequest(explanation=msg)
         except exception.NotFound, e:
             msg = "%s" % e
-            logger.debug(msg)
+            LOG.debug(msg)
             raise webob.exc.HTTPNotFound(msg)
         except exception.Forbidden, e:
             msg = "%s" % e
-            logger.debug(msg)
+            LOG.debug(msg)
             raise webob.exc.HTTPNotFound(msg)
 
         return webob.exc.HTTPNoContent()
@@ -172,17 +170,23 @@ class Controller(object):
             members = registry.get_member_images(req.context, id)
         except exception.NotFound, e:
             msg = "%s" % e
-            logger.debug(msg)
+            LOG.debug(msg)
             raise webob.exc.HTTPNotFound(msg)
         except exception.Forbidden, e:
             msg = "%s" % e
-            logger.debug(msg)
+            LOG.debug(msg)
             raise webob.exc.HTTPForbidden(msg)
         return dict(shared_images=members)
 
+    def _update_store_acls(self, req, image_id):
+        image_meta = self.get_image_meta_or_404(req, image_id)
+        location_uri = image_meta.get('location')
+        public = image_meta.get('is_public')
+        self.update_store_acls(req, image_id, location_uri, public)
 
-def create_resource(conf):
+
+def create_resource():
     """Image members resource factory method"""
     deserializer = wsgi.JSONRequestDeserializer()
     serializer = wsgi.JSONResponseSerializer()
-    return wsgi.Resource(Controller(conf), deserializer, serializer)
+    return wsgi.Resource(Controller(), deserializer, serializer)

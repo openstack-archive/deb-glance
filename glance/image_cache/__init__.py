@@ -19,13 +19,26 @@
 LRU Cache for Image Data
 """
 
-import logging
+import hashlib
 
 from glance.common import exception
 from glance.common import utils
 from glance.openstack.common import cfg
+import glance.openstack.common.log as logging
+from glance.openstack.common import importutils
 
-logger = logging.getLogger(__name__)
+LOG = logging.getLogger(__name__)
+
+image_cache_opts = [
+    cfg.StrOpt('image_cache_driver', default='sqlite'),
+    cfg.IntOpt('image_cache_max_size', default=10 * (1024 ** 3)),  # 10 GB
+    cfg.IntOpt('image_cache_stall_time', default=86400),  # 24 hours
+    cfg.StrOpt('image_cache_dir'),
+    ]
+
+CONF = cfg.CONF
+CONF.register_opts(image_cache_opts)
+
 DEFAULT_MAX_CACHE_SIZE = 10 * 1024 * 1024 * 1024  # 10 GB
 
 
@@ -33,36 +46,27 @@ class ImageCache(object):
 
     """Provides an LRU cache for image data."""
 
-    opts = [
-        cfg.StrOpt('image_cache_driver', default='sqlite'),
-        cfg.IntOpt('image_cache_max_size', default=10 * (1024 ** 3)),  # 10 GB
-        cfg.IntOpt('image_cache_stall_time', default=86400),  # 24 hours
-        cfg.StrOpt('image_cache_dir'),
-        ]
-
-    def __init__(self, conf):
-        self.conf = conf
-        self.conf.register_opts(self.opts)
+    def __init__(self):
         self.init_driver()
 
     def init_driver(self):
         """
         Create the driver for the cache
         """
-        driver_name = self.conf.image_cache_driver
+        driver_name = CONF.image_cache_driver
         driver_module = (__name__ + '.drivers.' + driver_name + '.Driver')
         try:
-            self.driver_class = utils.import_class(driver_module)
-            logger.info(_("Image cache loaded driver '%s'.") %
-                        driver_name)
-        except exception.ImportFailure, import_err:
-            logger.warn(_("Image cache driver "
-                          "'%(driver_name)s' failed to load. "
-                          "Got error: '%(import_err)s.") % locals())
+            self.driver_class = importutils.import_class(driver_module)
+            LOG.info(_("Image cache loaded driver '%s'.") %
+                     driver_name)
+        except ImportError, import_err:
+            LOG.warn(_("Image cache driver "
+                       "'%(driver_name)s' failed to load. "
+                       "Got error: '%(import_err)s.") % locals())
 
             driver_module = __name__ + '.drivers.sqlite.Driver'
-            logger.info(_("Defaulting to SQLite driver."))
-            self.driver_class = utils.import_class(driver_module)
+            LOG.info(_("Defaulting to SQLite driver."))
+            self.driver_class = importutils.import_class(driver_module)
         self.configure_driver()
 
     def configure_driver(self):
@@ -71,17 +75,17 @@ class ImageCache(object):
         fall back to using the SQLite driver which has no odd dependencies
         """
         try:
-            self.driver = self.driver_class(self.conf)
+            self.driver = self.driver_class()
             self.driver.configure()
         except exception.BadDriverConfiguration, config_err:
             driver_module = self.driver_class.__module__
-            logger.warn(_("Image cache driver "
-                          "'%(driver_module)s' failed to configure. "
-                          "Got error: '%(config_err)s") % locals())
-            logger.info(_("Defaulting to SQLite driver."))
+            LOG.warn(_("Image cache driver "
+                       "'%(driver_module)s' failed to configure. "
+                       "Got error: '%(config_err)s") % locals())
+            LOG.info(_("Defaulting to SQLite driver."))
             default_module = __name__ + '.drivers.sqlite.Driver'
-            self.driver_class = utils.import_class(default_module)
-            self.driver = self.driver_class(self.conf)
+            self.driver_class = importutils.import_class(default_module)
+            self.driver = self.driver_class()
             self.driver.configure()
 
     def is_cached(self, image_id):
@@ -157,15 +161,15 @@ class ImageCache(object):
         size. Returns a tuple containing the total number of cached
         files removed and the total size of all pruned image files.
         """
-        max_size = self.conf.image_cache_max_size
+        max_size = CONF.image_cache_max_size
         current_size = self.driver.get_cache_size()
         if max_size > current_size:
-            logger.debug(_("Image cache has free space, skipping prune..."))
+            LOG.debug(_("Image cache has free space, skipping prune..."))
             return (0, 0)
 
         overage = current_size - max_size
-        logger.debug(_("Image cache currently %(overage)d bytes over max "
-                       "size. Starting prune to max size of %(max_size)d ") %
+        LOG.debug(_("Image cache currently %(overage)d bytes over max "
+                    "size. Starting prune to max size of %(max_size)d ") %
                      locals())
 
         total_bytes_pruned = 0
@@ -173,17 +177,17 @@ class ImageCache(object):
         entry = self.driver.get_least_recently_accessed()
         while entry and current_size > max_size:
             image_id, size = entry
-            logger.debug(_("Pruning '%(image_id)s' to free %(size)d bytes"),
-                         {'image_id': image_id, 'size': size})
+            LOG.debug(_("Pruning '%(image_id)s' to free %(size)d bytes"),
+                      {'image_id': image_id, 'size': size})
             self.driver.delete_cached_image(image_id)
             total_bytes_pruned = total_bytes_pruned + size
             total_files_pruned = total_files_pruned + 1
             current_size = current_size - size
             entry = self.driver.get_least_recently_accessed()
 
-        logger.debug(_("Pruning finished pruning. "
-                       "Pruned %(total_files_pruned)d and "
-                       "%(total_bytes_pruned)d.") % locals())
+        LOG.debug(_("Pruning finished pruning. "
+                    "Pruned %(total_files_pruned)d and "
+                    "%(total_bytes_pruned)d.") % locals())
         return total_files_pruned, total_bytes_pruned
 
     def clean(self, stall_time=None):
@@ -204,33 +208,45 @@ class ImageCache(object):
         """
         return self.driver.queue_image(image_id)
 
-    def get_caching_iter(self, image_id, image_iter):
+    def get_caching_iter(self, image_id, image_checksum, image_iter):
         """
         Returns an iterator that caches the contents of an image
         while the image contents are read through the supplied
         iterator.
 
         :param image_id: Image ID
+        :param image_checksum: checksum expected to be generated while
+                               iterating over image data
         :param image_iter: Iterator that will read image contents
         """
         if not self.driver.is_cacheable(image_id):
             return image_iter
 
-        logger.debug(_("Tee'ing image '%s' into cache"), image_id)
+        LOG.debug(_("Tee'ing image '%s' into cache"), image_id)
 
         def tee_iter(image_id):
             try:
+                current_checksum = hashlib.md5()
+
                 with self.driver.open_for_write(image_id) as cache_file:
                     for chunk in image_iter:
                         try:
                             cache_file.write(chunk)
                         finally:
+                            current_checksum.update(chunk)
                             yield chunk
                     cache_file.flush()
+
+                if image_checksum and \
+                        image_checksum != current_checksum.hexdigest():
+                    msg = _("Checksum verification failed.  Aborted caching "
+                            "of image %s." % image_id)
+                    raise exception.GlanceException(msg)
+
             except Exception:
-                logger.exception(_("Exception encountered while tee'ing "
-                                   "image '%s' into cache. Continuing "
-                                   "with response.") % image_id)
+                LOG.exception(_("Exception encountered while tee'ing "
+                                "image '%s' into cache. Continuing "
+                                "with response.") % image_id)
 
             # NOTE(markwash): continue responding even if caching failed
             for chunk in image_iter:

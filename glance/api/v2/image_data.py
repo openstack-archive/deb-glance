@@ -15,20 +15,22 @@
 
 import webob.exc
 
-from glance.api.v2 import base
+from glance.api import common
+import glance.api.v2 as v2
 from glance.common import exception
+from glance.common import utils
 from glance.common import wsgi
-import glance.registry.db.api
+import glance.db
+import glance.notifier
 import glance.store
 
 
-class ImageDataController(base.Controller):
-    def __init__(self, conf, db_api=None, store_api=None):
-        super(ImageDataController, self).__init__(conf)
-        self.db_api = db_api or glance.registry.db.api
-        self.db_api.configure_db(conf)
+class ImageDataController(object):
+    def __init__(self, db_api=None, store_api=None):
+        self.db_api = db_api or glance.db.get_api()
+        self.db_api.configure_db()
         self.store_api = store_api or glance.store
-        self.store_api.create_stores(conf)
+        self.store_api.create_stores()
 
     def _get_image(self, context, image_id):
         try:
@@ -36,23 +38,34 @@ class ImageDataController(base.Controller):
         except exception.NotFound:
             raise webob.exc.HTTPNotFound(_("Image does not exist"))
 
+    @utils.mutating
     def upload(self, req, image_id, data, size):
-        self._get_image(req.context, image_id)
+        image = self._get_image(req.context, image_id)
         try:
             location, size, checksum = self.store_api.add_to_backend(
-                    'file', image_id, data, size)
+                    req.context, 'file', image_id, data, size)
         except exception.Duplicate:
             raise webob.exc.HTTPConflict()
 
-        values = {'location': location, 'size': size}
+        v2.update_image_read_acl(req, self.db_api, image)
+
+        values = {'location': location, 'size': size, 'checksum': checksum}
         self.db_api.image_update(req.context, image_id, values)
 
     def download(self, req, image_id):
-        image = self._get_image(req.context, image_id)
+        ctx = req.context
+        image = self._get_image(ctx, image_id)
         location = image['location']
         if location:
-            image_data, image_size = self.store_api.get_from_backend(location)
-            return {'data': image_data, 'size': image_size}
+            image_data, image_size = self.store_api.get_from_backend(ctx,
+                                                                     location)
+            #NOTE(bcwaldon): This is done to match the behavior of the v1 API.
+            # The store should always return a size that matches what we have
+            # in the database. If the store says otherwise, that's a security
+            # risk.
+            if image_size is not None:
+                image['size'] = int(image_size)
+            return {'data': image_data, 'meta': image}
         else:
             raise webob.exc.HTTPNotFound(_("No image data could be found"))
 
@@ -70,14 +83,20 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
 
 class ResponseSerializer(wsgi.JSONResponseSerializer):
     def download(self, response, result):
-        response.headers['Content-Length'] = result['size']
+        size = result['meta']['size']
+        checksum = result['meta']['checksum']
+        response.headers['Content-Length'] = size
         response.headers['Content-Type'] = 'application/octet-stream'
-        response.app_iter = result['data']
+        if checksum:
+            response.headers['Content-MD5'] = checksum
+        notifier = glance.notifier.Notifier()
+        response.app_iter = common.size_checked_iter(
+                response, result['meta'], size, result['data'], notifier)
 
 
-def create_resource(conf):
+def create_resource():
     """Image data resource factory method"""
     deserializer = RequestDeserializer()
     serializer = ResponseSerializer()
-    controller = ImageDataController(conf)
+    controller = ImageDataController()
     return wsgi.Resource(controller, deserializer, serializer)

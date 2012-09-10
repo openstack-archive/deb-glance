@@ -14,59 +14,51 @@
 #    under the License.
 
 import json
-import unittest
 
 import webob
 
 import glance.api.v2.image_tags
-import glance.tests.unit.utils as test_utils
+import glance.tests.unit.utils as unit_test_utils
+import glance.tests.utils as test_utils
 
 
-class TestImageTagsController(unittest.TestCase):
+class TestImageTagsController(test_utils.BaseTestCase):
+
     def setUp(self):
         super(TestImageTagsController, self).setUp()
-        self.db = test_utils.FakeDB()
-        conf = {}
-        self.controller = glance.api.v2.image_tags.Controller(conf, self.db)
-
-    def test_list_tags(self):
-        request = test_utils.FakeRequest()
-        tags = self.controller.index(request, test_utils.UUID1)
-        expected = [
-            {'value': 'ping', 'image_id': test_utils.UUID1},
-            {'value': 'pong', 'image_id': test_utils.UUID1},
-        ]
-        self.assertEqual(expected, tags)
+        self.db = unit_test_utils.FakeDB()
+        self.controller = glance.api.v2.image_tags.Controller(self.db)
 
     def test_create_tag(self):
-        request = test_utils.FakeRequest()
-        self.controller.update(request, test_utils.UUID1, 'dink')
+        request = unit_test_utils.get_fake_request()
+        self.controller.update(request, unit_test_utils.UUID1, 'dink')
+        context = request.context
+        tags = self.db.image_tag_get_all(context, unit_test_utils.UUID1)
+        self.assertEqual(1, len([tag for tag in tags if tag == 'dink']))
+
+    def test_create_duplicate_tag_ignored(self):
+        request = unit_test_utils.get_fake_request()
+        self.controller.update(request, unit_test_utils.UUID1, 'dink')
+        self.controller.update(request, unit_test_utils.UUID1, 'dink')
+        context = request.context
+        tags = self.db.image_tag_get_all(context, unit_test_utils.UUID1)
+        self.assertEqual(1, len([tag for tag in tags if tag == 'dink']))
 
     def test_delete_tag(self):
-        request = test_utils.FakeRequest()
-        self.controller.delete(request, test_utils.UUID1, 'ping')
+        request = unit_test_utils.get_fake_request()
+        self.controller.delete(request, unit_test_utils.UUID1, 'ping')
 
     def test_delete_tag_not_found(self):
-        request = test_utils.FakeRequest()
+        request = unit_test_utils.get_fake_request()
         self.assertRaises(webob.exc.HTTPNotFound, self.controller.delete,
-                          request, test_utils.UUID1, 'what')
+                          request, unit_test_utils.UUID1, 'what')
 
 
-class TestImagesSerializer(unittest.TestCase):
+class TestImagesSerializer(test_utils.BaseTestCase):
+
     def setUp(self):
+        super(TestImagesSerializer, self).setUp()
         self.serializer = glance.api.v2.image_tags.ResponseSerializer()
-
-    def test_list_tags(self):
-        fixtures = [
-            {'value': 'ping', 'image_id': test_utils.UUID1},
-            {'value': 'pong', 'image_id': test_utils.UUID1},
-        ]
-        expected = ['ping', 'pong']
-        response = webob.Response()
-        self.serializer.index(response, fixtures)
-        self.assertEqual(200, response.status_int)
-        self.assertEqual('application/json', response.content_type)
-        self.assertEqual(expected, json.loads(response.body))
 
     def test_create_tag(self):
         response = webob.Response()

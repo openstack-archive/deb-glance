@@ -18,9 +18,8 @@
 
 import httplib2
 import os
-import time
-import socket
 import signal
+import socket
 import sys
 import time
 
@@ -33,7 +32,7 @@ class TestRespawn(functional.FunctionalTest):
     """Functional test for glance-control --respawn """
 
     def get_versions(self):
-        path = "http://%s:%d" % ("0.0.0.0", self.api_port)
+        path = "http://%s:%d" % ("127.0.0.1", self.api_port)
         http = httplib2.Http()
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 300)
@@ -75,10 +74,13 @@ class TestRespawn(functional.FunctionalTest):
         self.api_server.server_control_options += ' --respawn'
 
         # start API server, allowing glance-control to continue running
-        self.start_server(self.api_server,
-                          expect_launch=True,
-                          expect_exit=False,
-                          **self.__dict__.copy())
+        self.start_with_retry(self.api_server,
+                              'api_port',
+                              3,
+                              expect_launch=True,
+                              expect_exit=False,
+                              expect_confirmation=False,
+                              **self.__dict__.copy())
 
         # ensure the service pid has been cached
         pid_cached = lambda: os.path.exists(self.api_server.pid_file)
@@ -100,7 +102,8 @@ class TestRespawn(functional.FunctionalTest):
         self.wait_for(pid_changed)
 
         # ensure API service port is re-activated
-        self.wait_for_servers([self.api_server.bind_port])
+        launch_msg = self.wait_for_servers([self.api_server])
+        self.assertTrue(launch_msg is None, launch_msg)
 
         # verify server health with version negotiation
         self.get_versions()
@@ -114,7 +117,8 @@ class TestRespawn(functional.FunctionalTest):
         self.wait_for(process_died)
 
         # deliberately stopped server should not be respawned
-        self.wait_for_servers([self.api_server.bind_port], False)
+        launch_msg = self.wait_for_servers([self.api_server], False)
+        self.assertTrue(launch_msg is None, launch_msg)
 
         # ensure the server has not been respawned
         self.connection_unavailable('deliberately stopped')
@@ -130,10 +134,13 @@ class TestRespawn(functional.FunctionalTest):
         self.api_server.default_store = 'shouldnotexist'
 
         # start API server, allowing glance-control to continue running
-        self.start_server(self.api_server,
-                          expect_launch=False,
-                          expect_exit=False,
-                          **self.__dict__.copy())
+        self.start_with_retry(self.api_server,
+                              'api_port',
+                              1,
+                              expect_launch=False,
+                              expect_exit=False,
+                              expect_confirmation=False,
+                              **self.__dict__.copy())
 
         # ensure the service pid has been cached
         pid_cached = lambda: os.path.exists(self.api_server.pid_file)
@@ -143,7 +150,8 @@ class TestRespawn(functional.FunctionalTest):
         time.sleep(1)
 
         # bouncing server should not be respawned
-        self.wait_for_servers([self.api_server.bind_port], False)
+        launch_msg = self.wait_for_servers([self.api_server], False)
+        self.assertTrue(launch_msg is None, launch_msg)
 
         # ensure server process has gone away
         process_died = lambda: not os.path.exists('/proc/%d' % self.get_pid())

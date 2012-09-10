@@ -26,12 +26,12 @@ import tempfile
 import thread
 import time
 
-from glance.common import utils
+from glance.openstack.common import timeutils
 from glance.tests import functional
-from glance.tests.utils import execute, requires, minimal_add_command
 from glance.tests.functional.store_utils import (setup_http,
                                                  teardown_http,
                                                  get_http_uri)
+from glance.tests.utils import execute, requires, minimal_add_command
 
 
 class TestBinGlance(functional.FunctionalTest):
@@ -139,7 +139,7 @@ class TestBinGlance(functional.FunctionalTest):
         # 1. Add public image
         cmd = minimal_add_command(api_port,
                                   'MyImage',
-                                  'location=http://example.com')
+                                  'location=http://localhost:0')
         exitcode, out, err = execute(cmd)
 
         self.assertEqual(0, exitcode)
@@ -183,7 +183,7 @@ class TestBinGlance(functional.FunctionalTest):
         # name...
         cmd = ("bin/glance --port=%d add is_public=True"
                " disk_format=raw container_format=ovf"
-               " %s" % (api_port, 'location=http://example.com'))
+               " %s" % (api_port, 'location=http://localhost:0'))
         exitcode, out, err = execute(cmd)
 
         self.assertEqual(0, exitcode)
@@ -338,7 +338,7 @@ class TestBinGlance(functional.FunctionalTest):
             file_name = image_file.name
             cmd = minimal_add_command(api_port,
                                      'MyImage',
-                                     'location=http://example.com < %s' %
+                                     'location=http://localhost:0 < %s' %
                                      file_name)
             exitcode, out, err = execute(cmd)
 
@@ -470,7 +470,7 @@ class TestBinGlance(functional.FunctionalTest):
         # 1. Add public image
         cmd = minimal_add_command(api_port,
                                   'MyImage',
-                                  'location=http://example.com',
+                                  'location=http://localhost:0',
                                   public=False)
 
         exitcode, out, err = execute(cmd)
@@ -602,7 +602,7 @@ class TestBinGlance(functional.FunctionalTest):
         # 1. Add public image
         cmd = minimal_add_command(api_port,
                                  'MyImage',
-                                 'location=http://example.com checksum=1')
+                                 'location=http://localhost:0 checksum=1')
         exitcode, out, err = execute(cmd)
 
         self.assertEqual(0, exitcode)
@@ -633,7 +633,7 @@ class TestBinGlance(functional.FunctionalTest):
         # 1. Add public image
         cmd = minimal_add_command(api_port,
                                  'MyImage',
-                                 'location=http://example.com')
+                                 'location=http://localhost:0')
         exitcode, out, err = execute(cmd)
 
         self.assertEqual(0, exitcode)
@@ -789,8 +789,8 @@ class TestBinGlance(functional.FunctionalTest):
         self.assertEqual(image_lines[0].split()[0], image_ids[1])
 
         # 9. Check past changes-since
-        dt1 = datetime.datetime.utcnow() - datetime.timedelta(1)
-        iso1 = utils.isotime(dt1)
+        dt1 = timeutils.utcnow() - datetime.timedelta(1)
+        iso1 = timeutils.isotime(dt1)
         cmd = "changes-since=%s" % iso1
         exitcode, out, err = execute("%s %s" % (_index_cmd, cmd))
 
@@ -802,8 +802,8 @@ class TestBinGlance(functional.FunctionalTest):
         self.assertEqual(image_lines[2].split()[0], image_ids[0])
 
         # 10. Check future changes-since
-        dt2 = datetime.datetime.utcnow() + datetime.timedelta(1)
-        iso2 = utils.isotime(dt2)
+        dt2 = timeutils.utcnow() + datetime.timedelta(1)
+        iso2 = timeutils.isotime(dt2)
         cmd = "changes-since=%s" % iso2
         exitcode, out, err = execute("%s %s" % (_index_cmd, cmd))
 
@@ -818,9 +818,9 @@ class TestBinGlance(functional.FunctionalTest):
 
         self.assertEqual(0, exitcode)
         image_lines = out.split("\n")[1:-1]
-        self.assertEqual(26, len(image_lines))
+        self.assertEqual(30, len(image_lines))
         self.assertEqual(image_lines[1].split()[1], image_ids[1])
-        self.assertEqual(image_lines[14].split()[1], image_ids[0])
+        self.assertEqual(image_lines[16].split()[1], image_ids[0])
 
         # 12. Check min_ram filter
         cmd = "min_ram=256"
@@ -828,7 +828,7 @@ class TestBinGlance(functional.FunctionalTest):
 
         self.assertEqual(0, exitcode)
         image_lines = out.split("\n")[2:-1]
-        self.assertEqual(12, len(image_lines))
+        self.assertEqual(14, len(image_lines))
         self.assertEqual(image_lines[0].split()[1], image_ids[2])
 
         # 13. Check min_disk filter
@@ -837,7 +837,7 @@ class TestBinGlance(functional.FunctionalTest):
 
         self.assertEqual(0, exitcode)
         image_lines = out.split("\n")[2:-1]
-        self.assertEqual(12, len(image_lines))
+        self.assertEqual(14, len(image_lines))
         self.assertEqual(image_lines[0].split()[1], image_ids[2])
 
         self.stop_servers()
@@ -920,9 +920,9 @@ class TestBinGlance(functional.FunctionalTest):
 
         self.assertEqual(0, exitcode)
         image_lines = out.split("\n")[1:-1]
-        self.assertEqual(24, len(image_lines))
+        self.assertEqual(28, len(image_lines))
         self.assertTrue(image_lines[1].split()[1], image_ids[2])
-        self.assertTrue(image_lines[13].split()[1], image_ids[1])
+        self.assertTrue(image_lines[15].split()[1], image_ids[1])
 
         self.stop_servers()
 
@@ -996,10 +996,10 @@ class TestBinGlance(functional.FunctionalTest):
 
         self.assertEqual(0, exitcode)
         image_lines = out.split("\n")[1:-1]
-        self.assertEqual(36, len(image_lines))
+        self.assertEqual(42, len(image_lines))
         self.assertTrue(image_lines[1].split()[1], image_ids[2])
-        self.assertTrue(image_lines[13].split()[1], image_ids[1])
-        self.assertTrue(image_lines[25].split()[1], image_ids[4])
+        self.assertTrue(image_lines[15].split()[1], image_ids[1])
+        self.assertTrue(image_lines[29].split()[1], image_ids[4])
 
         self.stop_servers()
 
@@ -1174,3 +1174,81 @@ class TestBinGlance(functional.FunctionalTest):
         local_server.shutdown()
         self.assertNotEqual(0, exitcode)
         self.assertTrue("timed out" in out)
+
+    def test_add_member(self):
+        self.cleanup()
+        self.start_servers(**self.__dict__.copy())
+
+        api_port = self.api_port
+        registry_port = self.registry_port
+
+        image_id = "11111111-1111-1111-1111-111111111111"
+        member_id = "21111111-2111-2111-2111-211111111111"
+        member2_id = "31111111-3111-3111-3111-311111111111"
+
+        # 0. Add an image
+        cmd = minimal_add_command(api_port,
+                                  'MyImage',
+                                  'id=%s' % image_id,
+                                  'location=http://example.com')
+        exitcode, out, err = execute(cmd)
+
+        # 1. Add an image member
+        cmd = "bin/glance --port=%d member-add %s %s" % (api_port, image_id,
+                                                         member_id)
+        exitcode, out, err = execute(cmd)
+
+        self.assertEqual(0, exitcode)
+        self.assertEqual('', out.strip())
+
+        # 2. Verify image-members
+        cmd = "bin/glance --port=%d image-members %s " % (api_port, image_id)
+        exitcode, out, err = execute(cmd)
+
+        self.assertEqual(0, exitcode)
+        self.assertTrue(member_id in out)
+
+        # 3. Verify member-images
+        cmd = "bin/glance --port=%d member-images %s " % (api_port, member_id)
+        exitcode, out, err = execute(cmd)
+
+        self.assertEqual(0, exitcode)
+        self.assertTrue(image_id in out)
+
+        # 4. Replace image members
+        cmd = "bin/glance --port=%d members-replace %s %s" % (api_port,
+                                                              image_id,
+                                                              member2_id)
+        exitcode, out, err = execute(cmd)
+
+        self.assertEqual(0, exitcode)
+        self.assertEqual('', out.strip())
+
+        # 5. Verify member-images again for member2
+        cmd = "bin/glance --port=%d member-images %s " % (api_port, member2_id)
+        exitcode, out, err = execute(cmd)
+
+        self.assertEqual(0, exitcode)
+        self.assertTrue(image_id in out)
+
+        # 6. Verify member-images again for member1 (should not be present)
+        cmd = "bin/glance --port=%d member-images %s " % (api_port, member_id)
+        exitcode, out, err = execute(cmd)
+
+        self.assertEqual(0, exitcode)
+        self.assertTrue(image_id not in out)
+
+        # 7. Delete the member
+        cmd = "bin/glance --port=%d member-delete %s %s" % (api_port, image_id,
+                                                            member2_id)
+        exitcode, out, err = execute(cmd)
+
+        self.assertEqual(0, exitcode)
+        self.assertEqual('', out.strip())
+
+        # 8. Verify image-members is empty
+        cmd = "bin/glance --port=%d image-members %s " % (api_port, image_id)
+        exitcode, out, err = execute(cmd)
+
+        self.assertEqual(0, exitcode)
+        self.assertEqual('', out.strip())

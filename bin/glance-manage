@@ -43,53 +43,55 @@ gettext.install('glance', unicode=1)
 from glance.common import config
 from glance.common import exception
 from glance.openstack.common import cfg
-import glance.registry.db
-import glance.registry.db.api
-import glance.registry.db.migration
+import glance.db.sqlalchemy.api
+import glance.db.sqlalchemy.migration
+
+CONF = cfg.CONF
 
 
-def do_db_version(conf, args):
+def do_db_version(args):
     """Print database's current migration level"""
-    print glance.registry.db.migration.db_version(conf)
+    print glance.db.sqlalchemy.migration.db_version()
 
 
-def do_upgrade(conf, args):
+def do_upgrade(args):
     """Upgrade the database's migration level"""
     version = args.pop(0) if args else None
-    glance.registry.db.migration.upgrade(conf, version)
+    glance.db.sqlalchemy.migration.upgrade(version)
 
 
-def do_downgrade(conf, args):
+def do_downgrade(args):
     """Downgrade the database's migration level"""
     if not args:
         raise exception.MissingArgumentError(
             "downgrade requires a version argument")
 
     version = args.pop(0)
-    glance.registry.db.migration.downgrade(conf, version)
+    glance.db.sqlalchemy.migration.downgrade(version)
 
 
-def do_version_control(conf, args):
+def do_version_control(args):
     """Place a database under migration control"""
     version = args.pop(0) if args else None
-    glance.registry.db.migration.version_control(conf, version)
+    glance.db.sqlalchemy.migration.version_control(version)
 
 
-def do_db_sync(conf, args):
+def do_db_sync(args):
     """
     Place a database under migration control and upgrade,
     creating first if necessary.
     """
     # override auto-create flag, as complete DB should always
     # be created on sync if not already existing
-    conf.db_auto_create = True
-    glance.registry.db.api.configure_db(conf)
+    CONF.register_opts(glance.db.sqlalchemy.api.db_opts)
+    CONF.set_override('db_auto_create', True)
+    glance.db.sqlalchemy.api.configure_db()
     version = args.pop(0) if args else None
     current_version = args.pop(0) if args else None
-    glance.registry.db.migration.db_sync(conf, version, current_version)
+    glance.db.sqlalchemy.migration.db_sync(version, current_version)
 
 
-def dispatch_cmd(conf, args):
+def dispatch_cmd(args):
     """Search for do_* cmd in this module and then run it"""
     cmd = args.pop(0)
     try:
@@ -98,7 +100,7 @@ def dispatch_cmd(conf, args):
         sys.exit("ERROR: unrecognized command '%s'" % cmd)
 
     try:
-        cmd_func(conf, args)
+        cmd_func(args)
     except exception.GlanceException, e:
         sys.exit("ERROR: %s" % e)
 
@@ -107,22 +109,22 @@ def main():
     try:
         # We load the glance-registry config section because
         # sql_connection is only part of the glance registry.
+        glance.db.add_cli_options()
+
         default_cfg_files = cfg.find_config_files(project='glance',
                                                   prog='glance-registry')
 
-        conf = config.GlanceConfigOpts(default_config_files=default_cfg_files,
-                                       usage="%prog [options] <cmd>")
-        glance.registry.db.add_options(conf)
-        args = conf()
-        config.setup_logging(conf)
+        args = config.parse_args(default_config_files=default_cfg_files,
+                                 usage="%prog [options] <cmd>")
+        config.setup_logging()
     except RuntimeError, e:
         sys.exit("ERROR: %s" % e)
 
     if not args:
-        conf.print_usage()
+        CONF.print_usage()
         sys.exit(1)
 
-    dispatch_cmd(conf, args)
+    dispatch_cmd(args)
 
 
 if __name__ == '__main__':

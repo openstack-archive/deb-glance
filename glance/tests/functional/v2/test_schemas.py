@@ -30,34 +30,37 @@ class TestSchemas(functional.FunctionalTest):
         self.start_servers(**self.__dict__.copy())
 
     def test_resource(self):
-        path = 'http://%s:%d/v2/schemas' % ('0.0.0.0', self.api_port)
+        # Ensure the image link works and custom properties are loaded
+        path = 'http://%s:%d/v2/schemas/image' % ('127.0.0.1', self.api_port)
         response = requests.get(path)
         self.assertEqual(response.status_code, 200)
-
-        # Parse the links container into a usable dict
-        output = json.loads(response.text)
-        links = dict([(l['rel'], l['href']) for l in output['links']])
-
-        # We should only have links for image and access schemas
-        self.assertEqual(set(['image', 'access']), set(links.keys()))
-
-        # Ensure the link works and custom properties are loaded
-        path = 'http://%s:%d%s' % ('0.0.0.0', self.api_port, links['image'])
-        response = requests.get(path)
-        self.assertEqual(response.status_code, 200)
-        schema = json.loads(response.text)
+        image_schema = json.loads(response.text)
         expected = set([
             'id',
             'name',
             'visibility',
+            'checksum',
             'created_at',
             'updated_at',
-            'type',
-            'format',
+            'tags',
+            'size',
+            'container_format',
+            'disk_format',
+            'self',
+            'file',
+            'status',
+            'schema',
+            'direct_url',
+            'min_ram',
+            'min_disk',
+            'protected',
         ])
-        self.assertEqual(expected, set(schema['properties'].keys()))
+        self.assertEqual(expected, set(image_schema['properties'].keys()))
 
-        path = 'http://%s:%d%s' % ('0.0.0.0', self.api_port, links['access'])
+        # Ensure the images link works and agrees with the image schema
+        path = 'http://%s:%d/v2/schemas/images' % ('127.0.0.1', self.api_port)
         response = requests.get(path)
         self.assertEqual(response.status_code, 200)
-        json.loads(response.text)
+        images_schema = json.loads(response.text)
+        item_schema = images_schema['properties']['images']['items']
+        self.assertEqual(item_schema, image_schema)

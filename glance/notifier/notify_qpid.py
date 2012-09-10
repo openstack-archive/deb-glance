@@ -15,16 +15,14 @@
 
 
 import json
-import logging
 
 import qpid.messaging
 
 from glance.notifier import strategy
 from glance.openstack.common import cfg
+import glance.openstack.common.log as logging
 
-
-logger = logging.getLogger('glance.notifier.notify_qpid')
-
+LOG = logging.getLogger(__name__)
 
 qpid_opts = [
     cfg.StrOpt('qpid_notification_exchange',
@@ -74,43 +72,41 @@ qpid_opts = [
                 help='Disable Nagle algorithm'),
     ]
 
+CONF = cfg.CONF
+CONF.register_opts(qpid_opts)
+
 
 class QpidStrategy(strategy.Strategy):
     """A notifier that puts a message on a queue when called."""
 
-    def __init__(self, conf):
+    def __init__(self):
         """Initialize the Qpid notification strategy."""
-        self.conf = conf
-        self.conf.register_opts(qpid_opts)
-
-        self.broker = self.conf.qpid_hostname + ":" + self.conf.qpid_port
+        self.broker = CONF.qpid_hostname + ":" + CONF.qpid_port
         self.connection = qpid.messaging.Connection(self.broker)
-        self.connection.username = self.conf.qpid_username
-        self.connection.password = self.conf.qpid_password
-        self.connection.sasl_mechanisms = self.conf.qpid_sasl_mechanisms
+        self.connection.username = CONF.qpid_username
+        self.connection.password = CONF.qpid_password
+        self.connection.sasl_mechanisms = CONF.qpid_sasl_mechanisms
         # Hard code this option as enabled so that reconnect logic isn't needed
         # in this file at all.
         self.connection.reconnect = True
-        if self.conf.qpid_reconnect_timeout:
-            self.connection.reconnect_timeout = (
-                                            self.conf.qpid_reconnect_timeout)
-        if self.conf.qpid_reconnect_limit:
-            self.connection.reconnect_limit = self.conf.qpid_reconnect_limit
-        if self.conf.qpid_reconnect_interval_max:
+        if CONF.qpid_reconnect_timeout:
+            self.connection.reconnect_timeout = CONF.qpid_reconnect_timeout
+        if CONF.qpid_reconnect_limit:
+            self.connection.reconnect_limit = CONF.qpid_reconnect_limit
+        if CONF.qpid_reconnect_interval_max:
             self.connection.reconnect_interval_max = (
-                                        self.conf.qpid_reconnect_interval_max)
-        if self.conf.qpid_reconnect_interval_min:
+                                        CONF.qpid_reconnect_interval_max)
+        if CONF.qpid_reconnect_interval_min:
             self.connection.reconnect_interval_min = (
-                                        self.conf.qpid_reconnect_interval_min)
-        if self.conf.qpid_reconnect_interval:
-            self.connection.reconnect_interval = (
-                                        self.conf.qpid_reconnect_interval)
-        self.connection.hearbeat = self.conf.qpid_heartbeat
-        self.connection.protocol = self.conf.qpid_protocol
-        self.connection.tcp_nodelay = self.conf.qpid_tcp_nodelay
+                                        CONF.qpid_reconnect_interval_min)
+        if CONF.qpid_reconnect_interval:
+            self.connection.reconnect_interval = CONF.qpid_reconnect_interval
+        self.connection.heartbeat = CONF.qpid_heartbeat
+        self.connection.protocol = CONF.qpid_protocol
+        self.connection.tcp_nodelay = CONF.qpid_tcp_nodelay
         self.connection.open()
         self.session = self.connection.session()
-        logger.info(_('Connected to AMQP server on %s') % self.broker)
+        LOG.info(_('Connected to AMQP server on %s') % self.broker)
 
         self.sender_info = self._sender("info")
         self.sender_warn = self._sender("warn")
@@ -129,8 +125,8 @@ class QpidStrategy(strategy.Strategy):
                 },
             },
         }
-        topic = "%s.%s" % (self.conf.qpid_notification_topic, priority)
-        address = "%s/%s ; %s" % (self.conf.qpid_notification_exchange, topic,
+        topic = "%s.%s" % (CONF.qpid_notification_topic, priority)
+        address = "%s/%s ; %s" % (CONF.qpid_notification_exchange, topic,
                                   json.dumps(addr_opts))
         return self.session.sender(address)
 

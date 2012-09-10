@@ -15,7 +15,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import logging
 import os
 import sys
 import time
@@ -23,13 +22,29 @@ import time
 from glance.common import exception
 from glance.common import utils
 from glance.openstack.common import cfg
+from glance.openstack.common import importutils
+import glance.openstack.common.log as logging
 from glance import registry
 from glance.store import location
 
-logger = logging.getLogger('glance.store')
+LOG = logging.getLogger(__name__)
 
-# Set of store objects, constructed in create_stores()
-STORES = {}
+store_opts = [
+    cfg.ListOpt('known_stores',
+                default=['glance.store.filesystem.Store',
+                         'glance.store.http.Store',
+                         'glance.store.rbd.Store',
+                         'glance.store.s3.Store',
+                         'glance.store.swift.Store',
+                        ]),
+    cfg.StrOpt('scrubber_datadir',
+               default='/var/lib/glance/scrubber'),
+    cfg.BoolOpt('delayed_delete', default=False),
+    cfg.IntOpt('scrub_time', default=0),
+    ]
+
+CONF = cfg.CONF
+CONF.register_opts(store_opts)
 
 
 class ImageAddResult(object):
@@ -128,8 +143,8 @@ class Indexable(object):
 def _get_store_class(store_entry):
     store_cls = None
     try:
-        logger.debug("Attempting to import store %s", store_entry)
-        store_cls = utils.import_class(store_entry)
+        LOG.debug("Attempting to import store %s", store_entry)
+        store_cls = importutils.import_class(store_entry)
     except exception.NotFound:
         raise BackendException('Unable to load store. '
                                'Could not find a class named %s.'
@@ -137,33 +152,29 @@ def _get_store_class(store_entry):
     return store_cls
 
 
-known_stores_opt = cfg.ListOpt('known_stores',
-                               default=('glance.store.filesystem.Store',))
-
-
-def create_stores(conf):
+def create_stores():
     """
     Registers all store modules and all schemes
     from the given config. Duplicates are not re-registered.
     """
-    conf.register_opt(known_stores_opt)
     store_count = 0
-    for store_entry in conf.known_stores:
+    store_classes = set()
+    for store_entry in CONF.known_stores:
         store_entry = store_entry.strip()
         if not store_entry:
             continue
         store_cls = _get_store_class(store_entry)
-        store_instance = store_cls(conf)
+        store_instance = store_cls()
         schemes = store_instance.get_schemes()
         if not schemes:
             raise BackendException('Unable to register store %s. '
                                    'No schemes associated with it.'
                                    % store_cls)
         else:
-            if store_cls not in STORES:
-                logger.debug("Registering store %s with schemes %s",
-                         store_cls, schemes)
-                STORES[store_cls] = store_instance
+            if store_cls not in store_classes:
+                LOG.debug("Registering store %s with schemes %s",
+                          store_cls, schemes)
+                store_classes.add(store_cls)
                 scheme_map = {}
                 for scheme in schemes:
                     loc_cls = store_instance.get_store_location_class()
@@ -174,11 +185,11 @@ def create_stores(conf):
                 location.register_scheme_map(scheme_map)
                 store_count += 1
             else:
-                logger.debug("Store %s already registered", store_cls)
+                LOG.debug("Store %s already registered", store_cls)
     return store_count
 
 
-def get_store_from_scheme(scheme):
+def get_store_from_scheme(context, scheme):
     """
     Given a scheme, return the appropriate store object
     for handling that scheme.
@@ -186,10 +197,11 @@ def get_store_from_scheme(scheme):
     if scheme not in location.SCHEME_TO_CLS_MAP:
         raise exception.UnknownScheme(scheme=scheme)
     scheme_info = location.SCHEME_TO_CLS_MAP[scheme]
-    return STORES[scheme_info['store_class']]
+    store = scheme_info['store_class'](context)
+    return store
 
 
-def get_store_from_uri(uri):
+def get_store_from_uri(context, uri):
     """
     Given a URI, return the store object that would handle
     operations on the URI.
@@ -197,30 +209,31 @@ def get_store_from_uri(uri):
     :param uri: URI to analyze
     """
     scheme = uri[0:uri.find('/') - 1]
-    return get_store_from_scheme(scheme)
+    store = get_store_from_scheme(context, scheme)
+    return store
 
 
-def get_from_backend(uri, **kwargs):
+def get_from_backend(context, uri, **kwargs):
     """Yields chunks of data from backend specified by uri"""
 
-    store = get_store_from_uri(uri)
+    store = get_store_from_uri(context, uri)
     loc = location.get_location_from_uri(uri)
 
     return store.get(loc)
 
 
-def get_size_from_backend(uri):
+def get_size_from_backend(context, uri):
     """Retrieves image size from backend specified by uri"""
 
-    store = get_store_from_uri(uri)
+    store = get_store_from_uri(context, uri)
     loc = location.get_location_from_uri(uri)
 
     return store.get_size(loc)
 
 
-def delete_from_backend(uri, **kwargs):
+def delete_from_backend(context, uri, **kwargs):
     """Removes chunks of data from backend specified by uri"""
-    store = get_store_from_uri(uri)
+    store = get_store_from_uri(context, uri)
     loc = location.get_location_from_uri(uri)
 
     try:
@@ -241,44 +254,28 @@ def get_store_from_location(uri):
     return loc.store_name
 
 
-scrubber_datadir_opt = cfg.StrOpt('scrubber_datadir',
-                                  default='/var/lib/glance/scrubber')
-
-
-def get_scrubber_datadir(conf):
-    conf.register_opt(scrubber_datadir_opt)
-    return conf.scrubber_datadir
-
-
-delete_opts = [
-    cfg.BoolOpt('delayed_delete', default=False),
-    cfg.IntOpt('scrub_time', default=0)
-    ]
-
-
-def schedule_delete_from_backend(uri, conf, context, image_id, **kwargs):
+def schedule_delete_from_backend(uri, context, image_id, **kwargs):
     """
     Given a uri and a time, schedule the deletion of an image.
     """
-    conf.register_opts(delete_opts)
-    if not conf.delayed_delete:
+    if not CONF.delayed_delete:
         registry.update_image_metadata(context, image_id,
                                        {'status': 'deleted'})
         try:
-            return delete_from_backend(uri, **kwargs)
+            return delete_from_backend(context, uri, **kwargs)
         except (UnsupportedBackend,
                 exception.StoreDeleteNotSupported,
                 exception.NotFound):
             exc_type = sys.exc_info()[0].__name__
             msg = (_("Failed to delete image at %s from store (%s)") %
                    (uri, exc_type))
-            logger.error(msg)
+            LOG.error(msg)
         finally:
             # avoid falling through to the delayed deletion logic
             return
 
-    datadir = get_scrubber_datadir(conf)
-    delete_time = time.time() + conf.scrub_time
+    datadir = CONF.scrubber_datadir
+    delete_time = time.time() + CONF.scrub_time
     file_path = os.path.join(datadir, str(image_id))
     utils.safe_mkdirs(datadir)
 
@@ -296,6 +293,19 @@ def schedule_delete_from_backend(uri, conf, context, image_id, **kwargs):
                                    {'status': 'pending_delete'})
 
 
-def add_to_backend(scheme, image_id, data, size):
-    store = get_store_from_scheme(scheme)
+def add_to_backend(context, scheme, image_id, data, size):
+    store = get_store_from_scheme(context, scheme)
     return store.add(image_id, data, size)
+
+
+def set_acls(context, location_uri, public=False, read_tenants=[],
+             write_tenants=[]):
+    scheme = get_store_from_location(location_uri)
+    store = get_store_from_scheme(context, scheme)
+    try:
+        store.set_acls(location.get_location_from_uri(location_uri),
+                       public=public,
+                       read_tenants=read_tenants,
+                       write_tenants=write_tenants)
+    except NotImplementedError:
+        LOG.debug(_("Skipping store.set_acls... not implemented."))

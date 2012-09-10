@@ -16,16 +16,25 @@
 #    under the License.
 
 
-import datetime
 import socket
 import uuid
 
 from glance.common import exception
-from glance.common import utils
 from glance.openstack.common import cfg
+from glance.openstack.common import importutils
+import glance.openstack.common.log as logging
+from glance.openstack.common import timeutils
 
+notifier_opts = [
+    cfg.StrOpt('notifier_strategy', default='default')
+    ]
 
-_STRATEGIES = {
+CONF = cfg.CONF
+CONF.register_opts(notifier_opts)
+
+LOG = logging.getLogger(__name__)
+
+_STRATEGY_ALIASES = {
     "logging": "glance.notifier.notify_log.LoggingStrategy",
     "rabbit": "glance.notifier.notify_kombu.RabbitStrategy",
     "qpid": "glance.notifier.notify_qpid.QpidStrategy",
@@ -37,17 +46,22 @@ _STRATEGIES = {
 class Notifier(object):
     """Uses a notification strategy to send out messages about events."""
 
-    opts = [
-        cfg.StrOpt('notifier_strategy', default='default')
-    ]
-
-    def __init__(self, conf, strategy=None):
-        conf.register_opts(self.opts)
-        strategy = conf.notifier_strategy
+    def __init__(self, strategy=None):
+        _strategy = CONF.notifier_strategy
         try:
-            self.strategy = utils.import_class(_STRATEGIES[strategy])(conf)
-        except (KeyError, ImportError):
+            strategy = _STRATEGY_ALIASES[_strategy]
+            msg = _('Converted strategy alias %s to %s')
+            LOG.debug(msg % (_strategy, strategy))
+        except KeyError:
+            strategy = _strategy
+            LOG.debug(_('No strategy alias found for %s') % strategy)
+
+        try:
+            strategy_class = importutils.import_class(strategy)
+        except ImportError:
             raise exception.InvalidNotifierStrategy(strategy=strategy)
+        else:
+            self.strategy = strategy_class()
 
     @staticmethod
     def generate_message(event_type, priority, payload):
@@ -57,7 +71,7 @@ class Notifier(object):
             "event_type": event_type,
             "priority": priority,
             "payload": payload,
-            "timestamp": str(datetime.datetime.utcnow()),
+            "timestamp": str(timeutils.utcnow()),
         }
 
     def warn(self, event_type, payload):

@@ -17,18 +17,18 @@
 
 """Tests the S3 backend store"""
 
-import StringIO
 import hashlib
-import unittest
+import StringIO
 
-import stubout
 import boto.s3.connection
+import stubout
 
 from glance.common import exception
 from glance.common import utils
-from glance.store import UnsupportedBackend
+from glance.openstack.common import cfg
 from glance.store.location import get_location_from_uri
 from glance.store.s3 import Store, get_s3_location
+from glance.store import UnsupportedBackend
 from glance.tests.unit import base
 from glance.tests import utils as test_utils
 
@@ -39,7 +39,6 @@ FIVE_KB = (5 * 1024)
 S3_CONF = {'verbose': True,
            'debug': True,
            'default_store': 's3',
-           'known_stores': test_utils.get_default_stores(),
            's3_store_access_key': 'user',
            's3_store_secret_key': 'key',
            's3_store_host': 'localhost:8080',
@@ -162,10 +161,11 @@ class TestStore(base.StoreClearingUnitTest):
 
     def setUp(self):
         """Establish a clean test environment"""
+        self.config(**S3_CONF)
         super(TestStore, self).setUp()
         self.stubs = stubout.StubOutForTesting()
         stub_out_s3(self.stubs)
-        self.store = Store(test_utils.TestConfigOpts(S3_CONF))
+        self.store = Store()
 
     def tearDown(self):
         """Clear the test environment"""
@@ -262,7 +262,8 @@ class TestStore(base.StoreClearingUnitTest):
                 expected_image_id)
             image_s3 = StringIO.StringIO(expected_s3_contents)
 
-            self.store = Store(test_utils.TestConfigOpts(new_conf))
+            self.config(**new_conf)
+            self.store = Store()
             location, size, checksum = self.store.add(expected_image_id,
                                                       image_s3,
                                                       expected_s3_size)
@@ -291,12 +292,13 @@ class TestStore(base.StoreClearingUnitTest):
 
     def _option_required(self, key):
         conf = S3_CONF.copy()
-        del conf[key]
+        conf[key] = None
 
         try:
-            self.store = Store(test_utils.TestConfigOpts(conf))
+            self.config(**conf)
+            self.store = Store()
             return self.store.add == self.store.add_disabled
-        except:
+        except Exception:
             return False
         return False
 
