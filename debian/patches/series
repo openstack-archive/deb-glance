@@ -1,3 +1,6 @@
+test_interrupt_avoids_respawn_storm.patch
 default_conf.patch
 disable-network-for-docs.patch
 sql_conn-registry.patch
+fixed-most-pep8-errors.patch
+test_unsupported_default_store.patch

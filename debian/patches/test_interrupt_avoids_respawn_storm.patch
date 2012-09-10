@@ -1,0 +1,27 @@
+Description: Fixes test_multiprocessing.py to work on pbuilder environments
+Author: Ghe Rivero
+Forwarded: no
+
+--- a/glance/tests/functional/test_multiprocessing.py
++++ b/glance/tests/functional/test_multiprocessing.py
+@@ -43,8 +43,9 @@
+         self.stop_servers()
+ 
+     def _get_children(self):
+-        cmd = ("ps -fu $USER | grep glance-api | "
+-               "grep -v grep | awk '{print $2}' | sort -nr")
++        cmd = ("pgrep -u $USER -f glance-api || "
++               "pgrep -u pbuilder -f glance-api || "
++               "pgrep -u 1234 -f glance-api")
+         _, out, _ = execute(cmd, raise_error=True)
+         return out.split('\n')[0:-2]
+ 
+@@ -58,7 +59,7 @@
+ 
+         children = self._get_children()
+         cmd = "kill -INT %s" % ' '.join(children)
+-        execute(cmd, raise_error=True)
++        execute(cmd, raise_error=False)
+ 
+         for _ in range(0, 9):
+             time.sleep(0.05)

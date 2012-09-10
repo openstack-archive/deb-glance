@@ -6,8 +6,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: glance\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
-"POT-Creation-Date: 2012-05-24 09:08+0200\n"
-"PO-Revision-Date: 2012-03-15 20:24+0200\n"
+"POT-Creation-Date: 2012-06-05 08:33+0200\n"
+"PO-Revision-Date: 2012-06-11 21:51+0200\n"
 "Last-Translator: Beatrice Torracca <beatricet@libero.it>\n"
 "Language-Team: Italian <debian-l10n-italian@lists.debian.org>\n"
 "Language: it\n"
@@ -21,7 +21,7 @@ msgstr ""
 #. Description
 #: ../glance-registry.templates:1001
 msgid "Set up a database for glance-registry?"
-msgstr ""
+msgstr "Impostare un database per glance-registry?"
 
 #. Type: boolean
 #. Description
@@ -30,6 +30,8 @@ msgid ""
 "No database has been set up for glance-registry to use. Before continuing, "
 "you should make sure you have:"
 msgstr ""
+"Non è stato impostato alcun database per essere usato da glance-registry. "
+"Prima di continuare ci si dovrebbe assicurare di avere:"
 
 #. Type: boolean
 #. Description
@@ -40,6 +42,10 @@ msgid ""
 " - a username and password to access the database.\n"
 " - A database type that you want to use."
 msgstr ""
+" - il nome host del server (tale server deve permettere le connessioni\n"
+"   TCP da questa macchina);\n"
+" - un nome utente e una password per accedere al database;\n"
+" - un tipo di database che si desidera usare."
 
 #. Type: boolean
 #. Description
@@ -48,6 +54,8 @@ msgid ""
 "If some of these requirements are missing, reject this option and run with "
 "regular sqlite support."
 msgstr ""
+"Se non si ha uno o più di questi requisiti, rifiutare questa opzione ed "
+"eseguire con il regolare supporto per sqlite."
 
 #. Type: boolean
 #. Description
@@ -56,6 +64,8 @@ msgid ""
 "You can change this setting later on by running 'dpkg-reconfigure -plow "
 "glance-registry"
 msgstr ""
+"È possibile cambiare questa impostazione successivamente eseguendo \"dpkg-"
+"reconfigure -plow glance-registry\""
 
 #. Type: select
 #. Description
@@ -101,4 +111,4 @@ msgstr ""
 #. Description
 #: ../glance-common.templates:4001
 msgid "Auth server admin token:"
-msgstr "Token di ammnistrazione del server di autenticazione:"
+msgstr "Token di amministrazione del server di autenticazione:"

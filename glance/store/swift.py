@@ -316,7 +316,7 @@ class Store(glance.store.base.Store):
 
         return swift_client.Connection(
             authurl=full_auth_url, user=user, key=key, snet=snet,
-            tenant_name=tenant_name, auth_version=auth_version)
+            auth_version=auth_version)
 
     def _option_get(self, param):
         result = getattr(self.conf, param)

@@ -1,3 +1,58 @@
+glance (2012.1.1-2) unstable; urgency=low
+
+  * Added Chinese Debconf translation, thanks to ben <duyujie.dyj@gmail.com>.
+
+ -- Thomas Goirand <zigo@debian.org>  Mon, 27 Aug 2012 12:05:22 +0000
+
+glance (2012.1.1-1) unstable; urgency=low
+
+  * Non-maintainer upload.
+
+ -- Ghe Rivero <ghe@debian.org>  Mon, 25 Jun 2012 19:16:34 +0200
+
+glance (2012.1-4) unstable; urgency=low
+
+  * Fixes most pep8 errors.
+  * Disabled failing tests in debian/rules.
+  * Added few DEP3 comments.
+  * Fixed format 1.0 URL in debian/copyright.
+  * Updated the following debconf translations (thanks to):
+    - ru: Yuri Kozlov <yuray@komyakino.ru> (Closes: #676663).
+    - cs: Michal Simunek <michal.simunek@gmail.com> (Closes: #678656).
+    - fr: Julien Patriarca <patriarcaj@gmail.com> (Closes: #677179).
+    - de: Chris Leick <c.leick@vollbio.de> (Closes: #677151).
+    - it: Beatrice Torracca <beatricet@libero.it> (Closes: #677133).
+    - da: Joe Dalton <joedalton2@yahoo.dk> (Closes: #676951).
+    - pt: Traduz <traduz@debianpt.org> (Closes: #676945).
+    - pl: "Michał Kułach" <michalkulach@gmail.com> (Closes: #676772).
+    - es: Camaleón <noelamac@gmail.com> (Closes: #676670, #676359).
+    - ru: Yuri Kozlov <yuray@komyakino.ru> (Closes: #676663).
+  * Added the following debconf translations (thanks to):
+    - gl: Jorge Barreiro <yortx.barry@gmail.com> (Closes: #678620).
+    - sv: Martin Bagge <brother@bsnet.se> (Closes: #676603).
+    - pt_BR: Adriano Rafael Gomes <adrianorg@gmail.com> (Closes: #677794).
+
+ -- Thomas Goirand <zigo@debian.org>  Sun, 24 Jun 2012 07:01:57 +0000
+
+glance (2012.1-3.1) unstable; urgency=low
+
+  * Non-maintainer upload.
+  * Removed source of dbconfig-common as it is actually not used.
+    Closes: #677080.
+  * Some of the tests are disabled for Debian package build. The reason
+    is that there is a segmentation fault during the run and this is a
+    serious FTBFS error.
+
+ -- Ola Lundqvist <ola@inguza.com>  Sun, 17 Jun 2012 19:29:19 +0000
+
+glance (2012.1-3) unstable; urgency=low
+
+  * Removed python-glance version depends on python-sqlalchemy. Closes: #676458
+  * Fixed glance-common.postrm script
+  * Added Spanish translation (Camaleón). Closes: #666554
+
+ -- Ghe Rivero <ghe.rivero@stackops.com>  Tue, 05 Jun 2012 17:15:17 +0200
+
 glance (2012.1-2) unstable; urgency=low
 
   * Debconf templates and debian/control reviewed by the debian-l10n-
@@ -14,7 +69,7 @@ glance (2012.1-2) unstable; urgency=low
   * Portuguese (Pedro Ribeiro).  Closes: #664274
   * Czech (Michal Simunek).  Closes: #664458
 
- -- Christian Perrier <bubulle@debian.org>  Tue, 17 Apr 2012 08:52:16 +0200
+ -- Ghe Rivero <ghe.rivero@stackops.com>  Tue, 05 Jun 2012 08:29:57 +0200
 
 glance (2012.1-1) unstable; urgency=low
 

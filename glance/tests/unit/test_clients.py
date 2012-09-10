@@ -22,7 +22,6 @@ import unittest
 
 from glance import client
 from glance.common import client as base_client
-from glance.common import context
 from glance.common import exception
 from glance.common import utils
 from glance.registry.db import api as db_api
@@ -1874,6 +1873,31 @@ class TestClient(base.IsolatedUnitTest):
         self.assertEquals(image_data_fixture, new_image_data)
         for k, v in fixture.items():
             self.assertEquals(v, new_meta[k])
+
+    def test_added_image_notdoubled(self):
+        """Tests contents of an added small seekable image, when using ssl"""
+        fixture = {'name': 'fake public image',
+                   'disk_format': 'vhd',
+                   'container_format': 'ovf'
+                  }
+
+        tmp_fp = tempfile.TemporaryFile('w+')
+        image_data_fixture = _gen_uuid()
+        tmp_fp.write(image_data_fixture)
+        tmp_fp.seek(0)
+
+        self.client.use_ssl = True
+        new_image = self.client.add_image(fixture, tmp_fp)
+        new_image_id = new_image['id']
+
+        tmp_fp.close()
+
+        new_meta, new_image_chunks = self.client.get_image(new_image_id)
+        new_image_data = ""
+        for chunk in new_image_chunks:
+            new_image_data += chunk
+
+        self.assertEquals(image_data_fixture, new_image_data)
 
     @test_utils.skip_if(not base_client.SENDFILE_SUPPORTED,
                         'sendfile not supported')

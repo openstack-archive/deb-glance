@@ -173,12 +173,6 @@ is_public           Optional. If specified, interpreted as a boolean value
 protected           Optional. If specified, interpreted as a boolean value
                     and enables or disables deletion protection.
                     The default value is False.
-min_disk            Optional. The minimum disk size in gigabytes required to
-                    boot the image. If unspecified, this value defaults to 0
-                    (no minimum).
-min_ram             Optional. The minimum ram size in megabytes required to
-                    boot the image. If unspecified, this value defaults to 0
-                    (no minimum).
 disk_format         Required. If unspecified and container_format is specified
                     as 'ami', 'ari' or 'aki', disk_format will default to the
                     container_format value. Possible values are 'ami', 'ari',
@@ -534,8 +528,8 @@ def _images_index(client, filters, limit, print_header=False, **kwargs):
     suppress_pagination = (options.force or
         (getattr(os, 'isatty') and not os.isatty(sys.stdout.fileno())))
 
-    if not (suppress_pagination or len(images) != limit or
-            user_confirm("Fetch next page?", True)):
+    if not suppress_pagination and len(images) == limit and \
+       not user_confirm("Fetch next page?", True):
         return SUCCESS
 
     parameters['marker'] = images[-1]['id']

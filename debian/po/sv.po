@@ -8,7 +8,7 @@ msgstr ""
 "Project-Id-Version: glance\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
 "POT-Creation-Date: 2012-05-24 09:08+0200\n"
-"PO-Revision-Date: 2012-03-03 00:43+0100\n"
+"PO-Revision-Date: 2012-06-08 08:58+0100\n"
 "Last-Translator: Martin Bagge / brother <brother@bsnet.se>\n"
 "Language-Team: Swedish <debian-l10n-swedish@lists.debian.org>\n"
 "Language: \n"
@@ -22,7 +22,7 @@ msgstr ""
 #. Description
 #: ../glance-registry.templates:1001
 msgid "Set up a database for glance-registry?"
-msgstr ""
+msgstr "Ska inställningar för glance-registry-databasen göras?"
 
 #. Type: boolean
 #. Description
@@ -31,6 +31,8 @@ msgid ""
 "No database has been set up for glance-registry to use. Before continuing, "
 "you should make sure you have:"
 msgstr ""
+"Det finns inga inställningar för databas för glance-registry. Innan du bör "
+"du ha följande till hands:"
 
 #. Type: boolean
 #. Description
@@ -41,6 +43,10 @@ msgid ""
 " - a username and password to access the database.\n"
 " - A database type that you want to use."
 msgstr ""
+" - serverns värdnamn (som måste kunna ta emot TCP-anslutningar\n"
+"   från den här maskinen)\n"
+" - att användarnamn och lösenord för att komma åt databasen.\n"
+" - Vilken databastyp du vill använda."
 
 #. Type: boolean
 #. Description
@@ -49,6 +55,8 @@ msgid ""
 "If some of these requirements are missing, reject this option and run with "
 "regular sqlite support."
 msgstr ""
+"Om något av dessa krav saknar bör du avböja detta alternativ och fortsätta "
+"använda sqlite-stödet."
 
 #. Type: boolean
 #. Description
@@ -57,6 +65,8 @@ msgid ""
 "You can change this setting later on by running 'dpkg-reconfigure -plow "
 "glance-registry"
 msgstr ""
+"Denna inställning kan ändras senare genom att köra \"dpkg-reconfigure -plow "
+"glance-registry\""
 
 #. Type: select
 #. Description
