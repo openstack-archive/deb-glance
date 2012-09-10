@@ -2,9 +2,11 @@ Description: Fixes glance-api.conf and glance-registry.conf
 Author: Ghe Rivero
 Forwarded: no
 
---- a/etc/glance-api.conf
-+++ b/etc/glance-api.conf
-@@ -240,3 +240,6 @@
+Index: glance/etc/glance-api.conf
+===================================================================
+--- glance.orig/etc/glance-api.conf	2012-09-10 15:37:20.000000000 +0200
++++ glance/etc/glance-api.conf	2012-09-10 18:42:20.082309794 +0200
+@@ -282,3 +282,6 @@
  
  # Base directory that the Image Cache uses
  image_cache_dir = /var/lib/glance/image-cache/
@@ -12,13 +14,15 @@ Forwarded: no
 +[paste_deploy]
 +flavor = caching
 \ No newline at end of file
---- a/etc/glance-registry.conf
-+++ b/etc/glance-registry.conf
-@@ -59,3 +59,6 @@
+Index: glance/etc/glance-registry.conf
+===================================================================
+--- glance.orig/etc/glance-registry.conf	2012-09-10 15:37:20.000000000 +0200
++++ glance/etc/glance-registry.conf	2012-09-10 18:43:31.210312746 +0200
+@@ -66,3 +66,7 @@
  
- # Private key file to use when starting registry server securely
- # key_file = /path/to/keyfile
+ # CA certificate file to use to verify connecting clients
+ # ca_file = /path/to/cafile
 +
 +[paste_deploy]
 +flavor = caching
-\ No newline at end of file
++

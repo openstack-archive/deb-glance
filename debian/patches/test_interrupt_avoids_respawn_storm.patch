@@ -2,8 +2,10 @@ Description: Fixes test_multiprocessing.py to work on pbuilder environments
 Author: Ghe Rivero
 Forwarded: no
 
---- a/glance/tests/functional/test_multiprocessing.py
-+++ b/glance/tests/functional/test_multiprocessing.py
+Index: glance/glance/tests/functional/v1/test_multiprocessing.py
+===================================================================
+--- glance.orig/glance/tests/functional/v1/test_multiprocessing.py	2012-09-10 18:40:28.426305165 +0200
++++ glance/glance/tests/functional/v1/test_multiprocessing.py	2012-09-10 18:40:31.006305272 +0200
 @@ -43,8 +43,9 @@
          self.stop_servers()
  
@@ -24,4 +26,4 @@ Forwarded: no
 +        execute(cmd, raise_error=False)
  
          for _ in range(0, 9):
-             time.sleep(0.05)
+             # Yeah. This totally isn't a race condition. Randomly fails

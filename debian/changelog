@@ -1,6 +1,8 @@
 glance (2012.2~e3-1) experimental; urgency=low
 
   * New upstream version
+  * Refresh all patches
+  * Removed test_interrupt_avoids_respawn_storm.patch (incorporated upstream)
 
  -- Mehdi Abaakouk <sileht@sileht.net>  Mon, 10 Sep 2012 17:58:45 +0200
 
