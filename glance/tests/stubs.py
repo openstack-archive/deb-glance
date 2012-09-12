@@ -114,7 +114,7 @@ def stub_out_registry_and_store_server(stubs, base_dir):
             return url.replace('/v1', '', 1) if url.startswith('/v1') else url
 
         def putrequest(self, method, url):
-            self.req = webob.Request.blank("/" + url.lstrip("/"))
+            self.req = webob.Request.blank(self._clean_url(url))
             if self.stub_force_sendfile:
                 fake_sendfile = FakeSendFile(self.req)
                 stubs.Set(sendfile, 'sendfile', fake_sendfile.sendfile)
@@ -136,7 +136,7 @@ def stub_out_registry_and_store_server(stubs, base_dir):
             self.req.body += data.split("\r\n")[1]
 
         def request(self, method, url, body=None, headers=None):
-            self.req = webob.Request.blank("/" + url.lstrip("/"))
+            self.req = webob.Request.blank(self._clean_url(url))
             self.req.method = method
             if headers:
                 self.req.headers = headers

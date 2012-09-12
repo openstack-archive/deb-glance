@@ -602,11 +602,6 @@ def _update_values(image_ref, values):
         if getattr(image_ref, k) != values[k]:
             setattr(image_ref, k, values[k])
 
-    name = values.get('name')
-    if name and len(name) > 255:
-        msg = _('Image name too long: %d') % len(name)
-        raise exception.Invalid(msg)
-
 
 def _image_update(context, values, image_id, purge_props=False):
     """

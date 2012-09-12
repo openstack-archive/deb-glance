@@ -46,7 +46,7 @@ class TestMultiprocessing(functional.FunctionalTest):
         cmd = ("ps -fu $USER | grep glance-api | "
                "grep -v grep | awk '{print $2}' | sort -nr")
         _, out, _ = execute(cmd, raise_error=True)
-        return out.split('\n')[0:-2]
+        return out.split('\n')[0:2]
 
     def test_interrupt_avoids_respawn_storm(self):
         """
@@ -65,7 +65,7 @@ class TestMultiprocessing(functional.FunctionalTest):
             # set at 0.05. Works most of the time at 0.10
             time.sleep(0.10)
             # ensure number of children hasn't grown
-            self.assertTrue(len(children) > len(self._get_children()))
+            self.assertTrue(len(children) >= len(self._get_children()))
             for child in self._get_children():
                 # ensure no new children spawned
                 self.assertTrue(child in children)
