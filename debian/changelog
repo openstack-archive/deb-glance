@@ -1,4 +1,4 @@
-glance (2012.2~e3-1) experimental; urgency=low
+glance (2012.2~f3-1) experimental; urgency=low
 
   * New upstream version
   * Refresh all patches
