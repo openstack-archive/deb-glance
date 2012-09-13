@@ -4,7 +4,8 @@ Priority: extra
 Maintainer: PKG OpenStack <openstack-devel@lists.alioth.debian.org>
 Uploaders: Julien Danjou <acid@debian.org>,
            Thomas Goirand <zigo@debian.org>,
-           Ghe Rivero <ghe.rivero@stackops.com>
+           Ghe Rivero <ghe.rivero@stackops.com>,
+           Mehdi Abaakouk <sileht@sileht.net>
 Build-Depends: debhelper (>= 7.0.50),
  po-debconf,
  python-all (>= 2.6.6-3~),
@@ -18,8 +19,8 @@ Build-Depends-Indep:
  python-httplib2 (>= 0.6.0),
  python-iso8601,
  python-jsonschema,
+ python-keystone,
  python-kombu,
- python-novaclient,
  python-migrate,
  python-mox,
  python-nose,
@@ -31,6 +32,7 @@ Build-Depends-Indep:
  python-sphinx,
  python-sqlalchemy,
  python-swift,
+ python-swiftclient,
  python-webob,
  python-xattr,
  procps
@@ -49,6 +51,7 @@ Depends: ${python:Depends}, ${misc:Depends},
  python-eventlet,
  python-httplib2 (>= 0.6.0),
  python-iso8601,
+ python-keystone,
  python-kombu,
  python-migrate,
  python-pastedeploy,
