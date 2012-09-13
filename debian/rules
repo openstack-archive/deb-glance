@@ -18,13 +18,17 @@ ifeq (,$(findstring nodocs, $(DEB_BUILD_OPTIONS)))
 	python setup.py build_sphinx
 else
 	mkdir -p doc/build/html
+
+override_dh_installman:
+
 endif
 
 override_dh_auto_clean:
 	dh_auto_clean
 	debconf-updatepo
-	rm -rf build doc/build glance.egg-info po/glance.pot glance/vcsversion.py
+	rm -rf doc/build
 	rm -rf glance.sqlite
+	rm -rf glance/versioninfo
 
 get-vcs-source:
 	git remote add upstream git://github.com/openstack/glance.git || true
