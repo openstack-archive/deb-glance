@@ -11,10 +11,10 @@ then
     FLAVOR="$RET"
 
     case $FLAVOR in
-	caching)
-	    ;;
+        caching)
+            ;;
         keystone*)
-	    sed -i "s,^flavor\s*=.*$,flavor = $FLAVOR," /etc/glance/glance-registry.conf
+            sed -i "s,^flavor\s*=.*$,flavor = $FLAVOR," /etc/glance/glance-registry.conf
             FLAVOR=keystone
             db_get glance/auth-url
             sed -i "s,^auth_uri\s*=\s*.\+$,auth_uri = $RET," /etc/glance/glance-registry-paste.ini
@@ -22,7 +22,7 @@ then
             sed -i "s/^admin_token\s*=\s*.\+$/admin_token = $RET/" /etc/glance/glance-registry-paste.ini
             ;;
         *)
-	    sed -i "s,^flavor\s*=.*$,flavor = $FLAVOR," /etc/glance/glance-registry.conf
+            sed -i "s,^flavor\s*=.*$,flavor = $FLAVOR," /etc/glance/glance-registry.conf
             FLAVOR=
             ;;
     esac
@@ -33,34 +33,34 @@ then
         db_get glance-registry/database-type
         if [ $RET = "sqlite3" ]
         then
-	    dbc_name="glance.sqlite"
-	    db_set glance-registry/db/dbname $dbc_name
+            dbc_name="glance.sqlite"
+            db_set glance-registry/db/dbname $dbc_name
         fi
         dbc_dbfile_owner="glance:glance"
 
-	dbc_go glance-registry $@
-	if [ "$dbc_install" = "true" ]
-	then
+        dbc_go glance-registry $@
+        if [ "$dbc_install" = "true" ]
+        then
             case "$dbc_dbtype" in
-		mysql)
+                mysql)
                     [ -n "$dbc_dbport" ] && dbport=:$dbc_dbport
                     SQL_CONNECTION="mysql://$dbc_dbuser:$dbc_dbpass@${dbc_dbserver:-localhost}$dbport/$dbc_dbname"
                     ;;
-		pgsql)
+                pgsql)
                     [ -n "$dbc_dbport" ] && dbport=:$dbc_dbport
                     SQL_CONNECTION="pgsql://$dbc_dbuser:$dbc_dbpass@${dbc_dbserver:-localhost}$dbport/$dbc_dbname"
                     ;;
-		*)
-		    SQL_CONNECTION="sqlite:///$dbc_basepath/$dbc_dbname"
-		    ;;
+                *)
+                    SQL_CONNECTION="sqlite:///$dbc_basepath/$dbc_dbname"
+                    ;;
             esac
             sed -e "s,^sql_connection\s*=\s*.\+$,sql_connection = $SQL_CONNECTION," -i /etc/glance/glance-registry.conf
 
             if [ "$dbc_upgrade" = "true" ]
             then
-		su glance -c "glance-manage db_sync" || true
+                su glance -c "glance-manage db_sync" || true
             fi
-	fi
+        fi
     fi
 fi
 
