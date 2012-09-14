@@ -3,6 +3,9 @@
 # Verbose mode
 #export DH_VERBOSE=1
 
+DEBVERS := $(shell dpkg-parsechangelog | sed -n -e 's/^Version: //p')
+VERSION := $(shell echo '$(DEBVERS)' | sed -e 's/^[[:digit:]]*://' -e 's/[~-].*//')
+
 %:
 	dh $@ --with python2
 
@@ -23,12 +26,18 @@ override_dh_installman:
 
 endif
 
+override_dh_auto_configure:
+	echo $(VERSION) > glance/versioninfo
+	dh_auto_configure
+
+
 override_dh_auto_clean:
+	echo $(VERSION) > glance/versioninfo
 	dh_auto_clean
 	debconf-updatepo
 	rm -rf doc/build
 	rm -rf glance.sqlite
-	rm -rf glance/versioninfo
+	rm -f glance/versioninfo
 
 get-vcs-source:
 	git remote add upstream git://github.com/openstack/glance.git || true
