@@ -26,6 +26,9 @@ override_dh_installman:
 
 endif
 
+override_dh_builddeb:
+	dh_builddeb -- -Zxz -z9
+
 override_dh_auto_configure:
 	echo $(VERSION) > glance/versioninfo
 	dh_auto_configure
