@@ -50,27 +50,33 @@ Concepts
    statuses
    formats
 
+Installing/Configuring Glance
+=============================
+
+.. toctree::
+   :maxdepth: 1
+
+   installing
+   configuring
+   authentication
+   policies
+
+Operating Glance
+================
+
+.. toctree::
+   :maxdepth: 1
+
+   controllingservers
+   db
+   cache
+   notifications
+
 Using Glance
 ============
 
 .. toctree::
    :maxdepth: 1
 
-   installing
-   controllingservers
-   configuring
-   glance
    glanceapi
-   client
-   authentication
-   policies
-   cache
-
-Developer Docs
-==============
-
-.. toctree::
-   :maxdepth: 1
-
-   architecture
-   community
+   glanceclient

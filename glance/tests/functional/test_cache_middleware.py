@@ -149,7 +149,7 @@ class BaseCacheMiddlewareTest(object):
         response, content = http.request(path, 'PUT',
                                          headers=headers,
                                          body=image_data)
-        self.assertEqual(response.status, 200)
+        self.assertEqual(response.status, 201)
 
         # Verify image not in cache
         image_cached_path = os.path.join(self.api_server.image_cache_dir,
@@ -333,6 +333,8 @@ class BaseCacheManageMiddlewareTest(object):
         http = httplib2.Http()
         response, content = http.request(path, 'PUT')
         self.assertEqual(response.status, 403)
+
+        self.stop_servers()
 
     @skip_if_disabled
     def test_cache_manage_get_cached_images(self):

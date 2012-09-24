@@ -265,6 +265,7 @@ class TestApi(functional.FunctionalTest):
         self.assertEqual(len(data['properties']), 2)
         self.assertEqual(data['properties']['arch'], "x86_64")
         self.assertEqual(data['properties']['distro'], "Ubuntu")
+        self.assertNotEqual(data['created_at'], data['updated_at'])
 
         # DELETE image
         path = "http://%s:%d/v1/images/%s" % ("127.0.0.1", self.api_port,
@@ -446,6 +447,28 @@ class TestApi(functional.FunctionalTest):
         self.stop_servers()
 
     @skip_if_disabled
+    def test_v1_not_enabled(self):
+        self.cleanup()
+        self.api_server.enable_v1_api = False
+        self.start_servers(**self.__dict__.copy())
+        path = "http://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
+        http = httplib2.Http()
+        response, content = http.request(path, 'GET')
+        self.assertEqual(response.status, 300)
+        self.stop_servers()
+
+    @skip_if_disabled
+    def test_v1_enabled(self):
+        self.cleanup()
+        self.api_server.enable_v1_api = True
+        self.start_servers(**self.__dict__.copy())
+        path = "http://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
+        http = httplib2.Http()
+        response, content = http.request(path, 'GET')
+        self.assertEqual(response.status, 200)
+        self.stop_servers()
+
+    @skip_if_disabled
     def test_zero_initial_size(self):
         """
         A test to ensure that an image with size explicitly set to zero
@@ -507,8 +530,11 @@ class TestApi(functional.FunctionalTest):
             test_data_file.flush()
         path = "http://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
         http = httplib2.Http()
+        headers = minimal_headers('Image1')
+        headers['Content-Type'] = 'not octet-stream'
         response, content = http.request(path, 'POST',
-                            body=test_data_file.name)
+                            body=test_data_file.name,
+                            headers=headers)
         self.assertEqual(response.status, 400)
         expected = "Content-Type must be application/octet-stream"
         self.assertTrue(expected in content,
@@ -1206,7 +1232,7 @@ class TestApi(functional.FunctionalTest):
                           expected_exitcode=255,
                           **self.__dict__.copy())
 
-    def _do_test_post_image_content_missing_format(self, format):
+    def _do_test_post_image_content_bad_format(self, format):
         """
         We test that missing container/disk format fails with 400 "Bad Request"
 
@@ -1215,11 +1241,19 @@ class TestApi(functional.FunctionalTest):
         self.cleanup()
         self.start_servers(**self.__dict__.copy())
 
+        # Verify no public images
+        path = "http://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
+        http = httplib2.Http()
+        response, content = http.request(path, 'GET')
+        self.assertEqual(response.status, 200)
+        images = json.loads(content)['images']
+        self.assertEqual(len(images), 0)
+
         path = "http://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
 
         # POST /images without given format being specified
         headers = minimal_headers('Image1')
-        del headers['X-Image-Meta-' + format]
+        headers['X-Image-Meta-' + format] = 'bad_value'
         with tempfile.NamedTemporaryFile() as test_data_file:
             test_data_file.write("XXX")
             test_data_file.flush()
@@ -1229,19 +1263,28 @@ class TestApi(functional.FunctionalTest):
                             body=test_data_file.name)
         self.assertEqual(response.status, 400)
         type = format.replace('_format', '')
-        expected = "Details: Invalid %s format 'None' for image" % type
+        expected = "Invalid %s format 'bad_value' for image" % type
         self.assertTrue(expected in content,
                         "Could not find '%s' in '%s'" % (expected, content))
+
+        # make sure the image was not created
+        # Verify no public images
+        path = "http://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
+        http = httplib2.Http()
+        response, content = http.request(path, 'GET')
+        self.assertEqual(response.status, 200)
+        images = json.loads(content)['images']
+        self.assertEqual(len(images), 0)
 
         self.stop_servers()
 
     @skip_if_disabled
-    def _do_test_post_image_content_missing_diskformat(self):
-        self._do_test_post_image_content_missing_format('container_format')
+    def test_post_image_content_bad_container_format(self):
+        self._do_test_post_image_content_bad_format('container_format')
 
     @skip_if_disabled
-    def _do_test_post_image_content_missing_disk_format(self):
-        self._do_test_post_image_content_missing_format('disk_format')
+    def test_post_image_content_bad_disk_format(self):
+        self._do_test_post_image_content_bad_format('disk_format')
 
     def _do_test_put_image_content_missing_format(self, format):
         """
@@ -1265,6 +1308,7 @@ class TestApi(functional.FunctionalTest):
         self.assertEqual(response.status, 201)
         data = json.loads(content)
         image_id = data['image']['id']
+        print data
 
         # PUT image content images without given format being specified
         path = ("http://%s:%d/v1/images/%s" %
@@ -1280,18 +1324,18 @@ class TestApi(functional.FunctionalTest):
                             body=test_data_file.name)
         self.assertEqual(response.status, 400)
         type = format.replace('_format', '')
-        expected = "Details: Invalid %s format 'None' for image" % type
+        expected = "Invalid %s format 'None' for image" % type
         self.assertTrue(expected in content,
                         "Could not find '%s' in '%s'" % (expected, content))
 
         self.stop_servers()
 
     @skip_if_disabled
-    def _do_test_put_image_content_missing_diskformat(self):
+    def test_put_image_content_bad_container_format(self):
         self._do_test_put_image_content_missing_format('container_format')
 
     @skip_if_disabled
-    def _do_test_put_image_content_missing_disk_format(self):
+    def test_put_image_content_bad_disk_format(self):
         self._do_test_put_image_content_missing_format('disk_format')
 
     @skip_if_disabled

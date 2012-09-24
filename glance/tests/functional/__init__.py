@@ -67,6 +67,8 @@ class Server(object):
         self.exec_env = None
         self.deployment_flavor = ''
         self.show_image_direct_url = False
+        self.enable_v1_api = True
+        self.enable_v2_api = True
         self.server_control_options = ''
         self.needs_database = False
 
@@ -139,6 +141,23 @@ class Server(object):
                        expected_exitcode=expected_exitcode,
                        context=overridden)
 
+    def reload(self, expect_exit=True, expected_exitcode=0, **kwargs):
+        """
+        Call glane-control reload for a specific server.
+
+        Any kwargs passed to this method will override the configuration
+        value in the conf file used in starting the servers.
+        """
+        cmd = ("%(server_control)s %(server_name)s reload "
+               "%(conf_file_name)s --pid-file=%(pid_file)s "
+               "%(server_control_options)s"
+               % self.__dict__)
+        return execute(cmd,
+                       no_venv=self.no_venv,
+                       exec_env=self.exec_env,
+                       expect_exit=expect_exit,
+                       expected_exitcode=expected_exitcode)
+
     def create_database(self):
         """Create database if required for this server"""
         if self.needs_database:
@@ -173,7 +192,8 @@ class ApiServer(Server):
     Server object that starts/stops/manages the API server
     """
 
-    def __init__(self, test_dir, port, policy_file, delayed_delete=False):
+    def __init__(self, test_dir, port, policy_file, delayed_delete=False,
+                 pid_file=None):
         super(ApiServer, self).__init__(test_dir, port)
         self.server_name = 'api'
         self.default_store = 'file'
@@ -182,8 +202,8 @@ class ApiServer(Server):
         self.metadata_encryption_key = "012345678901234567890123456789ab"
         self.image_dir = os.path.join(self.test_dir,
                                          "images")
-        self.pid_file = os.path.join(self.test_dir,
-                                         "api.pid")
+        self.pid_file = pid_file or os.path.join(self.test_dir,
+                                                 "api.pid")
         self.scrubber_datadir = os.path.join(self.test_dir,
                                              "scrubber")
         self.log_file = os.path.join(self.test_dir, "api.log")
@@ -191,12 +211,15 @@ class ApiServer(Server):
         self.s3_store_access_key = ""
         self.s3_store_secret_key = ""
         self.s3_store_bucket = ""
+        self.s3_store_bucket_url_format = ""
         self.swift_store_auth_address = ""
         self.swift_store_user = ""
         self.swift_store_key = ""
         self.swift_store_container = ""
         self.swift_store_large_object_size = 5 * 1024
         self.swift_store_large_object_chunk_size = 200
+        self.swift_store_multi_tenant = False
+        self.swift_store_admin_tenants = []
         self.rbd_store_ceph_conf = ""
         self.rbd_store_pool = ""
         self.rbd_store_user = ""
@@ -233,12 +256,15 @@ s3_store_host = %(s3_store_host)s
 s3_store_access_key = %(s3_store_access_key)s
 s3_store_secret_key = %(s3_store_secret_key)s
 s3_store_bucket = %(s3_store_bucket)s
+s3_store_bucket_url_format = %(s3_store_bucket_url_format)s
 swift_store_auth_address = %(swift_store_auth_address)s
 swift_store_user = %(swift_store_user)s
 swift_store_key = %(swift_store_key)s
 swift_store_container = %(swift_store_container)s
 swift_store_large_object_size = %(swift_store_large_object_size)s
 swift_store_large_object_chunk_size = %(swift_store_large_object_chunk_size)s
+swift_store_multi_tenant = %(swift_store_multi_tenant)s
+swift_store_admin_tenants = %(swift_store_admin_tenants)s
 rbd_store_chunk_size = %(rbd_store_chunk_size)s
 rbd_store_user = %(rbd_store_user)s
 rbd_store_pool = %(rbd_store_pool)s
@@ -255,6 +281,8 @@ policy_default_rule = %(policy_default_rule)s
 db_auto_create = False
 sql_connection = %(sql_connection)s
 show_image_direct_url = %(show_image_direct_url)s
+enable_v1_api = %(enable_v1_api)s
+enable_v2_api= %(enable_v2_api)s
 [paste_deploy]
 flavor = %(deployment_flavor)s
 """
@@ -279,7 +307,7 @@ pipeline = versionnegotiation fakeauth context rootapp
 pipeline = versionnegotiation context rootapp
 
 [composite:rootapp]
-use = egg:Paste#urlmap
+paste.composite_factory = glance.api:root_app_factory
 /: apiversions
 /v1: apiv1app
 /v2: apiv2app
@@ -665,6 +693,43 @@ class FunctionalTest(test_utils.BaseTestCase):
             msg += self.dump_logs(failed)
 
         return msg if expect_launch else None
+
+    def reload_server(self,
+                      server,
+                      expect_launch,
+                      expect_exit=True,
+                      expected_exitcode=0,
+                      **kwargs):
+        """
+        Reload a running server
+
+        Any kwargs passed to this method will override the configuration
+        value in the conf file used in starting the server.
+
+        :param server: the server to launch
+        :param expect_launch: true iff the server is expected to
+                              successfully start
+        :param expect_exit: true iff the launched process is expected
+                            to exit in a timely fashion
+        :param expected_exitcode: expected exitcode from the launcher
+        """
+        self.cleanup()
+
+        # Start up the requested server
+        exitcode, out, err = server.reload(expect_exit=expect_exit,
+                                           expected_exitcode=expected_exitcode,
+                                           **kwargs)
+        if expect_exit:
+            self.assertEqual(expected_exitcode, exitcode,
+                             "Failed to spin up the requested server. "
+                             "Got: %s" % err)
+
+            self.assertTrue(re.search("Restarting glance-[a-z]+ with", out))
+
+        self.launched_servers.append(server)
+
+        launch_msg = self.wait_for_servers([server], expect_launch)
+        self.assertTrue(launch_msg is None, launch_msg)
 
     def stop_server(self, server, name):
         """

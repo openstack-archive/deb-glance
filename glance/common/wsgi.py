@@ -165,7 +165,8 @@ class Server(object):
         """
         Run a WSGI server with the given application.
 
-        :param application: The application to run in the WSGI server
+        :param application: A function that can be called with no arguments
+                that will return the application to run in the WSGI server
         :param default_port: Port to bind to if none is specified in conf
         """
         def kill_children(*args):
@@ -184,7 +185,7 @@ class Server(object):
             signal.signal(signal.SIGHUP, signal.SIG_IGN)
             self.running = False
 
-        self.application = application
+        self.app_func = application
         self.sock = get_socket(default_port)
 
         os.umask(027)  # ensure files are created with the correct privileges
@@ -193,15 +194,15 @@ class Server(object):
         if CONF.workers == 0:
             # Useful for profiling, test, debug etc.
             self.pool = eventlet.GreenPool(size=self.threads)
-            self.pool.spawn_n(self._single_run, application, self.sock)
+            self.pool.spawn_n(self._single_run, self.app_func(), self.sock)
             return
-
-        self.logger.info(_("Starting %d workers") % CONF.workers)
-        signal.signal(signal.SIGTERM, kill_children)
-        signal.signal(signal.SIGINT, kill_children)
-        signal.signal(signal.SIGHUP, hup)
-        while len(self.children) < CONF.workers:
-            self.run_child()
+        else:
+            self.logger.info(_("Starting %d workers") % CONF.workers)
+            signal.signal(signal.SIGTERM, kill_children)
+            signal.signal(signal.SIGINT, kill_children)
+            signal.signal(signal.SIGHUP, hup)
+            while len(self.children) < CONF.workers:
+                self.run_child()
 
     def wait_on_children(self):
         while self.running:
@@ -250,7 +251,9 @@ class Server(object):
             signal.signal(signal.SIGINT, signal.SIG_IGN)
             self.run_server()
             self.logger.info(_('Child %d exiting normally') % os.getpid())
-            return
+            # self.pool.waitall() has been called by run_server, so
+            # its safe to exit here
+            sys.exit(0)
         else:
             self.logger.info(_('Started child %s') % pid)
             self.children.append(pid)
@@ -266,7 +269,7 @@ class Server(object):
         eventlet.patcher.monkey_patch(all=False, socket=True)
         self.pool = eventlet.GreenPool(size=self.threads)
         try:
-            eventlet.wsgi.server(self.sock, self.application,
+            eventlet.wsgi.server(self.sock, self.app_func(),
                     log=WritableLogger(self.logger), custom_pool=self.pool)
         except socket.error, err:
             if err[0] != errno.EINVAL:
@@ -455,7 +458,11 @@ class JSONRequestDeserializer(object):
         return False
 
     def from_json(self, datastring):
-        return json.loads(datastring)
+        try:
+            return json.loads(datastring)
+        except ValueError:
+            msg = _('Malformed JSON in request body.')
+            raise webob.exc.HTTPBadRequest(explanation=msg)
 
     def default(self, request):
         if self.has_body(request):

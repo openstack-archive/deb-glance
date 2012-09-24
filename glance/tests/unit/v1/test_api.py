@@ -1,4 +1,5 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
+# -*- coding: utf-8 -*-
 
 # Copyright 2010-2011 OpenStack, LLC
 # All Rights Reserved.
@@ -19,6 +20,7 @@ import datetime
 import hashlib
 import httplib
 import json
+import StringIO
 
 import routes
 from sqlalchemy import exc
@@ -29,15 +31,20 @@ import glance.api.middleware.context as context_middleware
 import glance.api.common
 from glance.api.v1 import images
 from glance.api.v1 import router
+import glance.common.config
 from glance.common import utils
 import glance.context
 from glance.db.sqlalchemy import api as db_api
 from glance.db.sqlalchemy import models as db_models
+from glance.openstack.common import cfg
 from glance.openstack.common import timeutils
 from glance.registry.api import v1 as rserver
+import glance.store.filesystem
 from glance.tests.unit import base
 from glance.tests import utils as test_utils
 
+
+CONF = cfg.CONF
 
 _gen_uuid = utils.generate_uuid
 
@@ -1638,62 +1645,6 @@ class TestRegistryAPI(base.IsolatedUnitTest):
 
         self.assertEquals(0, res_dict['image']['min_disk'])
 
-    def test_create_image_with_bad_container_format(self):
-        """Tests proper exception is raised if a bad disk_format is set"""
-        fixture = {'id': _gen_uuid(),
-                   'name': 'fake public image',
-                   'is_public': True,
-                   'disk_format': 'vhd',
-                   'container_format': 'invalid'}
-
-        req = webob.Request.blank('/images')
-
-        req.method = 'POST'
-        req.content_type = 'application/json'
-        req.body = json.dumps(dict(image=fixture))
-
-        res = req.get_response(self.api)
-        self.assertEquals(res.status_int, webob.exc.HTTPBadRequest.code)
-        self.assertTrue('Invalid container format' in res.body)
-
-    def test_create_image_with_bad_disk_format(self):
-        """Tests proper exception is raised if a bad disk_format is set"""
-        fixture = {'id': _gen_uuid(),
-                   'name': 'fake public image',
-                   'is_public': True,
-                   'disk_format': 'invalid',
-                   'container_format': 'ovf'}
-
-        req = webob.Request.blank('/images')
-
-        req.method = 'POST'
-        req.content_type = 'application/json'
-        req.body = json.dumps(dict(image=fixture))
-
-        res = req.get_response(self.api)
-        self.assertEquals(res.status_int, webob.exc.HTTPBadRequest.code)
-        self.assertTrue('Invalid disk format' in res.body)
-
-    def test_create_image_with_mismatched_formats(self):
-        """
-        Tests that exception raised for bad matching disk and
-        container formats
-        """
-        fixture = {'name': 'fake public image #3',
-                   'container_format': 'aki',
-                   'disk_format': 'ari'}
-
-        req = webob.Request.blank('/images')
-
-        req.method = 'POST'
-        req.content_type = 'application/json'
-        req.body = json.dumps(dict(image=fixture))
-
-        res = req.get_response(self.api)
-        self.assertEquals(res.status_int, webob.exc.HTTPBadRequest.code)
-        self.assertTrue('Invalid mix of disk and container formats'
-                        in res.body)
-
     def test_create_image_with_bad_status(self):
         """Tests proper exception is raised if a bad status is set"""
         fixture = {'id': _gen_uuid(),
@@ -1749,6 +1700,9 @@ class TestRegistryAPI(base.IsolatedUnitTest):
 
         res_dict = json.loads(res.body)
 
+        self.assertNotEquals(res_dict['image']['created_at'],
+                            res_dict['image']['updated_at'])
+
         for k, v in fixture.iteritems():
             self.assertEquals(v, res_dict['image'][k])
 
@@ -1782,53 +1736,6 @@ class TestRegistryAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, webob.exc.HTTPBadRequest.code)
         self.assertTrue('Invalid image status' in res.body)
-
-    def test_update_image_with_bad_disk_format(self):
-        """Tests that exception raised trying to set a bad disk_format"""
-        fixture = {'disk_format': 'invalid'}
-
-        req = webob.Request.blank('/images/%s' % UUID2)
-
-        req.method = 'PUT'
-        req.content_type = 'application/json'
-        req.body = json.dumps(dict(image=fixture))
-
-        res = req.get_response(self.api)
-        self.assertEquals(res.status_int, webob.exc.HTTPBadRequest.code)
-        self.assertTrue('Invalid disk format' in res.body)
-
-    def test_update_image_with_bad_container_format(self):
-        """Tests that exception raised trying to set a bad container_format"""
-        fixture = {'container_format': 'invalid'}
-
-        req = webob.Request.blank('/images/%s' % UUID2)
-
-        req.method = 'PUT'
-        req.content_type = 'application/json'
-        req.body = json.dumps(dict(image=fixture))
-
-        res = req.get_response(self.api)
-        self.assertEquals(res.status_int, webob.exc.HTTPBadRequest.code)
-        self.assertTrue('Invalid container format' in res.body)
-
-    def test_update_image_with_mismatched_formats(self):
-        """
-        Tests that exception raised for bad matching disk and
-        container formats
-        """
-        fixture = {'container_format': 'ari'}
-
-        # Image 2 has disk format 'vhd'
-        req = webob.Request.blank('/images/%s' % UUID2)
-
-        req.method = 'PUT'
-        req.content_type = 'application/json'
-        req.body = json.dumps(dict(image=fixture))
-
-        res = req.get_response(self.api)
-        self.assertEquals(res.status_int, webob.exc.HTTPBadRequest.code)
-        self.assertTrue('Invalid mix of disk and container formats'
-                        in res.body)
 
     def test_delete_image(self):
         """Tests that the /images DELETE registry API deletes the image"""
@@ -2062,6 +1969,21 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         self.assertEquals(res.status_int, webob.exc.HTTPBadRequest.code)
         self.assertTrue('Invalid disk format' in res.body, res.body)
 
+    def test_create_with_location_no_container_format(self):
+        fixture_headers = {'x-image-meta-store': 'bad',
+                   'x-image-meta-name': 'bogus',
+                   'x-image-meta-location': 'http://localhost:0/image.tar.gz',
+                   'x-image-meta-disk-format': 'vhd'}
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, webob.exc.HTTPBadRequest.code)
+        self.assertTrue('Invalid container format' in res.body)
+
     def test_bad_container_format(self):
         fixture_headers = {'x-image-meta-store': 'bad',
                    'x-image-meta-name': 'bogus',
@@ -2094,6 +2016,21 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, webob.exc.HTTPBadRequest.code)
         self.assertTrue('Incoming image size' in res.body)
+
+    def test_bad_image_name(self):
+        fixture_headers = {'x-image-meta-store': 'bad',
+                   'x-image-meta-name': 'X' * 256,
+                   'x-image-meta-location': 'http://example.com/image.tar.gz',
+                   'x-image-meta-disk-format': 'vhd',
+                   'x-image-meta-container-format': 'bare'}
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, webob.exc.HTTPBadRequest.code)
 
     def test_add_image_no_location_no_image_as_body(self):
         """Tests creates a queued image for no body and no loc header"""
@@ -2143,10 +2080,9 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, 400)
 
-    def test_add_image_size_too_big(self):
+    def test_add_image_size_header_too_big(self):
         """Tests raises BadRequest for supplied image size that is too big"""
-        IMAGE_SIZE_CAP = 1 << 50
-        fixture_headers = {'x-image-meta-size': IMAGE_SIZE_CAP + 1,
+        fixture_headers = {'x-image-meta-size': CONF.image_size_cap + 1,
                            'x-image-meta-name': 'fake image #3'}
 
         req = webob.Request.blank("/images")
@@ -2154,10 +2090,47 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         for k, v in fixture_headers.iteritems():
             req.headers[k] = v
 
-        req.headers['Content-Type'] = 'application/octet-stream'
-        req.body = "chunk00000remainder"
         res = req.get_response(self.api)
-        self.assertEquals(res.status_int, webob.exc.HTTPBadRequest.code)
+        self.assertEquals(res.status_int, 400)
+
+    def test_add_image_size_chunked_data_too_big(self):
+        self.config(image_size_cap=512)
+        fixture_headers = {
+            'x-image-meta-name': 'fake image #3',
+            'x-image-meta-container_format': 'ami',
+            'x-image-meta-disk_format': 'ami',
+            'transfer-encoding': 'chunked',
+            'content-type': 'application/octet-stream',
+        }
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+
+        req.body_file = StringIO.StringIO('X' * (CONF.image_size_cap + 1))
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 400)
+
+    def test_add_image_size_data_too_big(self):
+        self.config(image_size_cap=512)
+        fixture_headers = {
+            'x-image-meta-name': 'fake image #3',
+            'x-image-meta-container_format': 'ami',
+            'x-image-meta-disk_format': 'ami',
+            'content-type': 'application/octet-stream',
+        }
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+
+        req.body = 'X' * (CONF.image_size_cap + 1)
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 400)
 
     def test_add_image_zero_size(self):
         """Tests creating an active image with explicitly zero size"""
@@ -2182,6 +2155,23 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 200)
         self.assertEqual(len(res.body), 0)
+
+    def test_add_image_checksum_mismatch(self):
+        fixture_headers = {
+            'x-image-meta-checksum': 'asdf',
+            'x-image-meta-size': '4',
+            'x-image-meta-name': 'fake image #3',
+        }
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+
+        req.headers['Content-Type'] = 'application/octet-stream'
+        req.body = "XXXX"
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 400)
 
     def test_add_image_bad_store(self):
         """Tests raises BadRequest for invalid store header"""
@@ -2506,6 +2496,58 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req.headers['x-image-meta-is-public'] = 'true'
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, 403)
+
+    def test_update_image_size_header_too_big(self):
+        """Tests raises BadRequest for supplied image size that is too big"""
+        fixture_headers = {'x-image-meta-size': CONF.image_size_cap + 1}
+
+        req = webob.Request.blank("/images/%s" % UUID2)
+        req.method = 'PUT'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 400)
+
+    def test_update_image_size_data_too_big(self):
+        self.config(image_size_cap=512)
+
+        fixture_headers = {'content-type': 'application/octet-stream'}
+        req = webob.Request.blank("/images/%s" % UUID2)
+        req.method = 'PUT'
+
+        req.body = 'X' * (CONF.image_size_cap + 1)
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 400)
+
+    def test_update_image_size_chunked_data_too_big(self):
+        self.config(image_size_cap=512)
+
+        # Create new image that has no data
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        req.headers['x-image-meta-name'] = 'something'
+        req.headers['x-image-meta-container_format'] = 'ami'
+        req.headers['x-image-meta-disk_format'] = 'ami'
+        res = req.get_response(self.api)
+        image_id = json.loads(res.body)['image']['id']
+
+        fixture_headers = {
+            'content-type': 'application/octet-stream',
+            'transfer-encoding': 'chunked',
+        }
+        req = webob.Request.blank("/images/%s" % image_id)
+        req.method = 'PUT'
+
+        req.body_file = StringIO.StringIO('X' * (CONF.image_size_cap + 1))
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 400)
 
     def test_get_index_sort_name_asc(self):
         """
@@ -2855,6 +2897,13 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 403)
 
+    def test_show_image_unauthorized_download(self):
+        rules = {"download_image": [["false:false"]]}
+        self.set_policy_rules(rules)
+        req = webob.Request.blank("/images/%s" % UUID2)
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 403)
+
     def test_delete_image(self):
         req = webob.Request.blank("/images/%s" % UUID2)
         req.method = 'DELETE'
@@ -2867,6 +2916,13 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         self.assertEquals(res.status_int, webob.exc.HTTPNotFound.code,
                           res.body)
 
+        req = webob.Request.blank("/images/%s" % UUID2)
+        req.method = 'HEAD'
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 200)
+        self.assertEquals(res.headers['x-image-meta-deleted'], 'True')
+        self.assertEquals(res.headers['x-image-meta-status'], 'deleted')
+
     def test_delete_non_exists_image(self):
         req = webob.Request.blank("/images/%s" % _gen_uuid())
         req.method = 'DELETE'
@@ -2874,17 +2930,15 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         self.assertEquals(res.status_int, webob.exc.HTTPNotFound.code)
 
     def test_delete_queued_image(self):
-        """
-        Here, we try to delete an image that is in the queued state.
+        """Delete an image in a queued state
+
         Bug #747799 demonstrated that trying to DELETE an image
         that had had its save process killed manually results in failure
         because the location attribute is None.
+
+        Bug #1048851 demonstrated that the status was not properly
+        being updated to 'deleted' from 'queued'.
         """
-        # Add an image by reserving a place in the database for an image
-        # without really any attributes or information on the image and then
-        # later doing an update with the image body and other attributes.
-        # We will stop the process after the reservation stage, then
-        # try to delete the image.
         fixture_headers = {'x-image-meta-store': 'file',
                            'x-image-meta-disk-format': 'vhd',
                            'x-image-meta-container-format': 'ovf',
@@ -2905,6 +2959,48 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req.method = 'DELETE'
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, 200)
+
+        req = webob.Request.blank('/images/%s' % res_body['id'])
+        req.method = 'HEAD'
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 200)
+        self.assertEquals(res.headers['x-image-meta-deleted'], 'True')
+        self.assertEquals(res.headers['x-image-meta-status'], 'deleted')
+
+    def test_delete_queued_image_delayed_delete(self):
+        """Delete an image in a queued state when delayed_delete is on
+
+        Bug #1048851 demonstrated that the status was not properly
+        being updated to 'deleted' from 'queued'.
+        """
+        self.config(delayed_delete=True)
+        fixture_headers = {'x-image-meta-store': 'file',
+                           'x-image-meta-disk-format': 'vhd',
+                           'x-image-meta-container-format': 'ovf',
+                           'x-image-meta-name': 'fake image #3'}
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, httplib.CREATED)
+
+        res_body = json.loads(res.body)['image']
+        self.assertEquals('queued', res_body['status'])
+
+        # Now try to delete the image...
+        req = webob.Request.blank("/images/%s" % res_body['id'])
+        req.method = 'DELETE'
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 200)
+
+        req = webob.Request.blank('/images/%s' % res_body['id'])
+        req.method = 'HEAD'
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 200)
+        self.assertEquals(res.headers['x-image-meta-deleted'], 'True')
+        self.assertEquals(res.headers['x-image-meta-status'], 'deleted')
 
     def test_delete_protected_image(self):
         fixture_headers = {'x-image-meta-store': 'file',
@@ -3056,7 +3152,7 @@ class TestImageSerializer(base.IsolatedUnitTest):
                  'updated_at': timeutils.utcnow(),
                  'deleted_at': None,
                  'deleted': False,
-                 'checksum': None,
+                 'checksum': '06ff575a2856444fbe93100157ed74ab92eb7eff',
                  'size': 19,
                  'owner': _gen_uuid(),
                  'location': "file:///tmp/glance-tests/2",
@@ -3076,6 +3172,56 @@ class TestImageSerializer(base.IsolatedUnitTest):
         self.serializer.meta(response, self.FIXTURE)
         for key, value in exp_headers.iteritems():
             self.assertEquals(value, response.headers[key])
+
+    def test_meta_utf8(self):
+        # We get unicode strings from JSON, and therefore all strings in the
+        # metadata will actually be unicode when handled internally. But we
+        # want to output utf-8.
+        FIXTURE = {
+             'image_meta': {
+                 'id': unicode(UUID2),
+                 'name': u'fake image #2 with utf-8 éàè',
+                 'status': u'active',
+                 'disk_format': u'vhd',
+                 'container_format': u'ovf',
+                 'is_public': True,
+                 'created_at': timeutils.utcnow(),
+                 'updated_at': timeutils.utcnow(),
+                 'deleted_at': None,
+                 'deleted': False,
+                 'checksum': u'06ff575a2856444fbe93100157ed74ab92eb7eff',
+                 'size': 19,
+                 'owner': unicode(_gen_uuid()),
+                 'location': u"file:///tmp/glance-tests/2",
+                 'properties': {
+                     u'prop_éé': u'ça marche',
+                     u'prop_çé': u'çé',
+                     }
+                 }
+             }
+        exp_headers = {'x-image-meta-id': UUID2.encode('utf-8'),
+                       'x-image-meta-location': 'file:///tmp/glance-tests/2',
+                       'ETag': '06ff575a2856444fbe93100157ed74ab92eb7eff',
+                       'x-image-meta-size': '19',  # str, not int
+                       'x-image-meta-name': 'fake image #2 with utf-8 éàè',
+                       'x-image-meta-property-prop_éé': 'ça marche',
+                       'x-image-meta-property-prop_çé': u'çé'.encode('utf-8')}
+        req = webob.Request.blank("/images/%s" % UUID2)
+        req.method = 'HEAD'
+        req.remote_addr = "1.2.3.4"
+        req.context = self.context
+        response = webob.Response(request=req)
+        self.serializer.meta(response, FIXTURE)
+        self.assertNotEqual(type(FIXTURE['image_meta']['name']),
+                            type(response.headers['x-image-meta-name']))
+        self.assertEqual(response.headers['x-image-meta-name'].decode('utf-8'),
+                         FIXTURE['image_meta']['name'])
+        for key, value in exp_headers.iteritems():
+            self.assertEquals(value, response.headers[key])
+
+        FIXTURE['image_meta']['properties'][u'prop_bad'] = 'çé'
+        self.assertRaises(UnicodeDecodeError,
+                          self.serializer.meta, response, FIXTURE)
 
     def test_show(self):
         exp_headers = {'x-image-meta-id': UUID2,

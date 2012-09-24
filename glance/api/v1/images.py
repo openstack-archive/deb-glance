@@ -22,6 +22,7 @@
 import sys
 import traceback
 
+import eventlet
 from webob.exc import (HTTPError,
                        HTTPNotFound,
                        HTTPConflict,
@@ -47,7 +48,8 @@ from glance import registry
 from glance.store import (create_stores,
                           get_from_backend,
                           get_size_from_backend,
-                          schedule_delete_from_backend,
+                          safe_delete_from_backend,
+                          schedule_delayed_delete_from_backend,
                           get_store_from_location,
                           get_store_from_scheme)
 
@@ -55,13 +57,10 @@ from glance.store import (create_stores,
 LOG = logging.getLogger(__name__)
 SUPPORTED_PARAMS = glance.api.v1.SUPPORTED_PARAMS
 SUPPORTED_FILTERS = glance.api.v1.SUPPORTED_FILTERS
+CONTAINER_FORMATS = ['ami', 'ari', 'aki', 'bare', 'ovf']
+DISK_FORMATS = ['ami', 'ari', 'aki', 'vhd', 'vmdk', 'raw', 'qcow2', 'vdi',
+               'iso']
 
-
-# 1 PiB, which is a *huge* image by anyone's measure.  This is just to protect
-# against client programming errors (or DoS attacks) in the image metadata.
-# We have a known limit of 1 << 63 in the database -- images.size is declared
-# as a BigInteger.
-IMAGE_SIZE_CAP = 1 << 50
 
 # Defined at module level due to _is_opt_registered
 # identity check (not equality).
@@ -69,6 +68,43 @@ default_store_opt = cfg.StrOpt('default_store', default='file')
 
 CONF = cfg.CONF
 CONF.register_opt(default_store_opt)
+
+
+def validate_image_meta(req, values):
+
+    name = values.get('name')
+    disk_format = values.get('disk_format')
+    container_format = values.get('container_format')
+
+    if 'disk_format' in values:
+        if not disk_format in DISK_FORMATS:
+            msg = "Invalid disk format '%s' for image." % disk_format
+            raise HTTPBadRequest(explanation=msg, request=req)
+
+    if 'container_format' in values:
+        if not container_format in CONTAINER_FORMATS:
+            msg = "Invalid container format '%s' for image." % container_format
+            raise HTTPBadRequest(explanation=msg, request=req)
+
+    if name and len(name) > 255:
+        msg = _('Image name too long: %d') % len(name)
+        raise HTTPBadRequest(explanation=msg, request=req)
+
+    amazon_formats = ('aki', 'ari', 'ami')
+
+    if disk_format in amazon_formats or container_format in amazon_formats:
+        if disk_format is None:
+            values['disk_format'] = container_format
+        elif container_format is None:
+            values['container_format'] = disk_format
+        elif container_format != disk_format:
+            msg = ("Invalid mix of disk and container formats. "
+                   "When setting a disk or container format to "
+                   "one of 'aki', 'ari', or 'ami', the container "
+                   "and disk formats must match.")
+            raise HTTPBadRequest(explanation=msg, request=req)
+
+    return values
 
 
 class Controller(controller.BaseController):
@@ -96,6 +132,7 @@ class Controller(controller.BaseController):
         self.notifier = notifier.Notifier()
         registry.configure_registry_client()
         self.policy = policy.Enforcer()
+        self.pool = eventlet.GreenPool(size=1024)
 
     def _enforce(self, req, action):
         """Authorize an action against our policies"""
@@ -271,6 +308,7 @@ class Controller(controller.BaseController):
         :raises HTTPNotFound if image is not available to user
         """
         self._enforce(req, 'get_image')
+        self._enforce(req, 'download_image')
         image_meta = self.get_active_image_meta_or_404(req, id)
 
         if image_meta.get('size') == 0:
@@ -360,8 +398,14 @@ class Controller(controller.BaseController):
 
         copy_from = self._copy_from(req)
         if copy_from:
-            image_data, image_size = self._get_from_store(req.context,
-                                                          copy_from)
+            try:
+                image_data, image_size = self._get_from_store(req.context,
+                                                              copy_from)
+            except Exception as e:
+                self._safe_kill(req, image_meta['id'])
+                msg = _("Copy from external source failed: %s") % e
+                LOG.error(msg)
+                return
             image_meta['size'] = image_size or image_meta['size']
         else:
             try:
@@ -374,15 +418,6 @@ class Controller(controller.BaseController):
 
             image_data = req.body_file
 
-            if req.content_length:
-                image_size = int(req.content_length)
-            elif 'x-image-meta-size' in req.headers:
-                image_size = int(req.headers['x-image-meta-size'])
-            else:
-                LOG.debug(_("Got request with no content-length and no "
-                            "x-image-meta-size header"))
-                image_size = 0
-
         scheme = req.headers.get('x-image-meta-store', CONF.default_store)
 
         store = self.get_store_or_400(req, scheme)
@@ -391,22 +426,15 @@ class Controller(controller.BaseController):
         LOG.debug(_("Setting image %s to status 'saving'"), image_id)
         registry.update_image_metadata(req.context, image_id,
                                        {'status': 'saving'})
+
+        LOG.debug(_("Uploading image data for image %(image_id)s "
+                    "to %(scheme)s store"), locals())
+
         try:
-            LOG.debug(_("Uploading image data for image %(image_id)s "
-                        "to %(scheme)s store"), locals())
-
-            if image_size > IMAGE_SIZE_CAP:
-                max_image_size = IMAGE_SIZE_CAP
-                msg = _("Denying attempt to upload image larger than "
-                        "%(max_image_size)d. Supplied image size was "
-                        "%(image_size)d") % locals()
-                LOG.warn(msg)
-                raise HTTPBadRequest(explanation=msg, request=req)
-
             location, size, checksum = store.add(
                 image_meta['id'],
                 utils.CooperativeReader(image_data),
-                image_size)
+                image_meta['size'])
 
             # Verify any supplied checksum value matches checksum
             # returned from store when adding image
@@ -468,10 +496,20 @@ class Controller(controller.BaseController):
             raise HTTPServiceUnavailable(explanation=msg, request=req,
                                          content_type='text/plain')
 
+        except exception.ImageSizeLimitExceeded, e:
+            msg = _("Denying attempt to upload image larger than %d bytes.")
+            self._safe_kill(req, image_id)
+            raise HTTPBadRequest(explanation=msg % CONF.image_size_cap,
+                                 request=req, content_type='text/plain')
+
         except HTTPError, e:
             self._safe_kill(req, image_id)
             self.notifier.error('image.upload', e.explanation)
-            raise
+            #NOTE(bcwaldon): Ideally, we would just call 'raise' here,
+            # but something in the above function calls is affecting the
+            # exception context and we must explicitly re-raise the
+            # caught exception.
+            raise e
 
         except Exception, e:
             tb_info = traceback.format_exc()
@@ -500,9 +538,11 @@ class Controller(controller.BaseController):
         image_meta['status'] = 'active'
 
         try:
-            return registry.update_image_metadata(req.context,
+            image_meta_data = registry.update_image_metadata(req.context,
                                                   image_id,
                                                   image_meta)
+            self.notifier.info("image.update", image_meta_data)
+            return image_meta_data
         except exception.Invalid, e:
             msg = (_("Failed to activate image. Got error: %(e)s")
                    % locals())
@@ -557,7 +597,7 @@ class Controller(controller.BaseController):
         # issue/12/fix-for-issue-6-broke-chunked-transfer
         req.is_body_readable = True
         location = self._upload(req, image_meta)
-        return self._activate(req, image_id, location)
+        return self._activate(req, image_id, location) if location else None
 
     def _get_size(self, context, image_meta, location):
         # retrieve the image size from remote store (if not provided)
@@ -565,13 +605,33 @@ class Controller(controller.BaseController):
                                                                   location)
 
     def _handle_source(self, req, image_id, image_meta, image_data):
-        if image_data or self._copy_from(req):
+        if image_data:
+            image_meta = self._validate_image_for_activation(req, image_id,
+                                                        image_meta)
             image_meta = self._upload_and_activate(req, image_meta)
+        elif self._copy_from(req):
+            msg = _('Triggering asynchronous copy from external source')
+            LOG.info(msg)
+            self.pool.spawn_n(self._upload_and_activate, req, image_meta)
         else:
             location = image_meta.get('location')
             if location:
+                self._validate_image_for_activation(req, image_id, image_meta)
                 image_meta = self._activate(req, image_id, location)
         return image_meta
+
+    def _validate_image_for_activation(self, req, id, values):
+        """Ensures that all required image metadata values are valid."""
+        image = self.get_image_meta_or_404(req, id)
+        if not 'disk_format' in values:
+            values['disk_format'] = image['disk_format']
+        if not 'container_format' in values:
+            values['container_format'] = image['container_format']
+        if not 'name' in values:
+            values['name'] = image['name']
+
+        values = validate_image_meta(req, values)
+        return values
 
     @utils.mutating
     def create(self, req, image_meta, image_data):
@@ -761,14 +821,21 @@ class Controller(controller.BaseController):
                                 request=req,
                                 content_type="text/plain")
 
-        # The image's location field may be None in the case
-        # of a saving or queued image, therefore don't ask a backend
-        # to delete the image if the backend doesn't yet store it.
-        # See https://bugs.launchpad.net/glance/+bug/747799
+        status = 'deleted'
         try:
+            # The image's location field may be None in the case
+            # of a saving or queued image, therefore don't ask a backend
+            # to delete the image if the backend doesn't yet store it.
+            # See https://bugs.launchpad.net/glance/+bug/747799
             if image['location']:
-                schedule_delete_from_backend(image['location'],
+                if CONF.delayed_delete:
+                    status = 'pending_delete'
+                    schedule_delayed_delete_from_backend(image['location'], id)
+                else:
+                    safe_delete_from_backend(image['location'],
                                              req.context, id)
+
+            registry.update_image_metadata(req.context, id, {'status': status})
             registry.delete_image_metadata(req.context, id)
         except exception.NotFound, e:
             msg = ("Failed to find image to delete: %(e)s" % locals())
@@ -840,17 +907,30 @@ class ImageDeserializer(wsgi.JSONRequestDeserializer):
             raise HTTPBadRequest(explanation=msg, request=request)
 
         image_meta = result['image_meta']
-        if 'size' in image_meta:
-            incoming_image_size = image_meta['size']
-            if incoming_image_size > IMAGE_SIZE_CAP:
-                max_image_size = IMAGE_SIZE_CAP
-                msg = _("Denying attempt to upload image larger than "
-                        "%(max_image_size)d. Supplied image size was "
-                        "%(incoming_image_size)d") % locals()
-                LOG.warn(msg)
-                raise HTTPBadRequest(explanation=msg, request=request)
+        image_meta = validate_image_meta(request, image_meta)
+        if request.content_length:
+            image_size = request.content_length
+        elif 'size' in image_meta:
+            image_size = image_meta['size']
+        else:
+            image_size = None
 
         data = request.body_file if self.has_body(request) else None
+
+        if image_size is None and data is not None:
+            data = utils.LimitingReader(data, CONF.image_size_cap)
+
+            #NOTE(bcwaldon): this is a hack to make sure the downstream code
+            # gets the correct image data
+            request.body_file = data
+
+        elif image_size > CONF.image_size_cap:
+            max_image_size = CONF.image_size_cap
+            msg = _("Denying attempt to upload image larger than %d bytes.")
+            LOG.warn(msg % max_image_size)
+            raise HTTPBadRequest(explanation=msg % max_image_size,
+                                 request=request)
+
         result['image_data'] = data
         return result
 
@@ -869,10 +949,11 @@ class ImageSerializer(wsgi.JSONResponseSerializer):
 
     def _inject_location_header(self, response, image_meta):
         location = self._get_image_location(image_meta)
-        response.headers['Location'] = location
+        response.headers['Location'] = location.encode('utf-8')
 
     def _inject_checksum_header(self, response, image_meta):
-        response.headers['ETag'] = image_meta['checksum']
+        if image_meta['checksum'] is not None:
+            response.headers['ETag'] = image_meta['checksum'].encode('utf-8')
 
     def _inject_image_meta_headers(self, response, image_meta):
         """
@@ -889,7 +970,7 @@ class ImageSerializer(wsgi.JSONResponseSerializer):
         headers = utils.image_meta_to_http_headers(image_meta)
 
         for k, v in headers.items():
-            response.headers[k] = v
+            response.headers[k.encode('utf-8')] = v.encode('utf-8')
 
     def _get_image_location(self, image_meta):
         """Build a relative url to reach the image defined by image_meta."""
@@ -907,12 +988,12 @@ class ImageSerializer(wsgi.JSONResponseSerializer):
         image_id = image_meta['id']
 
         image_iter = result['image_iterator']
-        # image_meta['size'] is a str
+        # image_meta['size'] should be an int, but could possibly be a str
         expected_size = int(image_meta['size'])
         response.app_iter = common.size_checked_iter(
                 response, image_meta, expected_size, image_iter, self.notifier)
         # Using app_iter blanks content-length, so we set it here...
-        response.headers['Content-Length'] = image_meta['size']
+        response.headers['Content-Length'] = str(image_meta['size'])
         response.headers['Content-Type'] = 'application/octet-stream'
 
         self._inject_image_meta_headers(response, image_meta)

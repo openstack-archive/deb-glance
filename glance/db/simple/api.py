@@ -19,6 +19,7 @@ import uuid
 
 from glance.common import exception
 import glance.openstack.common.log as logging
+from glance.openstack.common import timeutils
 
 
 LOG = logging.getLogger(__name__)
@@ -82,15 +83,23 @@ def _image_format(image_id, **values):
     dt = datetime.datetime.now()
     image = {
         'id': image_id,
-        'name': 'image-name',
+        'name': None,
         'owner': None,
         'location': None,
         'status': 'queued',
+        'protected': False,
         'is_public': False,
-        'deleted': False,
+        'container_format': None,
+        'disk_format': None,
+        'min_ram': 0,
+        'min_disk': 0,
+        'size': None,
+        'checksum': None,
+        'tags': [],
         'created_at': dt,
         'updated_at': dt,
-        'tags': [],
+        'deleted_at': None,
+        'deleted': False,
     }
 
     #NOTE(bcwaldon): store properties as a list to match sqlalchemy driver
@@ -104,11 +113,13 @@ def _image_format(image_id, **values):
     return image
 
 
-def _filter_images(images, filters):
+def _filter_images(images, filters, context):
     filtered_images = []
     if 'properties' in filters:
         prop_filter = filters.pop('properties')
         filters.update(prop_filter)
+
+    is_public_filter = filters.pop('is_public', None)
 
     for i, image in enumerate(images):
         add = True
@@ -140,6 +151,23 @@ def _filter_images(images, filters):
 
         if add:
             filtered_images.append(image)
+
+    #NOTE(bcwaldon): This hacky code is only here to match what the
+    # sqlalchemy driver wants - refactor it out of the db layer when
+    # it seems appropriate
+    if is_public_filter is not None:
+        def _filter_ownership(image):
+            has_ownership = image['owner'] == context.owner
+            can_see = image['is_public'] or has_ownership or context.is_admin
+
+            if can_see:
+                return has_ownership or \
+                        (can_see and image['is_public'] == is_public_filter)
+            else:
+                return False
+
+        filtered_images = filter(_filter_ownership, filtered_images)
+
     return filtered_images
 
 
@@ -186,6 +214,13 @@ def image_get(context, image_id, session=None, force_show_deleted=False):
         LOG.info('Unable to get deleted image')
         raise exception.NotFound()
 
+    if (not context.is_admin) \
+            and (not image.get('is_public')) \
+            and (image['owner'] is not None) \
+            and (image['owner'] != context.owner):
+        LOG.info('Unable to get unowned image')
+        raise exception.Forbidden()
+
     return image
 
 
@@ -194,7 +229,7 @@ def image_get_all(context, filters=None, marker=None, limit=None,
                   sort_key='created_at', sort_dir='desc'):
     filters = filters or {}
     images = DATA['images'].values()
-    images = _filter_images(images, filters)
+    images = _filter_images(images, filters, context)
     images = _sort_images(images, sort_key, sort_dir)
     images = _do_pagination(context, images, marker, limit,
                             filters.get('deleted'))
@@ -265,22 +300,53 @@ def image_member_delete(context, member):
 
 @log_call
 def image_create(context, image_values):
-    image_id = image_values.get('id', str(uuid.uuid4()))
-    image = _image_format(image_id, **image_values)
     global DATA
+    image_id = image_values.get('id', str(uuid.uuid4()))
+
+    if image_id in DATA['images']:
+        raise exception.Duplicate()
+
+    if 'status' not in image_values:
+        raise exception.Invalid('status is a required attribute')
+
+    allowed_keys = set(['id', 'name', 'status', 'min_ram', 'min_disk', 'size',
+                        'checksum', 'location', 'owner', 'protected',
+                        'is_public', 'container_format', 'disk_format',
+                        'created_at', 'updated_at', 'deleted_at', 'deleted',
+                        'properties', 'tags'])
+
+    if set(image_values.keys()) - allowed_keys:
+        raise exception.Invalid()
+
+    image = _image_format(image_id, **image_values)
     DATA['images'][image_id] = image
     DATA['tags'][image_id] = image.pop('tags', [])
     return image
 
 
 @log_call
-def image_update(context, image_id, image_values):
+def image_update(context, image_id, image_values, purge_props=False):
     global DATA
     try:
         image = DATA['images'][image_id]
     except KeyError:
         raise exception.NotFound(image_id=image_id)
 
+    # replace values for properties that already exist
+    new_properties = image_values.pop('properties', {})
+    for prop in image['properties']:
+        if prop['name'] in new_properties:
+            prop['value'] = new_properties.pop(prop['name'])
+        elif purge_props:
+            # this matches weirdness in the sqlalchemy api
+            prop['deleted'] = True
+
+    # add in any completly new properties
+    image['properties'].extend([
+            {'name': k, 'value': v, 'deleted': False}
+             for k, v in new_properties.items()])
+
+    image['updated_at'] = timeutils.utcnow()
     image.update(image_values)
     DATA['images'][image_id] = image
     return image

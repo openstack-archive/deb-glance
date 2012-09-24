@@ -18,6 +18,7 @@
 
 import copy
 import datetime
+import uuid
 
 from glance.common import exception
 from glance.common import utils
@@ -97,10 +98,44 @@ class BaseTestCase(object):
     def reset(self):
         pass
 
+    def test_image_create_requires_status(self):
+        fixture = {'name': 'mark', 'size': 12}
+        self.assertRaises(exception.Invalid,
+                          self.db_api.image_create, self.context, fixture)
+        fixture = {'name': 'mark', 'size': 12, 'status': 'queued'}
+        self.db_api.image_create(self.context, fixture)
+
     def test_image_create_defaults(self):
         image = self.db_api.image_create(self.context, {'status': 'queued'})
-        self.assertTrue(image['id'])
+
+        self.assertEqual(None, image['name'])
+        self.assertEqual(None, image['container_format'])
+        self.assertEqual(0, image['min_ram'])
+        self.assertEqual(0, image['min_disk'])
+        self.assertEqual(None, image['owner'])
+        self.assertEqual(False, image['is_public'])
+        self.assertEqual(None, image['size'])
+        self.assertEqual(None, image['checksum'])
+        self.assertEqual(None, image['disk_format'])
+        self.assertEqual(None, image['location'])
+        self.assertEqual(False, image['protected'])
+        self.assertEqual(False, image['deleted'])
+        self.assertEqual(None, image['deleted_at'])
         self.assertEqual([], image['properties'])
+
+        # These values aren't predictable, but they should be populated
+        self.assertTrue(uuid.UUID(image['id']))
+        self.assertTrue(isinstance(image['created_at'], datetime.datetime))
+        self.assertTrue(isinstance(image['updated_at'], datetime.datetime))
+
+        #NOTE(bcwaldon): the tags attribute should not be returned as a part
+        # of a core image entity
+        self.assertFalse('tags' in image)
+
+    def test_image_create_duplicate_id(self):
+        self.assertRaises(exception.Duplicate,
+                          self.db_api.image_create,
+                          self.context, {'id': UUID1, 'status': 'queued'})
 
     def test_image_create_properties(self):
         fixture = {'status': 'queued', 'properties': {'ping': 'pong'}}
@@ -109,6 +144,52 @@ class BaseTestCase(object):
         actual = [{'name': p['name'], 'value': p['value']}
                   for p in image['properties']]
         self.assertEqual(expected, actual)
+
+    def test_image_create_unknown_attribtues(self):
+        fixture = {'ping': 'pong'}
+        self.assertRaises(exception.Invalid,
+                          self.db_api.image_create, self.context, fixture)
+
+    def test_image_update_core_attribute(self):
+        fixture = {'status': 'queued'}
+        image = self.db_api.image_update(self.adm_context, UUID3, fixture)
+        self.assertEqual('queued', image['status'])
+        self.assertNotEqual(image['created_at'], image['updated_at'])
+
+    def test_image_update(self):
+        fixture = {'status': 'queued', 'properties': {'ping': 'pong'}}
+        image = self.db_api.image_update(self.adm_context, UUID3, fixture)
+        expected = [{'name': 'ping', 'value': 'pong'}]
+        actual = [{'name': p['name'], 'value': p['value']}
+                  for p in image['properties']]
+        self.assertEqual(expected, actual)
+        self.assertEqual('queued', image['status'])
+        self.assertNotEqual(image['created_at'], image['updated_at'])
+
+    def test_image_update_properties(self):
+        fixture = {'properties': {'ping': 'pong'}}
+        image = self.db_api.image_update(self.adm_context, UUID1, fixture)
+        expected = {'ping': 'pong', 'foo': 'bar'}
+        actual = dict((p['name'], p['value']) for p in image['properties'])
+        self.assertEqual(expected, actual)
+        self.assertNotEqual(image['created_at'], image['updated_at'])
+
+    def test_image_update_purge_properties(self):
+        fixture = {'properties': {'ping': 'pong'}}
+        image = self.db_api.image_update(self.adm_context, UUID1,
+                                         fixture, purge_props=True)
+        properties = dict((p['name'], p) for p in image['properties'])
+
+        # New properties are set
+        self.assertTrue('ping' in properties)
+        self.assertEqual(properties['ping']['value'], 'pong')
+        self.assertEqual(properties['ping']['deleted'], False)
+
+        # Original properties still show up, but with deleted=True
+        # TODO(markwash): db api should not return deleted properties
+        self.assertTrue('foo' in properties)
+        self.assertEqual(properties['foo']['value'], 'bar')
+        self.assertEqual(properties['foo']['deleted'], True)
 
     def test_image_property_delete(self):
         fixture = {'name': 'ping', 'value': 'pong', 'image_id': UUID1}
@@ -137,6 +218,21 @@ class BaseTestCase(object):
         image = self.db_api.image_get(self.context, UUID1,
                                       force_show_deleted=True)
         self.assertEquals(image['id'], self.fixtures[0]['id'])
+
+    def test_image_get_not_owned(self):
+        TENANT1 = utils.generate_uuid()
+        TENANT2 = utils.generate_uuid()
+        ctxt1 = context.RequestContext(is_admin=False, tenant=TENANT1)
+        ctxt2 = context.RequestContext(is_admin=False, tenant=TENANT2)
+        image = self.db_api.image_create(
+                ctxt1, {'status': 'queued', 'owner': TENANT1})
+        self.assertRaises(exception.Forbidden,
+                          self.db_api.image_get, ctxt2, image['id'])
+
+    def test_image_get_not_found(self):
+        UUID = utils.generate_uuid()
+        self.assertRaises(exception.NotFound,
+                          self.db_api.image_get, self.context, UUID)
 
     def test_image_get_all(self):
         images = self.db_api.image_get_all(self.context)
@@ -250,6 +346,27 @@ class BaseTestCase(object):
         # A limit of zero should actually mean zero
         images = self.db_api.image_get_all(self.context, limit=0)
         self.assertEquals(0, len(images))
+
+    def test_image_get_all_owned(self):
+        TENANT1 = utils.generate_uuid()
+        ctxt1 = context.RequestContext(is_admin=False, tenant=TENANT1)
+        UUIDX = utils.generate_uuid()
+        self.db_api.image_create(ctxt1,
+                {'id': UUIDX, 'status': 'queued', 'owner': TENANT1})
+
+        TENANT2 = utils.generate_uuid()
+        ctxt2 = context.RequestContext(is_admin=False, tenant=TENANT2)
+        UUIDY = utils.generate_uuid()
+        self.db_api.image_create(ctxt2,
+                {'id': UUIDY, 'status': 'queued', 'owner': TENANT2})
+
+        # NOTE(bcwaldon): the is_public=True flag indicates that you want
+        # to get all images that are public AND those that are owned by the
+        # calling context
+        images = self.db_api.image_get_all(ctxt1, filters={'is_public': True})
+        image_ids = [image['id'] for image in images]
+        expected = [UUIDX, UUID3, UUID2, UUID1]
+        self.assertEqual(sorted(expected), sorted(image_ids))
 
     def test_image_paginate(self):
         """Paginate through a list of images using limit and marker"""

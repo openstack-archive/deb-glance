@@ -16,21 +16,28 @@
 import webob.exc
 
 from glance.api import common
+from glance.api import policy
 import glance.api.v2 as v2
 from glance.common import exception
 from glance.common import utils
 from glance.common import wsgi
 import glance.db
 import glance.notifier
+import glance.openstack.common.log as logging
 import glance.store
+
+LOG = logging.getLogger(__name__)
 
 
 class ImageDataController(object):
-    def __init__(self, db_api=None, store_api=None):
+    def __init__(self, db_api=None, store_api=None,
+                 policy_enforcer=None, notifier=None):
         self.db_api = db_api or glance.db.get_api()
         self.db_api.configure_db()
         self.store_api = store_api or glance.store
         self.store_api.create_stores()
+        self.policy = policy_enforcer or policy.Enforcer()
+        self.notifier = notifier or glance.notifier.Notifier()
 
     def _get_image(self, context, image_id):
         try:
@@ -38,21 +45,59 @@ class ImageDataController(object):
         except exception.NotFound:
             raise webob.exc.HTTPNotFound(_("Image does not exist"))
 
+    def _enforce(self, req, action):
+        """Authorize an action against our policies"""
+        try:
+            self.policy.enforce(req.context, action, {})
+        except exception.Forbidden:
+            raise webob.exc.HTTPForbidden()
+
     @utils.mutating
     def upload(self, req, image_id, data, size):
-        image = self._get_image(req.context, image_id)
         try:
+            image = self._get_image(req.context, image_id)
             location, size, checksum = self.store_api.add_to_backend(
                     req.context, 'file', image_id, data, size)
-        except exception.Duplicate:
-            raise webob.exc.HTTPConflict()
 
-        v2.update_image_read_acl(req, self.db_api, image)
+        except exception.Duplicate, e:
+            msg = _("Unable to upload duplicate image data for image: %s")
+            LOG.debug(msg % image_id)
+            raise webob.exc.HTTPConflict(explanation=msg, request=req)
 
-        values = {'location': location, 'size': size, 'checksum': checksum}
-        self.db_api.image_update(req.context, image_id, values)
+        except exception.Forbidden, e:
+            msg = _("Not allowed to upload image data for image %s")
+            LOG.debug(msg % image_id)
+            raise webob.exc.HTTPForbidden(explanation=msg, request=req)
+
+        except exception.StorageFull, e:
+            msg = _("Image storage media is full: %s") % e
+            LOG.error(msg)
+            raise webob.exc.HTTPRequestEntityTooLarge(explanation=msg,
+                                                     request=req)
+
+        except exception.StorageWriteDenied, e:
+            msg = _("Insufficient permissions on image storage media: %s") % e
+            LOG.error(msg)
+            raise webob.exc.HTTPServiceUnavailable(explanation=msg,
+                                                  request=req)
+
+        except webob.exc.HTTPError, e:
+            LOG.error("Failed to upload image data due to HTTP error")
+            raise
+
+        except Exception, e:
+            LOG.exception("Failed to upload image data due to internal error")
+            raise
+
+        else:
+            v2.update_image_read_acl(req, self.store_api, self.db_api, image)
+            values = {'location': location, 'size': size, 'checksum': checksum}
+            self.db_api.image_update(req.context, image_id, values)
+            updated_image = self._get_image(req.context, image_id)
+            self.notifier.info('image.upload', updated_image)
 
     def download(self, req, image_id):
+        self._enforce(req, 'download_image')
         ctx = req.context
         image = self._get_image(ctx, image_id)
         location = image['location']
@@ -82,6 +127,10 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
 
 
 class ResponseSerializer(wsgi.JSONResponseSerializer):
+    def __init__(self, notifier=None):
+        super(ResponseSerializer, self).__init__()
+        self.notifier = notifier or glance.notifier.Notifier()
+
     def download(self, response, result):
         size = result['meta']['size']
         checksum = result['meta']['checksum']
@@ -89,9 +138,11 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
         response.headers['Content-Type'] = 'application/octet-stream'
         if checksum:
             response.headers['Content-MD5'] = checksum
-        notifier = glance.notifier.Notifier()
         response.app_iter = common.size_checked_iter(
-                response, result['meta'], size, result['data'], notifier)
+                response, result['meta'], size, result['data'], self.notifier)
+
+    def upload(self, response, result):
+        response.status_int = 201
 
 
 def create_resource():

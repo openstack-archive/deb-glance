@@ -22,6 +22,7 @@ import functools
 import os
 import random
 import socket
+import StringIO
 import subprocess
 import unittest
 
@@ -32,7 +33,6 @@ from glance.common import utils
 from glance.common import wsgi
 from glance import context
 from glance.openstack.common import cfg
-from glance import store
 
 CONF = cfg.CONF
 
@@ -53,6 +53,11 @@ class BaseTestCase(unittest.TestCase):
 
     def setUp(self):
         super(BaseTestCase, self).setUp()
+
+        #NOTE(bcwaldon): parse_args has to be called to register certain
+        # command-line options - specifically we need config_dir for
+        # the following policy tests
+        config.parse_args()
 
     def tearDown(self):
         super(BaseTestCase, self).tearDown()
@@ -366,3 +371,15 @@ class FakeAuthMiddleware(wsgi.Middleware):
         }
 
         req.context = context.RequestContext(**kwargs)
+
+
+class FakeHTTPResponse(object):
+    def __init__(self, status=200, headers=None, data=None, *args, **kwargs):
+        data = data or 'I am a teapot, short and stout\n'
+        self.data = StringIO.StringIO(data)
+        self.read = self.data.read
+        self.status = status
+        self.headers = headers or {'content-length': len(data)}
+
+    def getheader(self, name, default=None):
+        return self.headers.get(name.lower(), default)

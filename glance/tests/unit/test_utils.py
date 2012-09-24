@@ -15,8 +15,10 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import StringIO
 import tempfile
 
+from glance.common import exception
 from glance.common import utils
 from glance.tests import utils as test_utils
 
@@ -70,3 +72,46 @@ class TestUtils(test_utils.BaseTestCase):
                 byte = reader.read(1)
 
         self.assertEquals(bytes_read, BYTES)
+
+    def test_limiting_reader(self):
+        """Ensure limiting reader class accesses all bytes of file"""
+        BYTES = 1024
+        bytes_read = 0
+        data = StringIO.StringIO("*" * BYTES)
+        for chunk in utils.LimitingReader(data, BYTES):
+            bytes_read += len(chunk)
+
+        self.assertEquals(bytes_read, BYTES)
+
+        bytes_read = 0
+        data = StringIO.StringIO("*" * BYTES)
+        reader = utils.LimitingReader(data, BYTES)
+        byte = reader.read(1)
+        while len(byte) != 0:
+            bytes_read += 1
+            byte = reader.read(1)
+
+        self.assertEquals(bytes_read, BYTES)
+
+    def test_limiting_reader_fails(self):
+        """Ensure limiting reader class throws exceptions if limit exceeded"""
+        BYTES = 1024
+
+        def _consume_all_iter():
+            bytes_read = 0
+            data = StringIO.StringIO("*" * BYTES)
+            for chunk in utils.LimitingReader(data, BYTES - 1):
+                bytes_read += len(chunk)
+
+        self.assertRaises(exception.ImageSizeLimitExceeded, _consume_all_iter)
+
+        def _consume_all_read():
+            bytes_read = 0
+            data = StringIO.StringIO("*" * BYTES)
+            reader = utils.LimitingReader(data, BYTES - 1)
+            byte = reader.read(1)
+            while len(byte) != 0:
+                bytes_read += 1
+                byte = reader.read(1)
+
+        self.assertRaises(exception.ImageSizeLimitExceeded, _consume_all_read)

@@ -21,15 +21,16 @@ import os
 import signal
 import socket
 import sys
+import tempfile
 import time
 
 from glance.tests import functional
 from glance.tests.utils import skip_if_disabled
 
 
-class TestRespawn(functional.FunctionalTest):
+class TestGlanceControl(functional.FunctionalTest):
 
-    """Functional test for glance-control --respawn """
+    """Functional test for glance-control"""
 
     def get_versions(self):
         path = "http://%s:%d" % ("127.0.0.1", self.api_port)
@@ -63,6 +64,45 @@ class TestRespawn(functional.FunctionalTest):
             exc_value = sys.exc_info()[1]
             self.assertTrue('Connection refused' in exc_value or
                             'ECONNREFUSED' in exc_value)
+
+    def _do_test_fallback_pidfile(self, pid_file):
+        self.cleanup()
+
+        self.api_server.pid_file = pid_file
+        exitcode, out, err = self.api_server.start(expect_exit=True,
+                                                   **self.__dict__.copy())
+        lines = out.split('\n')
+        warn = ('Falling back to a temp file, '
+                'you can stop glance-api service using:')
+        self.assertTrue(warn in lines)
+        fallback = lines[lines.index(warn) + 1].split()[-1]
+        self.assertTrue(os.path.exists(fallback))
+        self.api_server.pid_file = fallback
+        self.assertTrue(os.path.exists('/proc/%s' % self.get_pid()))
+
+        self.stop_server(self.api_server, 'API server')
+
+    @skip_if_disabled
+    def test_fallback_pidfile_uncreateable_dir(self):
+        """
+        We test that glance-control falls back to a temporary pid file
+        for non-existent pid file directory that cannot be created.
+        """
+        parent = tempfile.mkdtemp()
+        os.chmod(parent, 0)
+        pid_file = os.path.join(parent, 'pids', 'api.pid')
+        self._do_test_fallback_pidfile(pid_file)
+
+    @skip_if_disabled
+    def test_fallback_pidfile_unwriteable_dir(self):
+        """
+        We test that glance-control falls back to a temporary pid file
+        for unwriteable pid file directory.
+        """
+        parent = tempfile.mkdtemp()
+        os.chmod(parent, 0)
+        pid_file = os.path.join(parent, 'api.pid')
+        self._do_test_fallback_pidfile(pid_file)
 
     @skip_if_disabled
     def test_respawn(self):
@@ -133,14 +173,7 @@ class TestRespawn(functional.FunctionalTest):
         self.api_server.server_control_options += ' --respawn'
         self.api_server.default_store = 'shouldnotexist'
 
-        # start API server, allowing glance-control to continue running
-        self.start_with_retry(self.api_server,
-                              'api_port',
-                              1,
-                              expect_launch=False,
-                              expect_exit=False,
-                              expect_confirmation=False,
-                              **self.__dict__.copy())
+        exitcode, out, err = self.api_server.start(**self.__dict__.copy())
 
         # ensure the service pid has been cached
         pid_cached = lambda: os.path.exists(self.api_server.pid_file)
@@ -159,3 +192,51 @@ class TestRespawn(functional.FunctionalTest):
 
         # ensure the server has not been respawned
         self.connection_unavailable('bouncing')
+
+    @skip_if_disabled
+    def test_reload(self):
+        """Exercise `glance-control api reload`"""
+        self.cleanup()
+
+        # start API server, allowing glance-control to continue running
+        self.start_with_retry(self.api_server,
+                              'api_port',
+                              3,
+                              expect_launch=True,
+                              expect_exit=False,
+                              expect_confirmation=False,
+                              **self.__dict__.copy())
+
+        # ensure the service pid has been cached
+        pid_cached = lambda: os.path.exists(self.api_server.pid_file)
+        self.wait_for(pid_cached)
+
+        # ensure glance-control has had a chance to waitpid on child
+        time.sleep(1)
+
+        # verify server health with version negotiation
+        self.get_versions()
+
+        self.reload_server(self.api_server, True)
+
+        # ensure API service port is re-activated
+        launch_msg = self.wait_for_servers([self.api_server])
+        self.assertTrue(launch_msg is None, launch_msg)
+
+        # verify server health with version negotiation
+        self.get_versions()
+
+        # deliberately stop server
+        proc_file = '/proc/%d' % self.get_pid()
+        self.stop_server(self.api_server, 'API server')
+
+        # ensure last server process has gone away
+        process_died = lambda: not os.path.exists(proc_file)
+        self.wait_for(process_died)
+
+        # deliberately stopped server should not be respawned
+        launch_msg = self.wait_for_servers([self.api_server], False)
+        self.assertTrue(launch_msg is None, launch_msg)
+
+        # ensure the server has not been respawned
+        self.connection_unavailable('deliberately stopped')
