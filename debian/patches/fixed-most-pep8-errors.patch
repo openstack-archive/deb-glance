@@ -2,11 +2,9 @@ Description: Fixe most pep8 errors.
 Author: Thomas Goirand <zigo@debian.org>
 Forwarded: not-needed
 
-Index: glance/glance/common/utils.py
-===================================================================
---- glance.orig/glance/common/utils.py	2012-09-10 15:37:20.000000000 +0200
-+++ glance/glance/common/utils.py	2012-09-10 18:50:49.754330924 +0200
-@@ -356,7 +356,7 @@
+--- a/glance/common/utils.py
++++ b/glance/common/utils.py
+@@ -386,7 +386,7 @@
  
      height_width = func.get(platform.os.name, _get_terminal_size_unknownOS)()
  
@@ -15,10 +13,8 @@ Index: glance/glance/common/utils.py
          raise exception.Invalid()
  
      for i in height_width:
-Index: glance/glance/db/sqlalchemy/migrate_repo/versions/003_add_disk_format.py
-===================================================================
---- glance.orig/glance/db/sqlalchemy/migrate_repo/versions/003_add_disk_format.py	2012-09-10 15:37:20.000000000 +0200
-+++ glance/glance/db/sqlalchemy/migrate_repo/versions/003_add_disk_format.py	2012-09-10 18:50:49.754330924 +0200
+--- a/glance/db/sqlalchemy/migrate_repo/versions/003_add_disk_format.py
++++ b/glance/db/sqlalchemy/migrate_repo/versions/003_add_disk_format.py
 @@ -93,8 +93,8 @@
          images.outerjoin(image_properties,
                           and_(images.c.id == image_properties.c.image_id,
@@ -30,10 +26,8 @@ Index: glance/glance/db/sqlalchemy/migrate_repo/versions/003_add_disk_format.py
      image_records = conn.execute(sel).fetchall()
      property_insert = image_properties.insert()
      for record in image_records:
-Index: glance/glance/db/sqlalchemy/migrate_repo/versions/010_default_update_at.py
-===================================================================
---- glance.orig/glance/db/sqlalchemy/migrate_repo/versions/010_default_update_at.py	2012-09-10 15:37:20.000000000 +0200
-+++ glance/glance/db/sqlalchemy/migrate_repo/versions/010_default_update_at.py	2012-09-10 18:50:49.754330924 +0200
+--- a/glance/db/sqlalchemy/migrate_repo/versions/010_default_update_at.py
++++ b/glance/db/sqlalchemy/migrate_repo/versions/010_default_update_at.py
 @@ -64,7 +64,7 @@
      conn = migrate_engine.connect()
      conn.execute(

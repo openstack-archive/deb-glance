@@ -3,7 +3,7 @@ Author: Mehdi Abaakouk <sileht@sileht.net>
 
 --- a/glance/openstack/common/setup.py
 +++ b/glance/openstack/common/setup.py
-@@ -261,7 +261,7 @@
+@@ -259,7 +259,7 @@
              # sdist.sdist is an old style class, can't use super()
              sdist.sdist.run(self)
  
@@ -12,58 +12,21 @@ Author: Mehdi Abaakouk <sileht@sileht.net>
  
      # If Sphinx is installed on the box running setup.py,
      # enable setup.py to build the documentation, otherwise,
-@@ -322,21 +322,26 @@
+@@ -329,7 +329,7 @@
  def get_pre_version(projectname, base_version):
      """Return a version which is leading up to a version that will
         be released in the future."""
 -    if os.path.isdir('.git'):
--        current_tag = _get_git_current_tag()
--        if current_tag is not None:
--            version = current_tag
--        else:
--            branch_name = os.getenv('BRANCHNAME',
--                                    os.getenv('GERRIT_REFNAME',
--                                              _get_git_branch_name()))
--            version_suffix = _get_git_next_version_suffix(branch_name)
--            version = "%s~%s" % (base_version, version_suffix)
--        write_versioninfo(projectname, version)
--        return version
--    else:
--        version = read_versioninfo(projectname)
--    return version
-+    return read_versioninfo(projectname)
-+
-+#def get_pre_version(projectname, base_version):
-+#    """Return a version which is leading up to a version that will
-+#       be released in the future."""
-+#    if os.path.isdir('.git'):
-+#        current_tag = _get_git_current_tag()
-+#        if current_tag is not None:
-+#            version = current_tag
-+#        else:
-+#            branch_name = os.getenv('BRANCHNAME',
-+#                                    os.getenv('GERRIT_REFNAME',
-+#                                              _get_git_branch_name()))
-+#            version_suffix = _get_git_next_version_suffix(branch_name)
-+#            version = "%s~%s" % (base_version, version_suffix)
-+#        write_versioninfo(projectname, version)
-+#        return version
-+#    else:
-+#        version = read_versioninfo(projectname)
-+#    return version
- 
- 
- def get_post_version(projectname):
-@@ -344,8 +349,8 @@
++    if False and os.path.isdir('.git'):
+         current_tag = _get_git_current_tag()
+         if current_tag is not None:
+             version = current_tag
+@@ -351,7 +351,7 @@
      revision if there is one, or tag plus number of additional revisions
      if the current revision has no tag."""
  
 -    if os.path.isdir('.git'):
--        version = _get_git_post_version()
--        write_versioninfo(projectname, version)
--        return version
-+    #if os.path.isdir('.git'):
-+    #    version = _get_git_post_version()
-+    #    write_versioninfo(projectname, version)
-+    #    return version
-     return read_versioninfo(projectname)
++    if False and os.path.isdir('.git'):
+         version = _get_git_post_version()
+         write_versioninfo(projectname, version)
+         return version

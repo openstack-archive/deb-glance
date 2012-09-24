@@ -2,27 +2,28 @@ Description: Fixes glance-api.conf and glance-registry.conf
 Author: Ghe Rivero
 Forwarded: no
 
-Index: glance/etc/glance-api.conf
-===================================================================
---- glance.orig/etc/glance-api.conf	2012-09-10 15:37:20.000000000 +0200
-+++ glance/etc/glance-api.conf	2012-09-10 18:42:20.082309794 +0200
-@@ -282,3 +282,6 @@
+--- a/etc/glance-api.conf
++++ b/etc/glance-api.conf
+@@ -282,6 +282,9 @@
+ # RADOS user to authenticate as (only applicable if using cephx)
+ rbd_store_user = glance
  
- # Base directory that the Image Cache uses
- image_cache_dir = /var/lib/glance/image-cache/
 +
 +[paste_deploy]
 +flavor = caching
-\ No newline at end of file
-Index: glance/etc/glance-registry.conf
-===================================================================
---- glance.orig/etc/glance-registry.conf	2012-09-10 15:37:20.000000000 +0200
-+++ glance/etc/glance-registry.conf	2012-09-10 18:43:31.210312746 +0200
-@@ -66,3 +66,7 @@
+ # RADOS pool in which images are stored
+ rbd_store_pool = images
  
+--- a/etc/glance-registry.conf
++++ b/etc/glance-registry.conf
+@@ -67,6 +67,10 @@
  # CA certificate file to use to verify connecting clients
- # ca_file = /path/to/cafile
-+
+ #ca_file = /path/to/cafile
+ 
 +[paste_deploy]
 +flavor = caching
 +
++
+ [keystone_authtoken]
+ auth_host = 127.0.0.1
+ auth_port = 35357

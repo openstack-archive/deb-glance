@@ -1,6 +1,7 @@
 glance (2012.2~rc1-1) experimental; urgency=low
 
   * New snapshot release
+  * Refresh all patches
 
  -- Mehdi Abaakouk <sileht@sileht.net>  Mon, 24 Sep 2012 11:18:52 +0200
 
