@@ -227,6 +227,7 @@ class ApiServer(Server):
         self.delayed_delete = delayed_delete
         self.owner_is_tenant = True
         self.workers = 0
+        self.scrub_time = 5
         self.image_cache_dir = os.path.join(self.test_dir,
                                             'cache')
         self.image_cache_driver = 'sqlite'
@@ -272,7 +273,7 @@ rbd_store_ceph_conf = %(rbd_store_ceph_conf)s
 delayed_delete = %(delayed_delete)s
 owner_is_tenant = %(owner_is_tenant)s
 workers = %(workers)s
-scrub_time = 5
+scrub_time = %(scrub_time)s
 scrubber_datadir = %(scrubber_datadir)s
 image_cache_dir = %(image_cache_dir)s
 image_cache_driver = %(image_cache_driver)s
@@ -364,6 +365,7 @@ class RegistryServer(Server):
         self.log_file = os.path.join(self.test_dir, "registry.log")
         self.owner_is_tenant = True
         self.server_control_options = '--capture-output'
+        self.workers = 0
         self.conf_base = """[DEFAULT]
 verbose = %(verbose)s
 debug = %(debug)s
@@ -376,6 +378,7 @@ sql_idle_timeout = 3600
 api_limit_max = 1000
 limit_param_default = 25
 owner_is_tenant = %(owner_is_tenant)s
+workers = %(workers)s
 [paste_deploy]
 flavor = %(deployment_flavor)s
 """
