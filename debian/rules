@@ -36,8 +36,8 @@ override_dh_auto_configure:
 
 override_dh_auto_clean:
 	echo $(VERSION) > glance/versioninfo
-	dh_auto_clean
-	debconf-updatepo
+	# dh_auto_clean
+	# debconf-updatepo
 	rm -rf doc/build
 	rm -rf glance.sqlite
 	rm -f glance/versioninfo
