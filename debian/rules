@@ -51,3 +51,5 @@ get-vcs-source:
 		git checkout -b master upstream/master ; \
 	fi
 	git checkout debian/unstable
+
+.PHONY: get-vcs-source override_dh_auto_clean override_dh_auto_configure override_dh_builddeb override_dh_installman override_dh_auto_build
