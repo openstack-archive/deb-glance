@@ -45,7 +45,9 @@ override_dh_auto_clean:
 get-vcs-source:
 	git remote add upstream git://github.com/openstack/glance.git || true
 	git fetch upstream
-	if ! [ -f ../glance_2012.1.orig.tar.xz ] ; then git archive --prefix=glance-2012.1/ 2012.1 | xz >../glance_2012.1.orig.tar.xz ; fi
+	if ! [ -f ../glance_$(VERSION).orig.tar.xz ] ; then \
+		git archive --prefix=glance-$(VERSION)/ $(VERSION) | xz >../glance_$(VERSION).orig.tar.xz ; \
+	fi
 	if ! git checkout master ; then \
 		echo "No upstream branch: checking out" ; \
 		git checkout -b master upstream/master ; \
