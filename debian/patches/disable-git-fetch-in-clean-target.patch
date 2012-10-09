@@ -1,0 +1,15 @@
+Description: Disable git fetch in clean target
+Author: Thomas Goirand <zigo@debian.org>
+Forwarded: not-needed
+
+--- glance-2012.2.orig/glance/openstack/common/setup.py
++++ glance-2012.2/glance/openstack/common/setup.py
+@@ -132,7 +132,7 @@ def _get_git_next_version_suffix(branch_
+         revno_prefix = "r"
+     else:
+         revno_prefix = ""
+-    _run_shell_command("git fetch origin +refs/meta/*:refs/remotes/meta/*")
++    #_run_shell_command("git fetch origin +refs/meta/*:refs/remotes/meta/*")
+     milestone_cmd = "git show meta/openstack/release:%s" % branch_name
+     milestonever = _run_shell_command(milestone_cmd)
+     if not milestonever:
