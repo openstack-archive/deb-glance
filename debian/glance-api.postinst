@@ -2,26 +2,25 @@
 
 set -e
 
-if [ "$1" = "configure" ]
-then
-    . /usr/share/debconf/confmodule
+if [ "$1" = "configure" ] ; then
+	. /usr/share/debconf/confmodule
 
-    chown glance:glance /var/lib/glance -R
+	chown glance:glance /var/lib/glance -R
 
-    db_get glance/paste-flavor || true
-    FLAVOR="$RET"
+	db_get glance/paste-flavor || true
+	FLAVOR="$RET"
 
-    case "$FLAVOR" in
+	case "$FLAVOR" in
 	caching)
-	    ;;
-        keystone*)
-            sed -i "s,^flavor\s*=\s*.\+$,flavor = $FLAVOR," /etc/glance/glance-api.conf
-	    db_get glance/auth-url
-            sed -i "s,^auth_uri\s*=\s*.\+$,auth_uri = $RET," /etc/glance/glance-api-paste.ini
-            db_get glance/auth-token
-            sed -i "s/^admin_token\s*=\s*.\+$/admin_token = $RET/" /etc/glance/glance-api-paste.ini
-            ;;
-    esac
+	;;
+	keystone*)
+		sed -i "s,^flavor\s*=\s*.\+$,flavor = $FLAVOR," /etc/glance/glance-api.conf
+		db_get glance/auth-url
+		sed -i "s,^auth_uri\s*=\s*.\+$,auth_uri = $RET," /etc/glance/glance-api-paste.ini
+		db_get glance/auth-token
+		sed -i "s/^admin_token\s*=\s*.\+$/admin_token = $RET/" /etc/glance/glance-api-paste.ini
+	;;
+	esac
 fi
 
 #DEBHELPER#
