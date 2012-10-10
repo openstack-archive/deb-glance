@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: glance 2012.1-2\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
-"POT-Creation-Date: 2012-05-24 09:08+0200\n"
+"POT-Creation-Date: 2012-10-10 15:57+0000\n"
 "PO-Revision-Date: 2012-06-08 20:22+0400\n"
 "Last-Translator: Yuri Kozlov <yuray@komyakino.ru>\n"
 "Language-Team: Russian <debian-l10n-russian@lists.debian.org>\n"
@@ -31,8 +31,8 @@ msgid ""
 "No database has been set up for glance-registry to use. Before continuing, "
 "you should make sure you have:"
 msgstr ""
-"Чтобы использовать glance-registry требуется база данных, которая "
-"пока не настроена. Перед тем как продолжить, проверьте:"
+"Чтобы использовать glance-registry требуется база данных, которая пока не "
+"настроена. Перед тем как продолжить, проверьте:"
 
 #. Type: boolean
 #. Description
@@ -65,8 +65,8 @@ msgid ""
 "You can change this setting later on by running 'dpkg-reconfigure -plow "
 "glance-registry"
 msgstr ""
-"Позднее, вы можете изменить эту настройку, "
-"запустив «dpkg-reconfigure -plow glance-registry»"
+"Позднее, вы можете изменить эту настройку, запустив «dpkg-reconfigure -plow "
+"glance-registry»"
 
 #. Type: select
 #. Description
@@ -95,15 +95,22 @@ msgstr ""
 #. Type: string
 #. Description
 #: ../glance-common.templates:3001
-msgid "Auth server URL:"
-msgstr "URL сервера аутентификации:"
+#, fuzzy
+#| msgid "Auth server admin token:"
+msgid "Auth server hostname:"
+msgstr "Административный токен сервера аутентификации:"
 
 #. Type: string
 #. Description
 #: ../glance-common.templates:3001
+#, fuzzy
+#| msgid ""
+#| "Please specify the URL of your Glance authentication server. Typically "
+#| "this is also the URL of your OpenStack Identity Service (Keystone)."
 msgid ""
-"Please specify the URL of your Glance authentication server. Typically this "
-"is also the URL of your OpenStack Identity Service (Keystone)."
+"Please specify the hostname of your Glance authentication server. Typically "
+"this is also the hostname or IP address of your OpenStack Identity Service "
+"(Keystone)."
 msgstr ""
 "Введите URL сервера аутентификации Glance. Данный URL обычно совпадает с "
 "OpenStack Identity Service (Keystone)."
@@ -111,6 +118,26 @@ msgstr ""
 #. Type: string
 #. Description
 #: ../glance-common.templates:4001
-msgid "Auth server admin token:"
+#, fuzzy
+#| msgid "Auth server admin token:"
+msgid "Auth server admin tenant name:"
 msgstr "Административный токен сервера аутентификации:"
 
+#. Type: string
+#. Description
+#: ../glance-common.templates:5001
+#, fuzzy
+#| msgid "Auth server admin token:"
+msgid "Auth server admin username:"
+msgstr "Административный токен сервера аутентификации:"
+
+#. Type: password
+#. Description
+#: ../glance-common.templates:6001
+#, fuzzy
+#| msgid "Auth server admin token:"
+msgid "Auth server admin password:"
+msgstr "Административный токен сервера аутентификации:"
+
+#~ msgid "Auth server URL:"
+#~ msgstr "URL сервера аутентификации:"

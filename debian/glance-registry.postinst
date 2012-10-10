@@ -6,6 +6,27 @@ if [ "$1" = "configure" ] ; then
 	. /usr/share/debconf/confmodule
 	. /usr/share/dbconfig-common/dpkg/postinst
 
+	# Make sure glance:glance user and group exist
+	if ! getent group glance > /dev/null 2>&1 ; then
+		addgroup --quiet --system glance >/dev/null
+	fi
+	if ! getent passwd glance > /dev/null 2>&1 ; then
+		adduser --quiet --system --home /var/lib/glance --ingroup glance --no-create-home --shell /bin/false glance
+	fi
+
+	# Make sure we have a /etc/glance/glance-registry-paste.ini config file
+	if [ ! -d /etc/glance ] ; then
+		mkdir -p /etc/glance
+		if [ -d /etc/glance ] ; then
+			chown glance:glance /etc/glance
+		fi
+	fi
+
+	GREG_CONF=/etc/glance/glance-registry.conf
+	if [ ! -e ${GREG_CONF} ] && [ -r /usr/share/glance-registry/glance-registry.conf ] ; then
+		install -D -m 660 -o glance -g glance /usr/share/glance-registry/glance-registry.conf ${GREG_CONF}
+	fi
+
 	db_get glance/paste-flavor || true
 	FLAVOR="$RET"
 
@@ -13,16 +34,26 @@ if [ "$1" = "configure" ] ; then
 	caching)
 	;;
 	keystone*)
-		sed -i "s,^flavor\s*=.*$,flavor = $FLAVOR," /etc/glance/glance-registry.conf
-		FLAVOR=keystone
-		db_get glance/auth-url
-		sed -i "s,^auth_uri\s*=\s*.\+$,auth_uri = $RET," /etc/glance/glance-registry-paste.ini
-		db_get glance/auth-token
-		sed -i "s/^admin_token\s*=\s*.\+$/admin_token = $RET/" /etc/glance/glance-registry-paste.ini
+		sed -i "s,^flavor\s*=.*$,flavor = $FLAVOR," ${GREG_CONF}
+
+		db_get glance/auth-host
+		AUTH_HOST=${RET}
+		sed -i 's|^[#\t ]*auth_host[ \t]*=[\.]*|auth_host'${AUTH_HOST}'|' ${GREG_CONF}
+
+		db_get glance/admin-tenant-name
+		TENANT_NAME=${RET}
+		sed -i 's|^[\t ]*admin_tenant_name[ \t]*=[\.]*|admin_tenant_name = '${TENANT_NAME}'|' ${GREG_CONF}
+
+		db_get glance/admin-user
+		ADMIN_USER=${RET}
+		sed -i 's|^[\t ]*admin_user[ \t]*=[\.]*|admin_user = '${ADMIN_USER}'|' ${GREG_CONF}
+
+		db_get glance/admin-password
+		ADMIN_PASS=${RET}
+		sed -i 's|^[\t ]*admin_password[ \t]*=[\.]*|admin_password = '${ADMIN_PASS}'|' ${GREG_CONF}
 	;;
 	*)
 		sed -i "s,^flavor\s*=.*$,flavor = $FLAVOR," /etc/glance/glance-registry.conf
-		FLAVOR=
 	;;
 	esac
 
@@ -39,20 +70,16 @@ if [ "$1" = "configure" ] ; then
 		dbc_go glance-registry $@
 		if [ "$dbc_install" = "true" ] ; then
 			case "$dbc_dbtype" in
-			mysql)
+			mysql|pgsql)
 				[ -n "$dbc_dbport" ] && dbport=:$dbc_dbport
-				SQL_CONNECTION="mysql://$dbc_dbuser:$dbc_dbpass@${dbc_dbserver:-localhost}$dbport/$dbc_dbname"
-			;;
-			pgsql)
-				[ -n "$dbc_dbport" ] && dbport=:$dbc_dbport
-				SQL_CONNECTION="pgsql://$dbc_dbuser:$dbc_dbpass@${dbc_dbserver:-localhost}$dbport/$dbc_dbname"
+				SQL_CONNECTION="$dbc_dbtype://$dbc_dbuser:$dbc_dbpass@${dbc_dbserver:-localhost}$dbport/$dbc_dbname"
 			;;
 			*)
 				SQL_CONNECTION="sqlite:///$dbc_basepath/$dbc_dbname"
 			;;
 			esac
 
-			sed -e "s,^sql_connection\s*=\s*.\+$,sql_connection = $SQL_CONNECTION," -i /etc/glance/glance-registry.conf
+			sed -e "s,^[\t ]*sql_connection[\t ]*=[\.]*,sql_connection = $SQL_CONNECTION," -i /etc/glance/glance-registry.conf
 
 			if [ "$dbc_upgrade" = "true" ] ; then
 				su glance -c "glance-manage db_sync" || true

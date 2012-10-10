@@ -31,7 +31,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: glance 2012.1-3\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
-"POT-Creation-Date: 2012-06-24 06:00+0000\n"
+"POT-Creation-Date: 2012-10-10 15:57+0000\n"
 "PO-Revision-Date: 2012-06-08 19:12+0200\n"
 "Last-Translator: CamaleÃ³n <noelamac@gmail.com>\n"
 "Language-Team: Debian Spanish <debian-l10n-spanish@lists.debian.org>\n"
@@ -117,15 +117,22 @@ msgstr ""
 #. Type: string
 #. Description
 #: ../glance-common.templates:3001
-msgid "Auth server URL:"
-msgstr "URL del servidor de autentificaciÃ³n:"
+#, fuzzy
+#| msgid "Auth server admin token:"
+msgid "Auth server hostname:"
+msgstr "Token de administraciÃ³n del servidor de autentificaciÃ³n:"
 
 #. Type: string
 #. Description
 #: ../glance-common.templates:3001
+#, fuzzy
+#| msgid ""
+#| "Please specify the URL of your Glance authentication server. Typically "
+#| "this is also the URL of your OpenStack Identity Service (Keystone)."
 msgid ""
-"Please specify the URL of your Glance authentication server. Typically this "
-"is also the URL of your OpenStack Identity Service (Keystone)."
+"Please specify the hostname of your Glance authentication server. Typically "
+"this is also the hostname or IP address of your OpenStack Identity Service "
+"(Keystone)."
 msgstr ""
 "Especifique la URL del servidor de autentificaciÃ³n de Glance. Suele ser la "
 "URL del Servicio de Identidad de OpenStack (Keystone)."
@@ -133,5 +140,26 @@ msgstr ""
 #. Type: string
 #. Description
 #: ../glance-common.templates:4001
-msgid "Auth server admin token:"
+#, fuzzy
+#| msgid "Auth server admin token:"
+msgid "Auth server admin tenant name:"
 msgstr "Token de administraciÃ³n del servidor de autentificaciÃ³n:"
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:5001
+#, fuzzy
+#| msgid "Auth server admin token:"
+msgid "Auth server admin username:"
+msgstr "Token de administraciÃ³n del servidor de autentificaciÃ³n:"
+
+#. Type: password
+#. Description
+#: ../glance-common.templates:6001
+#, fuzzy
+#| msgid "Auth server admin token:"
+msgid "Auth server admin password:"
+msgstr "Token de administraciÃ³n del servidor de autentificaciÃ³n:"
+
+#~ msgid "Auth server URL:"
+#~ msgstr "URL del servidor de autentificaciÃ³n:"

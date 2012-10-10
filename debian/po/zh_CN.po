@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: glance\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
-"POT-Creation-Date: 2012-08-27 16:53+0800\n"
+"POT-Creation-Date: 2012-10-10 15:57+0000\n"
 "PO-Revision-Date: 2012-08-27 17:14+0800\n"
 "Last-Translator: ben <duyujie.dyj@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -25,8 +25,11 @@ msgstr "为glance-registry设置数据库?"
 #. Type: boolean
 #. Description
 #: ../glance-registry.templates:1001
-msgid "No database has been set up for glance-registry to use. Before continuing, you should make sure you have:"
-msgstr "未曾为glance-registry 设置数据库。如果你想现在设置，请确定你有以下信息："
+msgid ""
+"No database has been set up for glance-registry to use. Before continuing, "
+"you should make sure you have:"
+msgstr ""
+"未曾为glance-registry 设置数据库。如果你想现在设置，请确定你有以下信息："
 
 #. Type: boolean
 #. Description
@@ -44,14 +47,19 @@ msgstr ""
 #. Type: boolean
 #. Description
 #: ../glance-registry.templates:1001
-msgid "If some of these requirements are missing, reject this option and run with regular sqlite support."
+msgid ""
+"If some of these requirements are missing, reject this option and run with "
+"regular sqlite support."
 msgstr "如果部分需求缺失，请运行通用的SQLite。"
 
 #. Type: boolean
 #. Description
 #: ../glance-registry.templates:1001
-msgid "You can change this setting later on by running 'dpkg-reconfigure -plow glance-registry"
-msgstr "您可以通过运行\"dpkg-reconfigure-plow glance-registry\" 命令来修改配置。"
+msgid ""
+"You can change this setting later on by running 'dpkg-reconfigure -plow "
+"glance-registry"
+msgstr ""
+"您可以通过运行\"dpkg-reconfigure-plow glance-registry\" 命令来修改配置。"
 
 #. Type: select
 #. Description
@@ -68,24 +76,60 @@ msgstr "请指定Glance使用的pipeline类型。"
 #. Type: select
 #. Description
 #: ../glance-common.templates:2001
-msgid "If you use the OpenStack Identity Service (Keystone), you might want to select \"keystone\". If you don't use this service, you can safely choose \"caching\" only."
-msgstr "如果您使用OpenStack身份服务（Keystone），您可能希望选择 \"keystone\"。如果您不使用该服务，你可以安全的选择 \"caching\" 。"
+msgid ""
+"If you use the OpenStack Identity Service (Keystone), you might want to "
+"select \"keystone\". If you don't use this service, you can safely choose "
+"\"caching\" only."
+msgstr ""
+"如果您使用OpenStack身份服务（Keystone），您可能希望选择 \"keystone\"。如果您"
+"不使用该服务，你可以安全的选择 \"caching\" 。"
 
 #. Type: string
 #. Description
 #: ../glance-common.templates:3001
-msgid "Auth server URL:"
-msgstr "Auth 服务器 URL："
+#, fuzzy
+#| msgid "Auth server admin token:"
+msgid "Auth server hostname:"
+msgstr "Auth 服务器管理token："
 
 #. Type: string
 #. Description
 #: ../glance-common.templates:3001
-msgid "Please specify the URL of your Glance authentication server. Typically this is also the URL of your OpenStack Identity Service (Keystone)."
-msgstr "请指定您的Glance认证服务器的URL。一般来说这个URL也是您的OpenStack身份服务的URL（keystone）。"
+#, fuzzy
+#| msgid ""
+#| "Please specify the URL of your Glance authentication server. Typically "
+#| "this is also the URL of your OpenStack Identity Service (Keystone)."
+msgid ""
+"Please specify the hostname of your Glance authentication server. Typically "
+"this is also the hostname or IP address of your OpenStack Identity Service "
+"(Keystone)."
+msgstr ""
+"请指定您的Glance认证服务器的URL。一般来说这个URL也是您的OpenStack身份服务的"
+"URL（keystone）。"
 
 #. Type: string
 #. Description
 #: ../glance-common.templates:4001
-msgid "Auth server admin token:"
+#, fuzzy
+#| msgid "Auth server admin token:"
+msgid "Auth server admin tenant name:"
 msgstr "Auth 服务器管理token："
 
+#. Type: string
+#. Description
+#: ../glance-common.templates:5001
+#, fuzzy
+#| msgid "Auth server admin token:"
+msgid "Auth server admin username:"
+msgstr "Auth 服务器管理token："
+
+#. Type: password
+#. Description
+#: ../glance-common.templates:6001
+#, fuzzy
+#| msgid "Auth server admin token:"
+msgid "Auth server admin password:"
+msgstr "Auth 服务器管理token："
+
+#~ msgid "Auth server URL:"
+#~ msgstr "Auth 服务器 URL："

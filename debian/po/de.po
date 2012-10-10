@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: glance 2012.1-2\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
-"POT-Creation-Date: 2012-05-24 09:08+0200\n"
+"POT-Creation-Date: 2012-10-10 15:57+0000\n"
 "PO-Revision-Date: 2012-06-08 11:31+0100\n"
 "Last-Translator: Chris Leick <c.leick@vollbio.de>\n"
 "Language-Team: German <debian-l10n-german@lists.debian.org>\n"
@@ -33,10 +33,10 @@ msgstr ""
 "eingerichtet. Bevor Sie fortfahren, sollten Sie sicherstellen, dass Sie "
 "Folgendes haben:"
 
+# FIXME s/the database./the database;/ and s/A/a/
 #. Type: boolean
 #. Description
 #: ../glance-registry.templates:1001
-# FIXME s/the database./the database;/ and s/A/a/
 msgid ""
 " - the server host name (that server must allow TCP connections\n"
 "   from this machine);\n"
@@ -55,19 +55,19 @@ msgid ""
 "If some of these requirements are missing, reject this option and run with "
 "regular sqlite support."
 msgstr ""
-"Falls einige dieser Anforderungen nicht erfÃ¼llt sind, lehnen Sie diese Option "
-"ab und verwenden Sie die regulÃ¤re Sqlite-UnterstÃ¼tzung."
+"Falls einige dieser Anforderungen nicht erfÃ¼llt sind, lehnen Sie diese "
+"Option ab und verwenden Sie die regulÃ¤re Sqlite-UnterstÃ¼tzung."
 
+# FIXME missing '
 #. Type: boolean
 #. Description
 #: ../glance-registry.templates:1001
-# FIXME missing '
 msgid ""
 "You can change this setting later on by running 'dpkg-reconfigure -plow "
 "glance-registry"
 msgstr ""
-"Sie kÃ¶nnen diese Einstellung spÃ¤ter Ã¤ndern, indem Sie Â»dpkg-reconfigure -plow "
-"glance-registryÂ« ausfÃ¼hren."
+"Sie kÃ¶nnen diese Einstellung spÃ¤ter Ã¤ndern, indem Sie Â»dpkg-reconfigure -"
+"plow glance-registryÂ« ausfÃ¼hren."
 
 #. Type: select
 #. Description
@@ -91,21 +91,28 @@ msgid ""
 "\"caching\" only."
 msgstr ""
 "Falls Sie den OpenStack-IdentitÃ¤tsdienst (Keystone) verwenden, mÃ¶chten Sie "
-"mÃ¶glicherweise Â»keystoneÂ« auswÃ¤hlen. Falls Sie diesen Dienst nicht nutzen, "
-"kÃ¶nnen Sie problemlos Â»cachingÂ« auswÃ¤hlen."
+"mÃ¶glicherweise Â»keystoneÂ« auswÃ¤hlen. Falls Sie diesen Dienst nicht "
+"nutzen, kÃ¶nnen Sie problemlos Â»cachingÂ« auswÃ¤hlen."
 
 #. Type: string
 #. Description
 #: ../glance-common.templates:3001
-msgid "Auth server URL:"
-msgstr "URL des Authentifizierungsservers:"
+#, fuzzy
+#| msgid "Auth server admin token:"
+msgid "Auth server hostname:"
+msgstr "Administrator-Token des Authentifizierungsservers:"
 
 #. Type: string
 #. Description
 #: ../glance-common.templates:3001
+#, fuzzy
+#| msgid ""
+#| "Please specify the URL of your Glance authentication server. Typically "
+#| "this is also the URL of your OpenStack Identity Service (Keystone)."
 msgid ""
-"Please specify the URL of your Glance authentication server. Typically this "
-"is also the URL of your OpenStack Identity Service (Keystone)."
+"Please specify the hostname of your Glance authentication server. Typically "
+"this is also the hostname or IP address of your OpenStack Identity Service "
+"(Keystone)."
 msgstr ""
 "Bitte geben Sie die URL des Glance-Authentifizierungsservers an. "
 "Typischerweise ist das auÃerdem die URL Ihres OpenStack-IdentitÃ¤tsdienstes "
@@ -114,5 +121,26 @@ msgstr ""
 #. Type: string
 #. Description
 #: ../glance-common.templates:4001
-msgid "Auth server admin token:"
+#, fuzzy
+#| msgid "Auth server admin token:"
+msgid "Auth server admin tenant name:"
 msgstr "Administrator-Token des Authentifizierungsservers:"
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:5001
+#, fuzzy
+#| msgid "Auth server admin token:"
+msgid "Auth server admin username:"
+msgstr "Administrator-Token des Authentifizierungsservers:"
+
+#. Type: password
+#. Description
+#: ../glance-common.templates:6001
+#, fuzzy
+#| msgid "Auth server admin token:"
+msgid "Auth server admin password:"
+msgstr "Administrator-Token des Authentifizierungsservers:"
+
+#~ msgid "Auth server URL:"
+#~ msgstr "URL des Authentifizierungsservers:"

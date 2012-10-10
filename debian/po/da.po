@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: glance\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
-"POT-Creation-Date: 2012-05-24 09:08+0200\n"
+"POT-Creation-Date: 2012-10-10 15:57+0000\n"
 "PO-Revision-Date: 2012-06-10 12:42+0000\n"
 "Last-Translator: Joe Hansen <joedalton2@yahoo.dk>\n"
 "Language-Team: Danish <debian-l10n-danish@lists.debian.org>\n"
@@ -93,15 +93,22 @@ msgstr ""
 #. Type: string
 #. Description
 #: ../glance-common.templates:3001
-msgid "Auth server URL:"
-msgstr "Adresse for Auth-server:"
+#, fuzzy
+#| msgid "Auth server admin token:"
+msgid "Auth server hostname:"
+msgstr "Administrationssymbol for Auth-server:"
 
 #. Type: string
 #. Description
 #: ../glance-common.templates:3001
+#, fuzzy
+#| msgid ""
+#| "Please specify the URL of your Glance authentication server. Typically "
+#| "this is also the URL of your OpenStack Identity Service (Keystone)."
 msgid ""
-"Please specify the URL of your Glance authentication server. Typically this "
-"is also the URL of your OpenStack Identity Service (Keystone)."
+"Please specify the hostname of your Glance authentication server. Typically "
+"this is also the hostname or IP address of your OpenStack Identity Service "
+"(Keystone)."
 msgstr ""
 "Angiv venligst adressen for din godkendelsesserver for Glance. Typisk er "
 "dette også adressen for din OpenStack Identity Service (Keystone)."
@@ -109,5 +116,26 @@ msgstr ""
 #. Type: string
 #. Description
 #: ../glance-common.templates:4001
-msgid "Auth server admin token:"
+#, fuzzy
+#| msgid "Auth server admin token:"
+msgid "Auth server admin tenant name:"
 msgstr "Administrationssymbol for Auth-server:"
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:5001
+#, fuzzy
+#| msgid "Auth server admin token:"
+msgid "Auth server admin username:"
+msgstr "Administrationssymbol for Auth-server:"
+
+#. Type: password
+#. Description
+#: ../glance-common.templates:6001
+#, fuzzy
+#| msgid "Auth server admin token:"
+msgid "Auth server admin password:"
+msgstr "Administrationssymbol for Auth-server:"
+
+#~ msgid "Auth server URL:"
+#~ msgstr "Adresse for Auth-server:"

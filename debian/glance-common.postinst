@@ -3,7 +3,7 @@
 set -e
 
 if [ "$1" = "configure" ] ; then
-	. /usr/share/debconf/confmodule
+	# Create user and group for glance
 	if ! getent group glance > /dev/null 2>&1 ; then
 		addgroup --quiet --system glance >/dev/null
 	fi
@@ -11,10 +11,57 @@ if [ "$1" = "configure" ] ; then
 		adduser --quiet --system --home /var/lib/glance --ingroup glance --no-create-home --shell /bin/false glance
 	fi
 
+	# Make sure we have a /etc/glance folder with config files in it.
+	ETC=/etc/glance
+	API_CONF=${ETC}/glance-api.conf
+	APIPASTE_CONF=${ETC}/glance-api-paste.ini
+
+	if [ ! -e ${ETC} ] ; then
+		install -d -m 0700 -o glance -g glance ${ETC}
+	fi
+	if [ ! -e ${API_CONF} ] ; then
+		install -D -m 660 -o glance -g glance /usr/share/glance-common/glance-api.conf ${API_CONF}
+	fi
+	if [ ! -e ${APIPASTE_CONF} ] ; then
+		install -D -m 660 -o glance -g glance /usr/share/glance/glance-api-paste.ini ${APIPASTE_CONF}
+	fi
+
+	# Customize glance-api.conf
+	. /usr/share/debconf/confmodule
+	db_get glance/paste-flavor || true
+	FLAVOR="$RET"
+
+	case "$FLAVOR" in
+	caching)
+	;;
+	keystone*)
+		sed -i 's|^[#\t ]*flavor[ \t]*=[\.]*|flavor = '${FLAVOR}'|' ${API_CONF}
+
+		db_get glance/auth-host
+		AUTH_HOST=${RET}
+		sed -i 's|^[#\t ]*auth_host[ \t]*=[\.]*|auth_host'${AUTH_HOST}'|' ${API_CONF}
+		sed -i 's|^[#\t ]*auth_host[ \t]*=[\.]*|auth_host'${AUTH_HOST}'|' ${APIPASTE_CONF}
+
+		db_get glance/admin-tenant-name
+		TENANT_NAME=${RET}
+		sed -i 's|^[\t ]*admin_tenant_name[ \t]*=[\.]*|admin_tenant_name = '${TENANT_NAME}'|' ${API_CONF}
+		sed -i 's|^[\t ]*admin_tenant_name[ \t]*=[\.]*|admin_tenant_name = '${TENANT_NAME}'|' ${APIPASTE_CONF}
+
+		db_get glance/admin-user
+		ADMIN_USER=${RET}
+		sed -i 's|^[\t ]*admin_user[ \t]*=[\.]*|admin_user = '${ADMIN_USER}'|' ${API_CONF}
+		sed -i 's|^[\t ]*admin_user[ \t]*=[\.]*|admin_user = '${ADMIN_USER}'|' ${APIPASTE_CONF}
+
+		db_get glance/admin-password
+		ADMIN_PASS=${RET}
+		sed -i 's|^[\t ]*admin_password[ \t]*=[\.]*|admin_password = '${ADMIN_PASS}'|' ${API_CONF}
+		sed -i 's|^[\t ]*admin_password[ \t]*=[\.]*|admin_password = '${ADMIN_PASS}'|' ${APIPASTE_CONF}
+	;;
+	esac
+
 	chown -R glance:adm /var/log/glance/
 	chmod 0750 /var/log/glance/
 	chown glance:glance -R /var/lib/glance/ /etc/glance/
-	chmod 0700 /etc/glance/
 fi
 
 #DEBHELPER#

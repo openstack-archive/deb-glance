@@ -18,13 +18,22 @@ _Description: Pipeline flavor:
  select "keystone". If you don't use this service, you can safely choose
  "caching" only.
 
-Template: glance/auth-url
+Template: glance/auth-host
 Type: string
-Default: http://localhost:5000
-_Description: Auth server URL:
- Please specify the URL of your Glance authentication server. Typically
- this is also the URL of your OpenStack Identity Service (Keystone).
+Default: 127.0.0.1
+_Description: Auth server hostname:
+ Please specify the hostname of your Glance authentication server. Typically
+ this is also the hostname or IP address of your OpenStack Identity Service
+ (Keystone).
 
-Template: glance/auth-token
+Template: glance/admin-tenant-name
 Type: string
-_Description: Auth server admin token:
+_Description: Auth server admin tenant name:
+
+Template: glance/admin-user
+Type: string
+_Description: Auth server admin username:
+
+Template: glance/admin-password
+Type: password
+_Description: Auth server admin password:

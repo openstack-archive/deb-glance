@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: glance 2012.1-2\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
-"POT-Creation-Date: 2012-05-24 09:08+0200\n"
+"POT-Creation-Date: 2012-10-10 15:57+0000\n"
 "PO-Revision-Date: 2012-06-23 13:01+0200\n"
 "Last-Translator: Michal Simunek <michal.simunek@gmail.com>\n"
 "Language-Team: Czech <debian-l10n-czech@lists.debian.org>\n"
@@ -29,8 +29,8 @@ msgid ""
 "No database has been set up for glance-registry to use. Before continuing, "
 "you should make sure you have:"
 msgstr ""
-"glance-registry nemÃ¡ nastavenu Å¾Ã¡dnou databÃ¡zi k pouÅ¾Ã­vÃ¡nÃ­. PÅed tÃ­m, neÅ¾ "
-"budete pokraÄovat se ujistÄte Å¾e mÃ¡te:"
+"glance-registry nemÃ¡ nastavenu Å¾Ã¡dnou databÃ¡zi k pouÅ¾Ã­vÃ¡nÃ­. PÅed tÃ­m, "
+"neÅ¾ budete pokraÄovat se ujistÄte Å¾e mÃ¡te:"
 
 #. Type: boolean
 #. Description
@@ -93,15 +93,22 @@ msgstr ""
 #. Type: string
 #. Description
 #: ../glance-common.templates:3001
-msgid "Auth server URL:"
-msgstr "URL serveru pro ovÄÅovÃ¡nÃ­:"
+#, fuzzy
+#| msgid "Auth server admin token:"
+msgid "Auth server hostname:"
+msgstr "SprÃ¡vcovskÃ½ token serveru pro ovÄÅovÃ¡nÃ­:"
 
 #. Type: string
 #. Description
 #: ../glance-common.templates:3001
+#, fuzzy
+#| msgid ""
+#| "Please specify the URL of your Glance authentication server. Typically "
+#| "this is also the URL of your OpenStack Identity Service (Keystone)."
 msgid ""
-"Please specify the URL of your Glance authentication server. Typically this "
-"is also the URL of your OpenStack Identity Service (Keystone)."
+"Please specify the hostname of your Glance authentication server. Typically "
+"this is also the hostname or IP address of your OpenStack Identity Service "
+"(Keystone)."
 msgstr ""
 "Zadejte prosÃ­m URL Glance serveru pro ovÄÅovÃ¡nÃ­. VÄtÅ¡inou je to takÃ© URL "
 "OpenStack Identity Service (Keystone)."
@@ -109,5 +116,26 @@ msgstr ""
 #. Type: string
 #. Description
 #: ../glance-common.templates:4001
-msgid "Auth server admin token:"
+#, fuzzy
+#| msgid "Auth server admin token:"
+msgid "Auth server admin tenant name:"
 msgstr "SprÃ¡vcovskÃ½ token serveru pro ovÄÅovÃ¡nÃ­:"
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:5001
+#, fuzzy
+#| msgid "Auth server admin token:"
+msgid "Auth server admin username:"
+msgstr "SprÃ¡vcovskÃ½ token serveru pro ovÄÅovÃ¡nÃ­:"
+
+#. Type: password
+#. Description
+#: ../glance-common.templates:6001
+#, fuzzy
+#| msgid "Auth server admin token:"
+msgid "Auth server admin password:"
+msgstr "SprÃ¡vcovskÃ½ token serveru pro ovÄÅovÃ¡nÃ­:"
+
+#~ msgid "Auth server URL:"
+#~ msgstr "URL serveru pro ovÄÅovÃ¡nÃ­:"

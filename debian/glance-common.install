@@ -1,2 +1,4 @@
+etc/glance-api.conf		usr/share/glance-common
+etc/glance-api-paste.ini	usr/share/glance-common
 usr/bin/glance-control
 usr/bin/glance-manage
