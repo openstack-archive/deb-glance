@@ -4,5 +4,9 @@ set -e
 
 if [ "${1}" = "purge" ] ; then
 	rm -f /etc/glance/glance-api.conf /etc/glance/glance-api.conf
-	rmdir --ignore-fail-on-non-empty /etc/glance
+	[ -d /etc/glance ] && rmdir --ignore-fail-on-non-empty /etc/glance
 fi
+
+#DEBHELPER#
+
+exit 0

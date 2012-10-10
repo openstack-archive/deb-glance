@@ -45,6 +45,7 @@ Vcs-Git: git://anonscm.debian.org/openstack/glance.git
 Package: python-glance
 Architecture: all
 Section: python
+Pre-Depends: dpkg (>= 1.15.6~)
 Depends: ${python:Depends}, ${misc:Depends},
  python-boto,
  python-crypto,
@@ -72,6 +73,7 @@ Package: glance-common
 Architecture: all
 Section: python
 Replaces: glance (<< 2012.1~e2-3)
+Pre-Depends: dpkg (>= 1.15.6~)
 Depends: ${python:Depends}, ${misc:Depends},
  python-glance (= ${source:Version}),
  adduser,
@@ -87,6 +89,7 @@ Description: OpenStack Image Service - common files
 Package: glance-api
 Architecture: all
 Section: python
+Pre-Depends: adduser, dpkg (>= 1.15.6~)
 Depends: ${python:Depends}, ${misc:Depends},
  glance-common (= ${source:Version})
 Description: OpenStack Image Service - API server
@@ -100,6 +103,7 @@ Description: OpenStack Image Service - API server
 Package: glance-registry
 Architecture: all
 Section: python
+Pre-Depends: adduser, dpkg (>= 1.15.6~)
 Depends: ${python:Depends}, ${misc:Depends},
  glance-common (= ${source:Version}),
  dbconfig-common,
@@ -115,6 +119,7 @@ Description: OpenStack Image Service - registry server
 Package: glance
 Architecture: all
 Section: python
+Pre-Depends: dpkg (>= 1.15.6~)
 Depends: glance-api (= ${source:Version}), glance-registry (= ${source:Version}),
  ${misc:Depends}
 Description: OpenStack Image Service - metapackage
@@ -128,6 +133,7 @@ Description: OpenStack Image Service - metapackage
 Package: python-glance-doc
 Architecture: all
 Section: doc
+Pre-Depends: dpkg (>= 1.15.6~)
 Depends: libjs-jquery, libjs-underscore, ${misc:Depends}
 Description: OpenStack Image Service - Python library documentation
  The Glance project provides services for discovering, registering, and

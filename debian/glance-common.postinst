@@ -23,7 +23,7 @@ if [ "$1" = "configure" ] ; then
 		install -D -m 660 -o glance -g glance /usr/share/glance-common/glance-api.conf ${API_CONF}
 	fi
 	if [ ! -e ${APIPASTE_CONF} ] ; then
-		install -D -m 660 -o glance -g glance /usr/share/glance/glance-api-paste.ini ${APIPASTE_CONF}
+		install -D -m 660 -o glance -g glance /usr/share/glance-common/glance-api-paste.ini ${APIPASTE_CONF}
 	fi
 
 	# Customize glance-api.conf
@@ -35,27 +35,27 @@ if [ "$1" = "configure" ] ; then
 	caching)
 	;;
 	keystone*)
-		sed -i 's|^[#\t ]*flavor[ \t]*=[\.]*|flavor = '${FLAVOR}'|' ${API_CONF}
+		set -i 's|^[#\t ]*flavor[ \t]*=.*|flavor = '$FLAVOR'|' ${API_CONF}
 
 		db_get glance/auth-host
 		AUTH_HOST=${RET}
-		sed -i 's|^[#\t ]*auth_host[ \t]*=[\.]*|auth_host'${AUTH_HOST}'|' ${API_CONF}
-		sed -i 's|^[#\t ]*auth_host[ \t]*=[\.]*|auth_host'${AUTH_HOST}'|' ${APIPASTE_CONF}
+		sed -i 's|^[#\t ]*auth_host[ \t]*=.*|auth_host = '${AUTH_HOST}'|' ${API_CONF}
+		sed -i 's|^[#\t ]*auth_host[ \t]*=.*|auth_host = '${AUTH_HOST}'|' ${APIPASTE_CONF}
 
 		db_get glance/admin-tenant-name
 		TENANT_NAME=${RET}
-		sed -i 's|^[\t ]*admin_tenant_name[ \t]*=[\.]*|admin_tenant_name = '${TENANT_NAME}'|' ${API_CONF}
-		sed -i 's|^[\t ]*admin_tenant_name[ \t]*=[\.]*|admin_tenant_name = '${TENANT_NAME}'|' ${APIPASTE_CONF}
+		sed -i 's|^[\t ]*admin_tenant_name[ \t]*=.*|admin_tenant_name = '${TENANT_NAME}'|' ${API_CONF}
+		sed -i 's|^[\t ]*admin_tenant_name[ \t]*=.*|admin_tenant_name = '${TENANT_NAME}'|' ${APIPASTE_CONF}
 
 		db_get glance/admin-user
 		ADMIN_USER=${RET}
-		sed -i 's|^[\t ]*admin_user[ \t]*=[\.]*|admin_user = '${ADMIN_USER}'|' ${API_CONF}
-		sed -i 's|^[\t ]*admin_user[ \t]*=[\.]*|admin_user = '${ADMIN_USER}'|' ${APIPASTE_CONF}
+		sed -i 's|^[\t ]*admin_user[ \t]*=.*|admin_user = '${ADMIN_USER}'|' ${API_CONF}
+		sed -i 's|^[\t ]*admin_user[ \t]*=.*|admin_user = '${ADMIN_USER}'|' ${APIPASTE_CONF}
 
 		db_get glance/admin-password
 		ADMIN_PASS=${RET}
-		sed -i 's|^[\t ]*admin_password[ \t]*=[\.]*|admin_password = '${ADMIN_PASS}'|' ${API_CONF}
-		sed -i 's|^[\t ]*admin_password[ \t]*=[\.]*|admin_password = '${ADMIN_PASS}'|' ${APIPASTE_CONF}
+		sed -i 's|^[\t ]*admin_password[ \t]*=.*|admin_password = '${ADMIN_PASS}'|' ${API_CONF}
+		sed -i 's|^[\t ]*admin_password[ \t]*=.*|admin_password = '${ADMIN_PASS}'|' ${APIPASTE_CONF}
 	;;
 	esac
 
