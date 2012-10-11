@@ -1,3 +1,1 @@
-etc/glance-registry.conf usr/share/glance-registry
-etc/glance-registry-paste.ini etc/glance
 usr/bin/glance-registry
