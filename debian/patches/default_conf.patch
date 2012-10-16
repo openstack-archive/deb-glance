@@ -2,28 +2,23 @@ Description: Fixes glance-api.conf and glance-registry.conf
 Author: Ghe Rivero
 Forwarded: no
 
---- a/etc/glance-api.conf
-+++ b/etc/glance-api.conf
-@@ -282,6 +282,9 @@
- # RADOS user to authenticate as (only applicable if using cephx)
- rbd_store_user = glance
- 
-+
-+[paste_deploy]
+Index: glance/etc/glance-api.conf
+===================================================================
+--- glance.orig/etc/glance-api.conf
++++ glance/etc/glance-api.conf
+@@ -323,4 +323,4 @@
+ # service name removed. For example, if your paste section name is
+ # [pipeline:glance-api-keystone], you would configure the flavor below
+ # as 'keystone'.
+-#flavor=
 +flavor = caching
- # RADOS pool in which images are stored
- rbd_store_pool = images
- 
---- a/etc/glance-registry.conf
-+++ b/etc/glance-registry.conf
-@@ -67,6 +67,10 @@
- # CA certificate file to use to verify connecting clients
- #ca_file = /path/to/cafile
- 
-+[paste_deploy]
+Index: glance/etc/glance-registry.conf
+===================================================================
+--- glance.orig/etc/glance-registry.conf
++++ glance/etc/glance-registry.conf
+@@ -83,4 +83,4 @@
+ # service name removed. For example, if your paste section name is
+ # [pipeline:glance-registry-keystone], you would configure the flavor below
+ # as 'keystone'.
+-#flavor=
 +flavor = caching
-+
-+
- [keystone_authtoken]
- auth_host = 127.0.0.1
- auth_port = 35357
