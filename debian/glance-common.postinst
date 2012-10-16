@@ -10,12 +10,15 @@ install_config_file (){
 	fi
 }
 
-# Param:
-# $1 = variable name
-# $2 = value to put in
-# $3 = name of config file
-customize_config_file (){
-	sed -i 's|^[#\t ]*'${1}'[ \t]*=.*|'${1}' = '${2}'|' ${3}
+confset () {
+    file="$1"
+    section="$2"
+    var="$3"
+    value="$4"
+    python -c "import configobj
+config=configobj.ConfigObj('$file')
+config['$section']['$var']='$value'
+config.write()"
 }
 
 if [ "$1" = "configure" ] ; then
@@ -56,32 +59,32 @@ if [ "$1" = "configure" ] ; then
 	caching)
 	;;
 	keystone*)
-		customize_config_file flavor ${FLAVOR} ${API_CONF}
-		customize_config_file flavor ${FLAVOR} ${GREG_CONF}
+		confset ${API_CONF} paste_deploy flavor ${FLAVOR}
+		confset ${GREG_CONF} paste_deploy flavor ${FLAVOR}
 
 		db_get glance/auth-host
 		AUTH_HOST=${RET}
-		customize_config_file auth_host ${AUTH_HOST} ${API_CONF}
-		customize_config_file auth_host ${AUTH_HOST} ${GREG_CONF}
+		confset ${API_CONF} keystone_authtoken auth_host ${AUTH_HOST}
+		confset ${GREG_CONF} keystone_authtoken auth_host ${AUTH_HOST}
 
 		db_get glance/admin-tenant-name
 		TENANT_NAME=${RET}
-		customize_config_file admin_tenant_name ${TENANT_NAME} ${API_CONF}
-		customize_config_file admin_tenant_name ${TENANT_NAME} ${GREG_CONF}
+		confset ${API_CONF} keystone_authtoken admin_tenant_name ${TENANT_NAME}
+		confset ${GREG_CONF} keystone_authtoken admin_tenant_name ${TENANT_NAME}
 
 		db_get glance/admin-user
 		ADMIN_USER=${RET}
-		customize_config_file admin_user ${ADMIN_USER} ${API_CONF}
-		customize_config_file admin_user ${ADMIN_USER} ${GREG_CONF}
+		confset ${API_CONF} keystone_authtoken admin_user ${ADMIN_USER}
+		confset ${GREG_CONF} keystone_authtoken admin_user ${ADMIN_USER}
 
 		db_get glance/admin-password
 		ADMIN_PASS=${RET}
-		customize_config_file admin_password ${ADMIN_PASS} ${API_CONF}
-		customize_config_file admin_password ${ADMIN_PASS} ${GREG_CONF}
+		confset ${API_CONF} keystone_authtoken admin_password ${ADMIN_PASS}
+		confset ${GREG_CONF} keystone_authtoken admin_password ${ADMIN_PASS}
 	;;
 	*)
-		customize_config_file flavor ${FLAVOR} ${API_CONF}
-		customize_config_file flavor ${FLAVOR} ${GREG_CONF}
+		confset ${API_CONF} DEFAULT flavor ${FLAVOR}
+		confset ${GREG_CONF} DEFAULT flavor ${FLAVOR}
 	;;
 	esac
 
@@ -109,8 +112,8 @@ if [ "$1" = "configure" ] ; then
 		esac
 	    fi
 
-	    customize_config_file sql_connection ${SQL_CONNECTION} ${API_CONF}
-	    customize_config_file sql_connection ${SQL_CONNECTION} ${GREG_CONF}
+	    confset ${API_CONF} DEFAULT sql_connection ${SQL_CONNECTION}
+	    confset ${GREG_CONF} DEFAULT sql_connection ${SQL_CONNECTION}
 
 	    if [ "$dbc_upgrade" = "true" ] ; then
 		su glance -c "glance-manage db_sync" || true

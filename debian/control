@@ -48,6 +48,7 @@ Section: python
 Pre-Depends: dpkg (>= 1.15.6~)
 Depends: ${python:Depends}, ${misc:Depends},
  python-boto,
+ python-configobj,
  python-crypto,
  python-eventlet,
  python-httplib2 (>= 0.6.0),
