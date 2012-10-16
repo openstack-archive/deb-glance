@@ -47,6 +47,8 @@ if [ "$1" = "configure" ] ; then
 
 	# Customize glance-api.conf
 	. /usr/share/debconf/confmodule
+	. /usr/share/dbconfig-common/dpkg/postinst
+
 	db_get glance/paste-flavor || true
 	FLAVOR="$RET"
 
@@ -88,7 +90,6 @@ if [ "$1" = "configure" ] ; then
             dbc_dbfile_owner="glance:glance"
             dbc_go glance-common $@
 	
-        if [ "$dbc_install" = "true" ] ; then
 	    if [ "$dbc_install" = "true" ] ; then
 		case "$dbc_dbtype" in
 		    mysql)
