@@ -83,8 +83,8 @@ if [ "$1" = "configure" ] ; then
 		confset ${GREG_CONF} keystone_authtoken admin_password ${ADMIN_PASS}
 	;;
 	*)
-		confset ${API_CONF} DEFAULT flavor ${FLAVOR}
-		confset ${GREG_CONF} DEFAULT flavor ${FLAVOR}
+		confset ${API_CONF} paste_deploy flavor ${FLAVOR}
+		confset ${GREG_CONF} paste_deploy flavor ${FLAVOR}
 	;;
 	esac
 
