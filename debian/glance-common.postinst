@@ -84,34 +84,39 @@ if [ "$1" = "configure" ] ; then
 	esac
 
 	db_get glance/configure_db
-	if [ "$RET" = "true" ] && [ -f /usr/share/dbconfig-common/dpkg/config ] ; then
-		. /usr/share/dbconfig-common/dpkg/config
-		db_get glance/database-type
-		if [ $RET = "sqlite3" ] ; then
-			dbc_name="glance.sqlite"
-			db_set glance/db/dbname $dbc_name
-		fi
-		dbc_dbfile_owner="glance:glance"
-
-		dbc_go glance $@
-		if [ "$dbc_install" = "true" ] ; then
-			case "$dbc_dbtype" in
-			mysql|pgsql)
-				[ -n "$dbc_dbport" ] && dbport=:$dbc_dbport
-				SQL_CONNECTION="$dbc_dbtype://$dbc_dbuser:$dbc_dbpass@${dbc_dbserver:-localhost}$dbport/$dbc_dbname"
-			;;
-			*)
-				SQL_CONNECTION="sqlite:///$dbc_basepath/$dbc_dbname"
-			;;
-			esac
-
-			customize_config_file sql_connection ${SQL_CONNECTION} ${API_CONF}
-			customize_config_file sql_connection ${SQL_CONNECTION} ${GREG_CONF}
-			if [ "$dbc_upgrade" = "true" ] ; then
-				su glance -c "glance-manage db_sync" || true
+	if [ "$RET" = "true" ]; then
+            dbc_dbfile_owner="glance:glance"
+            dbc_go glance-common $@
+	
+        if [ "$dbc_install" = "true" ] ; then
+	    if [ "$dbc_install" = "true" ] ; then
+		case "$dbc_dbtype" in
+		    mysql)
+			if [ -n "$dbc_dbport" ] ; then
+			    dbport=:$dbc_dbport
 			fi
-		fi
-	fi
+			SQL_CONNECTION="mysql://$dbc_dbuser:$dbc_dbpass@${dbc_dbserver:-localhost}$dbport/$dbc_dbname"
+			;;
+		    postgresql*|pgsql)
+			if [ -n "$dbc_dbport" ] ; then
+			    dbport=:$dbc_dbport
+			fi
+			SQL_CONNECTION="postgresql://$dbc_dbuser:$dbc_dbpass@${dbc_dbserver:-localhost}$dbport/$dbc_dbname"
+			;;
+		    *)
+			SQL_CONNECTION="sqlite:///$dbc_basepath/$dbc_dbname"
+		esac
+	    fi
+
+	    customize_config_file sql_connection ${SQL_CONNECTION} ${API_CONF}
+	    customize_config_file sql_connection ${SQL_CONNECTION} ${GREG_CONF}
+
+	    if [ "$dbc_upgrade" = "true" ] ; then
+		su glance -c "glance-manage db_sync" || true
+	    fi
+
+        fi
+
 	chown -R glance:adm /var/log/glance/
 	chmod 0750 /var/log/glance/
 	chown glance:glance -R /var/lib/glance/ /etc/glance/
