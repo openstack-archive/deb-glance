@@ -79,6 +79,7 @@ Depends: ${python:Depends}, ${misc:Depends},
  python-glance (= ${source:Version}),
  adduser,
  debconf,
+ python-glanceclient
 Description: OpenStack Image Service - common files
  The Glance project provides services for discovering, registering, and
  retrieving virtual machine images over the cloud. They may be stand-alone

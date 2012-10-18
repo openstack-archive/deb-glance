@@ -27,10 +27,12 @@ _Description: Auth server hostname:
 
 Template: glance/admin-tenant-name
 Type: string
+Default: admin
 _Description: Auth server tenant name:
 
 Template: glance/admin-user
 Type: string
+Default: admin
 _Description: Auth server username:
 
 Template: glance/admin-password
@@ -39,7 +41,7 @@ _Description: Auth server password:
 
 Template: glance/configure_db
 Type: boolean
-Default: false
+Default: true
 _Description: Set up a database for glance-registry?
  No database has been set up for glance-registry to use. Before
  continuing, you should make sure you have:

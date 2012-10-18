@@ -1,0 +1,74 @@
+#!/bin/sh
+
+set -e
+
+ETC=/etc/glance
+API_CONF=${ETC}/glance-api.conf
+GREG_CONF=${ETC}/glance-registry.conf
+
+#PKGOS-INCLUDE#
+
+write_auth_token_and_auth () {
+	db_get glance/paste-flavor || true
+	FLAVOR="$RET"
+	pkgos_edit_config flavor ${FLAVOR} ${API_CONF} paste_deploy
+	pkgos_edit_config flavor ${FLAVOR} ${GREG_CONF}
+
+	case "$FLAVOR" in
+	keystone*)
+		db_get glance/auth-host
+		AUTH_HOST=${RET}
+		pkgos_edit_config auth_host ${AUTH_HOST} ${API_CONF} keystone_authtoken
+		pkgos_edit_config auth_host ${AUTH_HOST} ${GREG_CONF} keystone_authtoken
+
+		db_get glance/admin-tenant-name
+		TENANT_NAME=${RET}
+		pkgos_edit_config admin_tenant_name ${TENANT_NAME} ${API_CONF} keystone_authtoken
+		pkgos_edit_config admin_tenant_name ${TENANT_NAME} ${GREG_CONF} keystone_authtoken
+
+		db_get glance/admin-user
+		ADMIN_USER=${RET}
+		pkgos_edit_config admin_user ${ADMIN_USER} ${API_CONF} keystone_authtoken
+		pkgos_edit_config admin_user ${ADMIN_USER} ${GREG_CONF} keystone_authtoken
+
+		db_get glance/admin-password
+		ADMIN_PASS=${RET}
+		pkgos_edit_config admin_password ${ADMIN_PASS} ${API_CONF} keystone_authtoken
+		pkgos_edit_config admin_password ${ADMIN_PASS} ${GREG_CONF} keystone_authtoken
+	;;
+	esac
+}
+
+if [ "$1" = "configure" ] ; then
+	. /usr/share/debconf/confmodule
+	. /usr/share/dbconfig-common/dpkg/postinst
+
+	pkgos_var_user_group glance
+
+	# Make sure we have a /etc/glance folder with config files in it.
+	pkgos_write_new_conf glance glance-api.conf
+	pkgos_write_new_conf glance glance-registry.conf
+	pkgos_write_new_conf glance glance-api-paste.ini
+	pkgos_write_new_conf glance glance-registry-paste.ini
+	pkgos_write_new_conf glance glance-cache.conf
+	pkgos_write_new_conf glance glance-scrubber.conf
+	pkgos_write_new_conf glance policy.json
+
+	pkgos_dbc_postinst ${API_CONF} glance sql_connection $@
+	pkgos_dbc_postinst ${GREG_CONF} glance sql_connection $@
+
+        # Upgrade or create the db if directed to do so
+	db_get glance/configure_db
+	if [ "$RET" = "true" ] && [ "$dbc_upgrade" = "true" ] ; then
+		su glance -c "glance-manage db_sync" || true
+	fi
+
+	write_auth_token_and_auth
+	db_stop
+
+	chown -R glance:adm /var/log/glance/
+	chmod 0750 /var/log/glance/
+	chown glance:glance -R /var/lib/glance/ /etc/glance/
+fi
+
+#DEBHELPER#

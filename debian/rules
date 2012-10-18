@@ -16,6 +16,11 @@ endif
 
 override_dh_auto_build:
 	dh_auto_build
+
+	chmod +x $(CURDIR)/debian/pkgos_insert_include
+	$(CURDIR)/debian/pkgos_insert_include pkgos_func glance-common.config
+	$(CURDIR)/debian/pkgos_insert_include pkgos_func glance-common.postinst
+
 ifeq (,$(findstring nodocs, $(DEB_BUILD_OPTIONS)))
 	mkdir -p doc/build
 	python setup.py build_sphinx
@@ -41,6 +46,7 @@ override_dh_auto_clean:
 	rm -rf doc/build
 	rm -rf glance.sqlite
 	rm -f glance/versioninfo
+	rm -f debian/glance-common.config debian/glance-common.postinst
 
 get-vcs-source:
 	git remote add upstream git://github.com/openstack/glance.git || true

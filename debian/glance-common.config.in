@@ -1,0 +1,38 @@
+#!/bin/sh
+
+set -e
+
+. /usr/share/debconf/confmodule
+
+API_CONF=/etc/glance/glance-api.conf
+APIPASTE_CONF=/etc/glance/glance-api-paste.ini
+GREG_CONF=/etc/glance/glance-registry.conf
+
+#PKGOS-INCLUDE#
+
+pkgos_get_config ${API_CONF} flavor paste_deploy
+case "${RET}" in
+keystone|caching|keystone+caching|cachemanagement|keystone+cachemanagement)
+	db_set glance/paste-flavor ${RET}
+;;
+*)
+	db_set glance/paste-flavor caching
+;;
+esac
+db_input high glance/paste-flavor || true
+db_go || true
+
+db_get glance/paste-flavor
+case "$RET" in
+keystone*)
+	pkgos_read_config ${API_CONF} auth_host		glance/auth-host		keystone_authtoken
+	pkgos_read_config ${API_CONF} admin_tenant_name glance/admin-tenant-name	keystone_authtoken
+	pkgos_read_config ${API_CONF} admin_user	glance/admin-user		keystone_authtoken
+	pkgos_read_config ${API_CONF} admin_password	glance/admin-password		keystone_authtoken
+;;
+esac
+
+pkgos_var_user_group glance
+pkgos_dbc_read_conf ${GREG_CONF} glance sql_connection $@
+
+exit 0
