@@ -55,7 +55,8 @@ if [ "$1" = "configure" ] ; then
 	pkgos_write_new_conf glance policy.json
 
 	pkgos_dbc_postinst ${API_CONF} glance DEFAULT sql_connection $@
-	pkgos_dbc_postinst ${GREG_CONF} glance DEFAULT sql_connection $@
+	pkgos_get_config ${API_CONF} sql_connection DEFAULT
+	pkgos_edit_config sql_connection "${RET}" ${GREG_CONF} DEFAULT
 
         # Upgrade or create the db if directed to do so
 	db_get glance/configure_db
