@@ -20,7 +20,7 @@ msgstr ""
 #. Description
 #: ../glance-registry.templates:1001
 msgid "Set up a database for glance-registry?"
-msgstr "Eine Datenbank fÃ¼r die Glance-Registry einrichten?"
+msgstr "Eine Datenbank für die Glance-Registry einrichten?"
 
 #. Type: boolean
 #. Description
@@ -29,7 +29,7 @@ msgid ""
 "No database has been set up for glance-registry to use. Before continuing, "
 "you should make sure you have:"
 msgstr ""
-"Es wurde keine Datenbank fÃ¼r die Benutzung mit der Glance-Registry "
+"Es wurde keine Datenbank für die Benutzung mit der Glance-Registry "
 "eingerichtet. Bevor Sie fortfahren, sollten Sie sicherstellen, dass Sie "
 "Folgendes haben:"
 
@@ -46,7 +46,7 @@ msgstr ""
 " - den Rechnernamen des Servers (dieser Server muss TCP-Verbindungen von\n"
 "   diesem Rechner erlauben)\n"
 " - einen Benutzernamen und ein Passwort, um auf die Datenbank zuzugreifen\n"
-" - einen Datenbaktyp, den Sie verwenden mÃ¶chten"
+" - einen Datenbaktyp, den Sie verwenden möchten"
 
 #. Type: boolean
 #. Description
@@ -55,8 +55,8 @@ msgid ""
 "If some of these requirements are missing, reject this option and run with "
 "regular sqlite support."
 msgstr ""
-"Falls einige dieser Anforderungen nicht erfÃ¼llt sind, lehnen Sie diese "
-"Option ab und verwenden Sie die regulÃ¤re Sqlite-UnterstÃ¼tzung."
+"Falls einige dieser Anforderungen nicht erfüllt sind, lehnen Sie diese "
+"Option ab und verwenden Sie die reguläre Sqlite-Unterstützung."
 
 # FIXME missing '
 #. Type: boolean
@@ -66,8 +66,8 @@ msgid ""
 "You can change this setting later on by running 'dpkg-reconfigure -plow "
 "glance-registry"
 msgstr ""
-"Sie kÃ¶nnen diese Einstellung spÃ¤ter Ã¤ndern, indem Sie Â»dpkg-reconfigure -"
-"plow glance-registryÂ« ausfÃ¼hren."
+"Sie können diese Einstellung später ändern, indem Sie »dpkg-reconfigure -"
+"plow glance-registry« ausführen."
 
 #. Type: select
 #. Description
@@ -90,9 +90,9 @@ msgid ""
 "select \"keystone\". If you don't use this service, you can safely choose "
 "\"caching\" only."
 msgstr ""
-"Falls Sie den OpenStack-IdentitÃ¤tsdienst (Keystone) verwenden, mÃ¶chten Sie "
-"mÃ¶glicherweise Â»keystoneÂ« auswÃ¤hlen. Falls Sie diesen Dienst nicht "
-"nutzen, kÃ¶nnen Sie problemlos Â»cachingÂ« auswÃ¤hlen."
+"Falls Sie den OpenStack-Identitätsdienst (Keystone) verwenden, möchten Sie "
+"möglicherweise »keystone« auswählen. Falls Sie diesen Dienst nicht "
+"nutzen, können Sie problemlos »caching« auswählen."
 
 #. Type: string
 #. Description
@@ -115,7 +115,7 @@ msgid ""
 "(Keystone)."
 msgstr ""
 "Bitte geben Sie die URL des Glance-Authentifizierungsservers an. "
-"Typischerweise ist das auÃerdem die URL Ihres OpenStack-IdentitÃ¤tsdienstes "
+"Typischerweise ist das außerdem die URL Ihres OpenStack-Identitätsdienstes "
 "(Keystone)."
 
 #. Type: string

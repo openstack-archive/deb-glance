@@ -20,7 +20,7 @@ msgstr ""
 #. Description
 #: ../glance-registry.templates:1001
 msgid "Set up a database for glance-registry?"
-msgstr "Nastavit databÃ¡zi pro glance-registry?"
+msgstr "Nastavit databázi pro glance-registry?"
 
 #. Type: boolean
 #. Description
@@ -29,8 +29,8 @@ msgid ""
 "No database has been set up for glance-registry to use. Before continuing, "
 "you should make sure you have:"
 msgstr ""
-"glance-registry nemÃ¡ nastavenu Å¾Ã¡dnou databÃ¡zi k pouÅ¾Ã­vÃ¡nÃ­. PÅed tÃ­m, "
-"neÅ¾ budete pokraÄovat se ujistÄte Å¾e mÃ¡te:"
+"glance-registry nemá nastavenu žádnou databázi k používání. Před tím, "
+"než budete pokračovat se ujistěte že máte:"
 
 #. Type: boolean
 #. Description
@@ -41,10 +41,10 @@ msgid ""
 " - a username and password to access the database.\n"
 " - A database type that you want to use."
 msgstr ""
-" - nÃ¡zev hostitelskÃ©ho serveru (tento server musÃ­ pÅijÃ­mat TCP spojenÃ­\n"
-"   z tohoto poÄÃ­taÄe);\n"
-" - uÅ¾ivatelskÃ© jmÃ©no a heslo pro pÅÃ­stup k databÃ¡zi.\n"
-" - Typ databÃ¡ze, kterou chcete pouÅ¾Ã­vat."
+" - název hostitelského serveru (tento server musí přijímat TCP spojení\n"
+"   z tohoto počítače);\n"
+" - uživatelské jméno a heslo pro přístup k databázi.\n"
+" - Typ databáze, kterou chcete používat."
 
 #. Type: boolean
 #. Description
@@ -53,8 +53,8 @@ msgid ""
 "If some of these requirements are missing, reject this option and run with "
 "regular sqlite support."
 msgstr ""
-"Pokud nÄkterou z tÄchto povinnÃ½ch voleb neznÃ¡te, pÅeskoÄte ji a glance "
-"spouÅ¡tÄjte s bÄÅ¾nou podporou pro sqlite."
+"Pokud některou z těchto povinných voleb neznáte, přeskočte ji a glance "
+"spouštějte s běžnou podporou pro sqlite."
 
 #. Type: boolean
 #. Description
@@ -63,20 +63,20 @@ msgid ""
 "You can change this setting later on by running 'dpkg-reconfigure -plow "
 "glance-registry"
 msgstr ""
-"Toto nastavenÃ­ mÅ¯Å¾ete pozdÄji zmÄnit spuÅ¡tÄnÃ­m 'dpkg-reconfigure -plow "
+"Toto nastavení můžete později změnit spuštěním 'dpkg-reconfigure -plow "
 "glance-registry"
 
 #. Type: select
 #. Description
 #: ../glance-common.templates:2001
 msgid "Pipeline flavor:"
-msgstr "PÅÃ­znak pro rouru:"
+msgstr "Příznak pro rouru:"
 
 #. Type: select
 #. Description
 #: ../glance-common.templates:2001
 msgid "Please specify the flavor of pipeline to be used by Glance."
-msgstr "Zadejte prosÃ­m pÅÃ­znak roury, kterÃ½ mÃ¡ Glance pouÅ¾Ã­vat."
+msgstr "Zadejte prosím příznak roury, který má Glance používat."
 
 #. Type: select
 #. Description
@@ -86,9 +86,9 @@ msgid ""
 "select \"keystone\". If you don't use this service, you can safely choose "
 "\"caching\" only."
 msgstr ""
-"PouÅ¾Ã­vÃ¡te-li OpenStack Identity Service (Keystone), budete zÅejmÄ chtÃ­t "
-"vybrat \"keystone\". Pokud tuto sluÅ¾bu nepouÅ¾Ã­vÃ¡te, mÅ¯Å¾ete zvolit pouze "
-"moÅ¾nost \"caching\"."
+"Používáte-li OpenStack Identity Service (Keystone), budete zřejmě chtít "
+"vybrat \"keystone\". Pokud tuto službu nepoužíváte, můžete zvolit pouze "
+"možnost \"caching\"."
 
 #. Type: string
 #. Description
@@ -96,7 +96,7 @@ msgstr ""
 #, fuzzy
 #| msgid "Auth server admin token:"
 msgid "Auth server hostname:"
-msgstr "SprÃ¡vcovskÃ½ token serveru pro ovÄÅovÃ¡nÃ­:"
+msgstr "Správcovský token serveru pro ověřování:"
 
 #. Type: string
 #. Description
@@ -110,7 +110,7 @@ msgid ""
 "this is also the hostname or IP address of your OpenStack Identity Service "
 "(Keystone)."
 msgstr ""
-"Zadejte prosÃ­m URL Glance serveru pro ovÄÅovÃ¡nÃ­. VÄtÅ¡inou je to takÃ© URL "
+"Zadejte prosím URL Glance serveru pro ověřování. Většinou je to také URL "
 "OpenStack Identity Service (Keystone)."
 
 #. Type: string
@@ -119,7 +119,7 @@ msgstr ""
 #, fuzzy
 #| msgid "Auth server admin token:"
 msgid "Auth server admin tenant name:"
-msgstr "SprÃ¡vcovskÃ½ token serveru pro ovÄÅovÃ¡nÃ­:"
+msgstr "Správcovský token serveru pro ověřování:"
 
 #. Type: string
 #. Description
@@ -127,7 +127,7 @@ msgstr "SprÃ¡vcovskÃ½ token serveru pro ovÄÅovÃ¡nÃ­:"
 #, fuzzy
 #| msgid "Auth server admin token:"
 msgid "Auth server admin username:"
-msgstr "SprÃ¡vcovskÃ½ token serveru pro ovÄÅovÃ¡nÃ­:"
+msgstr "Správcovský token serveru pro ověřování:"
 
 #. Type: password
 #. Description
@@ -135,7 +135,7 @@ msgstr "SprÃ¡vcovskÃ½ token serveru pro ovÄÅovÃ¡nÃ­:"
 #, fuzzy
 #| msgid "Auth server admin token:"
 msgid "Auth server admin password:"
-msgstr "SprÃ¡vcovskÃ½ token serveru pro ovÄÅovÃ¡nÃ­:"
+msgstr "Správcovský token serveru pro ověřování:"
 
 #~ msgid "Auth server URL:"
-#~ msgstr "URL serveru pro ovÄÅovÃ¡nÃ­:"
+#~ msgstr "URL serveru pro ověřování:"
