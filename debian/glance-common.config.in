@@ -33,6 +33,6 @@ keystone*)
 esac
 
 pkgos_var_user_group glance
-pkgos_dbc_read_conf ${GREG_CONF} glance sql_connection $@
+pkgos_dbc_read_conf ${GREG_CONF} glance DEFAULT sql_connection $@
 
 exit 0
