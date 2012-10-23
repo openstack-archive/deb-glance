@@ -15,6 +15,9 @@ case "${RET}" in
 keystone|caching|keystone+caching|cachemanagement|keystone+cachemanagement)
 	db_set glance/paste-flavor ${RET}
 ;;
+"")
+	# If no value in existing config file, don't set it
+	;;
 *)
 	db_set glance/paste-flavor caching
 ;;
