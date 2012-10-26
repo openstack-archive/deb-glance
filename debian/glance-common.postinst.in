@@ -16,25 +16,8 @@ write_auth_token_and_auth () {
 
 	case "$FLAVOR" in
 	keystone*)
-		db_get glance/auth-host
-		AUTH_HOST=${RET}
-		pkgos_edit_config auth_host ${AUTH_HOST} ${API_CONF} keystone_authtoken
-		pkgos_edit_config auth_host ${AUTH_HOST} ${GREG_CONF} keystone_authtoken
-
-		db_get glance/admin-tenant-name
-		TENANT_NAME=${RET}
-		pkgos_edit_config admin_tenant_name ${TENANT_NAME} ${API_CONF} keystone_authtoken
-		pkgos_edit_config admin_tenant_name ${TENANT_NAME} ${GREG_CONF} keystone_authtoken
-
-		db_get glance/admin-user
-		ADMIN_USER=${RET}
-		pkgos_edit_config admin_user ${ADMIN_USER} ${API_CONF} keystone_authtoken
-		pkgos_edit_config admin_user ${ADMIN_USER} ${GREG_CONF} keystone_authtoken
-
-		db_get glance/admin-password
-		ADMIN_PASS=${RET}
-		pkgos_edit_config admin_password ${ADMIN_PASS} ${API_CONF} keystone_authtoken
-		pkgos_edit_config admin_password ${ADMIN_PASS} ${GREG_CONF} keystone_authtoken
+		pkgos_write_admin_creds ${API_CONF} glance keystone_authtoken
+		pkgos_write_admin_creds ${GREG_CONF} glance keystone_authtoken
 	;;
 	esac
 }

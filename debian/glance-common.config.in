@@ -28,10 +28,7 @@ db_go || true
 db_get glance/paste-flavor
 case "$RET" in
 keystone*)
-	pkgos_read_config ${API_CONF} auth_host		glance/auth-host		keystone_authtoken
-	pkgos_read_config ${API_CONF} admin_tenant_name glance/admin-tenant-name	keystone_authtoken
-	pkgos_read_config ${API_CONF} admin_user	glance/admin-user		keystone_authtoken
-	pkgos_read_config ${API_CONF} admin_password	glance/admin-password		keystone_authtoken
+	pkgos_read_admin_creds ${API_CONF} glance keystone_authtoken
 ;;
 esac
 
