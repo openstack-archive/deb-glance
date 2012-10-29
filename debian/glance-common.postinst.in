@@ -12,7 +12,7 @@ write_auth_token_and_auth () {
 	db_get glance/paste-flavor || true
 	FLAVOR="$RET"
 	pkgos_edit_config flavor ${FLAVOR} ${API_CONF} paste_deploy
-	pkgos_edit_config flavor ${FLAVOR} ${GREG_CONF}
+	pkgos_edit_config flavor ${FLAVOR} ${GREG_CONF} paste_deploy
 
 	case "$FLAVOR" in
 	keystone*)
