@@ -17,9 +17,8 @@ endif
 override_dh_auto_build:
 	dh_auto_build
 
-	chmod +x $(CURDIR)/debian/pkgos_insert_include
-	$(CURDIR)/debian/pkgos_insert_include pkgos_func glance-common.config
-	$(CURDIR)/debian/pkgos_insert_include pkgos_func glance-common.postinst
+	/usr/share/openstack-pkg-tools/pkgos_insert_include pkgos_func glance-common.config
+	/usr/share/openstack-pkg-tools/pkgos_insert_include pkgos_func glance-common.postinst
 
 ifeq (,$(findstring nodocs, $(DEB_BUILD_OPTIONS)))
 	mkdir -p doc/build

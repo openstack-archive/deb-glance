@@ -12,6 +12,7 @@ Build-Depends: debhelper (>= 7.0.50),
  sqlite3
 Build-Depends-Indep:
  curl,
+ openstack-pkg-tools,
  pep8,
  python-boto,
  python-crypto,
