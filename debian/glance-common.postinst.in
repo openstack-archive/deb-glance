@@ -44,6 +44,7 @@ if [ "$1" = "configure" ] ; then
         # Upgrade or create the db if directed to do so
 	db_get glance/configure_db
 	if [ "$RET" = "true" ] && [ "$dbc_upgrade" = "true" ] ; then
+		echo "Now doing glance-manage db_sync: this may take a while..."
 		su glance -c "glance-manage db_sync" || true
 	fi
 
