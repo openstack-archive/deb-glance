@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: glance\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
-"POT-Creation-Date: 2012-06-24 06:00+0000\n"
-"PO-Revision-Date: 2012-06-10 18:14+0100\n"
+"POT-Creation-Date: 2012-06-27 17:14+0200\n"
+"PO-Revision-Date: 2012-07-24 22:14+0100\n"
 "Last-Translator: Pedro Ribeiro <p.m42.ribeiro@gmail.com>\n"
 "Language-Team: Potuguese <traduz@debianpt.org>\n"
 "Language: \n"
@@ -20,7 +20,7 @@ msgstr ""
 #. Description
 #: ../glance-registry.templates:1001
 msgid "Set up a database for glance-registry?"
-msgstr ""
+msgstr "Definir uma base de dados para o glance-registry?"
 
 #. Type: boolean
 #. Description
@@ -29,6 +29,8 @@ msgid ""
 "No database has been set up for glance-registry to use. Before continuing, "
 "you should make sure you have:"
 msgstr ""
+"Não foi definida nenhuma base de dados para ser usada pelo glance-registry. "
+"Antes de continuar, certifique-se que tem:"
 
 #. Type: boolean
 #. Description
@@ -39,6 +41,10 @@ msgid ""
 " - a username and password to access the database.\n"
 " - A database type that you want to use."
 msgstr ""
+" - o nome do servidor (esse servidor deve aceitar ligações TCP a partir\n"
+"   desta máquina);\n"
+" - o nome de utilizador e palavra passe para aceder à base de dados.\n"
+" - Um tipo de base de dados que queira usar."
 
 #. Type: boolean
 #. Description
@@ -47,6 +53,8 @@ msgid ""
 "If some of these requirements are missing, reject this option and run with "
 "regular sqlite support."
 msgstr ""
+"Se algum destes requisitos estiver em falta, rejeite esta opção e execute "
+"com o normal suporte sqlite."
 
 #. Type: boolean
 #. Description
@@ -55,6 +63,8 @@ msgid ""
 "You can change this setting later on by running 'dpkg-reconfigure -plow "
 "glance-registry"
 msgstr ""
+"Pode mudar esta definição mais tarde ao executar 'dpkg-reconfigure -plow "
+"glance-registry"
 
 #. Type: select
 #. Description
@@ -66,7 +76,7 @@ msgstr "Tipo de pipeline:"
 #. Description
 #: ../glance-common.templates:2001
 msgid "Please specify the flavor of pipeline to be used by Glance."
-msgstr "Por favor especifique o tipo de pipeline a ser utilizado por Glance."
+msgstr "Por favor especifique o tipo de pipeline a ser utilizado pelo Glance."
 
 #. Type: select
 #. Description
