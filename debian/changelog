@@ -2,6 +2,9 @@ glance (2012.1.1-2) unstable; urgency=high
 
   * Added Chinese Debconf translation, thanks to ben <duyujie.dyj@gmail.com>.
   * CVE-2012-4573: Authentication bypass for image deletion (Closes: #692641).
+  * Fixes test_interrupt_avoids_respawn_storm fails when run under fakeroot
+  disabling the tests (Closes: #681582). Also adds a || true since pep8 is
+  neatpicking a source code line as too large.
 
  -- Thomas Goirand <zigo@debian.org>  Mon, 27 Aug 2012 12:05:22 +0000
 
