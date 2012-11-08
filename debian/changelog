@@ -1,6 +1,7 @@
-glance (2012.1.1-2) unstable; urgency=low
+glance (2012.1.1-2) unstable; urgency=high
 
   * Added Chinese Debconf translation, thanks to ben <duyujie.dyj@gmail.com>.
+  * CVE-2012-4573: Authentication bypass for image deletion (Closes: #692641).
 
  -- Thomas Goirand <zigo@debian.org>  Mon, 27 Aug 2012 12:05:22 +0000
 
