@@ -1,3 +1,10 @@
+glance (2012.1.1-3) unstable; urgency=low
+
+  * New upstream patch for CVE-2012-4573. Previous patch is to be discarded,
+  according to bcwaldon on IRC (Closes: #692641).
+
+ -- Thomas Goirand <zigo@debian.org>  Fri, 09 Nov 2012 18:38:02 +0000
+
 glance (2012.1.1-2) unstable; urgency=high
 
   * Added Chinese Debconf translation, thanks to ben <duyujie.dyj@gmail.com>.
