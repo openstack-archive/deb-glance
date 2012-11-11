@@ -18,6 +18,7 @@ glance (2012.2-1) experimental; urgency=low
   * Added upstream patch for CVE-2012-4573: authentication bypass for image
   deletion.
   * Ensure we have sqlalchemy (<= 0.7.9).
+  * Added upstream patch FakeAuth not always admin.
 
  -- Thomas Goirand <zigo@debian.org>  Sun, 21 Oct 2012 16:10:50 +0000
 

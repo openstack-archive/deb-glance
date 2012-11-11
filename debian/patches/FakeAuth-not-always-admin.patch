@@ -1,0 +1,29 @@
+Description: FakeAuth not always admin
+ The FakeAuthMiddleware was defaulting to admin=True for request
+contexts. This creates a situation where it is impossible to test
+non-admin requests in some situations.
+Origin: https://github.com/openstack/glance/commit/7841cc93050fa48a1fbd8847cec887f0360be9a3
+
+--- glance-2012.2.orig/glance/tests/utils.py
++++ glance-2012.2/glance/tests/utils.py
+@@ -347,7 +347,7 @@ def minimal_add_command(port, name, suff
+ 
+ class FakeAuthMiddleware(wsgi.Middleware):
+ 
+-    def __init__(self, app, is_admin=True):
++    def __init__(self, app, is_admin=False):
+         super(FakeAuthMiddleware, self).__init__(app)
+         self.is_admin = is_admin
+ 
+--- glance-2012.2.orig/glance/tests/unit/v1/test_api.py
++++ glance-2012.2/glance/tests/unit/v1/test_api.py
+@@ -103,7 +103,8 @@ class TestRegistryAPI(base.IsolatedUnitT
+         """Establish a clean test environment"""
+         super(TestRegistryAPI, self).setUp()
+         self.mapper = routes.Mapper()
+-        self.api = test_utils.FakeAuthMiddleware(rserver.API(self.mapper))
++        self.api = test_utils.FakeAuthMiddleware(rserver.API(self.mapper),
++                                                 is_admin=True)
+         self.FIXTURES = [
+             {'id': UUID1,
+              'name': 'fake image #1',
