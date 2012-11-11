@@ -6,3 +6,4 @@ fixed-most-pep8-errors.patch
 dont-rely-on-network.patch
 disable-git-fetch-in-clean-target.patch
 CVE-2012-4573-authentication-bypass-for-image-deletion.patch
+fix-test-pass-empty-args-to-test-config-parser.patch
