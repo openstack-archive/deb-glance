@@ -17,6 +17,7 @@ glance (2012.2-1) experimental; urgency=low
   * Removed dangerous deletion of the glance username in postrm.
   * Added upstream patch for CVE-2012-4573: authentication bypass for image
   deletion.
+  * Ensure we have sqlalchemy (<= 0.7.9).
 
  -- Thomas Goirand <zigo@debian.org>  Sun, 21 Oct 2012 16:10:50 +0000
 
