@@ -1,10 +1,8 @@
 #!/usr/bin/make -f
 
-# Verbose mode
 #export DH_VERBOSE=1
 
-DEBVERS := $(shell dpkg-parsechangelog | sed -n -e 's/^Version: //p')
-VERSION := $(shell echo '$(DEBVERS)' | sed -e 's/^[[:digit:]]*://' -e 's/[~-].*//')
+include /usr/share/openstack-pkg-tools/pkgos.make
 
 %:
 	dh $@ --with python2
@@ -30,9 +28,6 @@ override_dh_installman:
 
 endif
 
-override_dh_builddeb:
-	dh_builddeb -- -Zxz -z9
-
 override_dh_auto_configure:
 	echo $(VERSION) > glance/versioninfo
 	dh_auto_configure
@@ -47,16 +42,4 @@ override_dh_auto_clean:
 	rm -f glance/versioninfo
 	rm -f debian/glance-common.config debian/glance-common.postinst
 
-get-vcs-source:
-	git remote add upstream git://github.com/openstack/glance.git || true
-	git fetch upstream
-	if ! [ -f ../glance_$(VERSION).orig.tar.xz ] ; then \
-		git archive --prefix=glance-$(VERSION)/ $(VERSION) | xz >../glance_$(VERSION).orig.tar.xz ; \
-	fi
-	if ! git checkout master ; then \
-		echo "No upstream branch: checking out" ; \
-		git checkout -b master upstream/master ; \
-	fi
-	git checkout debian/unstable
-
-.PHONY: get-vcs-source override_dh_auto_clean override_dh_auto_configure override_dh_builddeb override_dh_installman override_dh_auto_build
+.PHONY: override_dh_auto_clean override_dh_auto_configure override_dh_builddeb override_dh_installman override_dh_auto_build

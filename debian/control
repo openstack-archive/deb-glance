@@ -109,8 +109,7 @@ Section: python
 Pre-Depends: adduser, dpkg (>= 1.15.6~)
 Depends: ${python:Depends}, ${misc:Depends},
  glance-common (= ${source:Version}),
- dbconfig-common,
- debconf
+ dbconfig-common
 Description: OpenStack Image Service - registry server
  The Glance project provides services for discovering, registering, and
  retrieving virtual machine images over the cloud. They may be stand-alone
