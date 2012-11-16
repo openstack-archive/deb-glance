@@ -38,7 +38,7 @@ Build-Depends-Indep:
  python-xattr,
  procps
 Standards-Version: 3.9.3
-Homepage: http://launchpad.net/glance
+Homepage: http://glance.openstack.org/
 Vcs-Browser: http://anonscm.debian.org/gitweb/?p=openstack/glance.git;a=summary
 Vcs-Git: git://anonscm.debian.org/openstack/glance.git
 
