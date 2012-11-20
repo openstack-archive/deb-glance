@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: glance 2012.1-2\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
-"POT-Creation-Date: 2012-10-10 15:57+0000\n"
+"POT-Creation-Date: 2012-11-20 13:25+0000\n"
 "PO-Revision-Date: 2012-06-08 11:31+0100\n"
 "Last-Translator: Chris Leick <c.leick@vollbio.de>\n"
 "Language-Team: German <debian-l10n-german@lists.debian.org>\n"
@@ -15,59 +15,6 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-
-#. Type: boolean
-#. Description
-#: ../glance-registry.templates:1001
-msgid "Set up a database for glance-registry?"
-msgstr "Eine Datenbank für die Glance-Registry einrichten?"
-
-#. Type: boolean
-#. Description
-#: ../glance-registry.templates:1001
-msgid ""
-"No database has been set up for glance-registry to use. Before continuing, "
-"you should make sure you have:"
-msgstr ""
-"Es wurde keine Datenbank für die Benutzung mit der Glance-Registry "
-"eingerichtet. Bevor Sie fortfahren, sollten Sie sicherstellen, dass Sie "
-"Folgendes haben:"
-
-# FIXME s/the database./the database;/ and s/A/a/
-#. Type: boolean
-#. Description
-#: ../glance-registry.templates:1001
-msgid ""
-" - the server host name (that server must allow TCP connections\n"
-"   from this machine);\n"
-" - a username and password to access the database.\n"
-" - A database type that you want to use."
-msgstr ""
-" - den Rechnernamen des Servers (dieser Server muss TCP-Verbindungen von\n"
-"   diesem Rechner erlauben)\n"
-" - einen Benutzernamen und ein Passwort, um auf die Datenbank zuzugreifen\n"
-" - einen Datenbaktyp, den Sie verwenden möchten"
-
-#. Type: boolean
-#. Description
-#: ../glance-registry.templates:1001
-msgid ""
-"If some of these requirements are missing, reject this option and run with "
-"regular sqlite support."
-msgstr ""
-"Falls einige dieser Anforderungen nicht erfüllt sind, lehnen Sie diese "
-"Option ab und verwenden Sie die reguläre Sqlite-Unterstützung."
-
-# FIXME missing '
-#. Type: boolean
-#. Description
-#: ../glance-registry.templates:1001
-msgid ""
-"You can change this setting later on by running 'dpkg-reconfigure -plow "
-"glance-registry"
-msgstr ""
-"Sie können diese Einstellung später ändern, indem Sie »dpkg-reconfigure -"
-"plow glance-registry« ausführen."
 
 #. Type: select
 #. Description
@@ -91,8 +38,8 @@ msgid ""
 "\"caching\" only."
 msgstr ""
 "Falls Sie den OpenStack-Identitätsdienst (Keystone) verwenden, möchten Sie "
-"möglicherweise »keystone« auswählen. Falls Sie diesen Dienst nicht "
-"nutzen, können Sie problemlos »caching« auswählen."
+"möglicherweise »keystone« auswählen. Falls Sie diesen Dienst nicht nutzen, "
+"können Sie problemlos »caching« auswählen."
 
 #. Type: string
 #. Description
@@ -110,9 +57,8 @@ msgstr "Administrator-Token des Authentifizierungsservers:"
 #| "Please specify the URL of your Glance authentication server. Typically "
 #| "this is also the URL of your OpenStack Identity Service (Keystone)."
 msgid ""
-"Please specify the hostname of your Glance authentication server. Typically "
-"this is also the hostname or IP address of your OpenStack Identity Service "
-"(Keystone)."
+"Please specify the URL of your Glance authentication server. Typically this "
+"is also the URL of your OpenStack Identity Service (Keystone)."
 msgstr ""
 "Bitte geben Sie die URL des Glance-Authentifizierungsservers an. "
 "Typischerweise ist das außerdem die URL Ihres OpenStack-Identitätsdienstes "
@@ -123,7 +69,7 @@ msgstr ""
 #: ../glance-common.templates:4001
 #, fuzzy
 #| msgid "Auth server admin token:"
-msgid "Auth server admin tenant name:"
+msgid "Auth server tenant name:"
 msgstr "Administrator-Token des Authentifizierungsservers:"
 
 #. Type: string
@@ -131,7 +77,7 @@ msgstr "Administrator-Token des Authentifizierungsservers:"
 #: ../glance-common.templates:5001
 #, fuzzy
 #| msgid "Auth server admin token:"
-msgid "Auth server admin username:"
+msgid "Auth server username:"
 msgstr "Administrator-Token des Authentifizierungsservers:"
 
 #. Type: password
@@ -139,8 +85,77 @@ msgstr "Administrator-Token des Authentifizierungsservers:"
 #: ../glance-common.templates:6001
 #, fuzzy
 #| msgid "Auth server admin token:"
-msgid "Auth server admin password:"
+msgid "Auth server password:"
 msgstr "Administrator-Token des Authentifizierungsservers:"
+
+#. Type: boolean
+#. Description
+#: ../glance-common.templates:7001
+#, fuzzy
+#| msgid "Set up a database for glance-registry?"
+msgid "Set up a database for glance?"
+msgstr "Eine Datenbank für die Glance-Registry einrichten?"
+
+#. Type: boolean
+#. Description
+#: ../glance-common.templates:7001
+#, fuzzy
+#| msgid ""
+#| "No database has been set up for glance-registry to use. Before "
+#| "continuing, you should make sure you have:"
+msgid ""
+"No database has been set up for glance-registry or glance-api to use. Before "
+"continuing, you should make sure you have:"
+msgstr ""
+"Es wurde keine Datenbank für die Benutzung mit der Glance-Registry "
+"eingerichtet. Bevor Sie fortfahren, sollten Sie sicherstellen, dass Sie "
+"Folgendes haben:"
+
+# FIXME s/the database./the database;/ and s/A/a/
+#. Type: boolean
+#. Description
+#: ../glance-common.templates:7001
+#, fuzzy
+#| msgid ""
+#| " - the server host name (that server must allow TCP connections\n"
+#| "   from this machine);\n"
+#| " - a username and password to access the database.\n"
+#| " - A database type that you want to use."
+msgid ""
+" - the server host name (that server must allow TCP connections from this\n"
+"   machine);\n"
+" - a username and password to access the database.\n"
+" - A database type that you want to use."
+msgstr ""
+" - den Rechnernamen des Servers (dieser Server muss TCP-Verbindungen von\n"
+"   diesem Rechner erlauben)\n"
+" - einen Benutzernamen und ein Passwort, um auf die Datenbank zuzugreifen\n"
+" - einen Datenbaktyp, den Sie verwenden möchten"
+
+#. Type: boolean
+#. Description
+#: ../glance-common.templates:7001
+msgid ""
+"If some of these requirements are missing, reject this option and run with "
+"regular sqlite support."
+msgstr ""
+"Falls einige dieser Anforderungen nicht erfüllt sind, lehnen Sie diese "
+"Option ab und verwenden Sie die reguläre Sqlite-Unterstützung."
+
+# FIXME missing '
+#. Type: boolean
+#. Description
+#: ../glance-common.templates:7001
+#, fuzzy
+#| msgid ""
+#| "You can change this setting later on by running 'dpkg-reconfigure -plow "
+#| "glance-registry"
+msgid ""
+"You can change this setting later on by running 'dpkg-reconfigure -plow "
+"glance-common'."
+msgstr ""
+"Sie können diese Einstellung später ändern, indem Sie »dpkg-reconfigure -"
+"plow glance-registry« ausführen."
 
 #~ msgid "Auth server URL:"
 #~ msgstr "URL des Authentifizierungsservers:"

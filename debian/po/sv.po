@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: glance\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
-"POT-Creation-Date: 2012-10-10 15:57+0000\n"
+"POT-Creation-Date: 2012-11-20 13:25+0000\n"
 "PO-Revision-Date: 2012-06-08 08:58+0100\n"
 "Last-Translator: Martin Bagge / brother <brother@bsnet.se>\n"
 "Language-Team: Swedish <debian-l10n-swedish@lists.debian.org>\n"
@@ -17,56 +17,6 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "X-Poedit-Language: Swedish\n"
 "X-Poedit-Country: Sweden\n"
-
-#. Type: boolean
-#. Description
-#: ../glance-registry.templates:1001
-msgid "Set up a database for glance-registry?"
-msgstr "Ska inställningar för glance-registry-databasen göras?"
-
-#. Type: boolean
-#. Description
-#: ../glance-registry.templates:1001
-msgid ""
-"No database has been set up for glance-registry to use. Before continuing, "
-"you should make sure you have:"
-msgstr ""
-"Det finns inga inställningar för databas för glance-registry. Innan du bör "
-"du ha följande till hands:"
-
-#. Type: boolean
-#. Description
-#: ../glance-registry.templates:1001
-msgid ""
-" - the server host name (that server must allow TCP connections\n"
-"   from this machine);\n"
-" - a username and password to access the database.\n"
-" - A database type that you want to use."
-msgstr ""
-" - serverns värdnamn (som måste kunna ta emot TCP-anslutningar\n"
-"   från den här maskinen)\n"
-" - att användarnamn och lösenord för att komma åt databasen.\n"
-" - Vilken databastyp du vill använda."
-
-#. Type: boolean
-#. Description
-#: ../glance-registry.templates:1001
-msgid ""
-"If some of these requirements are missing, reject this option and run with "
-"regular sqlite support."
-msgstr ""
-"Om något av dessa krav saknar bör du avböja detta alternativ och fortsätta "
-"använda sqlite-stödet."
-
-#. Type: boolean
-#. Description
-#: ../glance-registry.templates:1001
-msgid ""
-"You can change this setting later on by running 'dpkg-reconfigure -plow "
-"glance-registry"
-msgstr ""
-"Denna inställning kan ändras senare genom att köra \"dpkg-reconfigure -plow "
-"glance-registry\""
 
 #. Type: select
 #. Description
@@ -108,9 +58,8 @@ msgstr "Identifieringsserverns adminstrationsidentitet:"
 #| "Please specify the URL of your Glance authentication server. Typically "
 #| "this is also the URL of your OpenStack Identity Service (Keystone)."
 msgid ""
-"Please specify the hostname of your Glance authentication server. Typically "
-"this is also the hostname or IP address of your OpenStack Identity Service "
-"(Keystone)."
+"Please specify the URL of your Glance authentication server. Typically this "
+"is also the URL of your OpenStack Identity Service (Keystone)."
 msgstr ""
 "Ange URL till din Glance-identifieringsserver. Detta är vanligtvis samma URL "
 "som till din OpenStack-identitetstjänst (Keystone)."
@@ -120,7 +69,7 @@ msgstr ""
 #: ../glance-common.templates:4001
 #, fuzzy
 #| msgid "Auth server admin token:"
-msgid "Auth server admin tenant name:"
+msgid "Auth server tenant name:"
 msgstr "Identifieringsserverns adminstrationsidentitet:"
 
 #. Type: string
@@ -128,7 +77,7 @@ msgstr "Identifieringsserverns adminstrationsidentitet:"
 #: ../glance-common.templates:5001
 #, fuzzy
 #| msgid "Auth server admin token:"
-msgid "Auth server admin username:"
+msgid "Auth server username:"
 msgstr "Identifieringsserverns adminstrationsidentitet:"
 
 #. Type: password
@@ -136,8 +85,74 @@ msgstr "Identifieringsserverns adminstrationsidentitet:"
 #: ../glance-common.templates:6001
 #, fuzzy
 #| msgid "Auth server admin token:"
-msgid "Auth server admin password:"
+msgid "Auth server password:"
 msgstr "Identifieringsserverns adminstrationsidentitet:"
+
+#. Type: boolean
+#. Description
+#: ../glance-common.templates:7001
+#, fuzzy
+#| msgid "Set up a database for glance-registry?"
+msgid "Set up a database for glance?"
+msgstr "Ska inställningar för glance-registry-databasen göras?"
+
+#. Type: boolean
+#. Description
+#: ../glance-common.templates:7001
+#, fuzzy
+#| msgid ""
+#| "No database has been set up for glance-registry to use. Before "
+#| "continuing, you should make sure you have:"
+msgid ""
+"No database has been set up for glance-registry or glance-api to use. Before "
+"continuing, you should make sure you have:"
+msgstr ""
+"Det finns inga inställningar för databas för glance-registry. Innan du bör "
+"du ha följande till hands:"
+
+#. Type: boolean
+#. Description
+#: ../glance-common.templates:7001
+#, fuzzy
+#| msgid ""
+#| " - the server host name (that server must allow TCP connections\n"
+#| "   from this machine);\n"
+#| " - a username and password to access the database.\n"
+#| " - A database type that you want to use."
+msgid ""
+" - the server host name (that server must allow TCP connections from this\n"
+"   machine);\n"
+" - a username and password to access the database.\n"
+" - A database type that you want to use."
+msgstr ""
+" - serverns värdnamn (som måste kunna ta emot TCP-anslutningar\n"
+"   från den här maskinen)\n"
+" - att användarnamn och lösenord för att komma åt databasen.\n"
+" - Vilken databastyp du vill använda."
+
+#. Type: boolean
+#. Description
+#: ../glance-common.templates:7001
+msgid ""
+"If some of these requirements are missing, reject this option and run with "
+"regular sqlite support."
+msgstr ""
+"Om något av dessa krav saknar bör du avböja detta alternativ och fortsätta "
+"använda sqlite-stödet."
+
+#. Type: boolean
+#. Description
+#: ../glance-common.templates:7001
+#, fuzzy
+#| msgid ""
+#| "You can change this setting later on by running 'dpkg-reconfigure -plow "
+#| "glance-registry"
+msgid ""
+"You can change this setting later on by running 'dpkg-reconfigure -plow "
+"glance-common'."
+msgstr ""
+"Denna inställning kan ändras senare genom att köra \"dpkg-reconfigure -plow "
+"glance-registry\""
 
 #~ msgid "Auth server URL:"
 #~ msgstr "URL till identifieringsserver:"

@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: glance\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
-"POT-Creation-Date: 2012-10-10 15:57+0000\n"
+"POT-Creation-Date: 2012-11-20 13:25+0000\n"
 "PO-Revision-Date: 2012-06-09 10:11+0200\n"
 "Last-Translator: Michał Kułach <michal.kulach@gmail.com>\n"
 "Language-Team: Polish <debian-l10n-polish@lists.debian.org>\n"
@@ -18,56 +18,6 @@ msgstr ""
 "X-Generator: Lokalize 1.2\n"
 "Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 "
 "|| n%100>=20) ? 1 : 2);\n"
-
-#. Type: boolean
-#. Description
-#: ../glance-registry.templates:1001
-msgid "Set up a database for glance-registry?"
-msgstr "Skonfigurować bazę danych do glance-registry?"
-
-#. Type: boolean
-#. Description
-#: ../glance-registry.templates:1001
-msgid ""
-"No database has been set up for glance-registry to use. Before continuing, "
-"you should make sure you have:"
-msgstr ""
-"Nie skonfigurowano bazy danych do użycia z glance-registry. Przed "
-"kontynuowaniem, proszę upewnić się, że posiada się:"
-
-#. Type: boolean
-#. Description
-#: ../glance-registry.templates:1001
-msgid ""
-" - the server host name (that server must allow TCP connections\n"
-"   from this machine);\n"
-" - a username and password to access the database.\n"
-" - A database type that you want to use."
-msgstr ""
-" - nazwę serwera (serwer musi pozwalać na połączenia TCP\n"
-"   z tego komputera),\n"
-" - nazwę użytkownika i hasło dostępowe do bazy danych,\n"
-" - typ bazy danych, który chce się wykorzystać."
-
-#. Type: boolean
-#. Description
-#: ../glance-registry.templates:1001
-msgid ""
-"If some of these requirements are missing, reject this option and run with "
-"regular sqlite support."
-msgstr ""
-"Jeśli nie zna się któregoś z powyższych punktów, proszę wybrać \"nie\" i "
-"skorzystać ze zwykłego trybu, używającego sqlite."
-
-#. Type: boolean
-#. Description
-#: ../glance-registry.templates:1001
-msgid ""
-"You can change this setting later on by running 'dpkg-reconfigure -plow "
-"glance-registry"
-msgstr ""
-"Można zmienić to ustawienie później, wykonując \"dpkg-reconfigure -plow "
-"glance-registry\"."
 
 #. Type: select
 #. Description
@@ -109,9 +59,8 @@ msgstr "Token administratora serwera uwierzytelniania:"
 #| "Please specify the URL of your Glance authentication server. Typically "
 #| "this is also the URL of your OpenStack Identity Service (Keystone)."
 msgid ""
-"Please specify the hostname of your Glance authentication server. Typically "
-"this is also the hostname or IP address of your OpenStack Identity Service "
-"(Keystone)."
+"Please specify the URL of your Glance authentication server. Typically this "
+"is also the URL of your OpenStack Identity Service (Keystone)."
 msgstr ""
 "Proszę podać adres URL serwera uwierzytelniania Glance. Z reguły jest to "
 "adres OpenStack Identity Service (Keystone) danego użytkownika."
@@ -121,7 +70,7 @@ msgstr ""
 #: ../glance-common.templates:4001
 #, fuzzy
 #| msgid "Auth server admin token:"
-msgid "Auth server admin tenant name:"
+msgid "Auth server tenant name:"
 msgstr "Token administratora serwera uwierzytelniania:"
 
 #. Type: string
@@ -129,7 +78,7 @@ msgstr "Token administratora serwera uwierzytelniania:"
 #: ../glance-common.templates:5001
 #, fuzzy
 #| msgid "Auth server admin token:"
-msgid "Auth server admin username:"
+msgid "Auth server username:"
 msgstr "Token administratora serwera uwierzytelniania:"
 
 #. Type: password
@@ -137,8 +86,74 @@ msgstr "Token administratora serwera uwierzytelniania:"
 #: ../glance-common.templates:6001
 #, fuzzy
 #| msgid "Auth server admin token:"
-msgid "Auth server admin password:"
+msgid "Auth server password:"
 msgstr "Token administratora serwera uwierzytelniania:"
+
+#. Type: boolean
+#. Description
+#: ../glance-common.templates:7001
+#, fuzzy
+#| msgid "Set up a database for glance-registry?"
+msgid "Set up a database for glance?"
+msgstr "Skonfigurować bazę danych do glance-registry?"
+
+#. Type: boolean
+#. Description
+#: ../glance-common.templates:7001
+#, fuzzy
+#| msgid ""
+#| "No database has been set up for glance-registry to use. Before "
+#| "continuing, you should make sure you have:"
+msgid ""
+"No database has been set up for glance-registry or glance-api to use. Before "
+"continuing, you should make sure you have:"
+msgstr ""
+"Nie skonfigurowano bazy danych do użycia z glance-registry. Przed "
+"kontynuowaniem, proszę upewnić się, że posiada się:"
+
+#. Type: boolean
+#. Description
+#: ../glance-common.templates:7001
+#, fuzzy
+#| msgid ""
+#| " - the server host name (that server must allow TCP connections\n"
+#| "   from this machine);\n"
+#| " - a username and password to access the database.\n"
+#| " - A database type that you want to use."
+msgid ""
+" - the server host name (that server must allow TCP connections from this\n"
+"   machine);\n"
+" - a username and password to access the database.\n"
+" - A database type that you want to use."
+msgstr ""
+" - nazwę serwera (serwer musi pozwalać na połączenia TCP\n"
+"   z tego komputera),\n"
+" - nazwę użytkownika i hasło dostępowe do bazy danych,\n"
+" - typ bazy danych, który chce się wykorzystać."
+
+#. Type: boolean
+#. Description
+#: ../glance-common.templates:7001
+msgid ""
+"If some of these requirements are missing, reject this option and run with "
+"regular sqlite support."
+msgstr ""
+"Jeśli nie zna się któregoś z powyższych punktów, proszę wybrać \"nie\" i "
+"skorzystać ze zwykłego trybu, używającego sqlite."
+
+#. Type: boolean
+#. Description
+#: ../glance-common.templates:7001
+#, fuzzy
+#| msgid ""
+#| "You can change this setting later on by running 'dpkg-reconfigure -plow "
+#| "glance-registry"
+msgid ""
+"You can change this setting later on by running 'dpkg-reconfigure -plow "
+"glance-common'."
+msgstr ""
+"Można zmienić to ustawienie później, wykonując \"dpkg-reconfigure -plow "
+"glance-registry\"."
 
 #~ msgid "Auth server URL:"
 #~ msgstr "URL serwera uwierzytelniania:"

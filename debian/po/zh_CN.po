@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: glance\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
-"POT-Creation-Date: 2012-10-10 15:57+0000\n"
+"POT-Creation-Date: 2012-11-20 13:25+0000\n"
 "PO-Revision-Date: 2012-08-27 17:14+0800\n"
 "Last-Translator: ben <duyujie.dyj@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -15,51 +15,6 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-
-#. Type: boolean
-#. Description
-#: ../glance-registry.templates:1001
-msgid "Set up a database for glance-registry?"
-msgstr "为glance-registry设置数据库?"
-
-#. Type: boolean
-#. Description
-#: ../glance-registry.templates:1001
-msgid ""
-"No database has been set up for glance-registry to use. Before continuing, "
-"you should make sure you have:"
-msgstr ""
-"未曾为glance-registry 设置数据库。如果你想现在设置，请确定你有以下信息："
-
-#. Type: boolean
-#. Description
-#: ../glance-registry.templates:1001
-msgid ""
-" - the server host name (that server must allow TCP connections\n"
-"   from this machine);\n"
-" - a username and password to access the database.\n"
-" - A database type that you want to use."
-msgstr ""
-" * 数据库服务器的主机名 （需要这台主机的TCP链接）；\n"
-" * 访问这个数据库的用户名及密码；\n"
-" * 你希望使用的数据库管理软件的类型。"
-
-#. Type: boolean
-#. Description
-#: ../glance-registry.templates:1001
-msgid ""
-"If some of these requirements are missing, reject this option and run with "
-"regular sqlite support."
-msgstr "如果部分需求缺失，请运行通用的SQLite。"
-
-#. Type: boolean
-#. Description
-#: ../glance-registry.templates:1001
-msgid ""
-"You can change this setting later on by running 'dpkg-reconfigure -plow "
-"glance-registry"
-msgstr ""
-"您可以通过运行\"dpkg-reconfigure-plow glance-registry\" 命令来修改配置。"
 
 #. Type: select
 #. Description
@@ -100,9 +55,8 @@ msgstr "Auth 服务器管理token："
 #| "Please specify the URL of your Glance authentication server. Typically "
 #| "this is also the URL of your OpenStack Identity Service (Keystone)."
 msgid ""
-"Please specify the hostname of your Glance authentication server. Typically "
-"this is also the hostname or IP address of your OpenStack Identity Service "
-"(Keystone)."
+"Please specify the URL of your Glance authentication server. Typically this "
+"is also the URL of your OpenStack Identity Service (Keystone)."
 msgstr ""
 "请指定您的Glance认证服务器的URL。一般来说这个URL也是您的OpenStack身份服务的"
 "URL（keystone）。"
@@ -112,7 +66,7 @@ msgstr ""
 #: ../glance-common.templates:4001
 #, fuzzy
 #| msgid "Auth server admin token:"
-msgid "Auth server admin tenant name:"
+msgid "Auth server tenant name:"
 msgstr "Auth 服务器管理token："
 
 #. Type: string
@@ -120,7 +74,7 @@ msgstr "Auth 服务器管理token："
 #: ../glance-common.templates:5001
 #, fuzzy
 #| msgid "Auth server admin token:"
-msgid "Auth server admin username:"
+msgid "Auth server username:"
 msgstr "Auth 服务器管理token："
 
 #. Type: password
@@ -128,8 +82,69 @@ msgstr "Auth 服务器管理token："
 #: ../glance-common.templates:6001
 #, fuzzy
 #| msgid "Auth server admin token:"
-msgid "Auth server admin password:"
+msgid "Auth server password:"
 msgstr "Auth 服务器管理token："
+
+#. Type: boolean
+#. Description
+#: ../glance-common.templates:7001
+#, fuzzy
+#| msgid "Set up a database for glance-registry?"
+msgid "Set up a database for glance?"
+msgstr "为glance-registry设置数据库?"
+
+#. Type: boolean
+#. Description
+#: ../glance-common.templates:7001
+#, fuzzy
+#| msgid ""
+#| "No database has been set up for glance-registry to use. Before "
+#| "continuing, you should make sure you have:"
+msgid ""
+"No database has been set up for glance-registry or glance-api to use. Before "
+"continuing, you should make sure you have:"
+msgstr ""
+"未曾为glance-registry 设置数据库。如果你想现在设置，请确定你有以下信息："
+
+#. Type: boolean
+#. Description
+#: ../glance-common.templates:7001
+#, fuzzy
+#| msgid ""
+#| " - the server host name (that server must allow TCP connections\n"
+#| "   from this machine);\n"
+#| " - a username and password to access the database.\n"
+#| " - A database type that you want to use."
+msgid ""
+" - the server host name (that server must allow TCP connections from this\n"
+"   machine);\n"
+" - a username and password to access the database.\n"
+" - A database type that you want to use."
+msgstr ""
+" * 数据库服务器的主机名 （需要这台主机的TCP链接）；\n"
+" * 访问这个数据库的用户名及密码；\n"
+" * 你希望使用的数据库管理软件的类型。"
+
+#. Type: boolean
+#. Description
+#: ../glance-common.templates:7001
+msgid ""
+"If some of these requirements are missing, reject this option and run with "
+"regular sqlite support."
+msgstr "如果部分需求缺失，请运行通用的SQLite。"
+
+#. Type: boolean
+#. Description
+#: ../glance-common.templates:7001
+#, fuzzy
+#| msgid ""
+#| "You can change this setting later on by running 'dpkg-reconfigure -plow "
+#| "glance-registry"
+msgid ""
+"You can change this setting later on by running 'dpkg-reconfigure -plow "
+"glance-common'."
+msgstr ""
+"您可以通过运行\"dpkg-reconfigure-plow glance-registry\" 命令来修改配置。"
 
 #~ msgid "Auth server URL:"
 #~ msgstr "Auth 服务器 URL："
