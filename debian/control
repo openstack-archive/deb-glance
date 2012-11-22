@@ -92,7 +92,7 @@ Package: glance-api
 Architecture: all
 Section: python
 Pre-Depends: adduser, dpkg (>= 1.15.6~)
-Depends: ${python:Depends}, ${misc:Depends},
+Depends: ${ostack-lsb-base}, debconf, ${python:Depends}, ${misc:Depends},
  glance-common (= ${source:Version}),
  python-keystoneclient
 Description: OpenStack Image Service - API server
@@ -107,7 +107,7 @@ Package: glance-registry
 Architecture: all
 Section: python
 Pre-Depends: adduser, dpkg (>= 1.15.6~)
-Depends: ${python:Depends}, ${misc:Depends},
+Depends: ${ostack-lsb-base}, ${python:Depends}, ${misc:Depends},
  glance-common (= ${source:Version}),
  dbconfig-common
 Description: OpenStack Image Service - registry server
