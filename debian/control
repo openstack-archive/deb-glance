@@ -93,7 +93,8 @@ Architecture: all
 Section: python
 Pre-Depends: adduser, dpkg (>= 1.15.6~)
 Depends: ${python:Depends}, ${misc:Depends},
- glance-common (= ${source:Version})
+ glance-common (= ${source:Version}),
+ python-keystoneclient
 Description: OpenStack Image Service - API server
  The Glance project provides services for discovering, registering, and
  retrieving virtual machine images over the cloud. They may be stand-alone
