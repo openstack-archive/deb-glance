@@ -103,7 +103,8 @@ class TestRegistryAPI(base.IsolatedUnitTest):
         """Establish a clean test environment"""
         super(TestRegistryAPI, self).setUp()
         self.mapper = routes.Mapper()
-        self.api = test_utils.FakeAuthMiddleware(rserver.API(self.mapper))
+        self.api = test_utils.FakeAuthMiddleware(rserver.API(self.mapper),
+                                                 is_admin=True)
         self.FIXTURES = [
             {'id': UUID1,
              'name': 'fake image #1',
@@ -195,6 +196,38 @@ class TestRegistryAPI(base.IsolatedUnitTest):
         """
         req = webob.Request.blank('/images/%s' % _gen_uuid())
         res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 404)
+
+    def test_show_deleted_image_as_admin(self):
+        """
+        Tests that the /images/<id> registry API endpoint
+        returns a 200 for deleted image to admin user.
+        """
+        # Delete image #2
+        req = webob.Request.blank('/images/%s' % UUID2)
+        req.method = 'DELETE'
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 200)
+
+        req = webob.Request.blank('/images/%s' % UUID2)
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 200)
+
+    def test_show_deleted_image_as_nonadmin(self):
+        """
+        Tests that the /images/<id> registry API endpoint
+        returns a 404 for deleted image to non-admin user.
+        """
+        # Delete image #2
+        req = webob.Request.blank('/images/%s' % UUID2)
+        req.method = 'DELETE'
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 200)
+
+        api = test_utils.FakeAuthMiddleware(rserver.API(self.mapper),
+                                            is_admin=False)
+        req = webob.Request.blank('/images/%s' % UUID2)
+        res = req.get_response(api)
         self.assertEquals(res.status_int, 404)
 
     def test_get_root(self):
@@ -2331,6 +2364,36 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         """Tests delayed activation of image with missing container format"""
         self._do_test_put_image_content_missing_format('container_format')
 
+    def test_update_deleted_image(self):
+        """Tests that exception raised trying to update a deleted image"""
+        req = webob.Request.blank("/images/%s" % UUID2)
+        req.method = 'DELETE'
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 200)
+
+        fixture = {'name': 'test_del_img'}
+        req = webob.Request.blank('/images/%s' % UUID2)
+        req.method = 'PUT'
+        req.content_type = 'application/json'
+        req.body = json.dumps(dict(image=fixture))
+
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, webob.exc.HTTPForbidden.code)
+        self.assertTrue('Forbidden to update deleted image' in res.body)
+
+    def test_delete_deleted_image(self):
+        """Tests that exception raised trying to delete a deleted image"""
+        req = webob.Request.blank("/images/%s" % UUID2)
+        req.method = 'DELETE'
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 200)
+
+        req = webob.Request.blank("/images/%s" % UUID2)
+        req.method = 'DELETE'
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, webob.exc.HTTPForbidden.code)
+        self.assertTrue('Forbidden to delete a deleted image' in res.body)
+
     def test_register_and_upload(self):
         """
         Test that the process of registering an image with
@@ -2928,6 +2991,26 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req.method = 'DELETE'
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, webob.exc.HTTPNotFound.code)
+
+    def test_delete_not_allowed(self):
+        # Verify we can get the image data
+        req = webob.Request.blank("/images/%s" % UUID2)
+        req.method = 'GET'
+        req.headers['X-Auth-Token'] = 'user:tenant:'
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 200)
+        self.assertEqual(len(res.body), 19)
+
+        # Verify we cannot delete the image
+        req.method = 'DELETE'
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 403)
+
+        # Verify the image data is still there
+        req.method = 'GET'
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 200)
+        self.assertEqual(len(res.body), 19)
 
     def test_delete_queued_image(self):
         """Delete an image in a queued state

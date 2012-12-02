@@ -57,7 +57,7 @@ class BaseTestCase(unittest.TestCase):
         #NOTE(bcwaldon): parse_args has to be called to register certain
         # command-line options - specifically we need config_dir for
         # the following policy tests
-        config.parse_args()
+        config.parse_args(args=[])
 
     def tearDown(self):
         super(BaseTestCase, self).tearDown()
@@ -347,7 +347,7 @@ def minimal_add_command(port, name, suffix='', public=True):
 
 class FakeAuthMiddleware(wsgi.Middleware):
 
-    def __init__(self, app, is_admin=True):
+    def __init__(self, app, is_admin=False):
         super(FakeAuthMiddleware, self).__init__(app)
         self.is_admin = is_admin
 
@@ -368,6 +368,7 @@ class FakeAuthMiddleware(wsgi.Middleware):
             'tenant': tenant,
             'roles': roles,
             'is_admin': self.is_admin,
+            'auth_tok': auth_tok,
         }
 
         req.context = context.RequestContext(**kwargs)

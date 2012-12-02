@@ -142,9 +142,12 @@ class ImagesController(object):
 
     def _get_image(self, context, image_id):
         try:
-            return self.db_api.image_get(context, image_id)
+            image = self.db_api.image_get(context, image_id)
+            if image['deleted']:
+                raise exception.NotFound()
         except (exception.NotFound, exception.Forbidden):
             raise webob.exc.HTTPNotFound()
+        return image
 
     def show(self, req, image_id):
         self._enforce(req, 'get_image')
@@ -158,6 +161,8 @@ class ImagesController(object):
         context = req.context
         try:
             image = self.db_api.image_get(context, image_id)
+            if image['deleted']:
+                raise exception.NotFound()
         except (exception.NotFound, exception.Forbidden):
             msg = ("Failed to find image %(image_id)s to update" % locals())
             LOG.info(msg)
@@ -268,19 +273,22 @@ class ImagesController(object):
                     % locals())
             raise webob.exc.HTTPForbidden(explanation=msg)
 
-        status = 'deleted'
-        if image['location']:
-            if CONF.delayed_delete:
-                status = 'pending_delete'
-                self.store_api.schedule_delayed_delete_from_backend(
-                                image['location'], id)
-            else:
-                self.store_api.safe_delete_from_backend(image['location'],
-                                                        req.context, id)
+        if image['location'] and CONF.delayed_delete:
+            status = 'pending_delete'
+        else:
+            status = 'deleted'
 
         try:
             self.db_api.image_update(req.context, image_id, {'status': status})
             self.db_api.image_destroy(req.context, image_id)
+
+            if image['location']:
+                if CONF.delayed_delete:
+                    self.store_api.schedule_delayed_delete_from_backend(
+                                    image['location'], id)
+                else:
+                    self.store_api.safe_delete_from_backend(image['location'],
+                                                            req.context, id)
         except (exception.NotFound, exception.Forbidden):
             msg = ("Failed to find image %(image_id)s to delete" % locals())
             LOG.info(msg)
