@@ -11,7 +11,7 @@ GREG_CONF=/etc/glance/glance-registry.conf
 #PKGOS-INCLUDE#
 
 pkgos_var_user_group glance
-pkgos_dbc_read_conf ${GREG_CONF} glance DEFAULT sql_connection $@
+pkgos_dbc_read_conf -pkg glance-common ${GREG_CONF} glance DEFAULT sql_connection $@
 
 pkgos_get_config ${API_CONF} flavor paste_deploy
 case "${RET}" in
