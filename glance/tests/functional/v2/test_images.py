@@ -19,14 +19,14 @@ import json
 
 import requests
 
-from glance.common import utils
+from glance.openstack.common import uuidutils
 from glance.tests import functional
 
 
-TENANT1 = utils.generate_uuid()
-TENANT2 = utils.generate_uuid()
-TENANT3 = utils.generate_uuid()
-TENANT4 = utils.generate_uuid()
+TENANT1 = uuidutils.generate_uuid()
+TENANT2 = uuidutils.generate_uuid()
+TENANT3 = uuidutils.generate_uuid()
+TENANT4 = uuidutils.generate_uuid()
 
 
 class TestImages(functional.FunctionalTest):
@@ -70,7 +70,40 @@ class TestImages(functional.FunctionalTest):
         # Returned image entity should have a generated id and status
         image = json.loads(response.text)
         image_id = image['id']
-        self.assertEqual(image['status'], 'queued')
+        checked_keys = set([
+            u'status',
+            u'name',
+            u'tags',
+            u'created_at',
+            u'updated_at',
+            u'visibility',
+            u'self',
+            u'protected',
+            u'id',
+            u'file',
+            u'min_disk',
+            u'foo',
+            u'type',
+            u'min_ram',
+            u'schema',
+        ])
+        self.assertEqual(set(image.keys()), checked_keys)
+        expected_image = {
+            'status': 'queued',
+            'name': 'image-1',
+            'tags': [],
+            'visibility': 'private',
+            'self': '/v2/images/%s' % image_id,
+            'protected': False,
+            'file': '/v2/images/%s/file' % image_id,
+            'min_disk': 0,
+            'foo': 'bar',
+            'type': 'kernel',
+            'min_ram': 0,
+            'schema': '/v2/schemas/image',
+        }
+        for key, value in expected_image.items():
+            self.assertEqual(image[key], value, key)
 
         # Image list should now have one entry
         path = self._url('/v2/images')
@@ -298,13 +331,19 @@ class TestImages(functional.FunctionalTest):
         })
         data = json.dumps([{'replace': '/name', 'value': 'image-2'}])
         response = requests.patch(path, headers=headers, data=data)
-        self.assertEqual(404, response.status_code)
+        self.assertEqual(403, response.status_code)
 
         # TENANT3 should not be able to delete the image, either
         path = self._url('/v2/images/%s' % image_id)
         headers = self._headers({'X-Tenant-Id': TENANT3})
         response = requests.delete(path, headers=headers)
-        self.assertEqual(404, response.status_code)
+        self.assertEqual(403, response.status_code)
+
+        # Image data should still be present after the failed delete
+        path = self._url('/v2/images/%s/file' % image_id)
+        response = requests.get(path, headers=self._headers())
+        self.assertEqual(200, response.status_code)
+        self.assertEqual(response.text, 'ZZZZZ')
 
         # Image data should still be present after the failed delete
         path = self._url('/v2/images/%s/file' % image_id)
@@ -346,7 +385,7 @@ class TestImages(functional.FunctionalTest):
         response = requests.get(path, headers=self._headers())
         self.assertEqual(200, response.status_code)
         tags = json.loads(response.text)['tags']
-        self.assertEqual(['sniff', 'snozz'], tags)
+        self.assertEqual(['snozz', 'sniff'], tags)
 
         # Attempt to tag the image with a duplicate should be ignored
         path = self._url('/v2/images/%s/tags/snozz' % image_id)
@@ -363,7 +402,7 @@ class TestImages(functional.FunctionalTest):
         response = requests.get(path, headers=self._headers())
         self.assertEqual(200, response.status_code)
         tags = json.loads(response.text)['tags']
-        self.assertEqual(['sniff', 'snozz', 'gabe@example.com'], tags)
+        self.assertEqual(['gabe@example.com', 'snozz', 'sniff'], tags)
 
         # The tag should be deletable
         path = self._url('/v2/images/%s/tags/gabe%%40example.com' % image_id)
@@ -375,7 +414,7 @@ class TestImages(functional.FunctionalTest):
         response = requests.get(path, headers=self._headers())
         self.assertEqual(200, response.status_code)
         tags = json.loads(response.text)['tags']
-        self.assertEqual(['sniff', 'snozz'], tags)
+        self.assertEqual(['snozz', 'sniff'], tags)
 
         # Deleting the same tag should return a 404
         path = self._url('/v2/images/%s/tags/gabe%%40example.com' % image_id)
@@ -459,6 +498,109 @@ class TestImages(functional.FunctionalTest):
         path = self._url('/v2/images?marker=%s' % images[0]['id'])
         response = requests.get(path, headers=self._headers())
         self.assertEqual(400, response.status_code)
+
+        self.stop_servers()
+
+    def test_image_visibility_to_different_users(self):
+        self.cleanup()
+        self.api_server.deployment_flavor = 'fakeauth'
+        self.registry_server.deployment_flavor = 'fakeauth'
+        self.start_servers(**self.__dict__.copy())
+
+        owners = ['admin', 'tenant1', 'tenant2', 'none']
+        visibilities = ['public', 'private']
+
+        for owner in owners:
+            for visibility in visibilities:
+                path = self._url('/v2/images')
+                headers = self._headers({
+                    'content-type': 'application/json',
+                    'X-Auth-Token': 'createuser:%s:admin' % owner,
+                })
+                data = json.dumps({
+                    'name': '%s-%s' % (owner, visibility),
+                    'visibility': visibility,
+                })
+                response = requests.post(path, headers=headers, data=data)
+                self.assertEqual(201, response.status_code)
+
+        def list_images(tenant, role='', visibility=None):
+            auth_token = 'user:%s:%s' % (tenant, role)
+            headers = {'X-Auth-Token': auth_token}
+            path = self._url('/v2/images')
+            if visibility is not None:
+                path += '?visibility=%s' % visibility
+            response = requests.get(path, headers=headers)
+            self.assertEqual(response.status_code, 200)
+            return json.loads(response.text)['images']
+
+        # 1. Known user sees public and their own images
+        images = list_images('tenant1')
+        self.assertEquals(len(images), 5)
+        for image in images:
+            self.assertTrue(image['visibility'] == 'public'
+                            or 'tenant1' in image['name'])
+
+        # 2. Known user, visibility=public, sees all public images
+        images = list_images('tenant1', visibility='public')
+        self.assertEquals(len(images), 4)
+        for image in images:
+            self.assertEquals(image['visibility'], 'public')
+
+        # 3. Known user, visibility=private, sees only their private image
+        images = list_images('tenant1', visibility='private')
+        self.assertEquals(len(images), 1)
+        image = images[0]
+        self.assertEquals(image['visibility'], 'private')
+        self.assertTrue('tenant1' in image['name'])
+
+        # 4. Unknown user sees only public images
+        images = list_images('none')
+        self.assertEquals(len(images), 4)
+        for image in images:
+            self.assertEquals(image['visibility'], 'public')
+
+        # 5. Unknown user, visibility=public, sees only public images
+        images = list_images('none', visibility='public')
+        self.assertEquals(len(images), 4)
+        for image in images:
+            self.assertEquals(image['visibility'], 'public')
+
+        # 6. Unknown user, visibility=private, sees no images
+        images = list_images('none', visibility='private')
+        self.assertEquals(len(images), 0)
+
+        # 7. Unknown admin sees all images
+        images = list_images('none', role='admin')
+        self.assertEquals(len(images), 8)
+
+        # 8. Unknown admin, visibility=public, shows only public images
+        images = list_images('none', role='admin', visibility='public')
+        self.assertEquals(len(images), 4)
+        for image in images:
+            self.assertEquals(image['visibility'], 'public')
+
+        # 9. Unknown admin, visibility=private, sees only private images
+        images = list_images('none', role='admin', visibility='private')
+        self.assertEquals(len(images), 4)
+        for image in images:
+            self.assertEquals(image['visibility'], 'private')
+
+        # 10. Known admin sees all images
+        images = list_images('admin', role='admin')
+        self.assertEquals(len(images), 8)
+
+        # 11. Known admin, visibility=public, sees all public images
+        images = list_images('admin', role='admin', visibility='public')
+        self.assertEquals(len(images), 4)
+        for image in images:
+            self.assertEqual(image['visibility'], 'public')
+
+        # 12. Known admin, visibility=private, sees all private images
+        images = list_images('admin', role='admin', visibility='private')
+        self.assertEquals(len(images), 4)
+        for image in images:
+            self.assertEquals(image['visibility'], 'private')
 
         self.stop_servers()
 

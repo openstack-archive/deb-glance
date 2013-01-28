@@ -32,7 +32,6 @@ from glance.api.v1 import images
 from glance.common import exception
 from glance.common import utils
 from glance.common import wsgi
-import glance.db
 from glance import image_cache
 import glance.openstack.common.log as logging
 from glance import registry
@@ -89,10 +88,7 @@ class CacheFilter(wsgi.Middleware):
             # Trying to unpack None raises this exception
             return None
 
-        # Preserve the cached image id for consumption by the
-        # process_response method of this middleware
-        request.environ['api.cache.image_id'] = image_id
-        request.environ['api.cache.method'] = method
+        self._stash_request_info(request, image_id, method)
 
         if request.method != 'GET' or not self.cache.is_cached(image_id):
             return None
@@ -108,9 +104,37 @@ class CacheFilter(wsgi.Middleware):
                     "however the registry did not contain metadata for "
                     "that image!" % image_id)
             LOG.error(msg)
+            self.cache.delete_cached_image(image_id)
+
+    @staticmethod
+    def _stash_request_info(request, image_id, method):
+        """
+        Preserve the image id and request method for later retrieval
+        """
+        request.environ['api.cache.image_id'] = image_id
+        request.environ['api.cache.method'] = method
+
+    @staticmethod
+    def _fetch_request_info(request):
+        """
+        Preserve the cached image id for consumption by the
+        process_response method of this middleware
+        """
+        try:
+            image_id = request.environ['api.cache.image_id']
+            method = request.environ['api.cache.method']
+        except KeyError:
+            return None
+        else:
+            return (image_id, method)
 
     def _process_v1_request(self, request, image_id, image_iterator):
         image_meta = registry.get_image_metadata(request.context, image_id)
+
+        # NOTE: admins can see image metadata in the v1 API, but shouldn't
+        # be able to download the actual image data.
+        if image_meta['deleted']:
+            raise exception.NotFound()
 
         if not image_meta['size']:
             # override image size metadata with the actual cached
@@ -125,8 +149,6 @@ class CacheFilter(wsgi.Middleware):
         return self.serializer.show(response, raw_response)
 
     def _process_v2_request(self, request, image_id, image_iterator):
-        self.db_api = glance.db.get_api()
-        self.db_api.configure_db()
         response = webob.Response(request=request)
         response.app_iter = image_iterator
         return response
@@ -140,18 +162,16 @@ class CacheFilter(wsgi.Middleware):
         if not 200 <= self.get_status_code(resp) < 300:
             return resp
 
-        request = resp.request
         try:
-            image_id = request.environ['api.cache.image_id']
-            method = request.environ['api.cache.method']
-        except KeyError:
+            (image_id, method) = self._fetch_request_info(resp.request)
+        except TypeError:
             return resp
 
         method_str = '_process_%s_response' % method
         try:
             process_response_method = getattr(self, method_str)
         except AttributeError:
-            LOG.error('could not find %s' % method_str)
+            LOG.error(_('could not find %s') % method_str)
             # Nothing to do here, move along
             return resp
         else:

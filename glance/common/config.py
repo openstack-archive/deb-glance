@@ -34,13 +34,13 @@ from glance.version import version_info as version
 paste_deploy_opts = [
     cfg.StrOpt('flavor'),
     cfg.StrOpt('config_file'),
-    ]
+]
 common_opts = [
     cfg.BoolOpt('allow_additional_image_properties', default=True,
                 help=_('Whether to allow users to specify image properties '
                 'beyond what the image schema provides')),
     cfg.StrOpt('data_api', default='glance.db.sqlalchemy.api',
-                help=_('Python module path of data access API')),
+               help=_('Python module path of data access API')),
     cfg.IntOpt('limit_param_default', default=25,
                help=_('Default value for the number of items returned by a '
                'request if not specified explicitly in the request')),
@@ -58,6 +58,12 @@ common_opts = [
                 help=_("Deploy the v1 OpenStack Images API. ")),
     cfg.BoolOpt('enable_v2_api', default=True,
                 help=_("Deploy the v2 OpenStack Images API. ")),
+    cfg.StrOpt('pydev_worker_debug_host', default=None,
+               help=_('The hostname/IP of the pydev process listening for '
+                      'debug connections')),
+    cfg.IntOpt('pydev_worker_debug_port', default=5678,
+               help=_('The port on which a pydev process is listening for '
+                      'connections.')),
 ]
 
 CONF = cfg.CONF
@@ -66,16 +72,16 @@ CONF.register_opts(common_opts)
 
 
 def parse_args(args=None, usage=None, default_config_files=None):
-    return CONF(args=args,
-                project='glance',
-                version=version.deferred_version_string(prefix="%prog "),
-                usage=usage,
-                default_config_files=default_config_files)
+    CONF(args=args,
+         project='glance',
+         version=version.deferred_version_string(prefix="%prog "),
+         usage=usage,
+         default_config_files=default_config_files)
 
 
 def parse_cache_args(args=None):
     config_files = cfg.find_config_files(project='glance', prog='glance-cache')
-    return parse_args(args=args, default_config_files=config_files)
+    parse_args(args=args, default_config_files=config_files)
 
 
 def setup_logging():
@@ -192,6 +198,8 @@ def load_paste_app(app_name=None):
 
         return app
     except (LookupError, ImportError), e:
-        raise RuntimeError("Unable to load %(app_name)s from "
-                           "configuration file %(conf_file)s."
-                           "\nGot: %(e)r" % locals())
+        msg = _("Unable to load %(app_name)s from "
+                "configuration file %(conf_file)s."
+                "\nGot: %(e)r") % locals()
+        logger.error(msg)
+        raise RuntimeError(msg)

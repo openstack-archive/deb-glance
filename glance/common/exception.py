@@ -108,6 +108,10 @@ class ForbiddenPublicImage(Forbidden):
     message = _("You are not authorized to complete this action.")
 
 
+class ProtectedImageDelete(Forbidden):
+    message = _("Image %(image_id)s is protected and cannot be deleted.")
+
+
 #NOTE(bcwaldon): here for backwards-compatability, need to deprecate.
 class NotAuthorized(Forbidden):
     message = _("You are not authorized to complete this action.")
@@ -123,6 +127,14 @@ class InvalidSortKey(Invalid):
 
 class InvalidFilterRangeValue(Invalid):
     message = _("Unable to filter using the specified range.")
+
+
+class ReadonlyProperty(Forbidden):
+    message = _("Attribute '%(property)s' is read-only.")
+
+
+class ReservedProperty(Forbidden):
+    message = _("Attribute '%(property)s' is reserved.")
 
 
 class AuthorizationRedirect(GlanceException):
@@ -189,12 +201,12 @@ class BadRegistryConnectionConfiguration(GlanceException):
 
 class BadStoreConfiguration(GlanceException):
     message = _("Store %(store_name)s could not be configured correctly. "
-               "Reason: %(reason)s")
+                "Reason: %(reason)s")
 
 
 class BadDriverConfiguration(GlanceException):
     message = _("Driver %(driver_name)s could not be configured correctly. "
-               "Reason: %(reason)s")
+                "Reason: %(reason)s")
 
 
 class StoreDeleteNotSupported(GlanceException):
@@ -203,7 +215,7 @@ class StoreDeleteNotSupported(GlanceException):
 
 class StoreAddDisabled(GlanceException):
     message = _("Configuration for store failed. Adding images to this "
-               "store is disabled.")
+                "store is disabled.")
 
 
 class InvalidNotifierStrategy(GlanceException):

@@ -98,9 +98,13 @@ def get_socket(default_port):
     # TODO(jaypipes): eventlet's greened socket module does not actually
     # support IPv6 in getaddrinfo(). We need to get around this in the
     # future or monitor upstream for a fix
-    address_family = [addr[0] for addr in socket.getaddrinfo(bind_addr[0],
-            bind_addr[1], socket.AF_UNSPEC, socket.SOCK_STREAM)
-            if addr[0] in (socket.AF_INET, socket.AF_INET6)][0]
+    address_family = [
+        addr[0] for addr in socket.getaddrinfo(bind_addr[0],
+                                               bind_addr[1],
+                                               socket.AF_UNSPEC,
+                                               socket.SOCK_STREAM)
+        if addr[0] in (socket.AF_INET, socket.AF_INET6)
+    ][0]
 
     cert_file = CONF.cert_file
     key_file = CONF.key_file
@@ -165,13 +169,12 @@ class Server(object):
         """
         Run a WSGI server with the given application.
 
-        :param application: A function that can be called with no arguments
-                that will return the application to run in the WSGI server
+        :param application: The application to be run in the WSGI server
         :param default_port: Port to bind to if none is specified in conf
         """
         def kill_children(*args):
             """Kills the entire process group."""
-            self.logger.error(_('SIGTERM or SIGINT received'))
+            self.logger.info(_('SIGTERM or SIGINT received'))
             signal.signal(signal.SIGTERM, signal.SIG_IGN)
             signal.signal(signal.SIGINT, signal.SIG_IGN)
             self.running = False
@@ -181,11 +184,11 @@ class Server(object):
             """
             Shuts down the server, but allows running requests to complete
             """
-            self.logger.error(_('SIGHUP received'))
+            self.logger.info(_('SIGHUP received'))
             signal.signal(signal.SIGHUP, signal.SIG_IGN)
             self.running = False
 
-        self.app_func = application
+        self.application = application
         self.sock = get_socket(default_port)
 
         os.umask(027)  # ensure files are created with the correct privileges
@@ -194,7 +197,7 @@ class Server(object):
         if CONF.workers == 0:
             # Useful for profiling, test, debug etc.
             self.pool = self.create_pool()
-            self.pool.spawn_n(self._single_run, self.app_func(), self.sock)
+            self.pool.spawn_n(self._single_run, self.application, self.sock)
             return
         else:
             self.logger.info(_("Starting %d workers") % CONF.workers)
@@ -213,13 +216,13 @@ class Server(object):
             try:
                 pid, status = os.wait()
                 if os.WIFEXITED(status) or os.WIFSIGNALED(status):
-                    self.logger.error(_('Removing dead child %s') % pid)
+                    self.logger.info(_('Removing dead child %s') % pid)
                     self.children.remove(pid)
-                    if os.WIFEXITED(status) and os.WEXITSTATUS(status) == 2:
+                    if os.WIFEXITED(status) and os.WEXITSTATUS(status) != 0:
                         self.logger.error(_('Not respawning child %d, cannot '
                                             'recover from termination') % pid)
                         if not self.children:
-                            self.logger.error(
+                            self.logger.info(
                                 _('All workers have terminated. Exiting'))
                             self.running = False
                     else:
@@ -264,6 +267,10 @@ class Server(object):
 
     def run_server(self):
         """Run a WSGI server."""
+        if cfg.CONF.pydev_worker_debug_host:
+            utils.setup_remote_pydev_debug(cfg.CONF.pydev_worker_debug_host,
+                                           cfg.CONF.pydev_worker_debug_port)
+
         eventlet.wsgi.HttpProtocol.default_request_version = "HTTP/1.0"
         try:
             eventlet.hubs.use_hub('poll')
@@ -272,8 +279,10 @@ class Server(object):
             raise exception.WorkerCreationFailure(reason=msg)
         self.pool = self.create_pool()
         try:
-            eventlet.wsgi.server(self.sock, self.app_func(),
-                    log=WritableLogger(self.logger), custom_pool=self.pool)
+            eventlet.wsgi.server(self.sock,
+                                 self.application,
+                                 log=WritableLogger(self.logger),
+                                 custom_pool=self.pool)
         except socket.error, err:
             if err[0] != errno.EINVAL:
                 raise
@@ -324,6 +333,7 @@ class Middleware(object):
         if response:
             return response
         response = req.get_response(self.application)
+        response.request = req
         return self.process_response(response)
 
 

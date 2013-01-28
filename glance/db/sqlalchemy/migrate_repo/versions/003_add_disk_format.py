@@ -27,23 +27,30 @@ def get_images_table(meta):
     Returns the Table object for the images table that
     corresponds to the images table definition of this version.
     """
-    images = Table('images', meta,
-        Column('id', Integer(), primary_key=True, nullable=False),
-        Column('name', String(255)),
-        Column('disk_format', String(20)),
-        Column('container_format', String(20)),
-        Column('size', Integer()),
-        Column('status', String(30), nullable=False),
-        Column('is_public', Boolean(), nullable=False, default=False,
-               index=True),
-        Column('location', Text()),
-        Column('created_at', DateTime(), nullable=False),
-        Column('updated_at', DateTime()),
-        Column('deleted_at', DateTime()),
-        Column('deleted', Boolean(), nullable=False, default=False,
-               index=True),
-        mysql_engine='InnoDB',
-        useexisting=True)
+    images = Table('images',
+                   meta,
+                   Column('id', Integer(), primary_key=True, nullable=False),
+                   Column('name', String(255)),
+                   Column('disk_format', String(20)),
+                   Column('container_format', String(20)),
+                   Column('size', Integer()),
+                   Column('status', String(30), nullable=False),
+                   Column('is_public',
+                          Boolean(),
+                          nullable=False,
+                          default=False,
+                          index=True),
+                   Column('location', Text()),
+                   Column('created_at', DateTime(), nullable=False),
+                   Column('updated_at', DateTime()),
+                   Column('deleted_at', DateTime()),
+                   Column('deleted',
+                          Boolean(),
+                          nullable=False,
+                          default=False,
+                          index=True),
+                   mysql_engine='InnoDB',
+                   extend_existing=True)
 
     return images
 
@@ -89,12 +96,14 @@ def upgrade(migrate_engine):
     # which returns all the images that have a type set
     # but that DO NOT yet have an image_property record
     # with key of type.
-    sel = select([images], from_obj=[
+    from_stmt = [
         images.outerjoin(image_properties,
                          and_(images.c.id == image_properties.c.image_id,
-                              image_properties.c.key == 'type'))]).where(
-            and_(image_properties.c.image_id == None,
-                 images.c.type != None))
+                              image_properties.c.key == 'type'))
+    ]
+    and_stmt = and_(image_properties.c.image_id == None,
+                    images.c.type != None)
+    sel = select([images], from_obj=from_stmt).where(and_stmt)
     image_records = conn.execute(sel).fetchall()
     property_insert = image_properties.insert()
     for record in image_records:

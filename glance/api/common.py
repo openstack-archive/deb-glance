@@ -13,8 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import errno
-
 from glance.common import exception
 from glance.openstack.common import log as logging
 
@@ -22,13 +20,13 @@ LOG = logging.getLogger(__name__)
 
 
 def size_checked_iter(response, image_meta, expected_size, image_iter,
-        notifier):
+                      notifier):
     image_id = image_meta['id']
     bytes_written = 0
 
     def notify_image_sent_hook(env):
         image_send_notification(bytes_written, expected_size,
-                image_meta, response.request, notifier)
+                                image_meta, response.request, notifier)
 
     # Add hook to process after response is fully sent
     if 'eventlet.posthooks' in response.request.environ:
@@ -55,7 +53,7 @@ def size_checked_iter(response, image_meta, expected_size, image_iter,
 
 
 def image_send_notification(bytes_written, expected_size, image_meta, request,
-        notifier):
+                            notifier):
     """Send an image.send message to the notifier."""
     try:
         context = request.context

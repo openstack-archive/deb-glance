@@ -37,17 +37,15 @@ import json
 import os
 import tempfile
 
-from glance import client as glance_client
-from glance.common import exception
-from glance.common import utils
 from glance.openstack.common import timeutils
+from glance.openstack.common import uuidutils
 from glance.tests import functional
 from glance.tests.utils import skip_if_disabled, minimal_headers
 
 FIVE_KB = 5 * 1024
 FIVE_GB = 5 * 1024 * 1024 * 1024
 TEST_VAR_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__),
-                                            '..', 'var'))
+                                            '../..', 'var'))
 
 
 class TestSSL(functional.FunctionalTest):
@@ -69,19 +67,22 @@ class TestSSL(functional.FunctionalTest):
 
         self.key_file = os.path.join(TEST_VAR_DIR, 'privatekey.key')
         if not os.path.exists(self.key_file):
-            self.disabled_message = "Could not find private key file"
+            self.disabled_message = ("Could not find private key file %s" %
+                                     self.key_file)
             self.inited = True
             return
 
         self.cert_file = os.path.join(TEST_VAR_DIR, 'certificate.crt')
         if not os.path.exists(self.cert_file):
-            self.disabled_message = "Could not find certificate file"
+            self.disabled_message = ("Could not find certificate file %s" %
+                                     self.cert_file)
             self.inited = True
             return
 
         self.ca_file = os.path.join(TEST_VAR_DIR, 'ca.crt')
         if not os.path.exists(self.ca_file):
-            self.disabled_message = "Could not find CA file"
+            self.disabled_message = ("Could not find CA file %s" %
+                                     self.ca_file)
             self.inited = True
             return
 
@@ -149,8 +150,10 @@ class TestSSL(functional.FunctionalTest):
         headers = minimal_headers('Image1')
         path = "https://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
         https = httplib2.Http(disable_ssl_certificate_validation=True)
-        response, content = https.request(path, 'POST', headers=headers,
-                                         body=image_data)
+        response, content = https.request(path,
+                                          'POST',
+                                          headers=headers,
+                                          body=image_data)
         self.assertEqual(response.status, 201)
         data = json.loads(content)
         self.assertEqual(data['image']['checksum'],
@@ -193,16 +196,17 @@ class TestSSL(functional.FunctionalTest):
 
         for expected_key, expected_value in expected_image_headers.items():
             self.assertEqual(response[expected_key], expected_value,
-                            "For key '%s' expected header value '%s'. Got '%s'"
-                            % (expected_key, expected_value,
-                               response[expected_key]))
+                             "For key '%s' expected header value '%s'. "
+                             "Got '%s'" % (expected_key,
+                                           expected_value,
+                                           response[expected_key]))
 
         for expected_key, expected_value in expected_std_headers.items():
             self.assertEqual(response[expected_key], expected_value,
-                            "For key '%s' expected header value '%s'. Got '%s'"
-                            % (expected_key,
-                               expected_value,
-                               response[expected_key]))
+                             "For key '%s' expected header value '%s'. "
+                             "Got '%s'" % (expected_key,
+                                           expected_value,
+                                           response[expected_key]))
 
         self.assertEqual(content, "*" * FIVE_KB)
         self.assertEqual(hashlib.md5(content).hexdigest(),
@@ -246,11 +250,12 @@ class TestSSL(functional.FunctionalTest):
         image = json.loads(content)
 
         for expected_key, expected_value in expected_image.items():
-            self.assertEqual(expected_value, image['images'][0][expected_key],
-                            "For key '%s' expected header value '%s'. Got '%s'"
-                            % (expected_key,
-                               expected_value,
-                               image['images'][0][expected_key]))
+            self.assertEqual(expected_value,
+                             image['images'][0][expected_key],
+                             "For key '%s' expected header value '%s'. "
+                             "Got '%s'" % (expected_key,
+                                           expected_value,
+                                           image['images'][0][expected_key]))
 
         # 7. PUT image with custom properties of "distro" and "arch"
         # Verify 200 returned
@@ -287,11 +292,12 @@ class TestSSL(functional.FunctionalTest):
         image = json.loads(content)
 
         for expected_key, expected_value in expected_image.items():
-            self.assertEqual(expected_value, image['images'][0][expected_key],
-                            "For key '%s' expected header value '%s'. Got '%s'"
-                            % (expected_key,
-                               expected_value,
-                               image['images'][0][expected_key]))
+            self.assertEqual(expected_value,
+                             image['images'][0][expected_key],
+                             "For key '%s' expected header value '%s'. "
+                             "Got '%s'" % (expected_key,
+                                           expected_value,
+                                           image['images'][0][expected_key]))
 
         # 9. PUT image and remove a previously existing property.
         headers = {'X-Image-Meta-Property-Arch': 'x86_64'}
@@ -413,8 +419,10 @@ class TestSSL(functional.FunctionalTest):
         path = "https://%s:%d/v1/images/%s" % ("127.0.0.1", self.api_port,
                                                image_id)
         https = httplib2.Http(disable_ssl_certificate_validation=True)
-        response, content = https.request(path, 'PUT', headers=headers,
-                                         body=image_data)
+        response, content = https.request(path,
+                                          'PUT',
+                                          headers=headers,
+                                          body=image_data)
         self.assertEqual(response.status, 200)
         data = json.loads(content)
         self.assertEqual(data['image']['checksum'],
@@ -462,6 +470,11 @@ class TestSSL(functional.FunctionalTest):
         self.start_servers(**self.__dict__.copy())
 
         versions = {'versions': [{
+            "id": "v2.0",
+            "status": "CURRENT",
+            "links": [{
+                "rel": "self",
+                "href": "https://127.0.0.1:%d/v2/" % self.api_port}]}, {
             "id": "v1.1",
             "status": "CURRENT",
             "links": [{
@@ -510,7 +523,7 @@ class TestSSL(functional.FunctionalTest):
         response, content = https.request(path, 'GET', headers=headers)
         self.assertEqual(response.status, 300)
         self.assertEqual(content, versions_json)
-        self.assertTrue('Unknown accept header'
+        self.assertTrue('Unknown version. Returning version choices'
                         in open(self.api_server.log_file).read())
 
         # 4. GET / with an Accept: application/vnd.openstack.images-v1
@@ -531,7 +544,7 @@ class TestSSL(functional.FunctionalTest):
         response, content = https.request(path, 'GET', headers=headers)
         self.assertEqual(response.status, 300)
         self.assertEqual(content, versions_json)
-        self.assertTrue('Unknown accept header'
+        self.assertTrue('Unknown version. Returning version choices'
                         in open(self.api_server.log_file).read())
 
         # 6. GET /v1.0/images with no Accept: header
@@ -543,12 +556,12 @@ class TestSSL(functional.FunctionalTest):
         self.assertEqual(content, images_json)
 
         # 7. GET /v1.a/images with no Accept: header
-        # Verify empty image list returned
+        # Verify versions list returned
         path = "https://%s:%d/v1.a/images" % ("127.0.0.1", self.api_port)
         https = httplib2.Http(disable_ssl_certificate_validation=True)
         response, content = https.request(path, 'GET')
-        self.assertEqual(response.status, 200)
-        self.assertEqual(content, images_json)
+        self.assertEqual(response.status, 300)
+        self.assertEqual(content, versions_json)
 
         # 8. GET /va.1/images with no Accept: header
         # Verify version choices returned
@@ -587,19 +600,26 @@ class TestSSL(functional.FunctionalTest):
         path = "https://%s:%d/v2/versions" % ("127.0.0.1", self.api_port)
         https = httplib2.Http(disable_ssl_certificate_validation=True)
         response, content = https.request(path, 'GET')
+        self.assertEqual(response.status, 404)
+
+        # 12b. GET /v3/versions with no Accept: header (where v3 in unknown)
+        # Verify version choices returned
+        path = "https://%s:%d/v3/versions" % ("127.0.0.1", self.api_port)
+        https = httplib2.Http(disable_ssl_certificate_validation=True)
+        response, content = https.request(path, 'GET')
         self.assertEqual(response.status, 300)
         self.assertEqual(content, versions_json)
 
-        # 13. GET /images with a Accept: application/vnd.openstack.compute-v2
+        # 13. GET /images with a Accept: application/vnd.openstack.compute-v3
         # header. Verify version choices returned. Verify message in API log
         # about unknown version in accept header.
         path = "https://%s:%d/images" % ("127.0.0.1", self.api_port)
         https = httplib2.Http(disable_ssl_certificate_validation=True)
-        headers = {'Accept': 'application/vnd.openstack.images-v2'}
+        headers = {'Accept': 'application/vnd.openstack.images-v3'}
         response, content = https.request(path, 'GET', headers=headers)
         self.assertEqual(response.status, 300)
         self.assertEqual(content, versions_json)
-        self.assertTrue('Unknown accept header'
+        self.assertTrue('Unknown version. Returning version choices'
                         in open(self.api_server.log_file).read())
 
         # 14. GET /v1.2/images with no Accept: header
@@ -609,8 +629,6 @@ class TestSSL(functional.FunctionalTest):
         response, content = https.request(path, 'GET')
         self.assertEqual(response.status, 300)
         self.assertEqual(content, versions_json)
-        self.assertTrue('Unknown version in versioned URI'
-                        in open(self.api_server.log_file).read())
 
         self.stop_servers()
 
@@ -654,8 +672,8 @@ class TestSSL(functional.FunctionalTest):
     @skip_if_disabled
     def test_traceback_not_consumed(self):
         """
-        A test that errors coming from the POST API do not
-        get consumed and print the actual error message, and
+        A test that errors coming from the POST API do not get consumed
+        and print the actual error message, and
         not something like &lt;traceback object at 0x1918d40&gt;
 
         :see https://bugs.launchpad.net/glance/+bug/755912
@@ -670,9 +688,15 @@ class TestSSL(functional.FunctionalTest):
             test_data_file.write("XXX")
             test_data_file.flush()
         path = "https://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
+        headers = {'X-Image-Meta-Name': 'Image1',
+                   'X-Image-Meta-Container-Format': 'ovf',
+                   'X-Image-Meta-Disk-Format': 'vdi'}
+        path = "https://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
         https = httplib2.Http(disable_ssl_certificate_validation=True)
-        response, content = https.request(path, 'POST',
-                            body=test_data_file.name)
+        response, content = https.request(path,
+                                          'POST',
+                                          headers=headers,
+                                          body=test_data_file.name)
         self.assertEqual(response.status, 400)
         expected = "Content-Type must be application/octet-stream"
         self.assertTrue(expected in content,
@@ -1214,9 +1238,6 @@ class TestSSL(functional.FunctionalTest):
         self.cleanup()
         self.start_servers(**self.__dict__.copy())
 
-        api_port = self.api_port
-        registry_port = self.registry_port
-
         # 0. GET /images
         # Verify no public images
         path = "https://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
@@ -1228,102 +1249,9 @@ class TestSSL(functional.FunctionalTest):
         # 1. DELETE /images/1
         # Verify 404 returned
         path = "https://%s:%d/v1/images/%s" % ("127.0.0.1", self.api_port,
-                                               utils.generate_uuid())
+                                               uuidutils.generate_uuid())
         https = httplib2.Http(disable_ssl_certificate_validation=True)
         response, content = https.request(path, 'DELETE')
         self.assertEqual(response.status, 404)
-
-        self.stop_servers()
-
-    @skip_if_disabled
-    def test_certificate_validation(self):
-        """
-        Check SSL client cerificate verification
-        """
-        self.cleanup()
-        self.start_servers(**self.__dict__.copy())
-
-        # 0. GET /images
-        # Verify no public images
-        path = "https://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
-        https = httplib2.Http(disable_ssl_certificate_validation=True)
-        response, content = https.request(path, 'GET')
-        self.assertEqual(response.status, 200)
-        self.assertEqual(content, '{"images": []}')
-
-        # 1. POST /images with public image named Image1
-        headers = {'Content-Type': 'application/octet-stream',
-                   'X-Image-Meta-Name': 'Image1',
-                   'X-Image-Meta-Status': 'active',
-                   'X-Image-Meta-Container-Format': 'ovf',
-                   'X-Image-Meta-Disk-Format': 'vdi',
-                   'X-Image-Meta-Size': '19',
-                   'X-Image-Meta-Is-Public': 'True'}
-        path = "https://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
-        https = httplib2.Http(disable_ssl_certificate_validation=True)
-        response, content = https.request(path, 'POST', headers=headers)
-        self.assertEqual(response.status, 201)
-        data = json.loads(content)
-
-        image_id = data['image']['id']
-
-        # 2. Attempt to delete the image *without* CA file
-        path = "https://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
-        secure_cli = glance_client.Client(host="127.0.0.1", port=self.api_port,
-                                          use_ssl=True, insecure=False)
-        try:
-            secure_cli.delete_image(image_id)
-            self.fail("Client with no CA file deleted image %s" % image_id)
-        except exception.ClientConnectionError, e:
-            pass
-
-        # 3. Delete the image with a secure client *with* CA file
-        secure_cli2 = glance_client.Client(host="127.0.0.1",
-                                           port=self.api_port, use_ssl=True,
-                                           ca_file=self.ca_file,
-                                           insecure=False)
-        try:
-            secure_cli2.delete_image(image_id)
-        except exception.ClientConnectionError, e:
-            self.fail("Secure client failed to delete image %s" % image_id)
-
-        # Verify image is deleted
-        path = "https://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
-        https = httplib2.Http(disable_ssl_certificate_validation=True)
-        response, content = https.request(path, 'GET')
-        self.assertEqual(response.status, 200)
-        self.assertEqual(content, '{"images": []}')
-
-        # 4. POST another image
-        headers = {'Content-Type': 'application/octet-stream',
-                   'X-Image-Meta-Name': 'Image1',
-                   'X-Image-Meta-Status': 'active',
-                   'X-Image-Meta-Container-Format': 'ovf',
-                   'X-Image-Meta-Disk-Format': 'vdi',
-                   'X-Image-Meta-Size': '19',
-                   'X-Image-Meta-Is-Public': 'True'}
-        path = "https://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
-        https = httplib2.Http(disable_ssl_certificate_validation=True)
-        response, content = https.request(path, 'POST', headers=headers)
-        self.assertEqual(response.status, 201)
-        data = json.loads(content)
-
-        image_id = data['image']['id']
-
-        # 5. Delete the image with an insecure client
-        insecure_cli = glance_client.Client(host="127.0.0.1",
-                                            port=self.api_port, use_ssl=True,
-                                            insecure=True)
-        try:
-            insecure_cli.delete_image(image_id)
-        except exception.ClientConnectionError, e:
-            self.fail("Insecure client failed to delete image")
-
-        # Verify image is deleted
-        path = "https://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
-        https = httplib2.Http(disable_ssl_certificate_validation=True)
-        response, content = https.request(path, 'GET')
-        self.assertEqual(response.status, 200)
-        self.assertEqual(content, '{"images": []}')
 
         self.stop_servers()

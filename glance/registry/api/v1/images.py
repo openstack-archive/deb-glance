@@ -28,6 +28,7 @@ import glance.db
 from glance.openstack.common import cfg
 import glance.openstack.common.log as logging
 from glance.openstack.common import timeutils
+from glance.openstack.common import uuidutils
 
 
 LOG = logging.getLogger(__name__)
@@ -54,14 +55,21 @@ class Controller(object):
 
     def __init__(self):
         self.db_api = glance.db.get_api()
-        self.db_api.configure_db()
+        self.db_api.setup_db_env()
 
-    def _get_images(self, context, **params):
+    def _get_images(self, context, filters, **params):
         """
         Get images, wrapping in exception if necessary.
         """
+        # NOTE(markwash): for backwards compatibility, is_public=True for
+        # admins actually means "treat me as if I'm not an admin and show me
+        # all my images"
+        if context.is_admin and filters.get('is_public') is True:
+            context.is_admin = False
+            del filters['is_public']
         try:
-            return self.db_api.image_get_all(context, **params)
+            return self.db_api.image_get_all(context, filters=filters,
+                                             **params)
         except exception.NotFound, e:
             msg = _("Invalid marker. Image could not be found.")
             raise exc.HTTPBadRequest(explanation=msg)
@@ -152,8 +160,6 @@ class Controller(object):
         if req.context.is_admin:
             # Only admin gets to look for non-public images
             filters['is_public'] = self._get_is_public(req)
-        else:
-            filters['is_public'] = True
 
         for param in req.params:
             if param in SUPPORTED_FILTERS:
@@ -208,7 +214,7 @@ class Controller(object):
         """Parse a marker query param into something usable."""
         marker = req.params.get('marker', None)
 
-        if marker and not utils.is_uuid_like(marker):
+        if marker and not uuidutils.is_uuid_like(marker):
             msg = _('Invalid marker format')
             raise exc.HTTPBadRequest(explanation=msg)
 
@@ -338,7 +344,7 @@ class Controller(object):
             image_data['owner'] = req.context.owner
 
         image_id = image_data.get('id')
-        if image_id and not utils.is_uuid_like(image_id):
+        if image_id and not uuidutils.is_uuid_like(image_id):
             msg = _("Rejecting image creation request for invalid image "
                     "id '%(bad_id)s'")
             LOG.info(msg % {'bad_id': image_id})
@@ -399,8 +405,8 @@ class Controller(object):
             msg = _("Image %(id)s not found")
             LOG.info(msg % {'id': id})
             raise exc.HTTPNotFound(body='Image not found',
-                               request=req,
-                               content_type='text/plain')
+                                   request=req,
+                                   content_type='text/plain')
         except exception.ForbiddenPublicImage:
             msg = _("Update denied for public image %(id)s")
             LOG.info(msg % {'id': id})
@@ -411,8 +417,8 @@ class Controller(object):
             msg = _("Access denied to image %(id)s but returning 'not found'")
             LOG.info(msg % {'id': id})
             raise exc.HTTPNotFound(body='Image not found',
-                               request=req,
-                               content_type='text/plain')
+                                   request=req,
+                                   content_type='text/plain')
 
 
 def make_image_dict(image):

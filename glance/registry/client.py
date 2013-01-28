@@ -49,18 +49,18 @@ class RegistryClient(BaseClient):
                             **kwargs)
 
     def decrypt_metadata(self, image_metadata):
-        if (self.metadata_encryption_key is not None
-            and 'location' in image_metadata.keys()
-            and image_metadata['location'] is not None):
+        if (self.metadata_encryption_key is not None and
+            'location' in image_metadata.keys() and
+            image_metadata['location'] is not None):
             location = crypt.urlsafe_decrypt(self.metadata_encryption_key,
                                              image_metadata['location'])
             image_metadata['location'] = location
         return image_metadata
 
     def encrypt_metadata(self, image_metadata):
-        if (self.metadata_encryption_key is not None
-            and 'location' in image_metadata.keys()
-            and image_metadata['location'] is not None):
+        if (self.metadata_encryption_key is not None and
+            'location' in image_metadata.keys() and
+            image_metadata['location'] is not None):
             location = crypt.urlsafe_encrypt(self.metadata_encryption_key,
                                              image_metadata['location'], 64)
             image_metadata['location'] = location
@@ -86,16 +86,18 @@ class RegistryClient(BaseClient):
     def do_request(self, method, action, **kwargs):
         try:
             res = super(RegistryClient, self).do_request(method,
-                  action, **kwargs)
+                                                         action,
+                                                         **kwargs)
             status = res.status
             request_id = res.getheader('x-openstack-request-id')
-            msg = _("Registry request %(method)s %(action)s HTTP %(status)s"\
-                  " request id %(request_id)s")
+            msg = _("Registry request %(method)s %(action)s HTTP %(status)s"
+                    " request id %(request_id)s")
             LOG.debug(msg % locals())
 
-        except:
-            LOG.exception(_("Registry request %(method)s %(action)s Exception")
-                        % locals())
+        except Exception as exc:
+            exc_name = exc.__class__.__name__
+            LOG.info(_("Registry client request %(method)s %(action)s "
+                       "raised %(exc_name)s") % locals())
             raise
         return res
 
@@ -133,8 +135,8 @@ class RegistryClient(BaseClient):
         if 'image' not in image_metadata.keys():
             image_metadata = dict(image=image_metadata)
 
-        image_metadata['image'] = self.encrypt_metadata(
-                                      image_metadata['image'])
+        encrypted_metadata = self.encrypt_metadata(image_metadata['image'])
+        image_metadata['image'] = encrypted_metadata
         body = json.dumps(image_metadata)
 
         res = self.do_request("POST", "/images", body=body, headers=headers)
@@ -150,8 +152,8 @@ class RegistryClient(BaseClient):
         if 'image' not in image_metadata.keys():
             image_metadata = dict(image=image_metadata)
 
-        image_metadata['image'] = self.encrypt_metadata(
-                                      image_metadata['image'])
+        encrypted_metadata = self.encrypt_metadata(image_metadata['image'])
+        image_metadata['image'] = encrypted_metadata
         body = json.dumps(image_metadata)
 
         headers = {

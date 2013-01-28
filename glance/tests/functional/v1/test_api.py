@@ -133,16 +133,17 @@ class TestApi(functional.FunctionalTest):
 
         for expected_key, expected_value in expected_image_headers.items():
             self.assertEqual(response[expected_key], expected_value,
-                            "For key '%s' expected header value '%s'. Got '%s'"
-                            % (expected_key, expected_value,
-                               response[expected_key]))
+                             "For key '%s' expected header value '%s'. "
+                             "Got '%s'" % (expected_key,
+                                           expected_value,
+                                           response[expected_key]))
 
         for expected_key, expected_value in expected_std_headers.items():
             self.assertEqual(response[expected_key], expected_value,
-                            "For key '%s' expected header value '%s'. Got '%s'"
-                            % (expected_key,
-                               expected_value,
-                               response[expected_key]))
+                             "For key '%s' expected header value '%s'. "
+                             "Got '%s'" % (expected_key,
+                                           expected_value,
+                                           response[expected_key]))
 
         self.assertEqual(content, "*" * FIVE_KB)
         self.assertEqual(hashlib.md5(content).hexdigest(),
@@ -187,10 +188,10 @@ class TestApi(functional.FunctionalTest):
 
         for expected_key, expected_value in expected_image.items():
             self.assertEqual(expected_value, image['images'][0][expected_key],
-                            "For key '%s' expected header value '%s'. Got '%s'"
-                            % (expected_key,
-                               expected_value,
-                               image['images'][0][expected_key]))
+                             "For key '%s' expected header value '%s'. "
+                             "Got '%s'" % (expected_key,
+                                           expected_value,
+                                           image['images'][0][expected_key]))
 
         # 7. PUT image with custom properties of "distro" and "arch"
         # Verify 200 returned
@@ -228,10 +229,10 @@ class TestApi(functional.FunctionalTest):
 
         for expected_key, expected_value in expected_image.items():
             self.assertEqual(expected_value, image['images'][0][expected_key],
-                            "For key '%s' expected header value '%s'. Got '%s'"
-                            % (expected_key,
-                               expected_value,
-                               image['images'][0][expected_key]))
+                             "For key '%s' expected header value '%s'. "
+                             "Got '%s'" % (expected_key,
+                                           expected_value,
+                                           image['images'][0][expected_key]))
 
         # 9. PUT image and remove a previously existing property.
         headers = {'X-Image-Meta-Property-Arch': 'x86_64'}
@@ -358,8 +359,9 @@ class TestApi(functional.FunctionalTest):
         # 4. PUT image with image data, verify 200 returned
         image_data = "*" * FIVE_KB
         headers = {'Content-Type': 'application/octet-stream'}
-        path = "http://%s:%d/v1/images/%s" % ("127.0.0.1", self.api_port,
-                                             image_id)
+        path = "http://%s:%d/v1/images/%s" % ("127.0.0.1",
+                                              self.api_port,
+                                              image_id)
         http = httplib2.Http()
         response, content = http.request(path, 'PUT', headers=headers,
                                          body=image_data)
@@ -532,9 +534,10 @@ class TestApi(functional.FunctionalTest):
         http = httplib2.Http()
         headers = minimal_headers('Image1')
         headers['Content-Type'] = 'not octet-stream'
-        response, content = http.request(path, 'POST',
-                            body=test_data_file.name,
-                            headers=headers)
+        response, content = http.request(path,
+                                         'POST',
+                                         body=test_data_file.name,
+                                         headers=headers)
         self.assertEqual(response.status, 400)
         expected = "Content-Type must be application/octet-stream"
         self.assertTrue(expected in content,
@@ -811,8 +814,9 @@ class TestApi(functional.FunctionalTest):
         yesterday = timeutils.isotime(timeutils.utcnow() -
                                       datetime.timedelta(1))
         params = "changes-since=%s" % yesterday
-        path = "http://%s:%d/v1/images?%s" % ("127.0.0.1", self.api_port,
-                params)
+        path = "http://%s:%d/v1/images?%s" % ("127.0.0.1",
+                                              self.api_port,
+                                              params)
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 200)
         data = json.loads(content)
@@ -826,8 +830,9 @@ class TestApi(functional.FunctionalTest):
         now = timeutils.utcnow()
         hour_ago = now.strftime('%Y-%m-%dT%H:%M:%S%%2B01:00')
         params = "changes-since=%s" % hour_ago
-        path = "http://%s:%d/v1/images?%s" % ("127.0.0.1", self.api_port,
-                params)
+        path = "http://%s:%d/v1/images?%s" % ("127.0.0.1",
+                                              self.api_port,
+                                              params)
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 200)
         data = json.loads(content)
@@ -837,8 +842,9 @@ class TestApi(functional.FunctionalTest):
         tomorrow = timeutils.isotime(timeutils.utcnow() +
                                      datetime.timedelta(1))
         params = "changes-since=%s" % tomorrow
-        path = "http://%s:%d/v1/images?%s" % ("127.0.0.1", self.api_port,
-                params)
+        path = "http://%s:%d/v1/images?%s" % ("127.0.0.1",
+                                              self.api_port,
+                                              params)
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 200)
         data = json.loads(content)
@@ -848,8 +854,9 @@ class TestApi(functional.FunctionalTest):
         now = timeutils.utcnow()
         hour_hence = now.strftime('%Y-%m-%dT%H:%M:%S-01:00')
         params = "changes-since=%s" % hour_hence
-        path = "http://%s:%d/v1/images?%s" % ("127.0.0.1", self.api_port,
-                params)
+        path = "http://%s:%d/v1/images?%s" % ("127.0.0.1",
+                                              self.api_port,
+                                              params)
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 200)
         data = json.loads(content)
@@ -1076,8 +1083,9 @@ class TestApi(functional.FunctionalTest):
 
         # 3. GET /images sorted by name asc
         params = 'sort_key=name&sort_dir=asc'
-        path = "http://%s:%d/v1/images?%s" % ("127.0.0.1", self.api_port,
-                params)
+        path = "http://%s:%d/v1/images?%s" % ("127.0.0.1",
+                                              self.api_port,
+                                              params)
         http = httplib2.Http()
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 200)
@@ -1089,8 +1097,9 @@ class TestApi(functional.FunctionalTest):
 
         # 4. GET /images sorted by size desc
         params = 'sort_key=size&sort_dir=desc'
-        path = "http://%s:%d/v1/images?%s" % ("127.0.0.1", self.api_port,
-                params)
+        path = "http://%s:%d/v1/images?%s" % ("127.0.0.1",
+                                              self.api_port,
+                                              params)
         http = httplib2.Http()
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 200)
@@ -1102,8 +1111,9 @@ class TestApi(functional.FunctionalTest):
 
         # 5. GET /images sorted by size desc with a marker
         params = 'sort_key=size&sort_dir=desc&marker=%s' % image_ids[0]
-        path = "http://%s:%d/v1/images?%s" % ("127.0.0.1", self.api_port,
-                params)
+        path = "http://%s:%d/v1/images?%s" % ("127.0.0.1",
+                                              self.api_port,
+                                              params)
         http = httplib2.Http()
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 200)
@@ -1114,8 +1124,9 @@ class TestApi(functional.FunctionalTest):
 
         # 6. GET /images sorted by name asc with a marker
         params = 'sort_key=name&sort_dir=asc&marker=%s' % image_ids[2]
-        path = "http://%s:%d/v1/images?%s" % ("127.0.0.1", self.api_port,
-                params)
+        path = "http://%s:%d/v1/images?%s" % ("127.0.0.1",
+                                              self.api_port,
+                                              params)
         http = httplib2.Http()
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 200)
@@ -1229,7 +1240,7 @@ class TestApi(functional.FunctionalTest):
         # ensure that the API server fails to launch
         self.start_server(self.api_server,
                           expect_launch=False,
-                          expected_exitcode=255,
+                          expected_exitcode=1,
                           **self.__dict__.copy())
 
     def _do_test_post_image_content_bad_format(self, format):
@@ -1258,9 +1269,10 @@ class TestApi(functional.FunctionalTest):
             test_data_file.write("XXX")
             test_data_file.flush()
         http = httplib2.Http()
-        response, content = http.request(path, 'POST',
-                            headers=headers,
-                            body=test_data_file.name)
+        response, content = http.request(path,
+                                         'POST',
+                                         headers=headers,
+                                         body=test_data_file.name)
         self.assertEqual(response.status, 400)
         type = format.replace('_format', '')
         expected = "Invalid %s format 'bad_value' for image" % type
@@ -1300,8 +1312,8 @@ class TestApi(functional.FunctionalTest):
         # POST queued image
         path = "http://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
         headers = {
-           'X-Image-Meta-Name': 'Image1',
-           'X-Image-Meta-Is-Public': 'True',
+            'X-Image-Meta-Name': 'Image1',
+            'X-Image-Meta-Is-Public': 'True',
         }
         http = httplib2.Http()
         response, content = http.request(path, 'POST', headers=headers)
@@ -1319,9 +1331,10 @@ class TestApi(functional.FunctionalTest):
             test_data_file.write("XXX")
             test_data_file.flush()
         http = httplib2.Http()
-        response, content = http.request(path, 'PUT',
-                            headers=headers,
-                            body=test_data_file.name)
+        response, content = http.request(path,
+                                         'PUT',
+                                         headers=headers,
+                                         body=test_data_file.name)
         self.assertEqual(response.status, 400)
         type = format.replace('_format', '')
         expected = "Invalid %s format 'None' for image" % type
@@ -1449,5 +1462,123 @@ class TestApi(functional.FunctionalTest):
         response, content = http.request(path, 'HEAD', headers=auth_headers)
         self.assertEqual(response.status, 200)
         self.assertEqual('tenant2', response['x-image-meta-owner'])
+
+        self.stop_servers()
+
+    @skip_if_disabled
+    def test_image_visibility_to_different_users(self):
+        self.cleanup()
+        self.api_server.deployment_flavor = 'fakeauth'
+        self.registry_server.deployment_flavor = 'fakeauth'
+        self.start_servers(**self.__dict__.copy())
+
+        owners = ['admin', 'tenant1', 'tenant2', 'none']
+        visibilities = {'public': 'True', 'private': 'False'}
+        image_ids = {}
+
+        for owner in owners:
+            for visibility, is_public in visibilities.items():
+                name = '%s-%s' % (owner, visibility),
+                headers = {
+                    'Content-Type': 'application/octet-stream',
+                    'X-Image-Meta-Name': name,
+                    'X-Image-Meta-Status': 'active',
+                    'X-Image-Meta-Is-Public': is_public,
+                    'X-Image-Meta-Owner': owner,
+                    'X-Auth-Token': 'createuser:createtenant:admin',
+                }
+                path = "http://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
+                http = httplib2.Http()
+                response, content = http.request(path, 'POST',
+                                                 headers=headers)
+                self.assertEqual(response.status, 201)
+                data = json.loads(content)
+                image_ids[name] = data['image']['id']
+
+        def list_images(tenant, role='', is_public=None):
+            auth_token = 'user:%s:%s' % (tenant, role)
+            headers = {'X-Auth-Token': auth_token}
+            path = "http://127.0.0.1:%d/v1/images/detail" % self.api_port
+            if is_public is not None:
+                path += '?is_public=%s' % is_public
+            http = httplib2.Http()
+            response, content = http.request(path, 'GET', headers=headers)
+            self.assertEqual(response.status, 200)
+            return json.loads(content)['images']
+
+        # 1. Known user sees public and their own images
+        images = list_images('tenant1')
+        self.assertEquals(len(images), 5)
+        for image in images:
+            self.assertTrue(image['is_public'] or image['owner'] == 'tenant1')
+
+        # 2. Unknown user sees only public images
+        images = list_images('none')
+        self.assertEquals(len(images), 4)
+        for image in images:
+            self.assertTrue(image['is_public'])
+
+        # 3. Unknown admin sees only public images
+        images = list_images('none', role='admin')
+        self.assertEquals(len(images), 4)
+        for image in images:
+            self.assertTrue(image['is_public'])
+
+        # 4. Unknown admin, is_public=none, shows all images
+        images = list_images('none', role='admin', is_public='none')
+        self.assertEquals(len(images), 8)
+
+        # 5. Unknown admin, is_public=true, shows only public images
+        images = list_images('none', role='admin', is_public='true')
+        self.assertEquals(len(images), 4)
+        for image in images:
+            self.assertTrue(image['is_public'])
+
+        # 6. Unknown admin, is_public=false, sees only private images
+        images = list_images('none', role='admin', is_public='false')
+        self.assertEquals(len(images), 4)
+        for image in images:
+            self.assertFalse(image['is_public'])
+
+        # 7. Known admin sees public and their own images
+        images = list_images('admin', role='admin')
+        self.assertEquals(len(images), 5)
+        for image in images:
+            self.assertTrue(image['is_public'] or image['owner'] == 'admin')
+
+        # 8. Known admin, is_public=none, shows all images
+        images = list_images('admin', role='admin', is_public='none')
+        self.assertEquals(len(images), 8)
+
+        # 9. Known admin, is_public=true, sees all public and their images
+        images = list_images('admin', role='admin', is_public='true')
+        self.assertEquals(len(images), 5)
+        for image in images:
+            self.assertTrue(image['is_public'] or image['owner'] == 'admin')
+
+        # 10. Known admin, is_public=false, sees all private images
+        images = list_images('admin', role='admin', is_public='false')
+        self.assertEquals(len(images), 4)
+        for image in images:
+            self.assertFalse(image['is_public'])
+
+        self.stop_servers()
+
+    @skip_if_disabled
+    def test_mismatched_size(self):
+        """
+        Test mismatched size.
+        """
+        self.cleanup()
+        self.start_servers(**self.__dict__.copy())
+
+        image_data = "*" * FIVE_KB
+        headers = minimal_headers('Image1')
+        headers['x-image-meta-size'] = str(FIVE_KB + 1)
+        path = "http://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
+        http = httplib2.Http()
+        response, content = http.request(path, 'POST', headers=headers,
+                                         body=image_data)
+        self.assertEqual(response.status, 400)
 
         self.stop_servers()

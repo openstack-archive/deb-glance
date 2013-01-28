@@ -41,7 +41,7 @@ s3_opts = [
     cfg.StrOpt('s3_store_object_buffer_dir'),
     cfg.BoolOpt('s3_store_create_bucket_on_put', default=False),
     cfg.StrOpt('s3_store_bucket_url_format', default='subdomain'),
-    ]
+]
 
 CONF = cfg.CONF
 CONF.register_opts(s3_opts)
@@ -102,17 +102,15 @@ class StoreLocation(glance.store.location.StoreLocation):
         # s3://accesskey:secretkey@https://s3.amazonaws.com/bucket/key-id
         # are immediately rejected.
         if uri.count('://') != 1:
-            reason = _(
-                    "URI cannot contain more than one occurrence of a scheme."
-                    "If you have specified a URI like "
-                    "s3://accesskey:secretkey@https://s3.amazonaws.com/bucket/"
-                    "key-id"
-                    ", you need to change it to use the s3+https:// scheme, "
-                    "like so: "
-                    "s3+https://accesskey:secretkey@s3.amazonaws.com/bucket/"
-                    "key-id"
-                      )
-            LOG.error(_("Invalid store uri %(uri)s: %(reason)s") % locals())
+            reason = _("URI cannot contain more than one occurrence "
+                       "of a scheme. If you have specified a URI like "
+                       "s3://accesskey:secretkey@"
+                       "https://s3.amazonaws.com/bucket/key-id"
+                       ", you need to change it to use the "
+                       "s3+https:// scheme, like so: "
+                       "s3+https://accesskey:secretkey@"
+                       "s3.amazonaws.com/bucket/key-id")
+            LOG.debug(_("Invalid store uri %(uri)s: %(reason)s") % locals())
             raise exception.BadStoreUri(message=reason)
 
         pieces = urlparse.urlparse(uri)
@@ -139,7 +137,7 @@ class StoreLocation(glance.store.location.StoreLocation):
                 self.secretkey = secret_key
             except IndexError:
                 reason = _("Badly formed S3 credentials %s") % creds
-                LOG.error(reason)
+                LOG.debug(reason)
                 raise exception.BadStoreUri()
         else:
             self.accesskey = None
@@ -155,7 +153,7 @@ class StoreLocation(glance.store.location.StoreLocation):
                 raise exception.BadStoreUri()
         except IndexError:
             reason = _("Badly formed S3 URI: %s") % uri
-            LOG.error(reason)
+            LOG.debug(reason)
             raise exception.BadStoreUri()
 
 
@@ -242,7 +240,7 @@ class Store(glance.store.base.Store):
         if not result:
             reason = _("Could not find %(param)s in configuration "
                        "options.") % locals()
-            LOG.error(reason)
+            LOG.debug(reason)
             raise exception.BadStoreConfiguration(store_name="s3",
                                                   reason=reason)
         return result
@@ -298,8 +296,9 @@ class Store(glance.store.base.Store):
         msg = _("Retrieved image object from S3 using (s3_host=%(s3_host)s, "
                 "access_key=%(accesskey)s, bucket=%(bucket)s, "
                 "key=%(obj_name)s)") % ({'s3_host': loc.s3serviceurl,
-                'accesskey': loc.accesskey, 'bucket': loc.bucket,
-                'obj_name': loc.key})
+                                         'accesskey': loc.accesskey,
+                                         'bucket': loc.bucket,
+                                         'obj_name': loc.key})
         LOG.debug(msg)
 
         return key
@@ -307,14 +306,14 @@ class Store(glance.store.base.Store):
     def add(self, image_id, image_file, image_size):
         """
         Stores an image file with supplied identifier to the backend
-        storage system and returns an `glance.store.ImageAddResult` object
-        containing information about the stored image.
+        storage system and returns a tuple containing information
+        about the stored image.
 
         :param image_id: The opaque image identifier
         :param image_file: The image data to write, as a file-like object
         :param image_size: The size of the image data to write, in bytes
 
-        :retval `glance.store.ImageAddResult` object
+        :retval tuple of URL in backing store, bytes written, and checksum
         :raises `glance.common.exception.Duplicate` if the image already
                 existed
 
@@ -360,8 +359,9 @@ class Store(glance.store.base.Store):
         msg = _("Adding image object to S3 using (s3_host=%(s3_host)s, "
                 "access_key=%(access_key)s, bucket=%(bucket)s, "
                 "key=%(obj_name)s)") % ({'s3_host': self.s3_host,
-                'access_key': self.access_key, 'bucket': self.bucket,
-                'obj_name': obj_name})
+                                         'access_key': self.access_key,
+                                         'bucket': self.bucket,
+                                         'obj_name': obj_name})
         LOG.debug(msg)
 
         key = bucket_obj.new_key(obj_name)
@@ -428,8 +428,9 @@ class Store(glance.store.base.Store):
         msg = _("Deleting image object from S3 using (s3_host=%(s3_host)s, "
                 "access_key=%(accesskey)s, bucket=%(bucket)s, "
                 "key=%(obj_name)s)") % ({'s3_host': loc.s3serviceurl,
-                'accesskey': loc.accesskey, 'bucket': loc.bucket,
-                'obj_name': loc.key})
+                                         'accesskey': loc.accesskey,
+                                         'bucket': loc.bucket,
+                                         'obj_name': loc.key})
         LOG.debug(msg)
 
         return key.delete()
@@ -447,7 +448,7 @@ def get_bucket(conn, bucket_id):
     bucket = conn.get_bucket(bucket_id)
     if not bucket:
         msg = _("Could not find bucket with ID %(bucket_id)s") % locals()
-        LOG.error(msg)
+        LOG.debug(msg)
         raise exception.NotFound(msg)
 
     return bucket
@@ -487,14 +488,14 @@ def create_bucket_if_missing(bucket, s3_conn):
                 try:
                     s3_conn.create_bucket(bucket, location=location)
                 except S3ResponseError, e:
-                    msg = ("Failed to add bucket to S3.\n"
-                           "Got error from S3: %(e)s" % locals())
+                    msg = (_("Failed to add bucket to S3.\n"
+                             "Got error from S3: %(e)s") % locals())
                     raise glance.store.BackendException(msg)
             else:
-                msg = ("The bucket %(bucket)s does not exist in "
-                       "S3. Please set the "
-                       "s3_store_create_bucket_on_put option "
-                       "to add bucket to S3 automatically."
+                msg = (_("The bucket %(bucket)s does not exist in "
+                         "S3. Please set the "
+                         "s3_store_create_bucket_on_put option "
+                         "to add bucket to S3 automatically.")
                        % locals())
                 raise glance.store.BackendException(msg)
 
@@ -511,7 +512,7 @@ def get_key(bucket, obj):
     key = bucket.get_key(obj)
     if not key or not key.exists():
         msg = _("Could not find key %(obj)s in bucket %(bucket)s") % locals()
-        LOG.error(msg)
+        LOG.debug(msg)
         raise exception.NotFound(msg)
     return key
 

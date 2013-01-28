@@ -26,29 +26,6 @@ from glance.tests import utils as test_utils
 class TestUtils(test_utils.BaseTestCase):
     """Test routines in glance.utils"""
 
-    def test_generate_uuid_format(self):
-        """Check the format of a uuid"""
-        uuid = utils.generate_uuid()
-        self.assertTrue(isinstance(uuid, basestring))
-        self.assertTrue(len(uuid), 36)
-        # make sure there are 4 dashes
-        self.assertTrue(len(uuid.replace('-', '')), 36)
-
-    def test_generate_uuid_unique(self):
-        """Ensure generate_uuid will return unique values"""
-        uuids = [utils.generate_uuid() for i in range(5)]
-        # casting to set will drop duplicate values
-        unique = set(uuids)
-        self.assertEqual(len(uuids), len(list(unique)))
-
-    def test_is_uuid_like_success(self):
-        fixture = 'b694bf02-6b01-4905-a50e-fcf7bce7e4d2'
-        self.assertTrue(utils.is_uuid_like(fixture))
-
-    def test_is_uuid_like_fails(self):
-        fixture = 'pants'
-        self.assertFalse(utils.is_uuid_like(fixture))
-
     def test_cooperative_reader(self):
         """Ensure cooperative reader class accesses all bytes of file"""
         BYTES = 1024

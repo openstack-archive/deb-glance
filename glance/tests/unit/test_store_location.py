@@ -15,8 +15,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from glance import context
 from glance.common import exception
+from glance import context
 import glance.store
 import glance.store.filesystem
 import glance.store.http
@@ -24,7 +24,6 @@ import glance.store.location as location
 import glance.store.s3
 import glance.store.swift
 from glance.tests.unit import base
-from glance.tests import utils
 
 
 class TestStoreLocation(base.StoreClearingUnitTest):
@@ -53,7 +52,7 @@ class TestStoreLocation(base.StoreClearingUnitTest):
             'rbd://imagename',
             'rbd://fsid/pool/image/snap',
             'rbd://%2F/%2F/%2F/%2F',
-            ]
+        ]
 
         for uri in good_store_uris:
             loc = location.get_location_from_uri(uri)
@@ -368,9 +367,9 @@ class TestStoreLocation(base.StoreClearingUnitTest):
         is correct or raises an appropriate error.
         """
         good_results = {
-            'swift': glance.store.swift.Store,
-            'swift+http': glance.store.swift.Store,
-            'swift+https': glance.store.swift.Store,
+            'swift': glance.store.swift.SingleTenantStore,
+            'swift+http': glance.store.swift.SingleTenantStore,
+            'swift+https': glance.store.swift.SingleTenantStore,
             's3': glance.store.s3.Store,
             's3+http': glance.store.s3.Store,
             's3+https': glance.store.s3.Store,

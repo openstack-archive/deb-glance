@@ -23,7 +23,6 @@ from __future__ import with_statement
 import hashlib
 import math
 import urllib
-import urlparse
 
 from glance.common import exception
 from glance.openstack.common import cfg
@@ -51,7 +50,7 @@ rbd_opts = [
     cfg.StrOpt('rbd_store_pool', default=DEFAULT_POOL),
     cfg.StrOpt('rbd_store_user', default=DEFAULT_USER),
     cfg.StrOpt('rbd_store_ceph_conf', default=DEFAULT_CONFFILE),
-    ]
+]
 
 CONF = cfg.CONF
 CONF.register_opts(rbd_opts)
@@ -93,14 +92,14 @@ class StoreLocation(glance.store.location.StoreLocation):
         prefix = 'rbd://'
         if not uri.startswith(prefix):
             reason = _('URI must start with rbd://')
-            LOG.error(_("Invalid URI: %(uri)s: %(reason)s") % locals())
+            LOG.debug(_("Invalid URI: %(uri)s: %(reason)s") % locals())
             raise exception.BadStoreUri(message=reason)
         # convert to ascii since librbd doesn't handle unicode
         try:
             ascii_uri = str(uri)
         except UnicodeError:
             reason = _('URI contains non-ascii characters')
-            LOG.error(_("Invalid URI: %(uri)s: %(reason)s") % locals())
+            LOG.debug(_("Invalid URI: %(uri)s: %(reason)s") % locals())
             raise exception.BadStoreUri(message=reason)
         pieces = ascii_uri[len(prefix):].split('/')
         if len(pieces) == 1:
@@ -111,11 +110,11 @@ class StoreLocation(glance.store.location.StoreLocation):
                 map(urllib.unquote, pieces)
         else:
             reason = _('URI must have exactly 1 or 4 components')
-            LOG.error(_("Invalid URI: %(uri)s: %(reason)s") % locals())
+            LOG.debug(_("Invalid URI: %(uri)s: %(reason)s") % locals())
             raise exception.BadStoreUri(message=reason)
         if any(map(lambda p: p == '', pieces)):
             reason = _('URI cannot contain empty components')
-            LOG.error(_("Invalid URI: %(uri)s: %(reason)s") % locals())
+            LOG.debug(_("Invalid URI: %(uri)s: %(reason)s") % locals())
             raise exception.BadStoreUri(message=reason)
 
 
@@ -206,11 +205,11 @@ class Store(glance.store.base.Store):
             librbd.create(ioctx, name, size, order, old_format=False,
                           features=rbd.RBD_FEATURE_LAYERING)
             return StoreLocation({
-                    'fsid': fsid,
-                    'pool': self.pool,
-                    'image': name,
-                    'snapshot': DEFAULT_SNAPNAME,
-                    })
+                'fsid': fsid,
+                'pool': self.pool,
+                'image': name,
+                'snapshot': DEFAULT_SNAPNAME,
+            })
         else:
             librbd.create(ioctx, name, size, order, old_format=True)
             return StoreLocation({'image': name})
@@ -218,14 +217,14 @@ class Store(glance.store.base.Store):
     def add(self, image_id, image_file, image_size):
         """
         Stores an image file with supplied identifier to the backend
-        storage system and returns an `glance.store.ImageAddResult` object
-        containing information about the stored image.
+        storage system and returns a tuple containing information
+        about the stored image.
 
         :param image_id: The opaque image identifier
         :param image_file: The image data to write, as a file-like object
         :param image_size: The size of the image data to write, in bytes
 
-        :retval `glance.store.ImageAddResult` object
+        :retval tuple of URL in backing store, bytes written, and checksum
         :raises `glance.common.exception.Duplicate` if the image already
                 existed
         """
@@ -280,7 +279,7 @@ class Store(glance.store.base.Store):
                         except rbd.ImageBusy:
                             log_msg = _("snapshot %s@%s could not be "
                                         "unprotected because it is in use")
-                            LOG.error(log_msg % (loc.image, loc.snapshot))
+                            LOG.debug(log_msg % (loc.image, loc.snapshot))
                             raise exception.InUseByStore()
                         image.remove_snap(loc.snapshot)
                 try:
@@ -291,5 +290,5 @@ class Store(glance.store.base.Store):
                 except rbd.ImageBusy:
                     log_msg = _("image %s could not be removed"
                                 "because it is in use")
-                    LOG.error(log_msg % loc.image)
+                    LOG.debug(log_msg % loc.image)
                     raise exception.InUseByStore()

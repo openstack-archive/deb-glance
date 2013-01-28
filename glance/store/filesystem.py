@@ -63,7 +63,7 @@ class StoreLocation(glance.store.location.StoreLocation):
         path = (pieces.netloc + pieces.path).strip()
         if path == '':
             reason = _("No path specified in URI: %s") % uri
-            LOG.error(reason)
+            LOG.debug(reason)
             raise exception.BadStoreUri('No path specified')
         self.path = path
 
@@ -126,11 +126,26 @@ class Store(glance.store.base.Store):
             LOG.info(msg)
             try:
                 os.makedirs(self.datadir)
-            except IOError:
+            except (IOError, OSError):
+                if os.path.exists(self.datadir):
+                    # NOTE(markwash): If the path now exists, some other
+                    # process must have beat us in the race condition. But it
+                    # doesn't hurt, so we can safely ignore the error.
+                    return
                 reason = _("Unable to create datadir: %s") % self.datadir
                 LOG.error(reason)
                 raise exception.BadStoreConfiguration(store_name="filesystem",
                                                       reason=reason)
+
+    @staticmethod
+    def _resolve_location(location):
+        filepath = location.store_location.path
+
+        if not os.path.exists(filepath):
+            raise exception.NotFound(_("Image file %s not found") % filepath)
+
+        filesize = os.path.getsize(filepath)
+        return filepath, filesize
 
     def get(self, location):
         """
@@ -142,14 +157,25 @@ class Store(glance.store.base.Store):
                         from glance.store.location.get_location_from_uri()
         :raises `glance.exception.NotFound` if image does not exist
         """
-        loc = location.store_location
-        filepath = loc.path
-        if not os.path.exists(filepath):
-            raise exception.NotFound(_("Image file %s not found") % filepath)
-        else:
-            msg = _("Found image at %s. Returning in ChunkedFile.") % filepath
-            LOG.debug(msg)
-            return (ChunkedFile(filepath), None)
+        filepath, filesize = self._resolve_location(location)
+        msg = _("Found image at %s. Returning in ChunkedFile.") % filepath
+        LOG.debug(msg)
+        return (ChunkedFile(filepath), filesize)
+
+    def get_size(self, location):
+        """
+        Takes a `glance.store.location.Location` object that indicates
+        where to find the image file and returns the image size
+
+        :param location `glance.store.location.Location` object, supplied
+                        from glance.store.location.get_location_from_uri()
+        :raises `glance.exception.NotFound` if image does not exist
+        :rtype int
+        """
+        filepath, filesize = self._resolve_location(location)
+        msg = _("Found image at %s.") % filepath
+        LOG.debug(msg)
+        return filesize
 
     def delete(self, location):
         """
@@ -176,14 +202,14 @@ class Store(glance.store.base.Store):
     def add(self, image_id, image_file, image_size):
         """
         Stores an image file with supplied identifier to the backend
-        storage system and returns an `glance.store.ImageAddResult` object
-        containing information about the stored image.
+        storage system and returns a tuple containing information
+        about the stored image.
 
         :param image_id: The opaque image identifier
         :param image_file: The image data to write, as a file-like object
         :param image_size: The size of the image data to write, in bytes
 
-        :retval `glance.store.ImageAddResult` object
+        :retval tuple of URL in backing store, bytes written, and checksum
         :raises `glance.common.exception.Duplicate` if the image already
                 existed
 
@@ -204,7 +230,7 @@ class Store(glance.store.base.Store):
         try:
             with open(filepath, 'wb') as f:
                 for buf in utils.chunkreadable(image_file,
-                                              ChunkedFile.CHUNKSIZE):
+                                               ChunkedFile.CHUNKSIZE):
                     bytes_written += len(buf)
                     checksum.update(buf)
                     f.write(buf)

@@ -81,13 +81,13 @@ class StoreLocation(glance.store.location.StoreLocation):
             except ValueError:
                 reason = (_("Credentials '%s' not well-formatted.")
                           % "".join(creds))
-                LOG.error(reason)
+                LOG.debug(reason)
                 raise exception.BadStoreUri()
         else:
             self.user = None
         if netloc == '':
             reason = _("No address specified in HTTP URL")
-            LOG.error(reason)
+            LOG.debug(reason)
             raise exception.BadStoreUri(message=reason)
         self.netloc = netloc
         self.path = path
@@ -177,7 +177,7 @@ class Store(glance.store.base.Store):
                                      image_id=location.image_id,
                                      store_specs=location.store_specs)
             return self._query(new_loc, verb, depth + 1)
-        content_length = resp.getheader('content-length', 0)
+        content_length = int(resp.getheader('content-length', 0))
         return (conn, resp, content_length)
 
     def _get_conn_class(self, loc):

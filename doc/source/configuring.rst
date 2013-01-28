@@ -25,7 +25,7 @@ Most configuration is done via configuration files, with the Glance API
 server and Glance Registry server using separate configuration files.
 
 When starting up a Glance server, you can specify the configuration file to
-use (see `the documentation on controller Glance servers <controllingservers>`_).
+use (see :doc:`the documentation on controller Glance servers <controllingservers>`).
 If you do **not** specify a configuration file, Glance will look in the following
 directories for a configuration file, in order:
 
@@ -226,6 +226,22 @@ Optional. Default: Not set.
 The path to a Certifying Authority's cert file to use in SSL connections to the
 registry server, if any. Alternately, you may set the
 ``GLANCE_CLIENT_CA_FILE`` environ variable to a filepath of the CA cert file
+
+* ``registry_client_insecure=False``
+
+Optional. Default: False.
+
+When using SSL in connections to the registry server, do not require
+validation via a certifying authority. This is the registry's equivalent of
+specifying --insecure on the command line using glanceclient for the API
+
+* ``registry_client_timeout=SECONDS``
+
+Optional. Default: ``600``.
+
+The period of time, in seconds, that the API server will wait for a registry
+request to complete. A value of '0' implies no timeout.
+
 
 Configuring Logging in Glance
 -----------------------------
@@ -703,7 +719,7 @@ command-line for the ``glance-manage`` program.
 Sets the SQLAlchemy connection string to use when connecting to the registry
 database. Please see the documentation for
 `SQLAlchemy connection strings <http://www.sqlalchemy.org/docs/05/reference/sqlalchemy/connections.html>`_
-online.
+online. You must urlencode any special characters in CONNECTION_STRING.
 
 * ``sql_timeout=SECONDS``
   on command line)
@@ -774,7 +790,7 @@ Exchange name to use for connection when using ``rabbit`` strategy.
 
 * ``rabbit_notification_topic``
 
-Optional. Default: ``glance_notifications``
+Optional. Default: ``notifications``
 
 Topic to use for connection when using ``rabbit`` strategy.
 
@@ -817,10 +833,10 @@ Optional. Default: ``glanice_notifications``
 
 This is the topic prefix for notifications when using the ``qpid``
 notification strategy. When a notification is sent at the ``info`` priority,
-the topic will be ``glance_notifications.info``. The same idea applies for
+the topic will be ``notifications.info``. The same idea applies for
 the ``error`` and ``warn`` notification priorities. To receive all
 notifications, you would set up a receiver with a topic of
-``glance_notifications.*``.
+``notifications.*``.
 
 * ``qpid_host``
 

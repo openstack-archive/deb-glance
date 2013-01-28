@@ -20,23 +20,19 @@ import eventlet
 import os
 import time
 
-from glance import context
 from glance.common import utils
+from glance import context
 from glance.openstack.common import cfg
 import glance.openstack.common.log as logging
 from glance import registry
 from glance import store
-import glance.store.filesystem
-import glance.store.http
-import glance.store.s3
-import glance.store.swift
 
 LOG = logging.getLogger(__name__)
 
 scrubber_opts = [
     cfg.BoolOpt('cleanup_scrubber', default=False),
     cfg.IntOpt('cleanup_scrubber_time', default=86400)
-    ]
+]
 
 CONF = cfg.CONF
 CONF.register_opts(scrubber_opts)
@@ -92,8 +88,6 @@ class Scrubber(object):
 
         utils.safe_mkdirs(self.datadir)
 
-        store.create_stores()
-
     def run(self, pool, event=None):
         now = time.time()
 
@@ -121,10 +115,9 @@ class Scrubber(object):
                 delete_work.append((id, uri, now))
 
         LOG.info(_("Deleting %s images") % len(delete_work))
-        pool.starmap(self._delete, delete_work)
-        # NOTE(bourke): When not running as a daemon, a slight pause is needed
-        # to allow the starmap to begin it's work.
-        eventlet.sleep(0.1)
+        # NOTE(bourke): The starmap must be iterated to do work
+        for job in pool.starmap(self._delete, delete_work):
+            pass
 
         if self.cleanup:
             self._cleanup(pool)
@@ -187,7 +180,9 @@ class Scrubber(object):
                                 now))
 
         LOG.info(_("Deleting %s images") % len(delete_work))
-        pool.starmap(self._delete, delete_work)
+        # NOTE(bourke): The starmap must be iterated to do work
+        for job in pool.starmap(self._delete, delete_work):
+            pass
 
 
 def read_queue_file(file_path):

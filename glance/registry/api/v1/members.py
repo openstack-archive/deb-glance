@@ -35,7 +35,7 @@ class Controller(object):
 
     def __init__(self):
         self.db_api = glance.db.get_api()
-        self.db_api.configure_db()
+        self.db_api.setup_db_env()
 
     def index(self, req, image_id):
         """
@@ -131,8 +131,7 @@ class Controller(object):
             # Try to find the corresponding membership
             members = self.db_api.image_member_find(req.context,
                                                     image_id=datum['image_id'],
-                                                    member=datum['member'],
-                                                    session=session)
+                                                    member=datum['member'])
             try:
                 member = members[0]
             except IndexError:
@@ -154,16 +153,16 @@ class Controller(object):
         # the existing image memberships...
         existing_members = self.db_api.image_member_find(req.context,
                                                          image_id=image['id'])
-        for memb in existing_members:
-            if memb['id'] in existing:
+        for member in existing_members:
+            if member['id'] in existing:
                 # Just update the membership in place
-                update = existing[memb['id']]['values']
-                self.db_api.image_member_update(req.context, memb, update,
-                                                session=session)
+                update = existing[member['id']]['values']
+                self.db_api.image_member_update(req.context,
+                                                member['id'],
+                                                update)
             else:
                 # Outdated one; needs to be deleted
-                self.db_api.image_member_delete(req.context, memb,
-                                                session=session)
+                self.db_api.image_member_delete(req.context, member['id'])
 
         # Now add the non-existent ones
         for memb in add:
@@ -228,13 +227,13 @@ class Controller(object):
         session = self.db_api.get_session()
         members = self.db_api.image_member_find(req.context,
                                                 image_id=image_id,
-                                                member=id,
-                                                session=session)
+                                                member=id)
         if members:
             if can_share is not None:
                 values = dict(can_share=can_share)
-                self.db_api.image_member_update(req.context, members[0],
-                                                values, session=session)
+                self.db_api.image_member_update(req.context,
+                                                members[0]['id'],
+                                                values)
         else:
             values = dict(image_id=image['id'], member=id,
                           can_share=bool(can_share))
@@ -274,17 +273,16 @@ class Controller(object):
             raise webob.exc.HTTPForbidden(msg)
 
         # Look up an existing membership
-        try:
-            session = self.db_api.get_session()
-            members = self.db_api.image_member_find(req.context,
-                                                    image_id=image_id,
-                                                    member=id,
-                                                    session=session)
-            self.db_api.image_member_delete(req.context,
-                                            members[0],
-                                            session=session)
-        except exception.NotFound:
-            pass
+        members = self.db_api.image_member_find(req.context,
+                                                image_id=image_id,
+                                                member=id)
+        if members:
+            self.db_api.image_member_delete(req.context, members[0]['id'])
+        else:
+            msg = _("%(id)s is not a member of image %(image_id)s")
+            LOG.debug(msg % locals())
+            msg = _("Membership could not be found.")
+            raise webob.exc.HTTPNotFound(explanation=msg)
 
         # Make an appropriate result
         msg = _("Successfully deleted a membership from image %(id)s")
@@ -318,12 +316,11 @@ def make_member_list(members, **attr_map):
     """
 
     def _fetch_memb(memb, attr_map):
-        return dict([(k, memb[v]) for k, v in attr_map.items()
-                                  if v in memb.keys()])
+        return dict([(k, memb[v])
+                     for k, v in attr_map.items() if v in memb.keys()])
 
     # Return the list of members with the given attribute mapping
-    return [_fetch_memb(memb, attr_map) for memb in members
-            if not memb.deleted]
+    return [_fetch_memb(memb, attr_map) for memb in members]
 
 
 def create_resource():

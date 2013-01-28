@@ -34,9 +34,9 @@ from sqlalchemy import *
 from sqlalchemy.pool import NullPool
 
 from glance.common import exception
-import glance.db.sqlalchemy.migration as migration_api
 #NOTE(bcwaldon): import this to prevent circular import
 from glance.db.sqlalchemy import api
+import glance.db.sqlalchemy.migration as migration_api
 from glance.db.sqlalchemy import models
 from glance.openstack.common import cfg
 from glance.tests import utils
@@ -137,8 +137,7 @@ class TestMigrations(utils.BaseTestCase):
                            "|| tablename || ' cascade;' "
                            "from pg_tables where schemaname = 'public';\" | "
                            "psql -d %(database)s | grep '^\s*drop' | "
-                           "psql -d %(database)s"
-                          ) % locals()
+                           "psql -d %(database)s") % locals()
                 exitcode, out, err = utils.execute(cmd)
                 self.assertEqual(0, exitcode)
 
@@ -166,18 +165,22 @@ class TestMigrations(utils.BaseTestCase):
         # Create the initial version of the images table
         meta = MetaData()
         meta.bind = engine
-        images_001 = Table('images', meta,
-            Column('id', models.Integer, primary_key=True),
-            Column('name', String(255)),
-            Column('type', String(30)),
-            Column('size', Integer),
-            Column('status', String(30)),
-            Column('is_public', Boolean, default=False),
-            Column('location', Text),
-            Column('created_at', DateTime(), nullable=False),
-            Column('updated_at', DateTime()),
-            Column('deleted_at', DateTime()),
-            Column('deleted', Boolean(), nullable=False, default=False))
+        images_001 = Table('images',
+                           meta,
+                           Column('id', models.Integer, primary_key=True),
+                           Column('name', String(255)),
+                           Column('type', String(30)),
+                           Column('size', Integer),
+                           Column('status', String(30)),
+                           Column('is_public', Boolean, default=False),
+                           Column('location', Text),
+                           Column('created_at', DateTime(), nullable=False),
+                           Column('updated_at', DateTime()),
+                           Column('deleted_at', DateTime()),
+                           Column('deleted',
+                                  Boolean(),
+                                  nullable=False,
+                                  default=False))
         images_001.create()
 
     def _walk_versions(self, initial_version=0):
@@ -203,11 +206,24 @@ class TestMigrations(utils.BaseTestCase):
 
         # Now walk it back down to 0 from the latest, testing
         # the downgrade paths.
-        for version in reversed(
-            xrange(0, TestMigrations.REPOSITORY.latest)):
+        for version in reversed(xrange(0, TestMigrations.REPOSITORY.latest)):
             migration_api.downgrade(version)
             cur_version = migration_api.db_version()
             self.assertEqual(cur_version, version)
+
+    def test_db_sync(self):
+        initial_version = 0
+        migration_api.db_sync(initial_version)
+        cur_version = migration_api.db_version()
+        self.assertEqual(cur_version, initial_version)
+
+        migration_api.db_sync(TestMigrations.REPOSITORY.latest)
+        cur_version = migration_api.db_version()
+        self.assertEqual(cur_version, TestMigrations.REPOSITORY.latest)
+
+        migration_api.db_sync(initial_version)
+        cur_version = migration_api.db_version()
+        self.assertEqual(cur_version, initial_version)
 
     def test_no_data_loss_2_to_3_to_2(self):
         """
@@ -341,23 +357,21 @@ class TestMigrations(utils.BaseTestCase):
         unquoted_locations = [
             'swift://acct:usr:pass@example.com/container/obj-id',
             'file://foo',
-            ]
+        ]
         quoted_locations = [
             'swift://acct%3Ausr:pass@example.com/container/obj-id',
             'file://foo',
-            ]
+        ]
 
         # Insert images with an unquoted image location
         now = datetime.datetime.now()
-        kwargs = dict(
-            deleted=False,
-            created_at=now,
-            updated_at=now,
-            status='active',
-            is_public=True,
-            min_disk=0,
-            min_ram=0,
-            )
+        kwargs = dict(deleted=False,
+                      created_at=now,
+                      updated_at=now,
+                      status='active',
+                      is_public=True,
+                      min_disk=0,
+                      min_ram=0)
         for i, location in enumerate(unquoted_locations):
             kwargs.update(location=location, id=i)
             conn.execute(images_table.insert(), [kwargs])

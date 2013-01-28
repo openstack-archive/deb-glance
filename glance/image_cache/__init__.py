@@ -24,8 +24,8 @@ import hashlib
 from glance.common import exception
 from glance.common import utils
 from glance.openstack.common import cfg
-import glance.openstack.common.log as logging
 from glance.openstack.common import importutils
+import glance.openstack.common.log as logging
 
 LOG = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ image_cache_opts = [
     cfg.IntOpt('image_cache_max_size', default=10 * (1024 ** 3)),  # 10 GB
     cfg.IntOpt('image_cache_stall_time', default=86400),  # 24 hours
     cfg.StrOpt('image_cache_dir'),
-    ]
+]
 
 CONF = cfg.CONF
 CONF.register_opts(image_cache_opts)
@@ -170,7 +170,7 @@ class ImageCache(object):
         overage = current_size - max_size
         LOG.debug(_("Image cache currently %(overage)d bytes over max "
                     "size. Starting prune to max size of %(max_size)d ") %
-                     locals())
+                  locals())
 
         total_bytes_pruned = 0
         total_files_pruned = 0
@@ -289,7 +289,7 @@ class ImageCache(object):
         CHUNKSIZE = 64 * 1024 * 1024
 
         return self.cache_image_iter(image_id,
-                utils.chunkiter(image_file, CHUNKSIZE))
+                                     utils.chunkiter(image_file, CHUNKSIZE))
 
     def open_for_read(self, image_id):
         """

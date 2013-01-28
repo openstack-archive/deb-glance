@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2010 OpenStack LLC.
+# Copyright 2010-2012 OpenStack LLC.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -19,7 +19,6 @@
 /images endpoint for Glance v1 API
 """
 
-import sys
 import traceback
 
 import eventlet
@@ -29,13 +28,12 @@ from webob.exc import (HTTPError,
                        HTTPBadRequest,
                        HTTPForbidden,
                        HTTPRequestEntityTooLarge,
-                       HTTPServiceUnavailable,
-                      )
+                       HTTPInternalServerError,
+                       HTTPServiceUnavailable)
 
 from glance.api import common
 from glance.api import policy
 import glance.api.v1
-from glance import context
 from glance.api.v1 import controller
 from glance.api.v1 import filters
 from glance.common import exception
@@ -45,8 +43,7 @@ from glance import notifier
 from glance.openstack.common import cfg
 import glance.openstack.common.log as logging
 from glance import registry
-from glance.store import (create_stores,
-                          get_from_backend,
+from glance.store import (get_from_backend,
                           get_size_from_backend,
                           safe_delete_from_backend,
                           schedule_delayed_delete_from_backend,
@@ -54,20 +51,13 @@ from glance.store import (create_stores,
                           get_store_from_scheme)
 
 
+CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
 SUPPORTED_PARAMS = glance.api.v1.SUPPORTED_PARAMS
 SUPPORTED_FILTERS = glance.api.v1.SUPPORTED_FILTERS
 CONTAINER_FORMATS = ['ami', 'ari', 'aki', 'bare', 'ovf']
 DISK_FORMATS = ['ami', 'ari', 'aki', 'vhd', 'vmdk', 'raw', 'qcow2', 'vdi',
-               'iso']
-
-
-# Defined at module level due to _is_opt_registered
-# identity check (not equality).
-default_store_opt = cfg.StrOpt('default_store', default='file')
-
-CONF = cfg.CONF
-CONF.register_opt(default_store_opt)
+                'iso']
 
 
 def validate_image_meta(req, values):
@@ -98,10 +88,10 @@ def validate_image_meta(req, values):
         elif container_format is None:
             values['container_format'] = disk_format
         elif container_format != disk_format:
-            msg = ("Invalid mix of disk and container formats. "
-                   "When setting a disk or container format to "
-                   "one of 'aki', 'ari', or 'ami', the container "
-                   "and disk formats must match.")
+            msg = (_("Invalid mix of disk and container formats. "
+                     "When setting a disk or container format to "
+                     "one of 'aki', 'ari', or 'ami', the container "
+                     "and disk formats must match."))
             raise HTTPBadRequest(explanation=msg, request=req)
 
     return values
@@ -127,8 +117,6 @@ class Controller(controller.BaseController):
     """
 
     def __init__(self):
-        create_stores()
-        self.verify_scheme_or_exit(CONF.default_store)
         self.notifier = notifier.Notifier()
         registry.configure_registry_client()
         self.policy = policy.Enforcer()
@@ -274,7 +262,7 @@ class Controller(controller.BaseController):
                 if source.lower().startswith(scheme):
                     return source
             msg = _("External sourcing not supported for store %s") % source
-            LOG.error(msg)
+            LOG.debug(msg)
             raise HTTPBadRequest(explanation=msg,
                                  request=req,
                                  content_type="text/plain")
@@ -362,22 +350,22 @@ class Controller(controller.BaseController):
             image_meta = registry.add_image_metadata(req.context, image_meta)
             return image_meta
         except exception.Duplicate:
-            msg = (_("An image with identifier %s already exists")
-                  % image_meta['id'])
-            LOG.error(msg)
+            msg = (_("An image with identifier %s already exists") %
+                   image_meta['id'])
+            LOG.debug(msg)
             raise HTTPConflict(explanation=msg,
                                request=req,
                                content_type="text/plain")
         except exception.Invalid, e:
             msg = (_("Failed to reserve image. Got error: %(e)s") % locals())
             for line in msg.split('\n'):
-                LOG.error(line)
+                LOG.debug(line)
             raise HTTPBadRequest(explanation=msg,
                                  request=req,
                                  content_type="text/plain")
         except exception.Forbidden:
             msg = _("Forbidden to reserve image.")
-            LOG.error(msg)
+            LOG.debug(msg)
             raise HTTPForbidden(explanation=msg,
                                 request=req,
                                 content_type="text/plain")
@@ -404,7 +392,7 @@ class Controller(controller.BaseController):
             except Exception as e:
                 self._safe_kill(req, image_meta['id'])
                 msg = _("Copy from external source failed: %s") % e
-                LOG.error(msg)
+                LOG.debug(msg)
                 return
             image_meta['size'] = image_size or image_meta['size']
         else:
@@ -413,7 +401,7 @@ class Controller(controller.BaseController):
             except exception.InvalidContentType:
                 self._safe_kill(req, image_meta['id'])
                 msg = _("Content-Type must be application/octet-stream")
-                LOG.error(msg)
+                LOG.debug(msg)
                 raise HTTPBadRequest(explanation=msg)
 
             image_data = req.body_file
@@ -436,19 +424,23 @@ class Controller(controller.BaseController):
                 utils.CooperativeReader(image_data),
                 image_meta['size'])
 
-            # Verify any supplied checksum value matches checksum
+            def _kill_mismatched(image_meta, attr, actual):
+                supplied = image_meta.get(attr)
+                if supplied and supplied != actual:
+                    msg = _("Supplied %(attr)s (%(supplied)s) and "
+                            "%(attr)s generated from uploaded image "
+                            "(%(actual)s) did not match. Setting image "
+                            "status to 'killed'.") % locals()
+                    LOG.error(msg)
+                    self._safe_kill(req, image_id)
+                    raise HTTPBadRequest(explanation=msg,
+                                         content_type="text/plain",
+                                         request=req)
+
+            # Verify any supplied size/checksum value matches size/checksum
             # returned from store when adding image
-            supplied_checksum = image_meta.get('checksum')
-            if supplied_checksum and supplied_checksum != checksum:
-                msg = _("Supplied checksum (%(supplied_checksum)s) and "
-                       "checksum generated from uploaded image "
-                       "(%(checksum)s) did not match. Setting image "
-                       "status to 'killed'.") % locals()
-                LOG.error(msg)
-                self._safe_kill(req, image_id)
-                raise HTTPBadRequest(explanation=msg,
-                                     content_type="text/plain",
-                                     request=req)
+            _kill_mismatched(image_meta, 'size', size)
+            _kill_mismatched(image_meta, 'checksum', checksum)
 
             # Update the database with the checksum returned
             # from the backend store
@@ -466,16 +458,14 @@ class Controller(controller.BaseController):
 
         except exception.Duplicate, e:
             msg = _("Attempt to upload duplicate image: %s") % e
-            LOG.error(msg)
+            LOG.debug(msg)
             self._safe_kill(req, image_id)
-            self.notifier.error('image.upload', msg)
             raise HTTPConflict(explanation=msg, request=req)
 
         except exception.Forbidden, e:
             msg = _("Forbidden upload attempt: %s") % e
-            LOG.error(msg)
+            LOG.debug(msg)
             self._safe_kill(req, image_id)
-            self.notifier.error('image.upload', msg)
             raise HTTPForbidden(explanation=msg,
                                 request=req,
                                 content_type="text/plain")
@@ -504,7 +494,6 @@ class Controller(controller.BaseController):
 
         except HTTPError, e:
             self._safe_kill(req, image_id)
-            self.notifier.error('image.upload', e.explanation)
             #NOTE(bcwaldon): Ideally, we would just call 'raise' here,
             # but something in the above function calls is affecting the
             # exception context and we must explicitly re-raise the
@@ -512,17 +501,9 @@ class Controller(controller.BaseController):
             raise e
 
         except Exception, e:
-            tb_info = traceback.format_exc()
-            LOG.error(tb_info)
-
+            LOG.exception(_("Failed to upload image"))
             self._safe_kill(req, image_id)
-
-            msg = _("Error uploading image: (%(class_name)s): "
-                    "%(exc)s") % ({'class_name': e.__class__.__name__,
-                    'exc': str(e)})
-
-            self.notifier.error('image.upload', msg)
-            raise HTTPBadRequest(explanation=msg, request=req)
+            raise HTTPInternalServerError(request=req)
 
     def _activate(self, req, image_id, location):
         """
@@ -539,16 +520,14 @@ class Controller(controller.BaseController):
 
         try:
             image_meta_data = registry.update_image_metadata(req.context,
-                                                  image_id,
-                                                  image_meta)
+                                                             image_id,
+                                                             image_meta)
             self.notifier.info("image.update", image_meta_data)
             return image_meta_data
         except exception.Invalid, e:
             msg = (_("Failed to activate image. Got error: %(e)s")
                    % locals())
-            for line in msg.split('\n'):
-                LOG.error(line)
-            self.notifier.error('image.update', msg)
+            LOG.debug(msg)
             raise HTTPBadRequest(explanation=msg,
                                  request=req,
                                  content_type="text/plain")
@@ -578,7 +557,7 @@ class Controller(controller.BaseController):
         except Exception, e:
             LOG.error(_("Unable to kill image %(id)s: "
                         "%(exc)s") % ({'id': image_id,
-                        'exc': repr(e)}))
+                                       'exc': repr(e)}))
 
     def _upload_and_activate(self, req, image_meta):
         """
@@ -606,8 +585,9 @@ class Controller(controller.BaseController):
 
     def _handle_source(self, req, image_id, image_meta, image_data):
         if image_data:
-            image_meta = self._validate_image_for_activation(req, image_id,
-                                                        image_meta)
+            image_meta = self._validate_image_for_activation(req,
+                                                             image_id,
+                                                             image_meta)
             image_meta = self._upload_and_activate(req, image_meta)
         elif self._copy_from(req):
             msg = _('Triggering asynchronous copy from external source')
@@ -775,25 +755,21 @@ class Controller(controller.BaseController):
         except exception.Invalid, e:
             msg = (_("Failed to update image metadata. Got error: %(e)s")
                    % locals())
-            for line in msg.split('\n'):
-                LOG.error(line)
-            self.notifier.error('image.update', msg)
+            LOG.debug(msg)
             raise HTTPBadRequest(explanation=msg,
                                  request=req,
                                  content_type="text/plain")
         except exception.NotFound, e:
-            msg = ("Failed to find image to update: %(e)s" % locals())
+            msg = (_("Failed to find image to update: %(e)s") % locals())
             for line in msg.split('\n'):
                 LOG.info(line)
-            self.notifier.info('image.update', msg)
             raise HTTPNotFound(explanation=msg,
                                request=req,
                                content_type="text/plain")
         except exception.Forbidden, e:
-            msg = ("Forbidden to update image: %(e)s" % locals())
+            msg = (_("Forbidden to update image: %(e)s") % locals())
             for line in msg.split('\n'):
                 LOG.info(line)
-            self.notifier.info('image.update', msg)
             raise HTTPForbidden(explanation=msg,
                                 request=req,
                                 content_type="text/plain")
@@ -858,18 +834,16 @@ class Controller(controller.BaseController):
                     safe_delete_from_backend(image['location'],
                                              req.context, id)
         except exception.NotFound, e:
-            msg = ("Failed to find image to delete: %(e)s" % locals())
+            msg = (_("Failed to find image to delete: %(e)s") % locals())
             for line in msg.split('\n'):
                 LOG.info(line)
-            self.notifier.info('image.delete', msg)
             raise HTTPNotFound(explanation=msg,
                                request=req,
                                content_type="text/plain")
         except exception.Forbidden, e:
-            msg = ("Forbidden to delete image: %(e)s" % locals())
+            msg = (_("Forbidden to delete image: %(e)s") % locals())
             for line in msg.split('\n'):
                 LOG.info(line)
-            self.notifier.info('image.delete', msg)
             raise HTTPForbidden(explanation=msg,
                                 request=req,
                                 content_type="text/plain")
@@ -889,28 +863,11 @@ class Controller(controller.BaseController):
         try:
             return get_store_from_scheme(request.context, scheme)
         except exception.UnknownScheme:
-            msg = _("Store for scheme %s not found")
-            LOG.error(msg % scheme)
+            msg = _("Store for scheme %s not found") % scheme
+            LOG.debug(msg)
             raise HTTPBadRequest(explanation=msg,
                                  request=request,
                                  content_type='text/plain')
-
-    def verify_scheme_or_exit(self, scheme):
-        """
-        Verifies availability of the storage backend for the
-        given scheme or exits
-
-        :param scheme: The backend store scheme
-        """
-        try:
-            get_store_from_scheme(context.RequestContext(), scheme)
-        except exception.UnknownScheme:
-            msg = _("Store for scheme %s not found")
-            LOG.error(msg % scheme)
-            # message on stderr will only be visible if started directly via
-            # bin/glance-api, as opposed to being daemonized by glance-control
-            sys.stderr.write(msg % scheme)
-            sys.exit(255)
 
 
 class ImageDeserializer(wsgi.JSONRequestDeserializer):

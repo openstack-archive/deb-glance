@@ -21,6 +21,8 @@ import time
 
 from glance.common import exception
 from glance.common import utils
+import glance.context
+import glance.domain
 from glance.openstack.common import cfg
 from glance.openstack.common import importutils
 import glance.openstack.common.log as logging
@@ -30,41 +32,25 @@ LOG = logging.getLogger(__name__)
 
 store_opts = [
     cfg.ListOpt('known_stores',
-                default=['glance.store.filesystem.Store',
-                         'glance.store.http.Store',
-                         'glance.store.rbd.Store',
-                         'glance.store.s3.Store',
-                         'glance.store.swift.Store',
-                        ]),
+                default=[
+                    'glance.store.filesystem.Store',
+                    'glance.store.http.Store',
+                    'glance.store.rbd.Store',
+                    'glance.store.s3.Store',
+                    'glance.store.swift.Store',
+                ]),
+    cfg.StrOpt('default_store', default='file',
+               help=_("Default scheme to use to store image data. The "
+                      "scheme must be registered by one of the stores "
+                      "defined by the 'known_stores' config option.")),
     cfg.StrOpt('scrubber_datadir',
                default='/var/lib/glance/scrubber'),
     cfg.BoolOpt('delayed_delete', default=False),
     cfg.IntOpt('scrub_time', default=0),
-    ]
+]
 
 CONF = cfg.CONF
 CONF.register_opts(store_opts)
-
-
-class ImageAddResult(object):
-
-    """
-    Class that represents the succesful result of adding
-    an image to a backend store.
-    """
-
-    def __init__(self, location, bytes_written, checksum=None):
-        """
-        Initialize the object
-
-        :param location: `glance.store.StoreLocation` object representing
-                         the location of the image in the backend store
-        :param bytes_written: Number of bytes written to store
-        :param checksum: Optional checksum of the image data
-        """
-        self.location = location
-        self.bytes_written = bytes_written
-        self.checksum = checksum
 
 
 class BackendException(Exception):
@@ -188,7 +174,17 @@ def create_stores():
     return store_count
 
 
-def get_store_from_scheme(context, scheme):
+def verify_default_store():
+    scheme = cfg.CONF.default_store
+    context = glance.context.RequestContext()
+    try:
+        get_store_from_scheme(context, scheme)
+    except exception.UnknownScheme:
+        msg = _("Store for scheme %s not found") % scheme
+        raise RuntimeError(msg)
+
+
+def get_store_from_scheme(context, scheme, loc=None):
     """
     Given a scheme, return the appropriate store object
     for handling that scheme.
@@ -196,11 +192,11 @@ def get_store_from_scheme(context, scheme):
     if scheme not in location.SCHEME_TO_CLS_MAP:
         raise exception.UnknownScheme(scheme=scheme)
     scheme_info = location.SCHEME_TO_CLS_MAP[scheme]
-    store = scheme_info['store_class'](context)
+    store = scheme_info['store_class'](context, loc)
     return store
 
 
-def get_store_from_uri(context, uri):
+def get_store_from_uri(context, uri, loc=None):
     """
     Given a URI, return the store object that would handle
     operations on the URI.
@@ -208,15 +204,15 @@ def get_store_from_uri(context, uri):
     :param uri: URI to analyze
     """
     scheme = uri[0:uri.find('/') - 1]
-    store = get_store_from_scheme(context, scheme)
+    store = get_store_from_scheme(context, scheme, loc)
     return store
 
 
 def get_from_backend(context, uri, **kwargs):
     """Yields chunks of data from backend specified by uri"""
 
-    store = get_store_from_uri(context, uri)
     loc = location.get_location_from_uri(uri)
+    store = get_store_from_uri(context, uri, loc)
 
     return store.get(loc)
 
@@ -224,16 +220,16 @@ def get_from_backend(context, uri, **kwargs):
 def get_size_from_backend(context, uri):
     """Retrieves image size from backend specified by uri"""
 
-    store = get_store_from_uri(context, uri)
     loc = location.get_location_from_uri(uri)
+    store = get_store_from_uri(context, uri, loc)
 
     return store.get_size(loc)
 
 
 def delete_from_backend(context, uri, **kwargs):
     """Removes chunks of data from backend specified by uri"""
-    store = get_store_from_uri(context, uri)
     loc = location.get_location_from_uri(uri)
+    store = get_store_from_uri(context, uri, loc)
 
     try:
         return store.delete(loc)
@@ -294,12 +290,50 @@ def add_to_backend(context, scheme, image_id, data, size):
 
 def set_acls(context, location_uri, public=False, read_tenants=[],
              write_tenants=[]):
+    loc = location.get_location_from_uri(location_uri)
     scheme = get_store_from_location(location_uri)
-    store = get_store_from_scheme(context, scheme)
+    store = get_store_from_scheme(context, scheme, loc)
     try:
-        store.set_acls(location.get_location_from_uri(location_uri),
-                       public=public,
-                       read_tenants=read_tenants,
+        store.set_acls(loc, public=public, read_tenants=read_tenants,
                        write_tenants=write_tenants)
     except NotImplementedError:
         LOG.debug(_("Skipping store.set_acls... not implemented."))
+
+
+class ImageRepoProxy(glance.domain.ImageRepoProxy):
+
+    def __init__(self, context, store_api, image_repo):
+        self.context = context
+        self.store_api = store_api
+        self.image_repo = image_repo
+        super(ImageRepoProxy, self).__init__(image_repo)
+
+    def get(self, *args, **kwargs):
+        image = self.image_repo.get(*args, **kwargs)
+        return ImageProxy(image, self.context, self.store_api)
+
+    def list(self, *args, **kwargs):
+        images = self.image_repo.list(*args, **kwargs)
+        return [ImageProxy(i, self.context, self.store_api)
+                for i in images]
+
+
+class ImageProxy(glance.domain.ImageProxy):
+
+    def __init__(self, image, context, store_api):
+        self.image = image
+        self.context = context
+        self.store_api = store_api
+        super(ImageProxy, self).__init__(image)
+
+    def delete(self):
+        self.image.delete()
+        if self.image.location:
+            if CONF.delayed_delete:
+                self.image.status = 'pending_delete'
+                self.store_api.schedule_delayed_delete_from_backend(
+                                self.image.location, self.image.image_id)
+            else:
+                self.store_api.safe_delete_from_backend(self.image.location,
+                                                        self.context,
+                                                        self.image.image_id)

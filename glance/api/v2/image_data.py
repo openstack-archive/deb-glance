@@ -33,9 +33,8 @@ class ImageDataController(object):
     def __init__(self, db_api=None, store_api=None,
                  policy_enforcer=None, notifier=None):
         self.db_api = db_api or glance.db.get_api()
-        self.db_api.configure_db()
+        self.db_api.setup_db_env()
         self.store_api = store_api or glance.store
-        self.store_api.create_stores()
         self.policy = policy_enforcer or policy.Enforcer()
         self.notifier = notifier or glance.notifier.Notifier()
 
@@ -73,25 +72,27 @@ class ImageDataController(object):
             msg = _("Image storage media is full: %s") % e
             LOG.error(msg)
             raise webob.exc.HTTPRequestEntityTooLarge(explanation=msg,
-                                                     request=req)
+                                                      request=req)
 
         except exception.StorageWriteDenied, e:
             msg = _("Insufficient permissions on image storage media: %s") % e
             LOG.error(msg)
             raise webob.exc.HTTPServiceUnavailable(explanation=msg,
-                                                  request=req)
+                                                   request=req)
 
         except webob.exc.HTTPError, e:
-            LOG.error("Failed to upload image data due to HTTP error")
+            LOG.error(_("Failed to upload image data due to HTTP error"))
             raise
 
         except Exception, e:
-            LOG.exception("Failed to upload image data due to internal error")
+            LOG.exception(_("Failed to upload image data due to "
+                            "internal error"))
             raise
 
         else:
             v2.update_image_read_acl(req, self.store_api, self.db_api, image)
-            values = {'location': location, 'size': size, 'checksum': checksum}
+            values = {'location': location, 'size': size, 'checksum': checksum,
+                      'status': 'active'}
             self.db_api.image_update(req.context, image_id, values)
             updated_image = self._get_image(req.context, image_id)
             self.notifier.info('image.upload', updated_image)
@@ -136,10 +137,13 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
         checksum = result['meta']['checksum']
         response.headers['Content-Length'] = size
         response.headers['Content-Type'] = 'application/octet-stream'
-        if checksum:
-            response.headers['Content-MD5'] = checksum
         response.app_iter = common.size_checked_iter(
                 response, result['meta'], size, result['data'], self.notifier)
+        #NOTE(saschpe): "response.app_iter = ..." currently resets Content-MD5
+        # (https://github.com/Pylons/webob/issues/86), so it should be set
+        # afterwards for the time being.
+        if checksum:
+            response.headers['Content-MD5'] = checksum
 
     def upload(self, response, result):
         response.status_int = 201
