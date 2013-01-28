@@ -14,13 +14,16 @@ Build-Depends-Indep:
  curl,
  openstack-pkg-tools,
  pep8,
+ python-argparse,
  python-boto,
  python-crypto,
+ python-dateutil,
  python-eventlet,
+ python-glanceclient,
  python-httplib2 (>= 0.6.0),
  python-iso8601,
  python-jsonschema,
- python-keystone,
+ python-keystoneclient,
  python-kombu,
  python-migrate,
  python-mox,
@@ -31,7 +34,7 @@ Build-Depends-Indep:
  python-routes,
  python-setuptools,
  python-sphinx,
- python-sqlalchemy (<< 0.8),
+ python-sqlalchemy-ext | python-sqlalchemy (<< 0.6.3-2),
  python-swift,
  python-swiftclient,
  python-webob,
@@ -47,32 +50,66 @@ Architecture: all
 Section: python
 Pre-Depends: dpkg (>= 1.15.6~)
 Depends: ${python:Depends}, ${misc:Depends},
+ python-argparse,
  python-boto,
  python-configobj,
  python-crypto,
+ python-dateutil,
  python-eventlet,
  python-httplib2 (>= 0.6.0),
  python-iso8601,
+ python-jsonschema,
  python-keystone,
  python-kombu,
  python-migrate,
  python-pastedeploy,
+ python-requests,
  python-routes,
- python-sqlalchemy (<< 0.8),
- python-swift,
+ python-setuptools,
+ python-sqlalchemy-ext | python-sqlalchemy (<< 0.6.3-2),
+ python-swiftclient,
  python-webob,
  python-xattr
+Provides: ${python:Provides}
 Description: OpenStack Image Service - Python client library
  The Glance project provides services for discovering, registering, and
  retrieving virtual machine images over the cloud. They may be stand-alone
  services, or may be used to deliver images from object stores, such as
  OpenStack's Swift service, to Nova's compute nodes.
  .
- This package contains the Python client libraries.
+ This package contains the Python libraries.
+
+Package: glance
+Architecture: all
+Section: python
+Pre-Depends: dpkg (>= 1.15.6~)
+Depends: glance-api (= ${source:Version}), glance-registry (= ${source:Version}),
+ ${misc:Depends}
+Description: OpenStack Image Service - metapackage
+ The Glance project provides services for discovering, registering, and
+ retrieving virtual machine images over the cloud. They may be stand-alone
+ services, or may be used to deliver images from object stores, such as
+ OpenStack's Swift service, to Nova's compute nodes.
+ .
+ This is a dependency package to install all of the Glance suite.
+
+Package: python-glance-doc
+Architecture: all
+Section: doc
+Pre-Depends: dpkg (>= 1.15.6~)
+Depends: libjs-jquery, libjs-underscore, ${misc:Depends}
+Description: OpenStack Image Service - Python library documentation
+ The Glance project provides services for discovering, registering, and
+ retrieving virtual machine images over the cloud. They may be stand-alone
+ services, or may be used to deliver images from object stores, such as
+ OpenStack's Swift service, to Nova's compute nodes.
+ .
+ This package contains the documentation.
 
 Package: glance-common
 Architecture: all
 Section: python
+Breaks: glance (<< 2012.1~e2-3)
 Replaces: glance (<< 2012.1~e2-3)
 Pre-Depends: dpkg (>= 1.15.6~)
 Depends: ${python:Depends}, ${misc:Depends},
@@ -100,14 +137,14 @@ Description: OpenStack Image Service - API server
  retrieving virtual machine images over the cloud. They may be stand-alone
  services, or may be used to deliver images from object stores, such as
  OpenStack's Swift service, to Nova's compute nodes.
-  .
+ .
  This package contains the Glance API server.
 
 Package: glance-registry
 Architecture: all
 Section: python
-Pre-Depends: adduser, dpkg (>= 1.15.6~)
-Depends: ${ostack-lsb-base}, ${python:Depends}, ${misc:Depends},
+Pre-Depends: dpkg (>= 1.15.6~)
+Depends: adduser, ${ostack-lsb-base}, ${python:Depends}, ${misc:Depends},
  glance-common (= ${source:Version}),
  dbconfig-common
 Description: OpenStack Image Service - registry server
@@ -117,30 +154,3 @@ Description: OpenStack Image Service - registry server
  OpenStack's Swift service, to Nova's compute nodes.
  .
  This package contains the Glance registry server.
-
-Package: glance
-Architecture: all
-Section: python
-Pre-Depends: dpkg (>= 1.15.6~)
-Depends: glance-api (= ${source:Version}), glance-registry (= ${source:Version}),
- ${misc:Depends}
-Description: OpenStack Image Service - metapackage
- The Glance project provides services for discovering, registering, and
- retrieving virtual machine images over the cloud. They may be stand-alone
- services, or may be used to deliver images from object stores, such as
- OpenStack's Swift service, to Nova's compute nodes.
- .
- This is a dependency package to install all of the Glance suite.
-
-Package: python-glance-doc
-Architecture: all
-Section: doc
-Pre-Depends: dpkg (>= 1.15.6~)
-Depends: libjs-jquery, libjs-underscore, ${misc:Depends}
-Description: OpenStack Image Service - Python library documentation
- The Glance project provides services for discovering, registering, and
- retrieving virtual machine images over the cloud. They may be stand-alone
- services, or may be used to deliver images from object stores, such as
- OpenStack's Swift service, to Nova's compute nodes.
- .
- This package contains the Python client library documentation.

@@ -1,7 +1,7 @@
-/var/lib/glance/
-/var/lib/glance/image-cache/
+/var/lib/glance
+/var/lib/glance/image-cache
 /var/lib/glance/image-cache/incomplete
 /var/lib/glance/image-cache/invalid
 /var/lib/glance/image-cache/queue
-/var/lib/glance/images/
-/var/log/glance/
+/var/lib/glance/images
+/var/log/glance

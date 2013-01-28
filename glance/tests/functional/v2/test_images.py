@@ -345,12 +345,6 @@ class TestImages(functional.FunctionalTest):
         self.assertEqual(200, response.status_code)
         self.assertEqual(response.text, 'ZZZZZ')
 
-        # Image data should still be present after the failed delete
-        path = self._url('/v2/images/%s/file' % image_id)
-        response = requests.get(path, headers=self._headers())
-        self.assertEqual(200, response.status_code)
-        self.assertEqual(response.text, 'ZZZZZ')
-
         self.stop_servers()
 
     def test_tag_lifecycle(self):

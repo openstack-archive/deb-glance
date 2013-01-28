@@ -433,12 +433,6 @@ class TestImagesController(test_utils.BaseTestCase):
         self.assertRaises(webob.exc.HTTPNotFound, self.controller.update,
                           request, UUID1, changes=[])
 
-    def test_update_deleted_image_admin(self):
-        request = unit_test_utils.get_fake_request(is_admin=True)
-        self.controller.delete(request, UUID1)
-        self.assertRaises(webob.exc.HTTPNotFound, self.controller.update,
-                          request, UUID1, changes=[])
-
     def test_update_replace_base_attribute(self):
         self.db.image_update(None, UUID1, {'properties': {'foo': 'bar'}})
         request = unit_test_utils.get_fake_request()
@@ -680,12 +674,6 @@ class TestImagesController(test_utils.BaseTestCase):
         request = unit_test_utils.get_fake_request()
         self.assertRaises(webob.exc.HTTPNotFound, self.controller.delete,
                           request, UUID4)
-
-    def test_delete_already_deleted_image_admin(self):
-        request = unit_test_utils.get_fake_request(is_admin=True)
-        self.controller.delete(request, UUID1)
-        self.assertRaises(webob.exc.HTTPNotFound,
-                          self.controller.delete, request, UUID1)
 
     def test_index_with_invalid_marker(self):
         fake_uuid = uuidutils.generate_uuid()
