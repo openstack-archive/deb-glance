@@ -5,3 +5,4 @@ fixed-most-pep8-errors.patch
 test_unsupported_default_store.patch
 CVE-2012-4573-authentication-bypass-for-image-deletion.patch
 neutralize-test_multiprocessing.py.patch
+CVE-2013-0212_backend_password_leak_in_Glance_error_message.patch

@@ -1,3 +1,11 @@
+glance (2012.1.1-4) unstable; urgency=high
+
+  * CVE-2013-0212: Backend password leak in Glance error message. Note that
+    only setups that use the single-tenant Swift store are affected.
+    (Closes: #699270).
+
+ -- Thomas Goirand <zigo@debian.org>  Tue, 29 Jan 2013 15:56:12 +0000
+
 glance (2012.1.1-3) unstable; urgency=high
 
   * New upstream patch for CVE-2012-4573. Previous patch is to be discarded,
