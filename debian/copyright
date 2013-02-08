@@ -1,11 +1,146 @@
 Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: glance
-Source: https://code.launchpad.net/glance
+Source: https://github.com/openstack/glance
+
+Files: debian/*
+Copyright: (c) 2010-2013, Thomas Goirand <zigo@debian.org>
+	(c) 2012, Mehdi Abaakouk <sileht@sileht.net>
+	(c) 2011-2012, Ghe Rivero <ghe@debian.org>
+	(c) 2012, Ola Lundqvist <ola@inguza.com>
+	(c) 2011, Julien Danjou <acid@debian.org>
+	(c) 2011, Chuck Short <zulcss@ubuntu.com>
+	(c) 2011, Soren Hansen <soren@ubuntu.com>
+	(c) 2011, Canonical
+License: Apache-2
 
 Files: *
-Copyright: 2010 United States Government as represented by the Administrator of the National Aeronautics and Space Administration.
-  2010-2011 OpenStack LLC
-  Others (See individual files for more details)
+Copyright: 2010 United States Government as represented by the Administrator of
+		the National Aeronautics and Space Administration.
+	2010-2011 OpenStack LLC
+	Jay Pipes <jaypipes@gmail.com>
+	Brian Waldon <brian.waldon@rackspace.com>
+	Rick Harris <rconradharris@gmail.com>
+	Eoghan Glynn <eglynn@redhat.com>
+	Dan Prince <dprince@redhat.com>
+	Justin Shepherd <jshepher@rackspace.com>
+	Julien Danjou <julien@danjou.info>
+	Jay Pipes <jaypipes@gmail.com>
+	Jason Kölker <jason@koelker.net>
+	Monty Taylor <mordred@inaugust.com>
+	Mark McLoughlin <markmc@redhat.com>
+	Mark Washenberger <mark.washenberger@rackspace.com>
+	Kevin L. Mitchell <kevin.mitchell@rackspace.com>
+	Alex Meade <alex.meade@rackspace.com>
+	Thierry Carrez <thierry@openstack.org>
+	Stuart McLaren <stuart.mclaren@hp.com>
+	Mehdi Abaakouk <sileht@sileht.net>
+	Russell Bryant <rbryant@redhat.com>
+	Ewan Mellor <ewan.mellor@citrix.com>
+	Donal Lafferty <donal.lafferty@citrix.com>
+	Roland Mas <lolando@debian.org>
+	Mark J. Washenberger <mark.washenberger@markwash.net>
+	Cerberus <matt.dietz@rackspace.com>
+	Michael Still <mikal@stillhq.com>
+	Christopher MacGown <chris@pistoncloud.com>
+	Zhongyue Luo <zhongyue.nah@intel.com>
+	Brian Lamar <brian.lamar@rackspace.com>
+	Jason Koelker <jason@koelker.net>
+	Soren Hansen <soren.hansen@rackspace.com>
+	isethi <iccha.sethi@rackspace.com>
+	Vishvananda Ishaya <vishvananda@gmail.com>
+	Unmesh Gurjar <unmesh.gurjar@nttdata.com>
+	Adam Gandelman <adam.gandelman@canonical.com>
+	Paul Bourke <paul-david.bourke@hp.com>
+	Johannes Erdfelt <johannes.erdfelt@rackspace.com>
+	Isaku Yamahata <yamahata@valinux.co.jp>
+	Tom Hancock <tom.hancock@hp.com>
+	Nikhil Komawar <nikhil.komawar@rackspace.com>
+	James E. Blair <jeblair@hp.com>
+	Sascha Peilicke <saschpe@suse.de>
+	Josh Kearney <josh@jk0.org>
+	Joseph Suh <jsuh@isi.edu>
+	Cory Wright <corywright@gmail.com>
+	Unmesh Gurjar <unmesh.gurjar@vertex.co.in>
+	iccha <iccha.sethi@rackspace.com>
+	Hengqing Hu <hudayou@hotmail.com>
+	Eldar Nugaev <enugaev@griddynamics.com>
+	Derek Higgins <derekh@redhat.com>
+	Yuriy Taraday <yorik.sar@gmail.com>
+	Yaguang Tang <heut2008@gmail.com>
+	Vincent Untz <vuntz@suse.com>
+	Taku Fukushima <tfukushima@dcl.info.waseda.ac.jp>
+	Sean Dague <sdague@linux.vnet.ibm.com>
+	Ola Lundqvist <ola@inguza.com>
+	Mike Lundy <mike@pistoncloud.com>
+	Ken Pepple <ken.pepple@gmail.com>
+	Josh Durgin <josh.durgin@inktank.com>
+	J. Daniel Schmidt <jdsn@suse.de>
+	Dean Troyer <dtroyer@gmail.com>
+	Clark Boylan <clark.boylan@gmail.com>
+	Chuck Short <chuck.short@canonical.com>
+	Tomas Hancock <tom.hancock@hp.com>
+	Sulochan Acharya <sulochan.acharya@rackspace.co.uk>
+	Sathish Nagappan <sathish.nagappan@nebula.com>
+	Pete Zaitcev <zaitcev@kotori.zaitcev.us>
+	Patrick Mezard <patrick@mezard.eu>
+	Pádraig Brady <pbrady@redhat.com>
+	Matt Dietz <matt.dietz@rackspace.com>
+	Maru Newby <mnewby@internap.com>
+	Mark J. Washenberger <mark.washenberger@rackspace.com>
+	Major Hayden <major@mhtx.net>
+	Lorin Hochstein <lorin@nimbisservices.com>
+	Lars Gellrich <lars.gellrich@hp.com>
+	Justin Santa Barbara <justin@fathomdb.com>
+	Juerg Haefliger <juerg.haefliger@hp.com>
+	Joshua Harlow <harlowja@yahoo-inc.com>
+	Joe Gordon <jogo@cloudscaling.com>
+	jakedahn <jake@ansolabs.com>
+	Gerardo Porras <gporras@yahoo-inc.com>
+	Gabriel Hurley <gabriel@strikeawe.com>
+	Duncan McGreggor <duncan@dreamhost.com>
+	Chris Behrens <cbehrens@codestud.com>
+	Chmouel Boudjnah <chmouel@chmouel.com>
+	Brian Elliott <brian.elliott@rackspace.com>
+	Bhuvan Arumugam <bhuvan@apache.org>
+	Bernhard M. Wiedemann <bwiedemann@suse.de>
+	Andrey Brindeyev <abrindeyev@griddynamics.com>
+	Zhiteng Huang <zhiteng.huang@intel.com>
+	ZHANG Hua <zhuadl@cn.ibm.com>
+	Wayne A. Walls <wayne.walls@rackspace.com>
+	Tim Daly, Jr <timjr@yahoo-inc.com>
+	Therese McHale <therese.mchale@hp.com>
+	shrutiranade38 <shrutiranade38@gmail.com>
+	Sam Morrison <sorrison@gmail.com>
+	RongzeZhu <zrzhit@gmail.com>
+	Rongze Zhu <zrzhit@gmail.com>
+	Rick Clark <rick@openstack.org>
+	Reynolds Chin <benzwt@gmail.com>
+	Ray Chen <oldsharp@163.com>
+	Rainya Mosher <rainya.mosher@rackspace.com>
+	Peng Yong <ppyy@pubyun.com>
+	Pavan Kumar Sunkara <pavan.sss1991@gmail.com>
+	Paul McMillan <paul.mcmillan@nebula.com>
+	Pádraig Brady <P@draigBrady.com>
+	Matthias Schmitz <matthias@sigxcpu.org>
+	Ken Thomas <krt@yahoo-inc.com>
+	Josh Durgin <josh.durgin@dreamhost.com>
+	John Bresnahan <jbresnah@redhat.com>
+	Jinwoo 'Joseph' Suh <jsuh@isi.edu>
+	Jesse Andrews <anotherjesse@gmail.com>
+	Ionuț Arțăriși <iartarisi@suse.cz>
+	Eddie Sheffield <eddie.sheffield@rackspace.com>
+	Doug Hellmann <doug.hellmann@dreamhost.com>
+	David Ripton <dripton@redhat.com>
+	daisy-ycguo <daisy.ycguo@gmail.com>
+	Brian Rosmaita <brian.rosmaita@rackspace.com>
+	Brian Elliott <bdelliott@gmail.com>
+	Attila Fazekas <afazekas@redhat.com>
+	Anita Kuno <akuno@lavabit.com>
+	Andrew Hutchings <andrew@linuxjedi.co.uk>
+	Alessio Ababilov <aababilov@griddynamics.com>
+	Alessandro Pilotti <ap@pilotti.it>
+License: Apache-2
+
 License: Apache-2
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -21,4 +156,3 @@ License: Apache-2
  .
  On Debian-based systems the full text of the Apache version 2.0 license
  can be found in `/usr/share/common-licenses/Apache-2.0'.
-
