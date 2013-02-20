@@ -79,6 +79,7 @@ Depends: ${python:Depends}, ${misc:Depends},
  python-glance (= ${source:Version}),
  adduser,
  debconf,
+ dbconfig-common,
  python-glanceclient
 Description: OpenStack Image Service - common files
  The Glance project provides services for discovering, registering, and
@@ -108,8 +109,7 @@ Architecture: all
 Section: python
 Pre-Depends: adduser, dpkg (>= 1.15.6~)
 Depends: ${ostack-lsb-base}, ${python:Depends}, ${misc:Depends},
- glance-common (= ${source:Version}),
- dbconfig-common
+ glance-common (= ${source:Version})
 Description: OpenStack Image Service - registry server
  The Glance project provides services for discovering, registering, and
  retrieving virtual machine images over the cloud. They may be stand-alone
