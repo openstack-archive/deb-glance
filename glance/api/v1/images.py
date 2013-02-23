@@ -22,6 +22,7 @@
 import traceback
 
 import eventlet
+from oslo.config import cfg
 from webob.exc import (HTTPError,
                        HTTPNotFound,
                        HTTPConflict,
@@ -30,6 +31,7 @@ from webob.exc import (HTTPError,
                        HTTPRequestEntityTooLarge,
                        HTTPInternalServerError,
                        HTTPServiceUnavailable)
+from webob import Response
 
 from glance.api import common
 from glance.api import policy
@@ -40,7 +42,6 @@ from glance.common import exception
 from glance.common import utils
 from glance.common import wsgi
 from glance import notifier
-from glance.openstack.common import cfg
 import glance.openstack.common.log as logging
 from glance import registry
 from glance.store import (get_from_backend,
@@ -49,7 +50,6 @@ from glance.store import (get_from_backend,
                           schedule_delayed_delete_from_backend,
                           get_store_from_location,
                           get_store_from_scheme)
-
 
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
@@ -67,12 +67,12 @@ def validate_image_meta(req, values):
     container_format = values.get('container_format')
 
     if 'disk_format' in values:
-        if not disk_format in DISK_FORMATS:
+        if disk_format not in DISK_FORMATS:
             msg = "Invalid disk format '%s' for image." % disk_format
             raise HTTPBadRequest(explanation=msg, request=req)
 
     if 'container_format' in values:
-        if not container_format in CONTAINER_FORMATS:
+        if container_format not in CONTAINER_FORMATS:
             msg = "Invalid container format '%s' for image." % container_format
             raise HTTPBadRequest(explanation=msg, request=req)
 
@@ -348,6 +348,7 @@ class Controller(controller.BaseController):
 
         try:
             image_meta = registry.add_image_metadata(req.context, image_meta)
+            self.notifier.info("image.create", image_meta)
             return image_meta
         except exception.Duplicate:
             msg = (_("An image with identifier %s already exists") %
@@ -419,6 +420,7 @@ class Controller(controller.BaseController):
                     "to %(scheme)s store"), locals())
 
         try:
+            self.notifier.info("image.prepare", image_meta)
             location, size, checksum = store.add(
                 image_meta['id'],
                 utils.CooperativeReader(image_data),
@@ -433,6 +435,7 @@ class Controller(controller.BaseController):
                             "status to 'killed'.") % locals()
                     LOG.error(msg)
                     self._safe_kill(req, image_id)
+                    self._initiate_deletion(req, location, image_id)
                     raise HTTPBadRequest(explanation=msg,
                                          content_type="text/plain",
                                          request=req)
@@ -522,6 +525,7 @@ class Controller(controller.BaseController):
             image_meta_data = registry.update_image_metadata(req.context,
                                                              image_id,
                                                              image_meta)
+            self.notifier.info("image.activate", image_meta_data)
             self.notifier.info("image.update", image_meta_data)
             return image_meta_data
         except exception.Invalid, e:
@@ -603,11 +607,11 @@ class Controller(controller.BaseController):
     def _validate_image_for_activation(self, req, id, values):
         """Ensures that all required image metadata values are valid."""
         image = self.get_image_meta_or_404(req, id)
-        if not 'disk_format' in values:
+        if 'disk_format' not in values:
             values['disk_format'] = image['disk_format']
-        if not 'container_format' in values:
+        if 'container_format' not in values:
             values['container_format'] = image['container_format']
-        if not 'name' in values:
+        if 'name' not in values:
             values['name'] = image['name']
 
         values = validate_image_meta(req, values)
@@ -782,6 +786,13 @@ class Controller(controller.BaseController):
 
         return {'image_meta': image_meta}
 
+    @staticmethod
+    def _initiate_deletion(req, location, id):
+        if CONF.delayed_delete:
+            schedule_delayed_delete_from_backend(location, id)
+        else:
+            safe_delete_from_backend(location, req.context, id)
+
     @utils.mutating
     def delete(self, req, id):
         """
@@ -828,11 +839,7 @@ class Controller(controller.BaseController):
             # to delete the image if the backend doesn't yet store it.
             # See https://bugs.launchpad.net/glance/+bug/747799
             if image['location']:
-                if CONF.delayed_delete:
-                    schedule_delayed_delete_from_backend(image['location'], id)
-                else:
-                    safe_delete_from_backend(image['location'],
-                                             req.context, id)
+                self._initiate_deletion(req, image['location'], id)
         except exception.NotFound, e:
             msg = (_("Failed to find image to delete: %(e)s") % locals())
             for line in msg.split('\n'):
@@ -849,6 +856,7 @@ class Controller(controller.BaseController):
                                 content_type="text/plain")
         else:
             self.notifier.info('image.delete', image)
+            return Response(body='', status=200)
 
     def get_store_or_400(self, request, scheme):
         """
@@ -962,7 +970,6 @@ class ImageSerializer(wsgi.JSONResponseSerializer):
 
     def show(self, response, result):
         image_meta = result['image_meta']
-        image_id = image_meta['id']
 
         image_iter = result['image_iterator']
         # image_meta['size'] should be an int, but could possibly be a str

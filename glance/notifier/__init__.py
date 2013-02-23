@@ -19,9 +19,10 @@
 import socket
 import uuid
 
+from oslo.config import cfg
+
 from glance.common import exception
 import glance.domain
-from glance.openstack.common import cfg
 from glance.openstack.common import importutils
 import glance.openstack.common.log as logging
 from glance.openstack.common import timeutils
@@ -129,7 +130,7 @@ class ImageRepoProxy(glance.domain.ImageRepoProxy):
 
     def add(self, image):
         self.image_repo.add(image)
-        self.notifier.info('image.update', format_image_notification(image))
+        self.notifier.info('image.create', format_image_notification(image))
 
     def remove(self, image):
         self.image_repo.remove(image)

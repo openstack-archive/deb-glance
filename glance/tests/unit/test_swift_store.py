@@ -23,12 +23,12 @@ import StringIO
 import tempfile
 import urllib
 
+from oslo.config import cfg
 import stubout
 import swiftclient
 
 import glance.common.auth
 from glance.common import exception
-from glance.openstack.common import cfg
 from glance.openstack.common import uuidutils
 from glance.store import BackendException
 from glance.store.location import get_location_from_uri
@@ -90,7 +90,7 @@ def stub_out_swiftclient(stubs, swift_store_auth_version):
         SWIFT_PUT_OBJECT_CALLS += 1
         CHUNKSIZE = 64 * 1024
         fixture_key = "%s/%s" % (container, name)
-        if not fixture_key in fixture_headers.keys():
+        if fixture_key not in fixture_headers:
             if kwargs.get('headers'):
                 etag = kwargs['headers']['ETag']
                 fixture_headers[fixture_key] = {'manifest': True,
@@ -128,7 +128,7 @@ def stub_out_swiftclient(stubs, swift_store_auth_version):
     def fake_get_object(url, token, container, name, **kwargs):
         # GET returns the tuple (list of headers, file object)
         fixture_key = "%s/%s" % (container, name)
-        if not fixture_key in fixture_headers:
+        if fixture_key not in fixture_headers:
             msg = "Object GET failed"
             raise swiftclient.ClientException(msg,
                                               http_status=httplib.NOT_FOUND)
@@ -161,7 +161,7 @@ def stub_out_swiftclient(stubs, swift_store_auth_version):
     def fake_delete_object(url, token, container, name, **kwargs):
         # DELETE returns nothing
         fixture_key = "%s/%s" % (container, name)
-        if fixture_key not in fixture_headers.keys():
+        if fixture_key not in fixture_headers:
             msg = "Object DELETE failed - Object does not exist"
             raise swiftclient.ClientException(msg,
                                               http_status=httplib.NOT_FOUND)
@@ -658,11 +658,7 @@ class TestStoreAuthV1(base.StoreClearingUnitTest, SwiftTests):
         self.stubs = stubout.StubOutForTesting()
         stub_out_swiftclient(self.stubs, conf['swift_store_auth_version'])
         self.store = Store()
-
-    def tearDown(self):
-        """Clear the test environment"""
-        super(TestStoreAuthV1, self).tearDown()
-        self.stubs.UnsetAll()
+        self.addCleanup(self.stubs.UnsetAll)
 
 
 class TestStoreAuthV2(TestStoreAuthV1):

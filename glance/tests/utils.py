@@ -24,33 +24,21 @@ import random
 import socket
 import StringIO
 import subprocess
-import unittest
 
-import nose.plugins.skip
+from oslo.config import cfg
+import stubout
+import testtools
 
 from glance.common import config
+from glance.common import exception
 from glance.common import utils
 from glance.common import wsgi
 from glance import context
-from glance.openstack.common import cfg
 
 CONF = cfg.CONF
 
 
-def get_isolated_test_env():
-    """
-    Returns a tuple of (test_id, test_dir) that is unique
-    for an isolated test environment. Also ensure the test_dir
-    is created.
-    """
-    test_id = random.randint(0, 100000)
-    test_tmp_dir = os.getenv('GLANCE_TEST_TMP_DIR', '/tmp')
-    test_dir = os.path.join(test_tmp_dir, "test.%d" % test_id)
-    utils.safe_mkdirs(test_dir)
-    return test_id, test_dir
-
-
-class BaseTestCase(unittest.TestCase):
+class BaseTestCase(testtools.TestCase):
 
     def setUp(self):
         super(BaseTestCase, self).setUp()
@@ -59,10 +47,14 @@ class BaseTestCase(unittest.TestCase):
         # command-line options - specifically we need config_dir for
         # the following policy tests
         config.parse_args(args=[])
+        self.addCleanup(CONF.reset)
+        self.stubs = stubout.StubOutForTesting()
+        self.stubs.Set(exception, '_FATAL_EXCEPTION_FORMAT_ERRORS', True)
 
     def tearDown(self):
+        self.stubs.UnsetAll()
+        self.stubs.SmartUnsetAll()
         super(BaseTestCase, self).tearDown()
-        CONF.reset()
 
     def config(self, **kw):
         """
@@ -75,59 +67,11 @@ class BaseTestCase(unittest.TestCase):
         the specified configuration option group.
 
         All overrides are automatically cleared at the end of the current
-        test by the tearDown() method.
+        test by the fixtures cleanup process.
         """
         group = kw.pop('group', None)
         for k, v in kw.iteritems():
             CONF.set_override(k, v, group)
-
-
-class skip_test(object):
-    """Decorator that skips a test."""
-    def __init__(self, msg):
-        self.message = msg
-
-    def __call__(self, func):
-        def _skipper(*args, **kw):
-            """Wrapped skipper function."""
-            raise nose.SkipTest(self.message)
-        _skipper.__name__ = func.__name__
-        _skipper.__doc__ = func.__doc__
-        return _skipper
-
-
-class skip_if(object):
-    """Decorator that skips a test if condition is true."""
-    def __init__(self, condition, msg):
-        self.condition = condition
-        self.message = msg
-
-    def __call__(self, func):
-        def _skipper(*args, **kw):
-            """Wrapped skipper function."""
-            if self.condition:
-                raise nose.SkipTest(self.message)
-            func(*args, **kw)
-        _skipper.__name__ = func.__name__
-        _skipper.__doc__ = func.__doc__
-        return _skipper
-
-
-class skip_unless(object):
-    """Decorator that skips a test if condition is not true."""
-    def __init__(self, condition, msg):
-        self.condition = condition
-        self.message = msg
-
-    def __call__(self, func):
-        def _skipper(*args, **kw):
-            """Wrapped skipper function."""
-            if not self.condition:
-                raise nose.SkipTest(self.message)
-            func(*args, **kw)
-        _skipper.__name__ = func.__name__
-        _skipper.__doc__ = func.__doc__
-        return _skipper
 
 
 class requires(object):
@@ -175,7 +119,7 @@ def skip_if_disabled(func):
         message = getattr(test_obj, 'disabled_message',
                           'Test disabled')
         if getattr(test_obj, 'disabled', False):
-            raise nose.SkipTest(message)
+            test_obj.skipTest(message)
         func(*a, **kwargs)
     return wrapped
 

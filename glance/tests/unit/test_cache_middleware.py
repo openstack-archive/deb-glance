@@ -1,4 +1,4 @@
-# Copyright 2012 OpenStack, LLC
+# Copyright 2012 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -14,7 +14,7 @@
 #    under the License.
 
 import stubout
-import unittest
+import testtools
 import webob
 
 import glance.api.middleware.cache
@@ -23,7 +23,7 @@ from glance import context
 from glance import registry
 
 
-class TestCacheMiddlewareURLMatching(unittest.TestCase):
+class TestCacheMiddlewareURLMatching(testtools.TestCase):
     def test_v1_no_match_detail(self):
         req = webob.Request.blank('/v1/images/detail')
         out = glance.api.middleware.cache.CacheFilter._match_request(req)
@@ -55,8 +55,9 @@ class TestCacheMiddlewareURLMatching(unittest.TestCase):
         self.assertTrue(out is None)
 
 
-class TestCacheMiddlewareRequestStashCacheInfo(unittest.TestCase):
+class TestCacheMiddlewareRequestStashCacheInfo(testtools.TestCase):
     def setUp(self):
+        super(TestCacheMiddlewareRequestStashCacheInfo, self).setUp()
         self.request = webob.Request.blank('')
         self.middleware = glance.api.middleware.cache.CacheFilter
 
@@ -86,7 +87,7 @@ class ChecksumTestCacheFilter(glance.api.middleware.cache.CacheFilter):
         self.cache = DummyCache()
 
 
-class TestCacheMiddlewareChecksumVerification(unittest.TestCase):
+class TestCacheMiddlewareChecksumVerification(testtools.TestCase):
     def test_checksum_v1_header(self):
         cache_filter = ChecksumTestCacheFilter()
         headers = {"x-image-meta-checksum": "1234567890"}
@@ -132,14 +133,11 @@ class ProcessRequestTestCacheFilter(glance.api.middleware.cache.CacheFilter):
         self.cache = DummyCache()
 
 
-class TestCacheMiddlewareProcessRequest(unittest.TestCase):
+class TestCacheMiddlewareProcessRequest(testtools.TestCase):
     def setUp(self):
         super(TestCacheMiddlewareProcessRequest, self).setUp()
         self.stubs = stubout.StubOutForTesting()
-
-    def tearDown(self):
-        super(TestCacheMiddlewareProcessRequest, self).tearDown()
-        self.stubs.UnsetAll()
+        self.addCleanup(self.stubs.UnsetAll)
 
     def test_v1_deleted_image_fetch(self):
         """

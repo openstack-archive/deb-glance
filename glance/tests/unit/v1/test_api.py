@@ -22,6 +22,7 @@ import httplib
 import json
 import StringIO
 
+from oslo.config import cfg
 import routes
 from sqlalchemy import exc
 import stubout
@@ -34,14 +35,12 @@ import glance.common.config
 import glance.context
 from glance.db.sqlalchemy import api as db_api
 from glance.db.sqlalchemy import models as db_models
-from glance.openstack.common import cfg
 from glance.openstack.common import timeutils
 from glance.openstack.common import uuidutils
 from glance.registry.api import v1 as rserver
 import glance.store.filesystem
 from glance.tests.unit import base
 from glance.tests import utils as test_utils
-
 
 CONF = cfg.CONF
 
@@ -60,6 +59,10 @@ class TestRegistryDb(test_utils.BaseTestCase):
         self.orig_engine = db_api._ENGINE
         self.orig_connection = db_api._CONNECTION
         self.orig_maker = db_api._MAKER
+        self.addCleanup(self.stubs.UnsetAll)
+        self.addCleanup(setattr, db_api, '_ENGINE', self.orig_engine)
+        self.addCleanup(setattr, db_api, '_CONNECTION', self.orig_connection)
+        self.addCleanup(setattr, db_api, '_MAKER', self.orig_maker)
 
     def test_bad_sql_connection(self):
         """
@@ -97,14 +100,6 @@ class TestRegistryDb(test_utils.BaseTestCase):
 
         self.assertTrue(exc_raised)
         self.assertTrue(self.log_written)
-
-    def tearDown(self):
-        """Clear the test environment"""
-        super(TestRegistryDb, self).setUp()
-        db_api._ENGINE = self.orig_engine
-        db_api._CONNECTION = self.orig_connection
-        db_api._MAKER = self.orig_maker
-        self.stubs.UnsetAll()
 
 
 class TestRegistryAPI(base.IsolatedUnitTest):
@@ -3022,6 +3017,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req.method = 'DELETE'
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, 200)
+        self.assertEquals(res.body, '')
 
         req = webob.Request.blank("/images/%s" % UUID2)
         req.method = 'GET'

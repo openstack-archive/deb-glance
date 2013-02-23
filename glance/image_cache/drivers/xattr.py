@@ -61,15 +61,14 @@ import os
 import stat
 import time
 
+from oslo.config import cfg
 import xattr
 
 from glance.common import exception
 from glance.image_cache.drivers import base
-from glance.openstack.common import cfg
 import glance.openstack.common.log as logging
 
 LOG = logging.getLogger(__name__)
-
 
 CONF = cfg.CONF
 
@@ -110,7 +109,7 @@ class Driver(base.Driver):
                         "user_xattr option to the appropriate line for the "
                         "device housing the cache directory.") % locals()
                 LOG.error(msg)
-                raise exception.BadDriverConfiguration(driver="xattr",
+                raise exception.BadDriverConfiguration(driver_name="xattr",
                                                        reason=msg)
         else:
             # Cleanup after ourselves...

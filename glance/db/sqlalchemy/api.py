@@ -25,6 +25,7 @@ Defines interface for DB access
 import logging
 import time
 
+from oslo.config import cfg
 import sqlalchemy
 import sqlalchemy.orm as sa_orm
 import sqlalchemy.sql as sa_sql
@@ -58,6 +59,7 @@ db_opts = [
 
 CONF = cfg.CONF
 CONF.register_opts(db_opts)
+CONF.import_opt('debug', 'glance.openstack.common.log')
 
 
 def ping_listener(dbapi_conn, connection_rec, connection_proxy):
@@ -338,7 +340,7 @@ def is_image_sharable(context, image, **kwargs):
     return member['can_share']
 
 
-def is_image_visible(context, image):
+def is_image_visible(context, image, status=None):
     """Return True if the image is visible in this context."""
     # Is admin == image visible
     if context.is_admin:
@@ -360,7 +362,8 @@ def is_image_visible(context, image):
         # Figure out if this image is shared with that tenant
         members = image_member_find(context,
                                     image_id=image['id'],
-                                    member=context.owner)
+                                    member=context.owner,
+                                    status=status)
         if members:
             return True
 
@@ -467,7 +470,8 @@ def paginate_query(query, model, limit, sort_keys, marker=None,
 
 
 def image_get_all(context, filters=None, marker=None, limit=None,
-                  sort_key='created_at', sort_dir='desc'):
+                  sort_key='created_at', sort_dir='desc',
+                  member_status='accepted'):
     """
     Get all images that match zero or more filters.
 
@@ -493,12 +497,36 @@ def image_get_all(context, filters=None, marker=None, limit=None,
         visibility_filters = [models.Image.is_public == True]
 
         if context.owner is not None:
-            visibility_filters.extend([
-                models.Image.owner == context.owner,
-                models.Image.members.any(member=context.owner, deleted=False),
-            ])
+            if member_status == 'all':
+                visibility_filters.extend([
+                    models.Image.owner == context.owner,
+                    models.Image.members.any(member=context.owner,
+                                             deleted=False),
+                ])
+            else:
+                visibility_filters.extend([
+                    models.Image.owner == context.owner,
+                    models.Image.members.any(member=context.owner,
+                                             deleted=False,
+                                             status=member_status),
+                ])
 
         query = query.filter(sa_sql.or_(*visibility_filters))
+
+    if 'visibility' in filters:
+        visibility = filters.pop('visibility')
+        if visibility == 'public':
+            query = query.filter(models.Image.is_public == True)
+            filters['is_public'] = True
+        elif visibility == 'private':
+            filters['is_public'] = False
+            if (not context.is_admin) and context.owner is not None:
+                query = query.filter(
+                            models.Image.owner == context.owner)
+        else:
+            query = query.filter(
+                        models.Image.members.any(member=context.owner,
+                                                 deleted=False))
 
     showing_deleted = False
     if 'changes-since' in filters:
@@ -588,7 +616,7 @@ def validate_image(values):
 
 
 def _update_values(image_ref, values):
-    for k in values.keys():
+    for k in values:
         if getattr(image_ref, k) != values[k]:
             setattr(image_ref, k, values[k])
 
@@ -689,7 +717,7 @@ def _set_properties_for_image(context, image_ref, properties,
 
     if purge_props:
         for key in orig_properties.keys():
-            if not key in properties:
+            if key not in properties:
                 prop_ref = orig_properties[key]
                 image_property_delete(context, prop_ref, session=session)
 
@@ -733,6 +761,9 @@ def _image_member_format(member_ref):
         'image_id': member_ref['image_id'],
         'member': member_ref['member'],
         'can_share': member_ref['can_share'],
+        'status': member_ref['status'],
+        'created_at': member_ref['created_at'],
+        'updated_at': member_ref['updated_at']
     }
 
 
@@ -772,18 +803,19 @@ def _image_member_get(context, memb_id, session):
     return query.one()
 
 
-def image_member_find(context, image_id=None, member=None):
+def image_member_find(context, image_id=None, member=None, status=None):
     """Find all members that meet the given criteria
 
     :param image_id: identifier of image entity
     :param member: tenant to which membership has been granted
     """
     session = get_session()
-    members = _image_member_find(context, session, image_id, member)
+    members = _image_member_find(context, session, image_id, member, status)
     return [_image_member_format(m) for m in members]
 
 
-def _image_member_find(context, session, image_id=None, member=None):
+def _image_member_find(context, session, image_id=None,
+                       member=None, status=None):
     # Note lack of permissions check; this function is called from
     # is_image_visible(), so avoid recursive calls
     query = session.query(models.ImageMember)
@@ -793,6 +825,8 @@ def _image_member_find(context, session, image_id=None, member=None):
         query = query.filter_by(image_id=image_id)
     if member is not None:
         query = query.filter_by(member=member)
+    if status is not None:
+        query = query.filter_by(status=status)
 
     return query.all()
 

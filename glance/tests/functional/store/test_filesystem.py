@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2012 OpenStack, LLC
+# Copyright 2012 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -20,23 +20,25 @@ Functional tests for the File store interface
 
 import os
 import os.path
-import shutil
-import unittest
 
-import glance.openstack.common.cfg
+import fixtures
+import oslo.config.cfg
+import testtools
+
 import glance.store.filesystem
 import glance.tests.functional.store as store_tests
 import glance.tests.utils
 
 
-class TestFilesystemStore(store_tests.BaseTestCase, unittest.TestCase):
+class TestFilesystemStore(store_tests.BaseTestCase, testtools.TestCase):
 
     store_cls_path = 'glance.store.filesystem.Store'
     store_cls = glance.store.filesystem.Store
     store_name = 'filesystem'
 
     def setUp(self):
-        _, self.tmp_dir = glance.tests.utils.get_isolated_test_env()
+        super(TestFilesystemStore, self).setUp()
+        self.tmp_dir = self.useFixture(fixtures.TempDir()).path
 
         self.store_dir = os.path.join(self.tmp_dir, 'images')
         os.mkdir(self.store_dir)
@@ -46,14 +48,7 @@ class TestFilesystemStore(store_tests.BaseTestCase, unittest.TestCase):
             fap.write("[DEFAULT]\n")
             fap.write("filesystem_store_datadir=%s" % self.store_dir)
 
-        glance.openstack.common.cfg.CONF(default_config_files=[config_file],
-                                         args=[])
-
-        super(TestFilesystemStore, self).setUp()
-
-    def tearDown(self):
-        shutil.rmtree(self.tmp_dir)
-        super(TestFilesystemStore, self).tearDown()
+        oslo.config.cfg.CONF(default_config_files=[config_file], args=[])
 
     def get_store(self, **kwargs):
         store = glance.store.filesystem.Store(context=kwargs.get('context'))

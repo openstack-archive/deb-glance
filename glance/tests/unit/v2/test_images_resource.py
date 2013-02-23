@@ -1,4 +1,4 @@
-# Copyright 2012 OpenStack LLC.
+# Copyright 2012 OpenStack Foundation.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -16,17 +16,17 @@
 import datetime
 import json
 
+from oslo.config import cfg
+import testtools
 import webob
 
 import glance.api.v2.images
-from glance.openstack.common import cfg
 from glance.openstack.common import uuidutils
 import glance.schema
 import glance.store
 from glance.tests.unit import base
 import glance.tests.unit.utils as unit_test_utils
 import glance.tests.utils as test_utils
-
 
 DATETIME = datetime.datetime(2012, 5, 16, 15, 27, 36, 325355)
 ISOTIME = '2012-05-16T15:27:36Z'
@@ -92,6 +92,15 @@ def _domain_fixture(id, **kwargs):
     return glance.domain.Image(**properties)
 
 
+def _db_image_member_fixture(image_id, member_id, **kwargs):
+    obj = {
+        'image_id': image_id,
+        'member': member_id,
+    }
+    obj.update(kwargs)
+    return obj
+
+
 class TestImagesController(test_utils.BaseTestCase):
 
     def setUp(self):
@@ -101,6 +110,7 @@ class TestImagesController(test_utils.BaseTestCase):
         self.notifier = unit_test_utils.FakeNotifier()
         self.store = unit_test_utils.FakeStoreAPI()
         self._create_images()
+        self._create_image_members()
         self.controller = glance.api.v2.images.ImagesController(self.db,
                                                                 self.policy,
                                                                 self.notifier,
@@ -122,6 +132,15 @@ class TestImagesController(test_utils.BaseTestCase):
 
         self.db.image_tag_set_all(None, UUID1, ['ping', 'pong'])
 
+    def _create_image_members(self):
+        self.image_members = [
+            _db_image_member_fixture(UUID4, TENANT2),
+            _db_image_member_fixture(UUID4, TENANT3,
+                                     status='accepted'),
+        ]
+        [self.db.image_member_create(None, image_member)
+            for image_member in self.image_members]
+
     def test_index(self):
         self.config(limit_param_default=1, api_limit_max=3)
         request = unit_test_utils.get_fake_request()
@@ -129,6 +148,23 @@ class TestImagesController(test_utils.BaseTestCase):
         self.assertEqual(1, len(output['images']))
         actual = set([image.image_id for image in output['images']])
         expected = set([UUID3])
+        self.assertEqual(actual, expected)
+
+    def test_index_member_status_accepted(self):
+        self.config(limit_param_default=5, api_limit_max=5)
+        request = unit_test_utils.get_fake_request(tenant=TENANT2)
+        output = self.controller.index(request)
+        self.assertEqual(3, len(output['images']))
+        actual = set([image.image_id for image in output['images']])
+        expected = set([UUID1, UUID2, UUID3])
+        # can see only the public image
+        self.assertEqual(actual, expected)
+
+        request = unit_test_utils.get_fake_request(tenant=TENANT3)
+        output = self.controller.index(request)
+        self.assertEqual(4, len(output['images']))
+        actual = set([image.image_id for image in output['images']])
+        expected = set([UUID1, UUID2, UUID3, UUID4])
         self.assertEqual(actual, expected)
 
     def test_index_admin(self):
@@ -240,7 +276,8 @@ class TestImagesController(test_utils.BaseTestCase):
         self.db.image_create(None, image)
         path = '/images?visibility=private'
         request = unit_test_utils.get_fake_request(path, is_admin=True)
-        output = self.controller.index(request, filters={'is_public': False})
+        output = self.controller.index(request,
+                                       filters={'visibility': 'private'})
         self.assertEqual(2, len(output['images']))
 
     def test_index_with_many_filters(self):
@@ -383,9 +420,11 @@ class TestImagesController(test_utils.BaseTestCase):
         self.assertEqual({}, output.extra_properties)
         self.assertEqual(set([]), output.tags)
         self.assertEqual('private', output.visibility)
-        output_log = self.notifier.get_log()
+        output_logs = self.notifier.get_logs()
+        self.assertEqual(len(output_logs), 1)
+        output_log = output_logs[0]
         self.assertEqual(output_log['notification_type'], 'INFO')
-        self.assertEqual(output_log['event_type'], 'image.update')
+        self.assertEqual(output_log['event_type'], 'image.create')
         self.assertEqual(output_log['payload']['name'], 'image-1')
 
     def test_create_public_image_as_admin(self):
@@ -394,9 +433,11 @@ class TestImagesController(test_utils.BaseTestCase):
         output = self.controller.create(request, image=image,
                                         extra_properties={}, tags=[])
         self.assertEqual('public', output.visibility)
-        output_log = self.notifier.get_log()
+        output_logs = self.notifier.get_logs()
+        self.assertEqual(len(output_logs), 1)
+        output_log = output_logs[0]
         self.assertEqual(output_log['notification_type'], 'INFO')
-        self.assertEqual(output_log['event_type'], 'image.update')
+        self.assertEqual(output_log['event_type'], 'image.create')
         self.assertEqual(output_log['payload']['id'], output.image_id)
 
     def test_create_duplicate_tags(self):
@@ -405,9 +446,11 @@ class TestImagesController(test_utils.BaseTestCase):
         output = self.controller.create(request, image={},
                                         extra_properties={}, tags=tags)
         self.assertEqual(set(['ping']), output.tags)
-        output_log = self.notifier.get_log()
+        output_logs = self.notifier.get_logs()
+        self.assertEqual(len(output_logs), 1)
+        output_log = output_logs[0]
         self.assertEqual(output_log['notification_type'], 'INFO')
-        self.assertEqual(output_log['event_type'], 'image.update')
+        self.assertEqual(output_log['event_type'], 'image.create')
         self.assertEqual(output_log['payload']['id'], output.image_id)
 
     def test_update_no_changes(self):
@@ -416,11 +459,9 @@ class TestImagesController(test_utils.BaseTestCase):
         self.assertEqual(output.image_id, UUID1)
         self.assertEqual(output.created_at, output.updated_at)
         self.assertEqual(output.tags, set(['ping', 'pong']))
-        output_log = self.notifier.get_log()
+        output_logs = self.notifier.get_logs()
         #NOTE(markwash): don't send a notification if nothing is updated
-        self.assertEqual(output_log['notification_type'], '')
-        self.assertEqual(output_log['event_type'], '')
-        self.assertEqual(output_log['payload'], '')
+        self.assertTrue(len(output_logs) == 0)
 
     def test_update_image_doesnt_exist(self):
         request = unit_test_utils.get_fake_request()
@@ -527,7 +568,9 @@ class TestImagesController(test_utils.BaseTestCase):
         output = self.controller.update(request, UUID1, changes)
         self.assertEqual(output.image_id, UUID1)
         self.assertEqual(output.min_ram, 128)
-        print output.extra_properties
+        self.addDetail('extra_properties',
+                       testtools.content.json_content(
+                           json.dumps(output.extra_properties)))
         self.assertEqual(len(output.extra_properties), 2)
         self.assertEqual(output.extra_properties['foo'], 'baz')
         self.assertEqual(output.extra_properties['kb'], 'dvorak')
@@ -582,7 +625,9 @@ class TestImagesController(test_utils.BaseTestCase):
         ]
         output = self.controller.update(request, UUID1, changes)
         self.assertEqual(set(['ping']), output.tags)
-        output_log = self.notifier.get_log()
+        output_logs = self.notifier.get_logs()
+        self.assertEqual(len(output_logs), 1)
+        output_log = output_logs[0]
         self.assertEqual(output_log['notification_type'], 'INFO')
         self.assertEqual(output_log['event_type'], 'image.update')
         self.assertEqual(output_log['payload']['id'], UUID1)
@@ -592,7 +637,9 @@ class TestImagesController(test_utils.BaseTestCase):
         self.assertTrue(filter(lambda k: UUID1 in k, self.store.data))
         try:
             image = self.controller.delete(request, UUID1)
-            output_log = self.notifier.get_log()
+            output_logs = self.notifier.get_logs()
+            self.assertEqual(len(output_logs), 1)
+            output_log = output_logs[0]
             self.assertEqual(output_log['notification_type'], "INFO")
             self.assertEqual(output_log['event_type'], "image.delete")
         except Exception as e:
@@ -1051,12 +1098,13 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
 
     def test_index(self):
         marker = uuidutils.generate_uuid()
-        path = '/images?limit=1&marker=%s' % marker
+        path = '/images?limit=1&marker=%s&member_status=pending' % marker
         request = unit_test_utils.get_fake_request(path)
         expected = {'limit': 1,
                     'marker': marker,
                     'sort_key': 'created_at',
                     'sort_dir': 'desc',
+                    'member_status': 'pending',
                     'filters': {}}
         output = self.deserializer.index(request)
         self.assertEqual(output, expected)
@@ -1102,6 +1150,7 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
         request = unit_test_utils.get_fake_request('/images?limit=0')
         expected = {'limit': 0,
                     'sort_key': 'created_at',
+                    'member_status': 'accepted',
                     'sort_dir': 'desc',
                     'filters': {}}
         output = self.deserializer.index(request)
@@ -1114,6 +1163,12 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
 
     def test_index_fraction(self):
         request = unit_test_utils.get_fake_request('/images?limit=1.1')
+        self.assertRaises(webob.exc.HTTPBadRequest,
+                          self.deserializer.index, request)
+
+    def test_index_invalid_status(self):
+        path = '/images?member_status=blah'
+        request = unit_test_utils.get_fake_request(path)
         self.assertRaises(webob.exc.HTTPBadRequest,
                           self.deserializer.index, request)
 
@@ -1140,6 +1195,7 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
         expected = {
             'sort_key': 'id',
             'sort_dir': 'desc',
+            'member_status': 'accepted',
             'filters': {}
         }
         self.assertEqual(output, expected)
@@ -1150,6 +1206,7 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
         expected = {
             'sort_key': 'created_at',
             'sort_dir': 'asc',
+            'member_status': 'accepted',
             'filters': {}}
         self.assertEqual(output, expected)
 

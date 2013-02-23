@@ -120,10 +120,7 @@ class TestKeystoneAuthPlugin(utils.BaseTestCase):
     def setUp(self):
         super(TestKeystoneAuthPlugin, self).setUp()
         self.stubs = stubout.StubOutForTesting()
-
-    def tearDown(self):
-        super(TestKeystoneAuthPlugin, self).tearDown()
-        self.stubs.UnsetAll()
+        self.addCleanup(self.stubs.UnsetAll)
 
     def test_required_creds(self):
         """
@@ -507,6 +504,8 @@ class TestKeystoneAuthPlugin(utils.BaseTestCase):
 class TestEndpoints(utils.BaseTestCase):
 
     def setUp(self):
+        super(TestEndpoints, self).setUp()
+
         self.service_catalog = [
             {
                 'endpoint_links': [],
@@ -589,6 +588,7 @@ class TestImmutableImage(utils.BaseTestCase):
     def setUp(self):
         super(TestImmutableImage, self).setUp()
         image_factory = glance.domain.ImageFactory()
+        self.context = glance.context.RequestContext(tenant=TENANT1)
         image = image_factory.new_image(
                 image_id=UUID1,
                 name='Marvin',
@@ -598,7 +598,7 @@ class TestImmutableImage(utils.BaseTestCase):
                 extra_properties={'foo': 'bar'},
                 tags=['ping', 'pong'],
         )
-        self.image = authorization.ImmutableImageProxy(image)
+        self.image = authorization.ImmutableImageProxy(image, self.context)
 
     def _test_change(self, attr, value):
         self.assertRaises(exception.Forbidden,
@@ -752,7 +752,7 @@ class TestImageRepoProxy(utils.BaseTestCase):
 
     def test_get_mutable_image(self):
         image = self.image_repo.get(self.fixtures[0].image_id)
-        self.assertTrue(image is self.fixtures[0])
+        self.assertEqual(image.image_id, self.fixtures[0].image_id)
 
     def test_get_immutable_image(self):
         image = self.image_repo.get(self.fixtures[1].image_id)
@@ -761,7 +761,7 @@ class TestImageRepoProxy(utils.BaseTestCase):
 
     def test_list(self):
         images = self.image_repo.list()
-        self.assertTrue(images[0] is self.fixtures[0])
+        self.assertEqual(images[0].image_id, self.fixtures[0].image_id)
         self.assertRaises(exception.Forbidden,
                           setattr, images[1], 'name', 'Wally')
         self.assertRaises(exception.Forbidden,

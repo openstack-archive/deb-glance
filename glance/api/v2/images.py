@@ -1,4 +1,4 @@
-# Copyright 2012 OpenStack LLC.
+# Copyright 2012 OpenStack Foundation.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -19,6 +19,7 @@ import json
 import re
 import urllib
 
+from oslo.config import cfg
 import webob.exc
 
 from glance.api import policy
@@ -29,12 +30,10 @@ import glance.db
 import glance.domain
 import glance.gateway
 import glance.notifier
-from glance.openstack.common import cfg
 import glance.openstack.common.log as logging
 from glance.openstack.common import timeutils
 import glance.schema
 import glance.store
-
 
 LOG = logging.getLogger(__name__)
 
@@ -66,7 +65,7 @@ class ImagesController(object):
         return image
 
     def index(self, req, marker=None, limit=None, sort_key='created_at',
-              sort_dir='desc', filters=None):
+              sort_dir='desc', filters=None, member_status='accepted'):
         result = {}
         if filters is None:
             filters = {}
@@ -80,7 +79,8 @@ class ImagesController(object):
         try:
             images = image_repo.list(marker=marker, limit=limit,
                                      sort_key=sort_key, sort_dir=sort_dir,
-                                     filters=filters)
+                                     filters=filters,
+                                     member_status=member_status)
             if len(images) != 0 and len(images) == limit:
                 result['next_marker'] = images[-1].image_id
         except (exception.NotFound, exception.InvalidSortKey,
@@ -187,7 +187,7 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
 
     def _get_request_body(self, request):
         output = super(RequestDeserializer, self).default(request)
-        if not 'body' in output:
+        if 'body' not in output:
             msg = _('Body expected in request.')
             raise webob.exc.HTTPBadRequest(explanation=msg)
         return output['body']
@@ -332,12 +332,17 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
 
         return sort_dir
 
+    def _validate_member_status(self, member_status):
+        if member_status not in ['pending', 'accepted', 'rejected', 'all']:
+            msg = _('Invalid status: %s' % member_status)
+            raise webob.exc.HTTPBadRequest(explanation=msg)
+
+        return member_status
+
     def _get_filters(self, filters):
-        visibility = filters.pop('visibility', None)
+        visibility = filters.get('visibility', None)
         if visibility:
-            if visibility in ['public', 'private']:
-                filters['is_public'] = visibility == 'public'
-            else:
+            if visibility not in ['public', 'private', 'shared']:
                 msg = _('Invalid visibility value: %s') % visibility
                 raise webob.exc.HTTPBadRequest(explanation=msg)
 
@@ -348,10 +353,12 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
         limit = params.pop('limit', None)
         marker = params.pop('marker', None)
         sort_dir = params.pop('sort_dir', 'desc')
+        member_status = params.pop('member_status', 'accepted')
         query_params = {
             'sort_key': params.pop('sort_key', 'created_at'),
             'sort_dir': self._validate_sort_dir(sort_dir),
             'filters': self._get_filters(params),
+            'member_status': self._validate_member_status(member_status),
         }
 
         if marker is not None:
@@ -435,68 +442,68 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
 _BASE_PROPERTIES = {
     'id': {
         'type': 'string',
-        'description': 'An identifier for the image',
+        'description': _('An identifier for the image'),
         'pattern': ('^([0-9a-fA-F]){8}-([0-9a-fA-F]){4}-([0-9a-fA-F]){4}'
                     '-([0-9a-fA-F]){4}-([0-9a-fA-F]){12}$'),
     },
     'name': {
         'type': 'string',
-        'description': 'Descriptive name for the image',
+        'description': _('Descriptive name for the image'),
         'maxLength': 255,
     },
     'status': {
         'type': 'string',
-        'description': 'Status of the image',
+        'description': _('Status of the image'),
         'enum': ['queued', 'saving', 'active', 'killed',
                  'deleted', 'pending_delete'],
     },
     'visibility': {
         'type': 'string',
-        'description': 'Scope of image accessibility',
+        'description': _('Scope of image accessibility'),
         'enum': ['public', 'private'],
     },
     'protected': {
         'type': 'boolean',
-        'description': 'If true, image will not be deletable.',
+        'description': _('If true, image will not be deletable.'),
     },
     'checksum': {
         'type': 'string',
-        'description': 'md5 hash of image contents.',
+        'description': _('md5 hash of image contents.'),
         'type': 'string',
         'maxLength': 32,
     },
     'size': {
         'type': 'integer',
-        'description': 'Size of image file in bytes',
+        'description': _('Size of image file in bytes'),
     },
     'container_format': {
         'type': 'string',
-        'description': '',
+        'description': _(''),
         'type': 'string',
         'enum': ['bare', 'ovf', 'ami', 'aki', 'ari'],
     },
     'disk_format': {
         'type': 'string',
-        'description': '',
+        'description': _(''),
         'type': 'string',
         'enum': ['raw', 'vhd', 'vmdk', 'vdi', 'iso', 'qcow2',
                  'aki', 'ari', 'ami'],
     },
     'created_at': {
         'type': 'string',
-        'description': 'Date and time of image registration',
+        'description': _('Date and time of image registration'),
         #TODO(bcwaldon): our jsonschema library doesn't seem to like the
         # format attribute, figure out why!
         #'format': 'date-time',
     },
     'updated_at': {
         'type': 'string',
-        'description': 'Date and time of the last image modification',
+        'description': _('Date and time of the last image modification'),
         #'format': 'date-time',
     },
     'tags': {
         'type': 'array',
-        'description': 'List of strings related to the image',
+        'description': _('List of strings related to the image'),
         'items': {
             'type': 'string',
             'maxLength': 255,
@@ -504,15 +511,17 @@ _BASE_PROPERTIES = {
     },
     'direct_url': {
         'type': 'string',
-        'description': 'URL to access the image file kept in external store',
+        'description': _('URL to access the image file kept in external '
+                         'store'),
     },
     'min_ram': {
         'type': 'integer',
-        'description': 'Amount of ram (in MB) required to boot image.',
+        'description': _('Amount of ram (in MB) required to boot image.'),
     },
     'min_disk': {
         'type': 'integer',
-        'description': 'Amount of disk space (in GB) required to boot image.',
+        'description': _('Amount of disk space (in GB) required to boot '
+                         'image.'),
     },
     'self': {'type': 'string'},
     'file': {'type': 'string'},

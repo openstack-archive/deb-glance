@@ -15,14 +15,14 @@
 
 import uuid
 
-from glance.openstack.common import cfg
+from oslo.config import cfg
+
 from glance.openstack.common import context
 from glance.openstack.common.gettextutils import _
 from glance.openstack.common import importutils
 from glance.openstack.common import jsonutils
 from glance.openstack.common import log as logging
 from glance.openstack.common import timeutils
-
 
 LOG = logging.getLogger(__name__)
 
@@ -137,10 +137,11 @@ def notify(context, publisher_id, event_type, priority, payload):
     for driver in _get_drivers():
         try:
             driver.notify(context, msg)
-        except Exception, e:
+        except Exception as e:
             LOG.exception(_("Problem '%(e)s' attempting to "
                             "send to notification system. "
-                            "Payload=%(payload)s") % locals())
+                            "Payload=%(payload)s")
+                          % dict(e=e, payload=payload))
 
 
 _drivers = None
@@ -166,7 +167,7 @@ def add_driver(notification_driver):
         try:
             driver = importutils.import_module(notification_driver)
             _drivers[notification_driver] = driver
-        except ImportError as e:
+        except ImportError:
             LOG.exception(_("Failed to load notifier %s. "
                             "These notifications will not be sent.") %
                           notification_driver)

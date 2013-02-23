@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2012 OpenStack, LLC
+# Copyright 2012 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -25,16 +25,14 @@ S3 backend
 import ConfigParser
 import os
 import os.path
-import unittest
 import urllib
 import urlparse
 
-import nose.plugins.skip
+import oslo.config.cfg
+import testtools
 
-import glance.openstack.common.cfg
 import glance.store.s3
 import glance.tests.functional.store as store_tests
-
 
 try:
     from boto.s3.connection import S3Connection
@@ -75,7 +73,7 @@ def s3_put_object(s3_client, bucket_name, object_name, contents):
     key.set_contents_from_string(contents)
 
 
-class TestS3Store(store_tests.BaseTestCase, unittest.TestCase):
+class TestS3Store(store_tests.BaseTestCase, testtools.TestCase):
 
     store_cls_path = 'glance.store.s3.Store'
     store_cls = glance.store.s3.Store
@@ -85,9 +83,9 @@ class TestS3Store(store_tests.BaseTestCase, unittest.TestCase):
         config_path = os.environ.get('GLANCE_TEST_S3_CONF')
         if not config_path:
             msg = "GLANCE_TEST_S3_CONF environ not set."
-            raise nose.SkipTest(msg)
+            self.skipTest(msg)
 
-        glance.openstack.common.cfg.CONF(default_config_files=[config_path])
+        oslo.config.cfg.CONF(args=[], default_config_files=[config_path])
 
         raw_config = read_config(config_path)
         config = parse_config(raw_config)

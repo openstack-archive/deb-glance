@@ -20,9 +20,11 @@ import eventlet
 import os
 import time
 
+from oslo.config import cfg
+
+from glance.common import crypt
 from glance.common import utils
 from glance import context
-from glance.openstack.common import cfg
 import glance.openstack.common.log as logging
 from glance import registry
 from glance import store
@@ -124,6 +126,8 @@ class Scrubber(object):
 
     def _delete(self, id, uri, now):
         file_path = os.path.join(self.datadir, str(id))
+        if CONF.metadata_encryption_key is not None:
+            uri = crypt.urlsafe_decrypt(CONF.metadata_encryption_key, uri)
         try:
             LOG.debug(_("Deleting %(uri)s") % {'uri': uri})
             # Here we create a request context with credentials to support

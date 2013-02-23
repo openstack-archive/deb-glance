@@ -3,13 +3,12 @@
 import sys
 
 import keystoneclient.v2_0.client
+from oslo.config import cfg
 
 import glance.context
-from glance.openstack.common import cfg
 import glance.openstack.common.log as logging
 import glance.registry.context
 import glance.db.sqlalchemy.api as db_api
-
 
 LOG = logging.getLogger(__name__)
 LOG.addHandler(logging.StreamHandler())
@@ -68,7 +67,8 @@ if __name__ == "__main__":
         cfg.StrOpt('keystone-admin-user',
                    help='Administrative user\'s id'),
         cfg.StrOpt('keystone-admin-password',
-                   help='Administrative user\'s password'),
+                   help='Administrative user\'s password',
+                   secret=True),
     ]
     config.register_cli_opts(extra_cli_opts)
     config(project='glance', prog='glance-registry')

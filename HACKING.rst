@@ -13,6 +13,24 @@ General
 - Do not write "except:", use "except Exception:" at the very least
 - Include your name with TODOs as in "#TODO(termie)"
 - Do not name anything the same name as a built-in or reserved word
+- Use the "is not" operator when testing for unequal identities. Example::
+
+    if not X is Y:  # BAD, intended behavior is ambiguous
+        pass
+
+    if X is not Y:  # OKAY, intuitive
+        pass
+
+- Use the "not in" operator for evaluating membership in a collection. Example::
+
+    if not X in Y:  # BAD, intended behavior is ambiguous
+        pass
+
+    if X not in Y:  # OKAY, intuitive
+        pass
+
+    if not (X in Y or X in Z):  # OKAY, still better than all those 'not's
+        pass
 
 
 Imports

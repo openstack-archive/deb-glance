@@ -1,4 +1,4 @@
-# Copyright 2012 OpenStack, LLC
+# Copyright 2012 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -171,3 +171,61 @@ class ImageProxy(object):
 
     def delete(self):
         self.base.delete()
+
+    def get_member_repo(self):
+        return self.base.get_member_repo()
+
+
+class ImageMembership(object):
+
+    def __init__(self, image_id, member_id, created_at, updated_at,
+                 id=None, status=None):
+        self.id = id
+        self.image_id = image_id
+        self.member_id = member_id
+        self.created_at = created_at
+        self.updated_at = updated_at
+        self.status = status
+
+    @property
+    def status(self):
+        return self._status
+
+    @status.setter
+    def status(self, status):
+        if status not in ('pending', 'accepted', 'rejected'):
+            msg = _('Status must be "pending", "accepted" or "rejected".')
+            raise ValueError(msg)
+        self._status = status
+
+
+class ImageMemberFactory(object):
+
+    def new_image_member(self, image, member_id):
+        created_at = timeutils.utcnow()
+        updated_at = created_at
+
+        return ImageMembership(image_id=image.image_id, member_id=member_id,
+                               created_at=created_at, updated_at=updated_at,
+                               status='pending')
+
+
+class ImageMembershipRepoProxy(object):
+
+    def __init__(self, base):
+        self.base = base
+
+    def get(self, image_id):
+        return self.base.get(image_id)
+
+    def list(self, *args, **kwargs):
+        return self.base.list(*args, **kwargs)
+
+    def add(self, image_member):
+        return self.base.add(image_member)
+
+    def save(self, image_member):
+        return self.base.save(image_member)
+
+    def remove(self, image_member):
+        return self.base.remove(image_member)

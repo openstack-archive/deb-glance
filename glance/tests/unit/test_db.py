@@ -1,4 +1,4 @@
-# Copyright 2012 OpenStack LLC.
+# Copyright 2012 OpenStack Foundation.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -57,6 +57,15 @@ def _db_fixture(id, **kwargs):
     return obj
 
 
+def _db_image_member_fixture(image_id, member_id, **kwargs):
+    obj = {
+        'image_id': image_id,
+        'member': member_id,
+    }
+    obj.update(kwargs)
+    return obj
+
+
 class TestImageRepo(test_utils.BaseTestCase):
 
     def setUp(self):
@@ -67,6 +76,7 @@ class TestImageRepo(test_utils.BaseTestCase):
         self.image_repo = glance.db.ImageRepo(self.context, self.db)
         self.image_factory = glance.domain.ImageFactory()
         self._create_images()
+        self._create_image_members()
         super(TestImageRepo, self).setUp()
 
     def _create_images(self):
@@ -83,6 +93,14 @@ class TestImageRepo(test_utils.BaseTestCase):
         [self.db.image_create(None, image) for image in self.images]
 
         self.db.image_tag_set_all(None, UUID1, ['ping', 'pong'])
+
+    def _create_image_members(self):
+        self.image_members = [
+            _db_image_member_fixture(UUID2, TENANT2),
+            _db_image_member_fixture(UUID2, TENANT3, status='accepted'),
+        ]
+        [self.db.image_member_create(None, image_member)
+            for image_member in self.image_members]
 
     def test_get(self):
         image = self.image_repo.get(UUID1)
@@ -105,6 +123,25 @@ class TestImageRepo(test_utils.BaseTestCase):
         images = self.image_repo.list()
         image_ids = set([i.image_id for i in images])
         self.assertEqual(set([UUID1, UUID2, UUID3]), image_ids)
+
+    def _do_test_list_status(self, status, expected):
+        self.context = glance.context.RequestContext(
+                        user=USER1, tenant=TENANT3)
+        self.image_repo = glance.db.ImageRepo(self.context, self.db)
+        images = self.image_repo.list(member_status=status)
+        self.assertEqual(expected, len(images))
+
+    def test_list_status(self):
+        self._do_test_list_status(None, 3)
+
+    def test_list_status_pending(self):
+        self._do_test_list_status('pending', 2)
+
+    def test_list_status_rejected(self):
+        self._do_test_list_status('rejected', 2)
+
+    def test_list_status_all(self):
+        self._do_test_list_status('all', 3)
 
     def test_list_with_marker(self):
         full_images = self.image_repo.list()
@@ -150,7 +187,6 @@ class TestImageRepo(test_utils.BaseTestCase):
         image = self.image_factory.new_image(name='added image')
         self.assertEqual(image.updated_at, image.created_at)
         self.image_repo.add(image)
-        self.assertTrue(image.updated_at > image.created_at)
         retreived_image = self.image_repo.get(image.image_id)
         self.assertEqual(retreived_image.name, 'added image')
         self.assertEqual(retreived_image.updated_at, image.updated_at)
@@ -174,3 +210,86 @@ class TestImageRepo(test_utils.BaseTestCase):
         self.image_repo.remove(image)
         self.assertTrue(image.updated_at > previous_update_time)
         self.assertRaises(exception.NotFound, self.image_repo.get, UUID1)
+
+
+class TestImageMemberRepo(test_utils.BaseTestCase):
+
+    def setUp(self):
+        self.db = unit_test_utils.FakeDB()
+        self.db.reset()
+        self.context = glance.context.RequestContext(
+                user=USER1, tenant=TENANT1)
+        self.image_repo = glance.db.ImageRepo(self.context, self.db)
+        self.image_member_factory = glance.domain.ImageMemberFactory()
+        self._create_images()
+        self._create_image_members()
+        image = self.image_repo.get(UUID1)
+        self.image_member_repo = glance.db.ImageMemberRepo(self.context,
+                                                           self.db, image)
+        super(TestImageMemberRepo, self).setUp()
+
+    def _create_images(self):
+        self.images = [
+            _db_fixture(UUID1, owner=TENANT1, name='1', size=256,
+                        status='active'),
+            _db_fixture(UUID2, owner=TENANT1, name='2',
+                        size=512, is_public=False),
+        ]
+        [self.db.image_create(None, image) for image in self.images]
+
+        self.db.image_tag_set_all(None, UUID1, ['ping', 'pong'])
+
+    def _create_image_members(self):
+        self.image_members = [
+            _db_image_member_fixture(UUID1, TENANT2),
+            _db_image_member_fixture(UUID1, TENANT3),
+        ]
+        [self.db.image_member_create(None, image_member)
+            for image_member in self.image_members]
+
+    def test_list(self):
+        image_members = self.image_member_repo.list()
+        image_member_ids = set([i.member_id for i in image_members])
+        self.assertEqual(set([TENANT2, TENANT3]), image_member_ids)
+
+    def test_list_no_members(self):
+        image = self.image_repo.get(UUID2)
+        self.image_member_repo_uuid2 = glance.db.ImageMemberRepo(
+                                                self.context, self.db, image)
+        image_members = self.image_member_repo_uuid2.list()
+        image_member_ids = set([i.member_id for i in image_members])
+        self.assertEqual(set([]), image_member_ids)
+
+    def test_save_image_member(self):
+        image_member = self.image_member_repo.get(TENANT2)
+        image_member.status = 'accepted'
+        image_member_updated = self.image_member_repo.save(image_member)
+        self.assertTrue(image_member.id, image_member_updated.id)
+        self.assertEqual(image_member_updated.status, 'accepted')
+
+    def test_add_image_member(self):
+        image = self.image_repo.get(UUID1)
+        image_member = self.image_member_factory.new_image_member(image,
+                                                                  TENANT4)
+        self.assertTrue(image_member.id is None)
+        retreived_image_member = self.image_member_repo.add(image_member)
+        self.assertEqual(retreived_image_member.id, image_member.id)
+        self.assertEqual(retreived_image_member.image_id,
+                         image_member.image_id)
+        self.assertEqual(retreived_image_member.member_id,
+                         image_member.member_id)
+        self.assertEqual(retreived_image_member.status,
+                         'pending')
+
+    def test_remove_image_member(self):
+        image_member = self.image_member_repo.get(TENANT2)
+        self.image_member_repo.remove(image_member)
+        self.assertRaises(exception.NotFound, self.image_member_repo.get,
+                          TENANT2)
+
+    def test_remove_image_member_does_not_exist(self):
+        image = self.image_repo.get(UUID2)
+        fake_member = glance.domain.ImageMemberFactory()\
+                                   .new_image_member(image, TENANT4)
+        self.assertRaises(exception.NotFound, self.image_member_repo.remove,
+                          fake_member)

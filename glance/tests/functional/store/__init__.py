@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2012 OpenStack, LLC
+# Copyright 2012 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -17,27 +17,27 @@
 
 import StringIO
 
-import nose.plugins.skip
+import testtools
+
+from oslo.config import cfg
 
 from glance.common import exception
-from glance.openstack.common import cfg
 from glance.openstack.common import uuidutils
 import glance.store.location
-
 #NOTE(bcwaldon): importing this to get the default_store option
 import glance.api.v1.images
-
 
 CONF = cfg.CONF
 
 
-class BaseTestCase(object):
+class BaseTestCase(testtools.TestCase):
 
     def setUp(self):
-        pass
+        super(BaseTestCase, self).setUp()
 
     def tearDown(self):
         CONF.reset()
+        super(BaseTestCase, self).tearDown()
 
     def config(self, **kw):
         for k, v in kw.iteritems():
@@ -71,7 +71,7 @@ class BaseTestCase(object):
             uri, add_size, add_checksum = store.add(image_id, image_data, 3)
         except NotImplementedError:
             msg = 'Configured store can not add images'
-            raise nose.SkipTest(msg)
+            self.skipTest(msg)
 
         self.assertEqual(3, add_size)
         self.assertEqual(image_checksum, add_checksum)

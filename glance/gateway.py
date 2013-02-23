@@ -1,4 +1,4 @@
-# Copyright 2012 OpenStack, LLC
+# Copyright 2012 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -35,6 +35,12 @@ class Gateway(object):
                 image_factory, context, self.policy)
         authorized_image_factory = authorization.ImageFactoryProxy(
                 policy_image_factory, context)
+        return authorized_image_factory
+
+    def get_image_member_factory(self, context):
+        image_factory = glance.domain.ImageMemberFactory()
+        authorized_image_factory = authorization.ImageMemberFactoryProxy(
+                                    image_factory, context)
         return authorized_image_factory
 
     def get_repo(self, context):

@@ -26,9 +26,9 @@ import logging.handlers
 import os
 import sys
 
+from oslo.config import cfg
 from paste import deploy
 
-from glance.openstack.common import cfg
 from glance.version import version_info as version
 
 paste_deploy_opts = [
@@ -70,11 +70,21 @@ CONF = cfg.CONF
 CONF.register_opts(paste_deploy_opts, group='paste_deploy')
 CONF.register_opts(common_opts)
 
+CONF.import_opt('verbose', 'glance.openstack.common.log')
+CONF.import_opt('debug', 'glance.openstack.common.log')
+CONF.import_opt('log_dir', 'glance.openstack.common.log')
+CONF.import_opt('log_file', 'glance.openstack.common.log')
+CONF.import_opt('log_config', 'glance.openstack.common.log')
+CONF.import_opt('log_format', 'glance.openstack.common.log')
+CONF.import_opt('log_date_format', 'glance.openstack.common.log')
+CONF.import_opt('use_syslog', 'glance.openstack.common.log')
+CONF.import_opt('syslog_log_facility', 'glance.openstack.common.log')
+
 
 def parse_args(args=None, usage=None, default_config_files=None):
     CONF(args=args,
          project='glance',
-         version=version.deferred_version_string(prefix="%prog "),
+         version=version.cached_version_string(),
          usage=usage,
          default_config_files=default_config_files)
 

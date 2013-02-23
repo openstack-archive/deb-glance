@@ -34,6 +34,7 @@ import eventlet
 from eventlet.green import socket, ssl
 import eventlet.greenio
 import eventlet.wsgi
+from oslo.config import cfg
 import routes
 import routes.middleware
 import webob.dec
@@ -41,7 +42,6 @@ import webob.exc
 
 from glance.common import exception
 from glance.common import utils
-from glance.openstack.common import cfg
 import glance.openstack.common.log as os_logging
 
 
@@ -445,7 +445,7 @@ class Request(webob.Request):
 
     def get_content_type(self, allowed_content_types):
         """Determine content type of the request body."""
-        if not "Content-Type" in self.headers:
+        if "Content-Type" not in self.headers:
             raise exception.InvalidContentType(content_type=None)
 
         content_type = self.content_type

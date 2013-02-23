@@ -61,18 +61,16 @@ def build_image_fixture(**kwargs):
 
 
 class TestDriver(base.IsolatedUnitTest):
+
     def setUp(self):
+        super(TestDriver, self).setUp()
         self.adm_context = context.RequestContext(is_admin=True)
         self.context = context.RequestContext(is_admin=False)
         self.db_api = db_tests.get_db(self.config)
         db_tests.reset_db(self.db_api)
         self.fixtures = self.build_image_fixtures()
         self.create_images(self.fixtures)
-        super(TestDriver, self).setUp()
-
-    def tearDown(self):
-        timeutils.clear_time_override()
-        super(TestDriver, self).tearDown()
+        self.addCleanup(timeutils.clear_time_override)
 
     def build_image_fixtures(self):
         dt1 = timeutils.utcnow()
@@ -102,6 +100,9 @@ class TestDriver(base.IsolatedUnitTest):
     def create_images(self, images):
         for fixture in images:
             self.db_api.image_create(self.adm_context, fixture)
+
+
+class DriverTests(object):
 
     def test_image_create_requires_status(self):
         fixture = {'name': 'mark', 'size': 12}
@@ -429,6 +430,37 @@ class TestDriver(base.IsolatedUnitTest):
         image = self.db_api.image_get(ctxt2, UUIDX)
         self.assertEquals(UUIDX, image['id'])
 
+        # by default get_all displays only images with status 'accepted'
+        images = self.db_api.image_get_all(ctxt2)
+        self.assertEquals(3, len(images))
+
+        # filter by rejected
+        images = self.db_api.image_get_all(ctxt2, member_status='rejected')
+        self.assertEquals(3, len(images))
+
+        # filter by visibility
+        images = self.db_api.image_get_all(ctxt2,
+                                           filters={'visibility': 'shared'})
+        self.assertEquals(0, len(images))
+
+        # filter by visibility
+        images = self.db_api.image_get_all(ctxt2, member_status='pending',
+                                           filters={'visibility': 'shared'})
+        self.assertEquals(1, len(images))
+
+        # filter by visibility
+        images = self.db_api.image_get_all(ctxt2, member_status='all',
+                                           filters={'visibility': 'shared'})
+        self.assertEquals(1, len(images))
+
+        # filter by status pending
+        images = self.db_api.image_get_all(ctxt2, member_status='pending')
+        self.assertEquals(4, len(images))
+
+        # filter by status all
+        images = self.db_api.image_get_all(ctxt2, member_status='all')
+        self.assertEquals(4, len(images))
+
     def test_is_image_visible(self):
         TENANT1 = uuidutils.generate_uuid()
         TENANT2 = uuidutils.generate_uuid()
@@ -496,9 +528,11 @@ class TestDriver(base.IsolatedUnitTest):
                           self.context, UUID1, 'snap')
 
     def test_image_member_create(self):
+        timeutils.set_time_override()
         memberships = self.db_api.image_member_find(self.context)
         self.assertEqual([], memberships)
 
+        create_time = timeutils.utcnow()
         TENANT1 = uuidutils.generate_uuid()
         self.db_api.image_member_create(self.context,
                                         {'member': TENANT1, 'image_id': UUID1})
@@ -506,11 +540,16 @@ class TestDriver(base.IsolatedUnitTest):
         memberships = self.db_api.image_member_find(self.context)
         self.assertEqual(1, len(memberships))
         actual = memberships[0]
+        self.assertEqual(actual['created_at'], create_time)
+        self.assertEqual(actual['updated_at'], create_time)
         actual.pop('id')
+        actual.pop('created_at')
+        actual.pop('updated_at')
         expected = {
             'member': TENANT1,
             'image_id': UUID1,
             'can_share': False,
+            'status': 'pending',
         }
         self.assertEqual(expected, actual)
 
@@ -520,16 +559,27 @@ class TestDriver(base.IsolatedUnitTest):
                                                  {'member': TENANT1,
                                                   'image_id': UUID1})
         member_id = member.pop('id')
+        member.pop('created_at')
+        member.pop('updated_at')
 
-        expected = {'member': TENANT1, 'image_id': UUID1, 'can_share': False}
+        expected = {'member': TENANT1,
+                    'image_id': UUID1,
+                    'status': 'pending',
+                    'can_share': False}
         self.assertEqual(expected, member)
 
         member = self.db_api.image_member_update(self.context,
                                                  member_id,
                                                  {'can_share': True})
 
+        self.assertNotEqual(member['created_at'], member['updated_at'])
         member.pop('id')
-        expected = {'member': TENANT1, 'image_id': UUID1, 'can_share': True}
+        member.pop('created_at')
+        member.pop('updated_at')
+        expected = {'member': TENANT1,
+                    'image_id': UUID1,
+                    'status': 'pending',
+                    'can_share': True}
         self.assertEqual(expected, member)
 
         members = self.db_api.image_member_find(self.context,
@@ -537,6 +587,46 @@ class TestDriver(base.IsolatedUnitTest):
                                                 image_id=UUID1)
         member = members[0]
         member.pop('id')
+        member.pop('created_at')
+        member.pop('updated_at')
+        self.assertEqual(expected, member)
+
+    def test_image_member_update_status(self):
+        TENANT1 = uuidutils.generate_uuid()
+        member = self.db_api.image_member_create(self.context,
+                                                 {'member': TENANT1,
+                                                  'image_id': UUID1})
+        member_id = member.pop('id')
+        member.pop('created_at')
+        member.pop('updated_at')
+
+        expected = {'member': TENANT1,
+                    'image_id': UUID1,
+                    'status': 'pending',
+                    'can_share': False}
+        self.assertEqual(expected, member)
+
+        member = self.db_api.image_member_update(self.context,
+                                                 member_id,
+                                                 {'status': 'accepted'})
+
+        self.assertNotEqual(member['created_at'], member['updated_at'])
+        member.pop('id')
+        member.pop('created_at')
+        member.pop('updated_at')
+        expected = {'member': TENANT1,
+                    'image_id': UUID1,
+                    'status': 'accepted',
+                    'can_share': False}
+        self.assertEqual(expected, member)
+
+        members = self.db_api.image_member_find(self.context,
+                                                member=TENANT1,
+                                                image_id=UUID1)
+        member = members[0]
+        member.pop('id')
+        member.pop('created_at')
+        member.pop('updated_at')
         self.assertEqual(expected, member)
 
     def test_image_member_find(self):
@@ -544,8 +634,8 @@ class TestDriver(base.IsolatedUnitTest):
         TENANT2 = uuidutils.generate_uuid()
         fixtures = [
             {'member': TENANT1, 'image_id': UUID1},
-            {'member': TENANT1, 'image_id': UUID2},
-            {'member': TENANT2, 'image_id': UUID1},
+            {'member': TENANT1, 'image_id': UUID2, 'status': 'rejected'},
+            {'member': TENANT2, 'image_id': UUID1, 'status': 'accepted'},
         ]
         for f in fixtures:
             self.db_api.image_member_create(self.context, copy.deepcopy(f))
@@ -567,6 +657,23 @@ class TestDriver(base.IsolatedUnitTest):
                                                member=TENANT2,
                                                image_id=UUID1)
         _assertMemberListMatch([fixtures[2]], output)
+
+        output = self.db_api.image_member_find(self.context,
+                                               status='accepted')
+        _assertMemberListMatch([fixtures[2]], output)
+
+        output = self.db_api.image_member_find(self.context,
+                                               status='rejected')
+        _assertMemberListMatch([fixtures[1]], output)
+
+        output = self.db_api.image_member_find(self.context,
+                                               status='pending')
+        _assertMemberListMatch([fixtures[0]], output)
+
+        output = self.db_api.image_member_find(self.context,
+                                               status='pending',
+                                               image_id=UUID2)
+        _assertMemberListMatch([], output)
 
         image_id = uuidutils.generate_uuid()
         output = self.db_api.image_member_find(self.context,
@@ -629,6 +736,9 @@ class TestVisibility(base.IsolatedUnitTest):
     def create_images(self, images):
         for fixture in images:
             self.db_api.image_create(self.admin_context, fixture)
+
+
+class VisibilityTests(object):
 
     def test_unknown_admin_sees_all(self):
         images = self.db_api.image_get_all(self.admin_none_context)

@@ -33,7 +33,9 @@ import socket
 import time
 import urlparse
 
+import fixtures
 from sqlalchemy import create_engine
+import testtools
 
 from glance.common import utils
 from glance.tests import utils as test_utils
@@ -416,6 +418,7 @@ class ScrubberDaemon(Server):
         self.server_name = 'scrubber'
         self.daemon = daemon
 
+        self.image_dir = os.path.join(self.test_dir, "images")
         self.scrubber_datadir = os.path.join(self.test_dir,
                                              "scrubber")
         self.pid_file = os.path.join(self.test_dir, "scrubber.pid")
@@ -427,15 +430,18 @@ class ScrubberDaemon(Server):
         self.swift_store_container = kwargs.get("swift_store_container", "")
         self.swift_store_auth_version = kwargs.get("swift_store_auth_version",
                                                    "2")
+        self.metadata_encryption_key = "012345678901234567890123456789ab"
         self.conf_base = """[DEFAULT]
 verbose = %(verbose)s
 debug = %(debug)s
+filesystem_store_datadir=%(image_dir)s
 log_file = %(log_file)s
 daemon = %(daemon)s
 wakeup_time = 2
 scrubber_datadir = %(scrubber_datadir)s
 registry_host = 127.0.0.1
 registry_port = %(registry_port)s
+metadata_encryption_key = %(metadata_encryption_key)s
 swift_store_auth_address = %(swift_store_auth_address)s
 swift_store_user = %(swift_store_user)s
 swift_store_key = %(swift_store_key)s
@@ -457,7 +463,7 @@ class FunctionalTest(test_utils.BaseTestCase):
 
     def setUp(self):
         super(FunctionalTest, self).setUp()
-        self.test_id, self.test_dir = test_utils.get_isolated_test_env()
+        self.test_dir = self.useFixture(fixtures.TempDir()).path
 
         self.api_protocol = 'http'
         self.api_port = get_unused_port()
@@ -706,8 +712,7 @@ class FunctionalTest(test_utils.BaseTestCase):
                 if os.path.exists(trace):
                     msg += ('\nstrace:\n%s\n' % open(trace).read())
 
-        if 'NOSE_GLANCELOGCAPTURE' in os.environ:
-            msg += self.dump_logs(failed)
+        self.add_log_details(failed)
 
         return msg if expect_launch else None
 
@@ -776,12 +781,6 @@ class FunctionalTest(test_utils.BaseTestCase):
         self.stop_server(self.registry_server, 'Registry server')
         self.stop_server(self.scrubber_daemon, 'Scrubber daemon')
 
-        # If all went well, then just remove the test directory.
-        # We only want to check the logs and stuff if something
-        # went wrong...
-        if os.path.exists(self.test_dir):
-            shutil.rmtree(self.test_dir)
-
         self._reset_database(self.registry_server.sql_connection)
 
     def run_sql_cmd(self, sql):
@@ -800,15 +799,8 @@ class FunctionalTest(test_utils.BaseTestCase):
         dst_file_name = os.path.join(dst_dir, file_name)
         return dst_file_name
 
-    def dump_logs(self, servers=None):
-        dump = ''
+    def add_log_details(self, servers=None):
         logs = [s.log_file for s in (servers or self.launched_servers)]
         for log in logs:
-            dump += '\nContent of %s:\n\n' % log
             if os.path.exists(log):
-                f = open(log, 'r')
-                for line in f:
-                    dump += line
-            else:
-                dump += '<empty>'
-        return dump
+                testtools.content.attach_file(self, log)

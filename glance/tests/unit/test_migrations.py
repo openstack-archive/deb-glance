@@ -30,16 +30,21 @@ import os
 import urlparse
 
 from migrate.versioning.repository import Repository
+from oslo.config import cfg
 from sqlalchemy import *
 from sqlalchemy.pool import NullPool
 
+from glance.common import crypt
 from glance.common import exception
 #NOTE(bcwaldon): import this to prevent circular import
 from glance.db.sqlalchemy import api
 import glance.db.sqlalchemy.migration as migration_api
 from glance.db.sqlalchemy import models
-from glance.openstack.common import cfg
 from glance.tests import utils
+
+
+CONF = cfg.CONF
+CONF.import_opt('metadata_encryption_key', 'glance.registry')
 
 
 class TestMigrations(utils.BaseTestCase):
@@ -76,7 +81,6 @@ class TestMigrations(utils.BaseTestCase):
             else:
                 self.fail("Failed to find test_migrations.conf config "
                           "file.")
-
         self.engines = {}
         for key, value in TestMigrations.TEST_DATABASES.items():
             self.engines[key] = create_engine(value, poolclass=NullPool)
@@ -384,3 +388,221 @@ class TestMigrations(utils.BaseTestCase):
         migration_api.downgrade(14)
 
         self.assertEqual(get_locations(), unquoted_locations)
+
+    def test_no_data_loss_15_to_16_to_15(self):
+        """
+        Here, we test that in the case when we moved a column "type" from the
+        base images table to be records in the image_properties table, that
+        we don't lose any data during the migration. Similarly, we test that
+        on downgrade, we don't lose any data, as the records are moved from
+        the image_properties table back into the base image table.
+        """
+        for key, engine in self.engines.items():
+            self.config(sql_connection=TestMigrations.TEST_DATABASES[key])
+            self._no_data_loss_15_to_16_to_15(engine)
+
+    def _no_data_loss_15_to_16_to_15(self, engine):
+        migration_api.version_control(version=0)
+        migration_api.upgrade(15)
+
+        cur_version = migration_api.db_version()
+        self.assertEquals(15, cur_version)
+
+        # We are now on version 15.
+
+        image_members_table = Table('image_members', MetaData(),
+                                    autoload=True, autoload_with=engine)
+
+        self.assertTrue('status' not in image_members_table.c,
+                        "'status' not column found in image_members table "
+                        "columns! image_members table columns: %s"
+                        % image_members_table.c.keys())
+
+        conn = engine.connect()
+        sel = select([func.count("*")], from_obj=[image_members_table])
+        orig_num_image_members = conn.execute(sel).scalar()
+
+        now = datetime.datetime.now()
+        inserter = image_members_table.insert()
+        conn.execute(inserter, [
+                {'deleted': False, 'created_at': now, 'member': 'fake-member',
+                 'updated_at': now, 'can_share': False,
+                 'image_id': 'fake-image-id1'}])
+
+        sel = select([func.count("*")], from_obj=[image_members_table])
+        num_image_members = conn.execute(sel).scalar()
+        self.assertEqual(orig_num_image_members + 1, num_image_members)
+        conn.close()
+
+        #Upgrade to version 16
+
+        migration_api.upgrade(16)
+
+        cur_version = migration_api.db_version()
+        self.assertEquals(16, cur_version)
+
+        image_members_table = Table('image_members', MetaData(),
+                                    autoload=True, autoload_with=engine)
+
+        self.assertTrue('status' in image_members_table.c,
+                        "'status' column found in image_members table "
+                        "columns! image_members table columns: %s"
+                        % image_members_table.c.keys())
+
+        conn = engine.connect()
+        sel = select([func.count("*")], from_obj=[image_members_table])
+        num_image_members = conn.execute(sel).scalar()
+        self.assertEqual(orig_num_image_members + 1, num_image_members)
+
+        now = datetime.datetime.now()
+        inserter = image_members_table.insert()
+        conn.execute(inserter, [
+                {'deleted': False, 'created_at': now, 'member': 'fake-member',
+                 'updated_at': now, 'can_share': False, 'status': 'pending',
+                 'image_id': 'fake-image-id2'}])
+
+        sel = select([func.count("*")], from_obj=[image_members_table])
+        num_image_members = conn.execute(sel).scalar()
+        self.assertEqual(orig_num_image_members + 2, num_image_members)
+        conn.close()
+
+        #Downgrade to version 15
+
+        migration_api.downgrade(15)
+
+        cur_version = migration_api.db_version()
+        self.assertEquals(15, cur_version)
+
+        image_members_table = Table('image_members', MetaData(),
+                                    autoload=True, autoload_with=engine)
+
+        self.assertTrue('status' not in image_members_table.c,
+                        "'status' column not found in image_members table "
+                        "columns! image_members table columns: %s"
+                        % image_members_table.c.keys())
+
+        conn = engine.connect()
+        sel = select([func.count("*")], from_obj=[image_members_table])
+        num_image_members = conn.execute(sel).scalar()
+        self.assertEqual(orig_num_image_members + 2, num_image_members)
+        conn.close()
+
+    def test_quote_encrypted_locations_16_to_17(self):
+        self.metadata_encryption_key = 'a' * 16
+        for key, engine in self.engines.items():
+            self.config(sql_connection=TestMigrations.TEST_DATABASES[key])
+            self.config(metadata_encryption_key=self.metadata_encryption_key)
+            self._check_16_to_17(engine)
+
+    def _check_16_to_17(self, engine):
+        """
+        Check that migrating swift location credentials to quoted form
+        and back works.
+        """
+        migration_api.version_control(version=0)
+        migration_api.upgrade(16)
+
+        conn = engine.connect()
+        images_table = Table('images', MetaData(), autoload=True,
+                             autoload_with=engine)
+
+        def get_locations():
+            conn = engine.connect()
+            locations = [x[0] for x in
+                         conn.execute(
+                             select(['location'], from_obj=[images_table]))]
+            conn.close()
+            return locations
+
+        unquoted = 'swift://acct:usr:pass@example.com/container/obj-id'
+        encrypted_unquoted = crypt.urlsafe_encrypt(
+                                    self.metadata_encryption_key,
+                                    unquoted, 64)
+
+        quoted = 'swift://acct%3Ausr:pass@example.com/container/obj-id'
+
+        # Insert image with an unquoted image location
+        now = datetime.datetime.now()
+        kwargs = dict(deleted=False,
+                      created_at=now,
+                      updated_at=now,
+                      status='active',
+                      is_public=True,
+                      min_disk=0,
+                      min_ram=0)
+        kwargs.update(location=encrypted_unquoted, id=1)
+        conn.execute(images_table.insert(), [kwargs])
+        conn.close()
+
+        migration_api.upgrade(17)
+
+        actual_location = crypt.urlsafe_decrypt(self.metadata_encryption_key,
+                                                get_locations()[0])
+
+        self.assertEqual(actual_location, quoted)
+
+        migration_api.downgrade(16)
+
+        actual_location = crypt.urlsafe_decrypt(self.metadata_encryption_key,
+                                                get_locations()[0])
+
+        self.assertEqual(actual_location, unquoted)
+
+    def test_no_data_loss_16_to_17(self):
+        self.metadata_encryption_key = 'a' * 16
+        for key, engine in self.engines.items():
+            self.config(sql_connection=TestMigrations.TEST_DATABASES[key])
+            self.config(metadata_encryption_key=self.metadata_encryption_key)
+            self._check_no_data_loss_16_to_17(engine)
+
+    def _check_no_data_loss_16_to_17(self, engine):
+        """
+        Check that migrating swift location credentials to quoted form
+        and back does not result in data loss.
+        """
+        migration_api.version_control(version=0)
+        migration_api.upgrade(16)
+
+        conn = engine.connect()
+        images_table = Table('images', MetaData(), autoload=True,
+                             autoload_with=engine)
+
+        def get_locations():
+            conn = engine.connect()
+            locations = [x[0] for x in
+                         conn.execute(
+                             select(['location'], from_obj=[images_table]))]
+            conn.close()
+            return locations
+
+        locations = ['file://ab',
+                     'file://abc',
+                     'swift://acct3A%foobar:pass@example.com/container/obj-id']
+
+        # Insert images with an unquoted image location
+        now = datetime.datetime.now()
+        kwargs = dict(deleted=False,
+                      created_at=now,
+                      updated_at=now,
+                      status='active',
+                      is_public=True,
+                      min_disk=0,
+                      min_ram=0)
+        for i, location in enumerate(locations):
+            kwargs.update(location=location, id=i)
+            conn.execute(images_table.insert(), [kwargs])
+        conn.close()
+
+        def assert_locations():
+            actual_locations = get_locations()
+            for location in locations:
+                if not location in actual_locations:
+                    self.fail(_("location: %s data lost") % location)
+
+        migration_api.upgrade(17)
+
+        assert_locations()
+
+        migration_api.downgrade(16)
+
+        assert_locations()
