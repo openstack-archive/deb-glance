@@ -1,4 +1,3 @@
 default_conf.patch
 disable-network-for-docs.patch
 sql_conn-registry.patch
-dont-rely-on-network.patch
