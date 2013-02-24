@@ -38,7 +38,6 @@ Build-Depends-Indep:
  python-setuptools,
  python-sphinx,
  python-sqlalchemy-ext | python-sqlalchemy (<< 0.6.3-2),
- python-swift,
  python-swiftclient (>= 1:1.2),
  python-webob,
  python-xattr,
