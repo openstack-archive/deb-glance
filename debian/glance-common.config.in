@@ -11,9 +11,9 @@ GREG_CONF=/etc/glance/glance-registry.conf
 #PKGOS-INCLUDE#
 
 pkgos_var_user_group glance
-pkgos_dbc_read_conf -pkg glance-common ${GREG_CONF} glance DEFAULT sql_connection $@
+pkgos_dbc_read_conf -pkg glance-common ${GREG_CONF} DEFAULT sql_connection glance $@
 
-pkgos_get_config ${API_CONF} flavor paste_deploy
+pkgos_inifile get ${API_CONF} paste_deploy flavor
 case "${RET}" in
 keystone|caching|keystone+caching|cachemanagement|keystone+cachemanagement)
 	db_set glance/paste-flavor ${RET}
@@ -31,7 +31,7 @@ db_go || true
 db_get glance/paste-flavor
 case "$RET" in
 keystone*)
-	pkgos_read_admin_creds ${API_CONF} glance keystone_authtoken
+	pkgos_read_admin_creds ${API_CONF} keystone_authtoken glance
 ;;
 esac
 
