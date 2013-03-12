@@ -14,12 +14,14 @@ Build-Depends-Indep:
  curl,
  openstack-pkg-tools,
  pep8,
+ python-anyjson,
  python-argparse,
  python-boto,
  python-crypto,
  python-dateutil,
  python-eventlet,
  python-glanceclient,
+ python-greenlet,
  python-httplib2 (>= 0.6.0),
  python-iso8601,
  python-jsonschema,
@@ -38,6 +40,7 @@ Build-Depends-Indep:
  python-swift,
  python-swiftclient,
  python-webob,
+ python-wsgiref,
  python-xattr,
  procps
 Standards-Version: 3.9.3
@@ -51,11 +54,13 @@ Section: python
 Pre-Depends: dpkg (>= 1.15.6~)
 Depends: ${python:Depends}, ${misc:Depends},
  python-argparse,
+ python-anyjson,
  python-boto,
  python-configobj,
  python-crypto,
  python-dateutil,
  python-eventlet,
+ python-greenlet,
  python-httplib2 (>= 0.6.0),
  python-iso8601,
  python-jsonschema,
@@ -69,6 +74,7 @@ Depends: ${python:Depends}, ${misc:Depends},
  python-sqlalchemy-ext | python-sqlalchemy (<< 0.6.3-2),
  python-swiftclient,
  python-webob,
+ python-wsgiref,
  python-xattr
 Provides: ${python:Provides}
 Description: OpenStack Image Service - Python client library
