@@ -2,7 +2,7 @@
 
 set -e
 
-if [ -r /usr/share/debconf/confmodule ] ; then
+if [ -r /usr/share/debconf/confmodule ] && [ -r /usr/share/dbconfig-common/dpkg/prerm ] ; then
 	. /usr/share/debconf/confmodule
 
 	db_get glance/configure_db
