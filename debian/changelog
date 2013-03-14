@@ -1,3 +1,10 @@
+glance (2012.2.3-2) experimental; urgency=low
+
+  * CVE-2013-1840: fixes "Backend credentials leak in Glance v1 API"
+    (Closes: #703063).
+
+ -- Thomas Goirand <zigo@debian.org>  Fri, 15 Mar 2013 04:57:35 +0800
+
 glance (2012.2.3-1) experimental; urgency=low
 
   * New upstream release.
