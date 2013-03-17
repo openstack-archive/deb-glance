@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import copy
 import json
 import webob
 
@@ -25,6 +26,7 @@ import glance.domain
 import glance.gateway
 import glance.notifier
 from glance.openstack.common import timeutils
+import glance.schema
 import glance.store
 
 
@@ -50,6 +52,7 @@ class ImageMembersController(object):
 
             {'member_id': <MEMBER>,
              'image_id': <IMAGE>,
+             'status': <MEMBER_STATUS>
              'created_at': ..,
              'updated_at': ..}
 
@@ -64,7 +67,6 @@ class ImageMembersController(object):
                                                                member_id)
             member = member_repo.add(new_member)
 
-            self._update_store_acls(req, image)
             return member
         except exception.NotFound as e:
             raise webob.exc.HTTPNotFound(explanation=unicode(e))
@@ -82,13 +84,12 @@ class ImageMembersController(object):
 
             {'member_id': <MEMBER>,
              'image_id': <IMAGE>,
+             'status': <MEMBER_STATUS>
              'created_at': ..,
              'updated_at': ..}
 
         """
         image_repo = self.gateway.get_repo(req.context)
-        image_member_factory = self.gateway\
-                                   .get_image_member_factory(req.context)
         try:
             image = image_repo.get(image_id)
             member_repo = image.get_member_repo()
@@ -115,6 +116,7 @@ class ImageMembersController(object):
             {'members': [
                 {'member_id': <MEMBER>,
                  'image_id': <IMAGE>,
+                 'status': <MEMBER_STATUS>
                  'created_at': ..,
                  'updated_at': ..}, ..
             ]}
@@ -144,33 +146,11 @@ class ImageMembersController(object):
             member_repo = image.get_member_repo()
             member = member_repo.get(member_id)
             member_repo.remove(member)
-            self._update_store_acls(req, image)
             return webob.Response(body='', status=200)
         except exception.NotFound as e:
             raise webob.exc.HTTPNotFound(explanation=unicode(e))
         except exception.Forbidden as e:
             raise webob.exc.HTTPForbidden(explanation=unicode(e))
-
-    def _update_store_acls(self, req, image):
-        location_uri = image.location
-        public = image.visibility == 'public'
-        member_repo = image.get_member_repo()
-        if location_uri:
-            try:
-                read_tenants = []
-                write_tenants = []
-                members = member_repo.list()
-                if members:
-                    for member in members:
-                        read_tenants.append(member.member_id)
-                glance.store.set_acls(req.context, location_uri, public=public,
-                                      read_tenants=read_tenants,
-                                      write_tenants=write_tenants)
-            except exception.UnknownScheme:
-                msg = _("Store for image not found: %s") % image_id
-                raise webob.exc.HTTPBadRequest(explanation=msg,
-                                               request=req,
-                                               content_type='text/plain')
 
 
 class RequestDeserializer(wsgi.JSONRequestDeserializer):
@@ -207,6 +187,7 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
 class ResponseSerializer(wsgi.JSONResponseSerializer):
     def __init__(self, schema=None):
         super(ResponseSerializer, self).__init__()
+        self.schema = schema or get_schema()
 
     def _format_image_member(self, member):
         member_view = {}
@@ -215,6 +196,8 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
             member_view[key] = getattr(member, key)
         member_view['created_at'] = timeutils.isotime(member.created_at)
         member_view['updated_at'] = timeutils.isotime(member.updated_at)
+        member_view['schema'] = '/v2/schemas/member'
+        member_view = self.schema.filter(member_view)
         return member_view
 
     def create(self, response, image_member):
@@ -235,9 +218,58 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
         for image_member in image_members:
             image_member_view = self._format_image_member(image_member)
             image_members_view.append(image_member_view)
-        body = json.dumps(dict(members=image_members_view), ensure_ascii=False)
+        totalview = dict(members=image_members_view)
+        totalview['schema'] = '/v2/schemas/members'
+        body = json.dumps(totalview, ensure_ascii=False)
         response.unicode_body = unicode(body)
         response.content_type = 'application/json'
+
+
+_MEMBER_SCHEMA = {
+    'member_id': {
+        'type': 'string',
+        'description': _('An identifier for the image member (tenantId)')
+    },
+    'image_id': {
+        'type': 'string',
+        'description': _('An identifier for the image'),
+        'pattern': ('^([0-9a-fA-F]){8}-([0-9a-fA-F]){4}-([0-9a-fA-F]){4}'
+                    '-([0-9a-fA-F]){4}-([0-9a-fA-F]){12}$'),
+    },
+    'created_at': {
+        'type': 'string',
+        'description': _('Date and time of image member creation'),
+        #TODO(brian-rosmaita): our jsonschema library doesn't seem to like the
+        # format attribute, figure out why (and also fix in images.py)
+        #'format': 'date-time',
+    },
+    'updated_at': {
+        'type': 'string',
+        'description': _('Date and time of last modification of image member'),
+        #'format': 'date-time',
+    },
+    'status': {
+        'type': 'string',
+        'description': _('The status of this image member'),
+        'enum': [
+            'pending',
+            'accepted',
+            'rejected'
+        ]
+    },
+    'schema': {'type': 'string'}
+}
+
+
+def get_schema():
+    properties = copy.deepcopy(_MEMBER_SCHEMA)
+    schema = glance.schema.Schema('member', properties)
+    return schema
+
+
+def get_collection_schema():
+    member_schema = get_schema()
+    return glance.schema.CollectionSchema('members', member_schema)
 
 
 def create_resource():

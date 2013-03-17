@@ -25,9 +25,8 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import ForeignKey, DateTime, Boolean, Text
 from sqlalchemy.orm import relationship, backref, object_mapper
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import Index, UniqueConstraint
 
-import glance.db.sqlalchemy.api
 from glance.openstack.common import timeutils
 from glance.openstack.common import uuidutils
 
@@ -55,6 +54,8 @@ class ModelBase(object):
 
     def save(self, session=None):
         """Save this object"""
+        # import api here to prevent circular dependency problem
+        import glance.db.sqlalchemy.api
         session = session or glance.db.sqlalchemy.api.get_session()
         session.add(self)
         session.flush()
@@ -108,7 +109,6 @@ class Image(BASE, ModelBase):
     size = Column(BigInteger)
     status = Column(String(30), nullable=False)
     is_public = Column(Boolean, nullable=False, default=False)
-    location = Column(Text)
     checksum = Column(String(32))
     min_disk = Column(Integer(), nullable=False, default=0)
     min_ram = Column(Integer(), nullable=False, default=0)
@@ -139,10 +139,27 @@ class ImageTag(BASE, ModelBase):
     value = Column(String(255), nullable=False)
 
 
+class ImageLocation(BASE, ModelBase):
+    """Represents an image location in the datastore"""
+    __tablename__ = 'image_locations'
+
+    id = Column(Integer, primary_key=True, nullable=False)
+    image_id = Column(String(36), ForeignKey('images.id'), nullable=False)
+    image = relationship(Image, backref=backref('locations'))
+    value = Column(Text(), nullable=False)
+
+
 class ImageMember(BASE, ModelBase):
     """Represents an image members in the datastore"""
     __tablename__ = 'image_members'
-    __table_args__ = (UniqueConstraint('image_id', 'member'), {})
+    unique_constraint_key_name = 'image_members_image_id_member_deleted_at_key'
+    __table_args__ = (Index('ix_image_members_image_id_member',
+                            'image_id',
+                            'member'),
+                      UniqueConstraint('image_id',
+                                       'member',
+                                       'deleted_at',
+                                       name=unique_constraint_key_name), {})
 
     id = Column(Integer, primary_key=True)
     image_id = Column(String(36), ForeignKey('images.id'),

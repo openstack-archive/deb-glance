@@ -23,6 +23,7 @@ from oslo.config import cfg
 
 from glance.common import exception
 import glance.domain
+import glance.domain.proxy
 from glance.openstack.common import importutils
 import glance.openstack.common.log as logging
 from glance.openstack.common import timeutils
@@ -92,7 +93,8 @@ class Notifier(object):
 def format_image_notification(image):
     """
     Given a glance.domain.Image object, return a dictionary of relevant
-    notification information.
+    notification information. We purposely do not include 'location'
+    as it may contain credentials.
     """
     return {
         'id': image.image_id,
@@ -103,7 +105,6 @@ def format_image_notification(image):
         'min_disk': image.min_disk,
         'min_ram': image.min_ram,
         'protected': image.protected,
-        'location': image.location,
         'checksum': image.checksum,
         'owner': image.owner,
         'disk_format': image.disk_format,
@@ -117,24 +118,88 @@ def format_image_notification(image):
     }
 
 
-class ImageRepoProxy(glance.domain.ImageRepoProxy):
+class ImageRepoProxy(glance.domain.proxy.Repo):
 
-    def __init__(self, image_repo, notifier):
+    def __init__(self, image_repo, context, notifier):
         self.image_repo = image_repo
+        self.context = context
         self.notifier = notifier
-        super(ImageRepoProxy, self).__init__(image_repo)
+        proxy_kwargs = {'context': self.context, 'notifier': self.notifier}
+        super(ImageRepoProxy, self).__init__(image_repo,
+                                             item_proxy_class=ImageProxy,
+                                             item_proxy_kwargs=proxy_kwargs)
 
     def save(self, image):
-        self.image_repo.save(image)
+        super(ImageRepoProxy, self).save(image)
         self.notifier.info('image.update', format_image_notification(image))
 
     def add(self, image):
-        self.image_repo.add(image)
+        super(ImageRepoProxy, self).add(image)
         self.notifier.info('image.create', format_image_notification(image))
 
     def remove(self, image):
-        self.image_repo.remove(image)
+        super(ImageRepoProxy, self).remove(image)
         payload = format_image_notification(image)
         payload['deleted'] = True
         payload['deleted_at'] = timeutils.isotime()
         self.notifier.info('image.delete', payload)
+
+
+class ImageFactoryProxy(glance.domain.proxy.ImageFactory):
+    def __init__(self, factory, context, notifier):
+        kwargs = {'context': context, 'notifier': notifier}
+        super(ImageFactoryProxy, self).__init__(factory,
+                                                proxy_class=ImageProxy,
+                                                proxy_kwargs=kwargs)
+
+
+class ImageProxy(glance.domain.proxy.Image):
+
+    def __init__(self, image, context, notifier):
+        self.image = image
+        self.context = context
+        self.notifier = notifier
+        super(ImageProxy, self).__init__(image)
+
+    def _format_image_send(self, bytes_sent):
+        return {
+            'bytes_sent': bytes_sent,
+            'image_id': self.image.image_id,
+            'owner_id': self.image.owner,
+            'receiver_tenant_id': self.context.tenant,
+            'receiver_user_id': self.context.user,
+        }
+
+    def get_data(self):
+        sent = 0
+        for chunk in self.image.get_data():
+            yield chunk
+            sent += len(chunk)
+
+        if sent != self.image.size:
+            notify = self.notifier.error
+        else:
+            notify = self.notifier.info
+
+        try:
+            notify('image.send', self._format_image_send(sent))
+        except Exception, err:
+            msg = _("An error occurred during image.send"
+                    " notification: %(err)s") % locals()
+            LOG.error(msg)
+
+    def set_data(self, data, size=None):
+        payload = format_image_notification(self.image)
+        self.notifier.info('image.prepare', payload)
+        try:
+            self.image.set_data(data, size)
+        except exception.StorageFull, e:
+            msg = _("Image storage media is full: %s") % e
+            self.notifier.error('image.upload', msg)
+        except exception.StorageWriteDenied, e:
+            msg = _("Insufficient permissions on image storage media: %s") % e
+            self.notifier.error('image.upload', msg)
+        else:
+            payload = format_image_notification(self.image)
+            self.notifier.info('image.upload', payload)
+            self.notifier.info('image.activate', payload)

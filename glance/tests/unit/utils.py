@@ -61,7 +61,7 @@ class FakeDB(object):
     def init_db():
         images = [
             {'id': UUID1, 'owner': TENANT1, 'status': 'queued',
-             'location': '%s/%s' % (BASE_URI, UUID1)},
+             'locations': ['%s/%s' % (BASE_URI, UUID1)]},
             {'id': UUID2, 'owner': TENANT1, 'status': 'queued'},
         ]
         [simple_db.image_create(None, image) for image in images]
@@ -91,12 +91,18 @@ class FakeStoreAPI(object):
         self.data = {
             '%s/%s' % (BASE_URI, UUID1): ('XXX', 3),
         }
+        self.acls = {}
 
     def create_stores(self):
         pass
 
-    def set_acls(*_args, **_kwargs):
-        pass
+    def set_acls(self, context, uri, public=False,
+                 read_tenants=[], write_tenants=[]):
+        self.acls[uri] = {
+            'public': public,
+            'read': read_tenants,
+            'write': write_tenants,
+        }
 
     def get_from_backend(self, context, location):
         try:
@@ -122,13 +128,15 @@ class FakeStoreAPI(object):
         for location in self.data.keys():
             if image_id in location:
                 raise exception.Duplicate()
-        if size and (current_store_size + size) > store_max_size:
+        if not size:
+            size = len(data.fd)
+        if (current_store_size + size) > store_max_size:
             raise exception.StorageFull()
         if context.user == USER2:
             raise exception.Forbidden()
         if context.user == USER3:
             raise exception.StorageWriteDenied()
-        self.data[image_id] = (data, size or len(data))
+        self.data[image_id] = (data, size)
         checksum = 'Z'
         return (image_id, size, checksum)
 

@@ -352,7 +352,7 @@ class BaseStore(glance.store.base.Store):
 
                 # Now we write the object manifest and return the
                 # manifest's etag...
-                manifest = "%s/%s" % (location.container, location.obj)
+                manifest = "%s/%s-" % (location.container, location.obj)
                 headers = {'ETag': hashlib.md5("").hexdigest(),
                            'X-Object-Manifest': manifest}
 
@@ -409,11 +409,11 @@ class BaseStore(glance.store.base.Store):
                     # since we're simply sending off parallelizable requests
                     # to Swift to delete stuff. It's not like we're going to
                     # be hogging up network or file I/O here...
-                    connection.delete_object(
-                            obj_container, segment['name'])
+                    connection.delete_object(obj_container,
+                                             segment['name'])
 
-            else:
-                connection.delete_object(location.container, location.obj)
+            # Delete object (or, in segmented case, the manifest)
+            connection.delete_object(location.container, location.obj)
 
         except swiftclient.ClientException, e:
             if e.http_status == httplib.NOT_FOUND:

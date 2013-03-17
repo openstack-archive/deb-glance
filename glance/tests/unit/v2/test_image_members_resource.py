@@ -20,8 +20,6 @@ from oslo.config import cfg
 import webob
 
 import glance.api.v2.image_members
-from glance.openstack.common import uuidutils
-from glance.tests.unit import base
 import glance.tests.unit.utils as unit_test_utils
 import glance.tests.utils as test_utils
 
@@ -58,7 +56,7 @@ def _db_fixture(id, **kwargs):
         'status': 'queued',
         'tags': [],
         'size': None,
-        'location': None,
+        'locations': [],
         'protected': False,
         'disk_format': None,
         'container_format': None,
@@ -108,7 +106,8 @@ class TestImageMembersController(test_utils.BaseTestCase):
         self.db.reset()
         self.images = [
             _db_fixture(UUID1, owner=TENANT1, name='1', size=256,
-                        is_public=True, location='%s/%s' % (BASE_URI, UUID1)),
+                        is_public=True,
+                        locations=['%s/%s' % (BASE_URI, UUID1)]),
             _db_fixture(UUID2, owner=TENANT1, name='2', size=512),
             _db_fixture(UUID3, owner=TENANT3, name='3', size=512),
             _db_fixture(UUID4, owner=TENANT4, name='4', size=1024),
@@ -231,7 +230,8 @@ class TestImageMembersController(test_utils.BaseTestCase):
         image_id = UUID2
         res = self.controller.delete(request, image_id, member_id)
         self.assertEqual(res.body, '')
-        found_member = self.db.image_member_find(image_id, member_id)
+        found_member = self.db.image_member_find(
+                request.context, image_id=image_id, member=member_id)
         self.assertEqual(found_member, [])
 
     def test_delete_by_member(self):
@@ -267,7 +267,8 @@ class TestImageMembersController(test_utils.BaseTestCase):
         request = unit_test_utils.get_fake_request()
         member_id = 'fake-member-id'
         image_id = UUID2
-        found_member = self.db.image_member_find(image_id, member_id)
+        found_member = self.db.image_member_find(
+                request.context, image_id=image_id, member=member_id)
         self.assertEqual(found_member, [])
         self.assertRaises(webob.exc.HTTPNotFound, self.controller.delete,
                           request, image_id, member_id)
@@ -296,6 +297,7 @@ class TestImageMembersSerializer(test_utils.BaseTestCase):
                     'status': 'accepted',
                     'created_at': ISOTIME,
                     'updated_at': ISOTIME,
+                    'schema': '/v2/schemas/member',
                 },
                 {
                     'image_id': UUID2,
@@ -303,8 +305,10 @@ class TestImageMembersSerializer(test_utils.BaseTestCase):
                     'status': 'pending',
                     'created_at': ISOTIME,
                     'updated_at': ISOTIME,
+                    'schema': '/v2/schemas/member',
                 },
-            ]
+            ],
+            'schema': '/v2/schemas/members',
         }
         request = webob.Request.blank('/v2/images/%s/members' % UUID2)
         response = webob.Response(request=request)
@@ -318,6 +322,7 @@ class TestImageMembersSerializer(test_utils.BaseTestCase):
         expected = {'image_id': UUID2,
                     'member_id': TENANT1,
                     'status': 'accepted',
+                    'schema': '/v2/schemas/member',
                     'created_at': ISOTIME,
                     'updated_at': ISOTIME}
         request = webob.Request.blank('/v2/images/%s/members/%s'
@@ -333,6 +338,7 @@ class TestImageMembersSerializer(test_utils.BaseTestCase):
         expected = {'image_id': UUID2,
                     'member_id': TENANT1,
                     'status': 'accepted',
+                    'schema': '/v2/schemas/member',
                     'created_at': ISOTIME,
                     'updated_at': ISOTIME}
         request = webob.Request.blank('/v2/images/%s/members/%s'

@@ -33,7 +33,6 @@ import sqlalchemy.sql as sa_sql
 from glance.common import exception
 from glance.db.sqlalchemy import migration
 from glance.db.sqlalchemy import models
-from glance.openstack.common import cfg
 import glance.openstack.common.log as os_logging
 from glance.openstack.common import timeutils
 
@@ -250,10 +249,12 @@ def image_destroy(context, image_id):
     """Destroy the image or raise if it does not exist."""
     session = get_session()
     with session.begin():
-        image_ref = image_get(context, image_id, session=session)
+        image_ref = _image_get(context, image_id, session=session)
 
         # Perform authorization check
         check_mutate_authorization(context, image_ref)
+
+        _image_locations_set(image_ref.id, [], session)
 
         image_ref.delete(session=session)
 
@@ -264,16 +265,30 @@ def image_destroy(context, image_id):
         for memb_ref in members:
             _image_member_delete(context, memb_ref, session)
 
-        return image_ref
+    return _normalize_locations(image_ref)
+
+
+def _normalize_locations(image):
+    undeleted_locations = filter(lambda x: not x.deleted, image['locations'])
+    image['locations'] = [loc['value'] for loc in undeleted_locations]
+    return image
 
 
 def image_get(context, image_id, session=None, force_show_deleted=False):
+    image = _image_get(context, image_id, session=session,
+                       force_show_deleted=force_show_deleted)
+    image = _normalize_locations(image.to_dict())
+    return image
+
+
+def _image_get(context, image_id, session=None, force_show_deleted=False):
     """Get an image or raise if it does not exist."""
     session = session or get_session()
 
     try:
         query = session.query(models.Image)\
                        .options(sa_orm.joinedload(models.Image.properties))\
+                       .options(sa_orm.joinedload(models.Image.locations))\
                        .filter_by(id=image_id)
 
         # filter out deleted images if context disallows it
@@ -487,7 +502,8 @@ def image_get_all(context, filters=None, marker=None, limit=None,
 
     session = get_session()
     query = session.query(models.Image)\
-                   .options(sa_orm.joinedload(models.Image.properties))
+                   .options(sa_orm.joinedload(models.Image.properties))\
+                   .options(sa_orm.joinedload(models.Image.locations))
 
     # NOTE(markwash) treat is_public=None as if it weren't filtered
     if 'is_public' in filters and filters['is_public'] is None:
@@ -573,15 +589,15 @@ def image_get_all(context, filters=None, marker=None, limit=None,
 
     marker_image = None
     if marker is not None:
-        marker_image = image_get(context, marker,
-                                 force_show_deleted=showing_deleted)
+        marker_image = _image_get(context, marker,
+                                  force_show_deleted=showing_deleted)
 
     query = paginate_query(query, models.Image, limit,
                            [sort_key, 'created_at', 'id'],
                            marker=marker_image,
                            sort_dir=sort_dir)
 
-    return query.all()
+    return [_normalize_locations(image.to_dict()) for image in query.all()]
 
 
 def _drop_protected_attrs(model_class, values):
@@ -640,8 +656,14 @@ def _image_update(context, values, image_id, purge_props=False):
         # not a dict.
         properties = values.pop('properties', {})
 
+        try:
+            locations = values.pop('locations')
+            locations_provided = True
+        except KeyError:
+            locations_provided = False
+
         if image_id:
-            image_ref = image_get(context, image_id, session=session)
+            image_ref = _image_get(context, image_id, session=session)
 
             # Perform authorization check
             check_mutate_authorization(context, image_ref)
@@ -687,7 +709,23 @@ def _image_update(context, values, image_id, purge_props=False):
         _set_properties_for_image(context, image_ref, properties, purge_props,
                                   session)
 
+    if locations_provided:
+        _image_locations_set(image_ref.id, locations, session)
+
     return image_get(context, image_ref.id)
+
+
+def _image_locations_set(image_id, locations, session):
+    location_refs = session.query(models.ImageLocation)\
+                           .filter_by(image_id=image_id)\
+                           .filter_by(deleted=False)\
+                           .all()
+    for location_ref in location_refs:
+        location_ref.delete(session=session)
+
+    for location in locations:
+        location_ref = models.ImageLocation(image_id=image_id, value=location)
+        location_ref.save()
 
 
 def _set_properties_for_image(context, image_ref, properties,
@@ -816,17 +854,23 @@ def image_member_find(context, image_id=None, member=None, status=None):
 
 def _image_member_find(context, session, image_id=None,
                        member=None, status=None):
-    # Note lack of permissions check; this function is called from
-    # is_image_visible(), so avoid recursive calls
     query = session.query(models.ImageMember)
     query = query.filter_by(deleted=False)
 
+    if not context.is_admin:
+        query = query.join(models.Image)
+        filters = [
+            models.Image.owner == context.owner,
+            models.ImageMember.member == context.owner,
+        ]
+        query = query.filter(sa_sql.or_(*filters))
+
     if image_id is not None:
-        query = query.filter_by(image_id=image_id)
+        query = query.filter(models.ImageMember.image_id == image_id)
     if member is not None:
-        query = query.filter_by(member=member)
+        query = query.filter(models.ImageMember.member == member)
     if status is not None:
-        query = query.filter_by(status=status)
+        query = query.filter(models.ImageMember.status == status)
 
     return query.all()
 

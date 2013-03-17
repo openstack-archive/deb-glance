@@ -96,7 +96,7 @@ def _image_format(image_id, **values):
         'id': image_id,
         'name': None,
         'owner': None,
-        'location': None,
+        'locations': [],
         'status': 'queued',
         'protected': False,
         'is_public': False,
@@ -290,6 +290,16 @@ def image_property_delete(context, prop_ref, session=None):
 @log_call
 def image_member_find(context, image_id=None, member=None, status=None):
     filters = []
+    images = DATA['images']
+    members = DATA['members']
+
+    def is_visible(member):
+        return (member['member'] == context.owner or
+                images[member['image_id']]['owner'] == context.owner)
+
+    if not context.is_admin:
+        filters.append(is_visible)
+
     if image_id is not None:
         filters.append(lambda m: m['image_id'] == image_id)
     if member is not None:
@@ -297,7 +307,6 @@ def image_member_find(context, image_id=None, member=None, status=None):
     if status is not None:
         filters.append(lambda m: m['status'] == status)
 
-    members = DATA['members']
     for f in filters:
         members = filter(f, members)
     return [copy.deepcopy(member) for member in members]
@@ -349,7 +358,7 @@ def image_create(context, image_values):
         raise exception.Invalid('status is a required attribute')
 
     allowed_keys = set(['id', 'name', 'status', 'min_ram', 'min_disk', 'size',
-                        'checksum', 'location', 'owner', 'protected',
+                        'checksum', 'locations', 'owner', 'protected',
                         'is_public', 'container_format', 'disk_format',
                         'created_at', 'updated_at', 'deleted_at', 'deleted',
                         'properties', 'tags'])

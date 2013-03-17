@@ -59,7 +59,7 @@ def _db_fixture(id, **kwargs):
         'status': 'queued',
         'tags': [],
         'size': None,
-        'location': None,
+        'locations': [],
         'protected': False,
         'disk_format': None,
         'container_format': None,
@@ -80,7 +80,7 @@ def _domain_fixture(id, **kwargs):
         'owner': None,
         'status': 'queued',
         'size': None,
-        'location': None,
+        'locations': [],
         'protected': False,
         'disk_format': None,
         'container_format': None,
@@ -121,7 +121,8 @@ class TestImagesController(test_utils.BaseTestCase):
         self.db.reset()
         self.images = [
             _db_fixture(UUID1, owner=TENANT1, name='1', size=256,
-                        is_public=True, location='%s/%s' % (BASE_URI, UUID1)),
+                        is_public=True,
+                        locations=['%s/%s' % (BASE_URI, UUID1)]),
             _db_fixture(UUID2, owner=TENANT1, name='2',
                         size=512, is_public=True),
             _db_fixture(UUID3, owner=TENANT3, name='3',
@@ -878,9 +879,10 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
             self.assertRaises(webob.exc.HTTPForbidden,
                               self.deserializer.create, request)
 
-    def _get_fake_patch_request(self):
+    def _get_fake_patch_request(self, content_type_minor_version=1):
         request = unit_test_utils.get_fake_request()
-        request.content_type = 'application/openstack-images-v2.0-json-patch'
+        template = 'application/openstack-images-v2.%d-json-patch'
+        request.content_type = template % content_type_minor_version
         return request
 
     def test_update_empty_body(self):
@@ -890,7 +892,7 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
         expected = {'changes': []}
         self.assertEquals(output, expected)
 
-    def test_update_invalid_content_type(self):
+    def test_update_unsupported_content_type(self):
         request = unit_test_utils.get_fake_request()
         request.content_type = 'application/json-patch'
         request.body = json.dumps([])
@@ -898,14 +900,15 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
             self.deserializer.update(request)
         except webob.exc.HTTPUnsupportedMediaType as e:
             # desired result, but must have correct Accept-Patch header
-            self.assertEqual(e.headers['Accept-Patch'],
-                             'application/openstack-images-v2.0-json-patch')
+            expected = ('application/openstack-images-v2.0-json-patch, '
+                        'application/openstack-images-v2.1-json-patch')
+            self.assertEqual(e.headers['Accept-Patch'], expected)
         else:
             self.fail('Did not raise HTTPUnsupportedMediaType')
 
     def test_update_body_not_a_list(self):
         bodies = [
-            {'add': '/someprop', 'value': 'somevalue'},
+            {'op': 'add', 'path': '/someprop', 'value': 'somevalue'},
             'just some string',
             123,
             True,
@@ -936,6 +939,26 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
     def test_update(self):
         request = self._get_fake_patch_request()
         body = [
+            {'op': 'replace', 'path': '/name', 'value': 'fedora'},
+            {'op': 'replace', 'path': '/tags', 'value': ['king', 'kong']},
+            {'op': 'replace', 'path': '/foo', 'value': 'bar'},
+            {'op': 'add', 'path': '/bebim', 'value': 'bap'},
+            {'op': 'remove', 'path': '/sparks'},
+        ]
+        request.body = json.dumps(body)
+        output = self.deserializer.update(request)
+        expected = {'changes': [
+            {'op': 'replace', 'path': 'name', 'value': 'fedora'},
+            {'op': 'replace', 'path': 'tags', 'value': ['king', 'kong']},
+            {'op': 'replace', 'path': 'foo', 'value': 'bar'},
+            {'op': 'add', 'path': 'bebim', 'value': 'bap'},
+            {'op': 'remove', 'path': 'sparks'},
+        ]}
+        self.assertEquals(output, expected)
+
+    def test_update_v2_0_compatibility(self):
+        request = self._get_fake_patch_request(content_type_minor_version=0)
+        body = [
             {'replace': '/name', 'value': 'fedora'},
             {'replace': '/tags', 'value': ['king', 'kong']},
             {'replace': '/foo', 'value': 'bar'},
@@ -956,15 +979,15 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
     def test_update_base_attributes(self):
         request = self._get_fake_patch_request()
         body = [
-            {'replace': '/id', 'value': UUID1},
-            {'replace': '/name', 'value': 'fedora'},
-            {'replace': '/visibility', 'value': 'public'},
-            {'replace': '/tags', 'value': ['king', 'kong']},
-            {'replace': '/protected', 'value': True},
-            {'replace': '/container_format', 'value': 'bare'},
-            {'replace': '/disk_format', 'value': 'raw'},
-            {'replace': '/min_ram', 'value': 128},
-            {'replace': '/min_disk', 'value': 10},
+            {'op': 'replace', 'path': '/id', 'value': UUID1},
+            {'op': 'replace', 'path': '/name', 'value': 'fedora'},
+            {'op': 'replace', 'path': '/visibility', 'value': 'public'},
+            {'op': 'replace', 'path': '/tags', 'value': ['king', 'kong']},
+            {'op': 'replace', 'path': '/protected', 'value': True},
+            {'op': 'replace', 'path': '/container_format', 'value': 'bare'},
+            {'op': 'replace', 'path': '/disk_format', 'value': 'raw'},
+            {'op': 'replace', 'path': '/min_ram', 'value': 128},
+            {'op': 'replace', 'path': '/min_disk', 'value': 10},
         ]
         request.body = json.dumps(body)
         output = self.deserializer.update(request)
@@ -991,7 +1014,7 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
 
         for key, value in samples.items():
             request = self._get_fake_patch_request()
-            body = [{'replace': '/%s' % key, 'value': value}]
+            body = [{'op': 'replace', 'path': '/%s' % key, 'value': value}]
             request.body = json.dumps(body)
             try:
                 self.deserializer.update(request)
@@ -1011,7 +1034,7 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
 
         for key, value in samples.items():
             request = self._get_fake_patch_request()
-            body = [{'replace': '/%s' % key, 'value': value}]
+            body = [{'op': 'replace', 'path': '/%s' % key, 'value': value}]
             request.body = json.dumps(body)
             try:
                 self.deserializer.update(request)
@@ -1024,14 +1047,14 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
         samples = {
             'owner': TENANT1,
             'is_public': True,
-            'location': '/a/b/c/d',
+            'locations': ['/a/b/c/d'],
             'deleted': False,
             'deleted_at': ISOTIME,
         }
 
         for key, value in samples.items():
             request = self._get_fake_patch_request()
-            body = [{'replace': '/%s' % key, 'value': value}]
+            body = [{'op': 'replace', 'path': '/%s' % key, 'value': value}]
             request.body = json.dumps(body)
             try:
                 self.deserializer.update(request)
@@ -1052,7 +1075,7 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
 
         for key in keys:
             request = self._get_fake_patch_request()
-            body = [{'replace': '%s' % key, 'value': 'dummy'}]
+            body = [{'op': 'replace', 'path': '%s' % key, 'value': 'dummy'}]
             request.body = json.dumps(body)
             try:
                 self.deserializer.update(request)
@@ -1070,27 +1093,48 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
 
         for encoded, decoded in samples.items():
             request = self._get_fake_patch_request()
-            body = [{'replace': '%s' % encoded, 'value': 'dummy'}]
-            request.body = json.dumps(body)
+            doc = [{'op': 'replace', 'path': '%s' % encoded, 'value': 'dummy'}]
+            request.body = json.dumps(doc)
             output = self.deserializer.update(request)
             self.assertEqual(output['changes'][0]['path'], decoded)
 
-    def test_update_multiple_operations(self):
+    def test_update_v2_1_missing_operations(self):
         request = self._get_fake_patch_request()
+        body = [{'path': '/colburn', 'value': 'arcata'}]
+        request.body = json.dumps(body)
+        self.assertRaises(webob.exc.HTTPBadRequest,
+                          self.deserializer.update, request)
+
+    def test_update_v2_1_missing_value(self):
+        request = self._get_fake_patch_request()
+        body = [{'op': 'replace', 'path': '/colburn'}]
+        request.body = json.dumps(body)
+        self.assertRaises(webob.exc.HTTPBadRequest,
+                          self.deserializer.update, request)
+
+    def test_update_v2_1_missing_path(self):
+        request = self._get_fake_patch_request()
+        body = [{'op': 'replace', 'value': 'arcata'}]
+        request.body = json.dumps(body)
+        self.assertRaises(webob.exc.HTTPBadRequest,
+                          self.deserializer.update, request)
+
+    def test_update_v2_0_multiple_operations(self):
+        request = self._get_fake_patch_request(content_type_minor_version=0)
         body = [{'replace': '/foo', 'add': '/bar', 'value': 'snore'}]
         request.body = json.dumps(body)
         self.assertRaises(webob.exc.HTTPBadRequest,
                           self.deserializer.update, request)
 
-    def test_update_missing_operations(self):
-        request = self._get_fake_patch_request()
+    def test_update_v2_0_missing_operations(self):
+        request = self._get_fake_patch_request(content_type_minor_version=0)
         body = [{'value': 'arcata'}]
         request.body = json.dumps(body)
         self.assertRaises(webob.exc.HTTPBadRequest,
                           self.deserializer.update, request)
 
-    def test_update_missing_value(self):
-        request = self._get_fake_patch_request()
+    def test_update_v2_0_missing_value(self):
+        request = self._get_fake_patch_request(content_type_minor_version=0)
         body = [{'replace': '/colburn'}]
         request.body = json.dumps(body)
         self.assertRaises(webob.exc.HTTPBadRequest,
@@ -1224,7 +1268,6 @@ class TestImagesDeserializerWithExtendedSchema(test_utils.BaseTestCase):
         custom_image_properties = {
             'pants': {
                 'type': 'string',
-                'required': True,
                 'enum': ['on', 'off'],
             },
         }
@@ -1250,8 +1293,9 @@ class TestImagesDeserializerWithExtendedSchema(test_utils.BaseTestCase):
 
     def test_update(self):
         request = unit_test_utils.get_fake_request()
-        request.content_type = 'application/openstack-images-v2.0-json-patch'
-        request.body = json.dumps([{'add': '/pants', 'value': 'off'}])
+        request.content_type = 'application/openstack-images-v2.1-json-patch'
+        doc = [{'op': 'add', 'path': '/pants', 'value': 'off'}]
+        request.body = json.dumps(doc)
         output = self.deserializer.update(request)
         expected = {'changes': [
             {'op': 'add', 'path': 'pants', 'value': 'off'},
@@ -1260,8 +1304,9 @@ class TestImagesDeserializerWithExtendedSchema(test_utils.BaseTestCase):
 
     def test_update_bad_data(self):
         request = unit_test_utils.get_fake_request()
-        request.content_type = 'application/openstack-images-v2.0-json-patch'
-        request.body = json.dumps([{'add': '/pants', 'value': 'cutoffs'}])
+        request.content_type = 'application/openstack-images-v2.1-json-patch'
+        doc = [{'op': 'add', 'path': '/pants', 'value': 'cutoffs'}]
+        request.body = json.dumps(doc)
         self.assertRaises(webob.exc.HTTPBadRequest,
                           self.deserializer.update,
                           request)
@@ -1291,8 +1336,9 @@ class TestImagesDeserializerWithAdditionalProperties(test_utils.BaseTestCase):
 
     def test_update_with_numeric_property(self):
         request = unit_test_utils.get_fake_request()
-        request.content_type = 'application/openstack-images-v2.0-json-patch'
-        request.body = json.dumps([{'add': '/foo', 'value': 123}])
+        request.content_type = 'application/openstack-images-v2.1-json-patch'
+        doc = [{'op': 'add', 'path': '/foo', 'value': 123}]
+        request.body = json.dumps(doc)
         self.assertRaises(webob.exc.HTTPBadRequest,
                           self.deserializer.update, request)
 
@@ -1304,15 +1350,17 @@ class TestImagesDeserializerWithAdditionalProperties(test_utils.BaseTestCase):
 
     def test_update_with_list_property(self):
         request = unit_test_utils.get_fake_request()
-        request.content_type = 'application/openstack-images-v2.0-json-patch'
-        request.body = json.dumps([{'add': '/foo', 'value': ['bar', 'baz']}])
+        request.content_type = 'application/openstack-images-v2.1-json-patch'
+        doc = [{'op': 'add', 'path': '/foo', 'value': ['bar', 'baz']}]
+        request.body = json.dumps(doc)
         self.assertRaises(webob.exc.HTTPBadRequest,
                           self.deserializer.update, request)
 
     def test_update(self):
         request = unit_test_utils.get_fake_request()
-        request.content_type = 'application/openstack-images-v2.0-json-patch'
-        request.body = json.dumps([{'add': '/foo', 'value': 'bar'}])
+        request.content_type = 'application/openstack-images-v2.1-json-patch'
+        doc = [{'op': 'add', 'path': '/foo', 'value': 'bar'}]
+        request.body = json.dumps(doc)
         output = self.deserializer.update(request)
         change = {'op': 'add', 'path': 'foo', 'value': 'bar'}
         self.assertEqual(output, {'changes': [change]})
@@ -1334,8 +1382,9 @@ class TestImagesDeserializerNoAdditionalProperties(test_utils.BaseTestCase):
 
     def test_update(self):
         request = unit_test_utils.get_fake_request()
-        request.content_type = 'application/openstack-images-v2.0-json-patch'
-        request.body = json.dumps([{'add': '/foo', 'value': 'bar'}])
+        request.content_type = 'application/openstack-images-v2.1-json-patch'
+        doc = [{'op': 'add', 'path': '/foo', 'value': 'bar'}]
+        request.body = json.dumps(doc)
         self.assertRaises(webob.exc.HTTPBadRequest,
                           self.deserializer.update, request)
 
@@ -1682,7 +1731,6 @@ class TestImagesSerializerWithExtendedSchema(test_utils.BaseTestCase):
         custom_image_properties = {
             'color': {
                 'type': 'string',
-                'required': True,
                 'enum': ['red', 'green'],
             },
         }
@@ -1829,7 +1877,7 @@ class TestImagesSerializerDirectUrl(test_utils.BaseTestCase):
         self.active_image = _domain_fixture(
                 UUID1, name='image-1', visibility='public',
                 status='active', size=1024, created_at=DATETIME,
-                updated_at=DATETIME, location='http://some/fake/location')
+                updated_at=DATETIME, locations=['http://some/fake/location'])
 
         self.queued_image = _domain_fixture(
                 UUID2, name='image-2', status='active',

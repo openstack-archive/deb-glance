@@ -25,7 +25,7 @@ from glance.common import crypt
 from glance.common import exception
 from glance.common import utils
 import glance.context
-import glance.domain
+import glance.domain.proxy
 from glance.openstack.common import importutils
 import glance.openstack.common.log as logging
 from glance.store import location
@@ -304,40 +304,114 @@ def set_acls(context, location_uri, public=False, read_tenants=[],
         LOG.debug(_("Skipping store.set_acls... not implemented."))
 
 
-class ImageRepoProxy(glance.domain.ImageRepoProxy):
+class ImageRepoProxy(glance.domain.proxy.Repo):
 
-    def __init__(self, context, store_api, image_repo):
+    def __init__(self, image_repo, context, store_api):
         self.context = context
         self.store_api = store_api
-        self.image_repo = image_repo
-        super(ImageRepoProxy, self).__init__(image_repo)
+        proxy_kwargs = {'context': context, 'store_api': store_api}
+        super(ImageRepoProxy, self).__init__(image_repo,
+                                             item_proxy_class=ImageProxy,
+                                             item_proxy_kwargs=proxy_kwargs)
 
-    def get(self, *args, **kwargs):
-        image = self.image_repo.get(*args, **kwargs)
-        return ImageProxy(image, self.context, self.store_api)
+    def _set_acls(self, image):
+        public = image.visibility == 'public'
+        member_ids = []
+        if image.locations and not public:
+            member_repo = image.get_member_repo()
+            member_ids = [m.member_id for m in member_repo.list()]
+        for location in image.locations:
+            self.store_api.set_acls(self.context, location, public,
+                                    read_tenants=member_ids)
 
-    def list(self, *args, **kwargs):
-        images = self.image_repo.list(*args, **kwargs)
-        return [ImageProxy(i, self.context, self.store_api)
-                for i in images]
+    def add(self, image):
+        result = super(ImageRepoProxy, self).add(image)
+        self._set_acls(image)
+        return result
+
+    def save(self, image):
+        result = super(ImageRepoProxy, self).save(image)
+        self._set_acls(image)
+        return result
 
 
-class ImageProxy(glance.domain.ImageProxy):
+class ImageFactoryProxy(glance.domain.proxy.ImageFactory):
+    def __init__(self, factory, context, store_api):
+        proxy_kwargs = {'context': context, 'store_api': store_api}
+        super(ImageFactoryProxy, self).__init__(factory,
+                                                proxy_class=ImageProxy,
+                                                proxy_kwargs=proxy_kwargs)
+
+
+class ImageProxy(glance.domain.proxy.Image):
 
     def __init__(self, image, context, store_api):
         self.image = image
         self.context = context
         self.store_api = store_api
-        super(ImageProxy, self).__init__(image)
+        proxy_kwargs = {
+            'context': context,
+            'image': self,
+            'store_api': store_api,
+        }
+        super(ImageProxy, self).__init__(
+                image, member_repo_proxy_class=ImageMemberRepoProxy,
+                member_repo_proxy_kwargs=proxy_kwargs)
 
     def delete(self):
         self.image.delete()
-        if self.image.location:
+        if self.image.locations:
             if CONF.delayed_delete:
                 self.image.status = 'pending_delete'
-                self.store_api.schedule_delayed_delete_from_backend(
-                                self.image.location, self.image.image_id)
+                for location in self.image.locations:
+                    self.store_api.schedule_delayed_delete_from_backend(
+                            location, self.image.image_id)
             else:
-                self.store_api.safe_delete_from_backend(self.image.location,
-                                                        self.context,
-                                                        self.image.image_id)
+                for location in self.image.locations:
+                    self.store_api.safe_delete_from_backend(
+                            location, self.context, self.image.image_id)
+
+    def set_data(self, data, size=None):
+        if size is None:
+            size = 0  # NOTE(markwash): zero -> unknown size
+        location, size, checksum = self.store_api.add_to_backend(
+                self.context, CONF.default_store,
+                self.image.image_id, utils.CooperativeReader(data), size)
+        self.image.locations = [location]
+        self.image.size = size
+        self.image.checksum = checksum
+        self.image.status = 'active'
+
+    def get_data(self):
+        if not self.image.locations:
+            raise exception.NotFound(_("No image data could be found"))
+        data, size = self.store_api.get_from_backend(self.context,
+                                                     self.image.locations[0])
+        return data
+
+
+class ImageMemberRepoProxy(glance.domain.proxy.Repo):
+    def __init__(self, repo, image, context, store_api):
+        self.repo = repo
+        self.image = image
+        self.context = context
+        self.store_api = store_api
+        super(ImageMemberRepoProxy, self).__init__(repo)
+
+    def _set_acls(self):
+        public = self.image.visibility == 'public'
+        if self.image.locations and not public:
+            member_ids = [m.member_id for m in self.repo.list()]
+            for location in self.image.locations:
+                self.store_api.set_acls(self.context, location, public,
+                                        read_tenants=member_ids)
+
+    def add(self, member):
+        result = super(ImageMemberRepoProxy, self).add(member)
+        self._set_acls()
+        return result
+
+    def remove(self, member):
+        result = super(ImageMemberRepoProxy, self).remove(member)
+        self._set_acls()
+        return result

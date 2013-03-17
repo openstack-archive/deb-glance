@@ -145,6 +145,9 @@ class Controller(object):
             if value is None:
                 del params[key]
 
+        # Fix for LP Bug #1132294
+        # Ensure all shared images are returned in v1
+        params['member_status'] = 'all'
         return params
 
     def _get_filters(self, req):
@@ -351,6 +354,9 @@ class Controller(object):
             msg = _("Invalid image id format")
             return exc.HTTPBadRequest(explanation=msg)
 
+        if 'location' in image_data:
+            image_data['locations'] = [image_data.pop('location')]
+
         try:
             image_data = self.db_api.image_create(req.context, image_data)
             msg = _("Successfully created image %(id)s")
@@ -382,6 +388,9 @@ class Controller(object):
         # Prohibit modification of 'owner'
         if not req.context.is_admin and 'owner' in image_data:
             del image_data['owner']
+
+        if 'location' in image_data:
+            image_data['locations'] = [image_data.pop('location')]
 
         purge_props = req.headers.get("X-Glance-Registry-Purge-Props", "false")
         try:
@@ -421,6 +430,14 @@ class Controller(object):
                                    content_type='text/plain')
 
 
+def _limit_locations(image):
+    locations = image.pop('locations', [])
+    try:
+        image['location'] = locations[0]
+    except IndexError:
+        image['location'] = None
+
+
 def make_image_dict(image):
     """
     Create a dict representation of an image which we can use to
@@ -438,8 +455,9 @@ def make_image_dict(image):
                       for p in image['properties'] if not p['deleted'])
 
     image_dict = _fetch_attrs(image, glance.db.IMAGE_ATTRS)
-
     image_dict['properties'] = properties
+    _limit_locations(image_dict)
+
     return image_dict
 
 

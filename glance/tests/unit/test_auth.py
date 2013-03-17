@@ -639,8 +639,35 @@ class TestImmutableImage(utils.BaseTestCase):
     def test_change_updated_at(self):
         self._test_change('updated_at', timeutils.utcnow())
 
-    def test_change_location(self):
-        self._test_change('location', 'http://a/b/c')
+    def test_change_locations(self):
+        self._test_change('locations', ['http://a/b/c'])
+        self.assertRaises(exception.Forbidden,
+                          self.image.locations.append, 'http://a/b/c')
+        self.assertRaises(exception.Forbidden,
+                          self.image.locations.extend, ['http://a/b/c'])
+        self.assertRaises(exception.Forbidden,
+                          self.image.locations.insert, 'foo')
+        self.assertRaises(exception.Forbidden,
+                          self.image.locations.pop)
+        self.assertRaises(exception.Forbidden,
+                          self.image.locations.remove, 'foo')
+        self.assertRaises(exception.Forbidden,
+                          self.image.locations.reverse)
+        self.assertRaises(exception.Forbidden,
+                          self.image.locations.sort)
+        self.assertRaises(exception.Forbidden,
+                          self.image.locations.__delitem__, 0)
+        self.assertRaises(exception.Forbidden,
+                          self.image.locations.__delslice__, 0, 2)
+        self.assertRaises(exception.Forbidden,
+                          self.image.locations.__setitem__, 0, 'foo')
+        self.assertRaises(exception.Forbidden,
+                          self.image.locations.__setslice__,
+                          0, 2, ['foo', 'bar'])
+        self.assertRaises(exception.Forbidden,
+                          self.image.locations.__iadd__, 'foo')
+        self.assertRaises(exception.Forbidden,
+                          self.image.locations.__imul__, 2)
 
     def test_change_size(self):
         self._test_change('size', 32)
@@ -683,6 +710,22 @@ class TestImmutableImage(utils.BaseTestCase):
                           self.image.extra_properties.setdefault, 'p', 'j')
         self.assertRaises(exception.Forbidden,
                           self.image.extra_properties.update, {})
+
+    def test_delete(self):
+        self.assertRaises(exception.Forbidden, self.image.delete)
+
+    def test_set_data(self):
+        self.assertRaises(exception.Forbidden,
+                          self.image.set_data, 'blah', 4)
+
+    def test_get_data(self):
+        class FakeImage(object):
+            def get_data(self):
+                return 'tiddlywinks'
+
+        image = glance.api.authorization.ImmutableImageProxy(
+                FakeImage(), self.context)
+        self.assertEquals(image.get_data(), 'tiddlywinks')
 
 
 class TestImageFactoryProxy(utils.BaseTestCase):

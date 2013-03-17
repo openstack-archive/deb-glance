@@ -21,7 +21,7 @@ from glance.openstack.common import uuidutils
 class ImageFactory(object):
     _readonly_properties = ['created_at', 'updated_at', 'status', 'checksum',
                             'size']
-    _reserved_properties = ['owner', 'is_public', 'location',
+    _reserved_properties = ['owner', 'is_public', 'locations',
                             'deleted', 'deleted_at', 'direct_url', 'self',
                             'file', 'schema']
 
@@ -76,7 +76,7 @@ class Image(object):
         self.min_disk = kwargs.pop('min_disk', 0)
         self.min_ram = kwargs.pop('min_ram', 0)
         self.protected = kwargs.pop('protected', False)
-        self.location = kwargs.pop('location', None)
+        self.locations = kwargs.pop('locations', [])
         self.checksum = kwargs.pop('checksum', None)
         self.owner = kwargs.pop('owner', None)
         self.disk_format = kwargs.pop('disk_format', None)
@@ -87,6 +87,25 @@ class Image(object):
         if len(kwargs) > 0:
             message = "__init__() got unexpected keyword argument '%s'"
             raise TypeError(message % kwargs.keys()[0])
+
+    @property
+    def status(self):
+        return self._status
+
+    @status.setter
+    def status(self, status):
+        if (hasattr(self, '_status') and self._status == 'queued' and
+                status in ('saving', 'active')):
+            missing = [k for k in ['disk_format', 'container_format']
+                       if not getattr(self, k)]
+            if len(missing) > 0:
+                if len(missing) == 1:
+                    msg = _('Property %s must be set prior to saving data.')
+                else:
+                    msg = _('Properties %s must be set prior to saving data.')
+                raise ValueError(msg % ', '.join(missing))
+
+        self._status = status
 
     @property
     def visibility(self):
@@ -111,69 +130,11 @@ class Image(object):
             raise exception.ProtectedImageDelete(image_id=self.image_id)
         self.status = 'deleted'
 
+    def get_data(self):
+        raise NotImplementedError()
 
-def _proxy(target, attr):
-
-    def get_attr(self):
-        return getattr(getattr(self, target), attr)
-
-    def set_attr(self, value):
-        return setattr(getattr(self, target), attr, value)
-
-    def del_attr(self):
-        return delattr(getattr(self, target), attr)
-
-    return property(get_attr, set_attr, del_attr)
-
-
-class ImageRepoProxy(object):
-    def __init__(self, base):
-        self.base = base
-
-    def get(self, image_id):
-        return self.base.get(image_id)
-
-    def list(self, *args, **kwargs):
-        return self.base.list(*args, **kwargs)
-
-    def add(self, image):
-        return self.base.add(image)
-
-    def save(self, image):
-        return self.base.save(image)
-
-    def remove(self, image):
-        return self.base.remove(image)
-
-
-class ImageProxy(object):
-    def __init__(self, base):
-        self.base = base
-
-    name = _proxy('base', 'name')
-    image_id = _proxy('base', 'image_id')
-    name = _proxy('base', 'name')
-    status = _proxy('base', 'status')
-    created_at = _proxy('base', 'created_at')
-    updated_at = _proxy('base', 'updated_at')
-    visibility = _proxy('base', 'visibility')
-    min_disk = _proxy('base', 'min_disk')
-    min_ram = _proxy('base', 'min_ram')
-    protected = _proxy('base', 'protected')
-    location = _proxy('base', 'location')
-    checksum = _proxy('base', 'checksum')
-    owner = _proxy('base', 'owner')
-    disk_format = _proxy('base', 'disk_format')
-    container_format = _proxy('base', 'container_format')
-    size = _proxy('base', 'size')
-    extra_properties = _proxy('base', 'extra_properties')
-    tags = _proxy('base', 'tags')
-
-    def delete(self):
-        self.base.delete()
-
-    def get_member_repo(self):
-        return self.base.get_member_repo()
+    def set_data(self, data, size=None):
+        raise NotImplementedError()
 
 
 class ImageMembership(object):
@@ -208,24 +169,3 @@ class ImageMemberFactory(object):
         return ImageMembership(image_id=image.image_id, member_id=member_id,
                                created_at=created_at, updated_at=updated_at,
                                status='pending')
-
-
-class ImageMembershipRepoProxy(object):
-
-    def __init__(self, base):
-        self.base = base
-
-    def get(self, image_id):
-        return self.base.get(image_id)
-
-    def list(self, *args, **kwargs):
-        return self.base.list(*args, **kwargs)
-
-    def add(self, image_member):
-        return self.base.add(image_member)
-
-    def save(self, image_member):
-        return self.base.save(image_member)
-
-    def remove(self, image_member):
-        return self.base.remove(image_member)

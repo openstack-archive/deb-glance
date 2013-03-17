@@ -53,7 +53,7 @@ def build_image_fixture(**kwargs):
         'min_disk': 5,
         'min_ram': 256,
         'size': 19,
-        'location': "file:///tmp/glance-tests/2",
+        'locations': ["file:///tmp/glance-tests/2"],
         'properties': {},
     }
     image.update(kwargs)
@@ -125,7 +125,7 @@ class DriverTests(object):
         self.assertEqual(None, image['size'])
         self.assertEqual(None, image['checksum'])
         self.assertEqual(None, image['disk_format'])
-        self.assertEqual(None, image['location'])
+        self.assertEqual([], image['locations'])
         self.assertEqual(False, image['protected'])
         self.assertEqual(False, image['deleted'])
         self.assertEqual(None, image['deleted_at'])
@@ -145,6 +145,11 @@ class DriverTests(object):
                           self.db_api.image_create,
                           self.context, {'id': UUID1, 'status': 'queued'})
 
+    def test_image_create_with_locations(self):
+        fixture = {'status': 'queued', 'locations': ['a', 'b']}
+        image = self.db_api.image_create(self.context, fixture)
+        self.assertEqual(['a', 'b'], image['locations'])
+
     def test_image_create_properties(self):
         fixture = {'status': 'queued', 'properties': {'ping': 'pong'}}
         image = self.db_api.image_create(self.context, fixture)
@@ -163,6 +168,11 @@ class DriverTests(object):
         image = self.db_api.image_update(self.adm_context, UUID3, fixture)
         self.assertEqual('queued', image['status'])
         self.assertNotEqual(image['created_at'], image['updated_at'])
+
+    def test_image_update_with_locations(self):
+        fixture = {'locations': ['a', 'b']}
+        image = self.db_api.image_update(self.adm_context, UUID3, fixture)
+        self.assertEqual(['a', 'b'], image['locations'])
 
     def test_image_update(self):
         fixture = {'status': 'queued', 'properties': {'ping': 'pong'}}
@@ -410,6 +420,13 @@ class DriverTests(object):
     def test_image_get_all_limit_marker(self):
         images = self.db_api.image_get_all(self.context, limit=2)
         self.assertEquals(2, len(images))
+
+    def test_image_destroy(self):
+        image = self.db_api.image_destroy(self.adm_context, UUID3)
+        self.assertTrue(image['deleted'])
+        self.assertTrue(image['deleted_at'])
+        self.assertRaises(exception.NotFound, self.db_api.image_get,
+                          self.context, UUID3)
 
     def test_image_get_multiple_members(self):
         TENANT1 = uuidutils.generate_uuid()
@@ -839,3 +856,119 @@ class VisibilityTests(object):
         for i in images:
             if not i['is_public']:
                 self.assertEquals(i['owner'], self.tenant1)
+
+
+class TestMembershipVisibility(base.IsolatedUnitTest):
+    def setUp(self):
+        super(TestMembershipVisibility, self).setUp()
+        self.db_api = db_tests.get_db(self.config)
+        db_tests.reset_db(self.db_api)
+        self._create_contexts()
+        self._create_images()
+
+    def _create_contexts(self):
+        self.owner1, self.owner1_ctx = self._user_fixture()
+        self.owner2, self.owner2_ctx = self._user_fixture()
+        self.tenant1, self.user1_ctx = self._user_fixture()
+        self.tenant2, self.user2_ctx = self._user_fixture()
+        self.tenant3, self.user3_ctx = self._user_fixture()
+        self.admin_tenant, self.admin_ctx = self._user_fixture(admin=True)
+
+    def _user_fixture(self, admin=False):
+        tenant_id = uuidutils.generate_uuid()
+        ctx = context.RequestContext(tenant=tenant_id, is_admin=admin)
+        return tenant_id, ctx
+
+    def _create_images(self):
+        self.image_ids = {}
+        for owner in [self.owner1, self.owner2]:
+            self._create_image('not_shared', owner)
+            self._create_image('shared-with-1', owner, members=[self.tenant1])
+            self._create_image('shared-with-2', owner, members=[self.tenant2])
+            self._create_image('shared-with-both', owner,
+                               members=[self.tenant1, self.tenant2])
+
+    def _create_image(self, name, owner, members=None):
+        image = build_image_fixture(name=name, owner=owner, is_public=False)
+        self.image_ids[(owner, name)] = image['id']
+        self.db_api.image_create(self.admin_ctx, image)
+        for member in members or []:
+            member = {'image_id': image['id'], 'member': member}
+            self.db_api.image_member_create(self.admin_ctx, member)
+
+
+class MembershipVisibilityTests(object):
+    def _check_by_member(self, ctx, member_id, expected):
+        members = self.db_api.image_member_find(ctx, member=member_id)
+        images = [self.db_api.image_get(self.admin_ctx, member['image_id'])
+                  for member in members]
+        facets = [(image['owner'], image['name']) for image in images]
+        self.assertEqual(set(expected), set(facets))
+
+    def test_owner1_finding_user1_memberships(self):
+        """ Owner1 should see images it owns that are shared with User1 """
+        expected = [
+            (self.owner1, 'shared-with-1'),
+            (self.owner1, 'shared-with-both'),
+        ]
+        self._check_by_member(self.owner1_ctx, self.tenant1, expected)
+
+    def test_user1_finding_user1_memberships(self):
+        """ User1 should see all images shared with User1 """
+        expected = [
+            (self.owner1, 'shared-with-1'),
+            (self.owner1, 'shared-with-both'),
+            (self.owner2, 'shared-with-1'),
+            (self.owner2, 'shared-with-both'),
+        ]
+        self._check_by_member(self.user1_ctx, self.tenant1, expected)
+
+    def test_user2_finding_user1_memberships(self):
+        """ User2 should see no images shared with User1 """
+        expected = []
+        self._check_by_member(self.user2_ctx, self.tenant1, expected)
+
+    def test_admin_finding_user1_memberships(self):
+        """ Admin should see all images shared with User1 """
+        expected = [
+            (self.owner1, 'shared-with-1'),
+            (self.owner1, 'shared-with-both'),
+            (self.owner2, 'shared-with-1'),
+            (self.owner2, 'shared-with-both'),
+        ]
+        self._check_by_member(self.admin_ctx, self.tenant1, expected)
+
+    def _check_by_image(self, context, image_id, expected):
+        members = self.db_api.image_member_find(context, image_id=image_id)
+        member_ids = [member['member'] for member in members]
+        self.assertEqual(set(expected), set(member_ids))
+
+    def test_owner1_finding_owner1s_image_members(self):
+        """ Owner1 should see all memberships of its image """
+        expected = [self.tenant1, self.tenant2]
+        image_id = self.image_ids[(self.owner1, 'shared-with-both')]
+        self._check_by_image(self.owner1_ctx, image_id, expected)
+
+    def test_admin_finding_owner1s_image_members(self):
+        """ Admin should see all memberships of owner1's image """
+        expected = [self.tenant1, self.tenant2]
+        image_id = self.image_ids[(self.owner1, 'shared-with-both')]
+        self._check_by_image(self.admin_ctx, image_id, expected)
+
+    def test_user1_finding_owner1s_image_members(self):
+        """ User1 should see its own membership of owner1's image """
+        expected = [self.tenant1]
+        image_id = self.image_ids[(self.owner1, 'shared-with-both')]
+        self._check_by_image(self.user1_ctx, image_id, expected)
+
+    def test_user2_finding_owner1s_image_members(self):
+        """ User2 should see its own membership of owner1's image """
+        expected = [self.tenant2]
+        image_id = self.image_ids[(self.owner1, 'shared-with-both')]
+        self._check_by_image(self.user2_ctx, image_id, expected)
+
+    def test_user3_finding_owner1s_image_members(self):
+        """ User3 should see no memberships of owner1's image """
+        expected = []
+        image_id = self.image_ids[(self.owner1, 'shared-with-both')]
+        self._check_by_image(self.user3_ctx, image_id, expected)

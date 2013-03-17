@@ -31,12 +31,12 @@ rabbit_opts = [
     cfg.IntOpt('rabbit_port', default=5672),
     cfg.BoolOpt('rabbit_use_ssl', default=False),
     cfg.StrOpt('rabbit_userid', default='guest'),
-    cfg.StrOpt('rabbit_password', default='guest'),
+    cfg.StrOpt('rabbit_password', default='guest', secret=True),
     cfg.StrOpt('rabbit_virtual_host', default='/'),
     cfg.StrOpt('rabbit_notification_exchange', default='glance'),
     cfg.StrOpt('rabbit_notification_topic',
                default='notifications'),
-    cfg.StrOpt('rabbit_max_retries', default=0),
+    cfg.IntOpt('rabbit_max_retries', default=0),
     cfg.StrOpt('rabbit_retry_backoff', default=2),
     cfg.StrOpt('rabbit_retry_max_backoff', default=30),
     cfg.BoolOpt('rabbit_durable_queues', default=False),
@@ -147,7 +147,7 @@ class RabbitStrategy(strategy.Strategy):
             log_info['hostname'] = CONF.rabbit_host
             log_info['port'] = CONF.rabbit_port
 
-            if self.max_retries and self.retry_attempts >= self.max_retries:
+            if self.retry_attempts >= self.max_retries:
                 LOG.exception(_('Unable to connect to AMQP server on '
                                 '%(hostname)s:%(port)d after %(max_retries)d '
                                 'tries: %(err_str)s') % log_info)

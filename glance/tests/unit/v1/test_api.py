@@ -16,6 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import copy
 import datetime
 import hashlib
 import httplib
@@ -124,7 +125,7 @@ class TestRegistryAPI(base.IsolatedUnitTest):
              'min_disk': 0,
              'min_ram': 0,
              'size': 13,
-             'location': "file:///%s/%s" % (self.test_dir, UUID1),
+             'locations': ["file:///%s/%s" % (self.test_dir, UUID1)],
              'properties': {'type': 'kernel'}},
             {'id': UUID2,
              'name': 'fake image #2',
@@ -140,7 +141,7 @@ class TestRegistryAPI(base.IsolatedUnitTest):
              'min_disk': 5,
              'min_ram': 256,
              'size': 19,
-             'location': "file:///%s/%s" % (self.test_dir, UUID2),
+             'locations': ["file:///%s/%s" % (self.test_dir, UUID2)],
              'properties': {}}]
         self.context = glance.context.RequestContext(is_admin=True)
         db_api.configure_db()
@@ -1942,7 +1943,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
              'deleted': False,
              'checksum': None,
              'size': 13,
-             'location': "file:///%s/%s" % (self.test_dir, UUID1),
+             'locations': ["file:///%s/%s" % (self.test_dir, UUID1)],
              'properties': {'type': 'kernel'}},
             {'id': UUID2,
              'name': 'fake image #2',
@@ -1956,7 +1957,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
              'deleted': False,
              'checksum': None,
              'size': 19,
-             'location': "file:///%s/%s" % (self.test_dir, UUID2),
+             'locations': ["file:///%s/%s" % (self.test_dir, UUID2)],
              'properties': {}}]
         self.context = glance.context.RequestContext(is_admin=True)
         db_api.configure_db()
@@ -2322,8 +2323,9 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, 403)
 
-    def test_add_public_image_unauthorized(self):
-        rules = {"add_image": '@', "publicize_image": '!'}
+    def test_add_publicize_image_unauthorized(self):
+        rules = {"add_image": '@', "modify_image": '@',
+                 "publicize_image": '!'}
         self.set_policy_rules(rules)
         fixture_headers = {'x-image-meta-store': 'file',
                            'x-image-meta-is-public': 'true',
@@ -2340,6 +2342,26 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req.body = "chunk00000remainder"
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, 403)
+
+    def test_add_publicize_image_authorized(self):
+        rules = {"add_image": '@', "modify_image": '@',
+                 "publicize_image": '@'}
+        self.set_policy_rules(rules)
+        fixture_headers = {'x-image-meta-store': 'file',
+                           'x-image-meta-is-public': 'true',
+                           'x-image-meta-disk-format': 'vhd',
+                           'x-image-meta-container-format': 'ovf',
+                           'x-image-meta-name': 'fake image #3'}
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+
+        req.headers['Content-Type'] = 'application/octet-stream'
+        req.body = "chunk00000remainder"
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, httplib.CREATED)
 
     def _do_test_post_image_content_missing_format(self, missing):
         """Tests creation of an image with missing format"""
@@ -3441,3 +3463,24 @@ class TestImageSerializer(base.IsolatedUnitTest):
                                                   self.serializer.notifier)
 
         self.assertTrue(called['notified'])
+
+    def test_redact_location(self):
+        """Ensure location redaction does not change original metadata"""
+        image_meta = {'size': 3, 'id': '123', 'location': 'http://localhost'}
+        redacted_image_meta = {'size': 3, 'id': '123'}
+        copy_image_meta = copy.deepcopy(image_meta)
+        tmp_image_meta = glance.api.v1.images.redact_loc(image_meta)
+
+        self.assertEqual(image_meta, copy_image_meta)
+        self.assertEqual(tmp_image_meta, redacted_image_meta)
+
+    def test_noop_redact_location(self):
+        """Check no-op location redaction does not change original metadata"""
+        image_meta = {'size': 3, 'id': '123'}
+        redacted_image_meta = {'size': 3, 'id': '123'}
+        copy_image_meta = copy.deepcopy(image_meta)
+        tmp_image_meta = glance.api.v1.images.redact_loc(image_meta)
+
+        self.assertEqual(image_meta, copy_image_meta)
+        self.assertEqual(tmp_image_meta, redacted_image_meta)
+        self.assertEqual(image_meta, redacted_image_meta)

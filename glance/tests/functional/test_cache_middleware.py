@@ -32,7 +32,6 @@ import httplib2
 
 from glance.tests import functional
 from glance.tests.utils import (skip_if_disabled,
-                                requires,
                                 execute,
                                 xattr_writes_supported,
                                 minimal_headers)
@@ -133,6 +132,8 @@ class BaseCacheMiddlewareTest(object):
         image_entity = {
             'name': 'Image1',
             'visibility': 'public',
+            'container_format': 'bare',
+            'disk_format': 'raw',
         }
         response, content = http.request(path, 'POST',
                                          headers=headers,
@@ -148,7 +149,7 @@ class BaseCacheMiddlewareTest(object):
         response, content = http.request(path, 'PUT',
                                          headers=headers,
                                          body=image_data)
-        self.assertEqual(response.status, 201)
+        self.assertEqual(response.status, 204)
 
         # Verify image not in cache
         image_cached_path = os.path.join(self.api_server.image_cache_dir,

@@ -17,6 +17,7 @@ from glance.api import authorization
 from glance.api import policy
 import glance.db
 import glance.domain
+import glance.notifier
 import glance.store
 
 
@@ -31,10 +32,14 @@ class Gateway(object):
 
     def get_image_factory(self, context):
         image_factory = glance.domain.ImageFactory()
+        store_image_factory = glance.store.ImageFactoryProxy(
+                image_factory, context, self.store_api)
         policy_image_factory = policy.ImageFactoryProxy(
-                image_factory, context, self.policy)
+                store_image_factory, context, self.policy)
+        notifier_image_factory = glance.notifier.ImageFactoryProxy(
+                policy_image_factory, context, self.notifier)
         authorized_image_factory = authorization.ImageFactoryProxy(
-                policy_image_factory, context)
+                notifier_image_factory, context)
         return authorized_image_factory
 
     def get_image_member_factory(self, context):
@@ -46,11 +51,11 @@ class Gateway(object):
     def get_repo(self, context):
         image_repo = glance.db.ImageRepo(context, self.db_api)
         store_image_repo = glance.store.ImageRepoProxy(
-                context, self.store_api, image_repo)
+                image_repo, context, self.store_api)
         policy_image_repo = policy.ImageRepoProxy(
-                context, self.policy, store_image_repo)
+                store_image_repo, context, self.policy)
         notifier_image_repo = glance.notifier.ImageRepoProxy(
-                policy_image_repo, self.notifier)
+                policy_image_repo, context, self.notifier)
         authorized_image_repo = authorization.ImageRepoProxy(
                 notifier_image_repo, context)
         return authorized_image_repo
