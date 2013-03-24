@@ -46,6 +46,7 @@ Build-Depends-Indep:
  python-sqlalchemy-ext | python-sqlalchemy (<< 0.6.3-2),
  python-swiftclient (>= 1:1.2),
  python-testtools (>=0.9.22),
+ python-tox,
  python-webob,
  python-xattr,
  procps
