@@ -16,8 +16,8 @@ write_auth_token_and_auth () {
 
 	case "$FLAVOR" in
 	keystone*)
-		pkgos_write_admin_creds ${API_CONF} glance keystone_authtoken
-		pkgos_write_admin_creds ${GREG_CONF} glance keystone_authtoken
+		pkgos_write_admin_creds ${API_CONF} keystone_authtoken glance
+		pkgos_write_admin_creds ${GREG_CONF} keystone_authtoken glance
 	;;
 	esac
 }
