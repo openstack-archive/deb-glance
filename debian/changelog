@@ -1,3 +1,10 @@
+glance (2013.1-2) experimental; urgency=low
+
+  * Added Should-Start/stop: postgress & mysql in the glance-registry init
+    script (Closes: #706016). Thanks to Julien Cristau for reporting it.
+
+ -- Thomas Goirand <zigo@debian.org>  Wed, 24 Apr 2013 00:09:42 +0800
+
 glance (2013.1-1) experimental; urgency=low
 
   * New upstream release.
