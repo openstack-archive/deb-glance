@@ -15,36 +15,29 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import unittest
-
-import stubout
-
-from glance.registry import context
-
-
-class FakeImage(object):
-    """
-    Fake image for providing the image attributes needed for
-    TestContext.
-    """
-
-    def __init__(self, owner, is_public):
-        self.id = None
-        self.owner = owner
-        self.is_public = is_public
+from glance import context
+from glance.openstack.common import local
+from glance.tests.unit import utils as unit_utils
+from glance.tests import utils
 
 
-class FakeMembership(object):
-    """
-    Fake membership for providing the membership attributes needed for
-    TestContext.
-    """
-
-    def __init__(self, can_share=False):
-        self.can_share = can_share
+def _fake_image(owner, is_public):
+    return {
+        'id': None,
+        'owner': owner,
+        'is_public': is_public,
+    }
 
 
-class TestContext(unittest.TestCase):
+def _fake_membership(can_share=False):
+    return {'can_share': can_share}
+
+
+class TestContext(utils.BaseTestCase):
+    def setUp(self):
+        super(TestContext, self).setUp()
+        self.db_api = unit_utils.FakeDB()
+
     def do_visible(self, exp_res, img_owner, img_public, **kwargs):
         """
         Perform a context visibility test.  Creates a (fake) image
@@ -54,10 +47,10 @@ class TestContext(unittest.TestCase):
         context.
         """
 
-        img = FakeImage(img_owner, img_public)
+        img = _fake_image(img_owner, img_public)
         ctx = context.RequestContext(**kwargs)
 
-        self.assertEqual(ctx.is_image_visible(img), exp_res)
+        self.assertEqual(self.db_api.is_image_visible(ctx, img), exp_res)
 
     def do_sharable(self, exp_res, img_owner, membership=None, **kwargs):
         """
@@ -70,14 +63,15 @@ class TestContext(unittest.TestCase):
         is_image_sharable().
         """
 
-        img = FakeImage(img_owner, True)
+        img = _fake_image(img_owner, True)
         ctx = context.RequestContext(**kwargs)
 
         sharable_args = {}
         if membership is not None:
             sharable_args['membership'] = membership
 
-        self.assertEqual(ctx.is_image_sharable(img, **sharable_args), exp_res)
+        output = self.db_api.is_image_sharable(ctx, img, **sharable_args)
+        self.assertEqual(exp_res, output)
 
     def test_empty_public(self):
         """
@@ -109,12 +103,12 @@ class TestContext(unittest.TestCase):
 
     def test_empty_shared(self):
         """
-        Tests that an empty context (with is_admin set to True) can
+        Tests that an empty context (with is_admin set to False) can
         not share an image, with or without membership.
         """
-        self.do_sharable(False, 'pattieblack', None, is_admin=True)
-        self.do_sharable(False, 'pattieblack', FakeMembership(True),
-                         is_admin=True)
+        self.do_sharable(False, 'pattieblack', None, is_admin=False)
+        self.do_sharable(False, 'pattieblack', _fake_membership(True),
+                         is_admin=False)
 
     def test_anon_public(self):
         """
@@ -150,7 +144,7 @@ class TestContext(unittest.TestCase):
         not share an image, with or without membership.
         """
         self.do_sharable(False, 'pattieblack', None)
-        self.do_sharable(False, 'pattieblack', FakeMembership(True))
+        self.do_sharable(False, 'pattieblack', _fake_membership(True))
 
     def test_auth_public(self):
         """
@@ -229,7 +223,7 @@ class TestContext(unittest.TestCase):
         False) cannot share an image it does not own even if it is
         shared with it, but with can_share = False.
         """
-        self.do_sharable(False, 'pattieblack', FakeMembership(False),
+        self.do_sharable(False, 'pattieblack', _fake_membership(False),
                          tenant='froggy')
 
     def test_auth_sharable_can_share(self):
@@ -238,5 +232,21 @@ class TestContext(unittest.TestCase):
         False) can share an image it does not own if it is shared with
         it with can_share = True.
         """
-        self.do_sharable(True, 'pattieblack', FakeMembership(True),
+        self.do_sharable(True, 'pattieblack', _fake_membership(True),
                          tenant='froggy')
+
+    def test_request_id(self):
+        contexts = [context.RequestContext().request_id for _ in range(5)]
+        # Check for uniqueness -- set() will normalize its argument
+        self.assertEqual(5, len(set(contexts)))
+
+    def test_service_catalog(self):
+        ctx = context.RequestContext(service_catalog=['foo'])
+        self.assertEqual(['foo'], ctx.service_catalog)
+
+    def test_context_local_store(self):
+        if hasattr(local.store, 'context'):
+            del local.store.context
+        ctx = context.RequestContext()
+        self.assertTrue(hasattr(local.store, 'context'))
+        self.assertEqual(ctx, local.store.context)

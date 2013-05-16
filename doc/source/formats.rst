@@ -1,5 +1,5 @@
 ..
-      Copyright 2011 OpenStack, LLC
+      Copyright 2011 OpenStack Foundation
       All Rights Reserved.
 
       Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -29,7 +29,7 @@ The disk format of a virtual machine image is the format of the underlying
 disk image. Virtual appliance vendors have different formats for laying out
 the information contained in a virtual machine disk image.
 
-You can set your image's container format to one of the following:
+You can set your image's disk format to one of the following:
 
 * **raw**
 
@@ -76,19 +76,19 @@ Container Format
 The container format refers to whether the virtual machine image is in a
 file format that also contains metadata about the actual virtual machine.
 
-There are two main types of container formats: OVF and Amazon's AMI. In
-addition, a virtual machine image may have no container format at all --
-basically, it's just a blob of unstructured data...
+Note that the container format string is not currently used by Glance or
+other OpenStack components, so it is safe to simply specify **bare** as
+the container format if you are unsure.
 
 You can set your image's container format to one of the following:
-
-* **ovf**
-
-  This is the OVF container format
 
 * **bare**
 
   This indicates there is no container or metadata envelope for the image
+
+* **ovf**
+
+  This is the OVF container format
 
 * **aki**
 

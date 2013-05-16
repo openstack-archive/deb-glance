@@ -15,14 +15,14 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import logging
-
 import webob.exc
 
-from glance import registry
 from glance.common import exception
+import glance.openstack.common.log as logging
+from glance import registry
+import glance.store as store
 
-logger = logging.getLogger(__name__)
+LOG = logging.getLogger(__name__)
 
 
 class BaseController(object):
@@ -41,14 +41,15 @@ class BaseController(object):
             return registry.get_image_metadata(context, image_id)
         except exception.NotFound:
             msg = _("Image with identifier %s not found") % image_id
-            logger.debug(msg)
+            LOG.debug(msg)
             raise webob.exc.HTTPNotFound(
                     msg, request=request, content_type='text/plain')
         except exception.Forbidden:
             msg = _("Forbidden image access")
-            logger.debug(msg)
-            raise webob.exc.HTTPForbidden(msg, request=request,
-                                content_type='text/plain')
+            LOG.debug(msg)
+            raise webob.exc.HTTPForbidden(msg,
+                                          request=request,
+                                          content_type='text/plain')
 
     def get_active_image_meta_or_404(self, request, image_id):
         """
@@ -58,7 +59,28 @@ class BaseController(object):
         image = self.get_image_meta_or_404(request, image_id)
         if image['status'] != 'active':
             msg = _("Image %s is not active") % image_id
-            logger.debug(msg)
+            LOG.debug(msg)
             raise webob.exc.HTTPNotFound(
                     msg, request=request, content_type='text/plain')
         return image
+
+    def update_store_acls(self, req, image_id, location_uri, public=False):
+        if location_uri:
+            try:
+                read_tenants = []
+                write_tenants = []
+                members = registry.get_image_members(req.context, image_id)
+                if members:
+                    for member in members:
+                        if member['can_share']:
+                            write_tenants.append(member['member_id'])
+                        else:
+                            read_tenants.append(member['member_id'])
+                store.set_acls(req.context, location_uri, public=public,
+                               read_tenants=read_tenants,
+                               write_tenants=write_tenants)
+            except exception.UnknownScheme:
+                msg = _("Store for image_id not found: %s") % image_id
+                raise webob.exc.HTTPBadRequest(explanation=msg,
+                                               request=req,
+                                               content_type='text/plain')

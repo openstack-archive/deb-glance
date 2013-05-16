@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2012 OpenStack LLC.
+# Copyright 2012 OpenStack Foundation.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -18,15 +18,31 @@
 import json
 import os
 import shutil
-import unittest
 
+import fixtures
+from oslo.config import cfg
 import stubout
 
+from glance import store
+from glance.store import location
 from glance.tests import stubs
 from glance.tests import utils as test_utils
 
+CONF = cfg.CONF
+CONF.import_opt('filesystem_store_datadir', 'glance.store.filesystem')
 
-class IsolatedUnitTest(unittest.TestCase):
+
+class StoreClearingUnitTest(test_utils.BaseTestCase):
+
+    def setUp(self):
+        super(StoreClearingUnitTest, self).setUp()
+        # Ensure stores + locations cleared
+        location.SCHEME_TO_CLS_MAP = {}
+        store.create_stores()
+        self.addCleanup(setattr, location, 'SCHEME_TO_CLS_MAP', dict())
+
+
+class IsolatedUnitTest(StoreClearingUnitTest):
 
     """
     Unit test case that establishes a mock environment within
@@ -34,18 +50,18 @@ class IsolatedUnitTest(unittest.TestCase):
     """
 
     def setUp(self):
-        self.test_id, self.test_dir = test_utils.get_isolated_test_env()
+        super(IsolatedUnitTest, self).setUp()
+        self.test_dir = self.useFixture(fixtures.TempDir()).path
         self.stubs = stubout.StubOutForTesting()
-        stubs.stub_out_registry_and_store_server(self.stubs, self.test_dir)
         policy_file = self._copy_data_file('policy.json', self.test_dir)
-        options = {'sql_connection': 'sqlite://',
-                   'verbose': False,
-                   'debug': False,
-                   'default_store': 'filesystem',
-                   'filesystem_store_datadir': os.path.join(self.test_dir),
-                   'policy_file': policy_file}
-
-        self.conf = test_utils.TestConfigOpts(options)
+        self.config(sql_connection='sqlite://',
+                    verbose=False,
+                    debug=False,
+                    default_store='filesystem',
+                    filesystem_store_datadir=os.path.join(self.test_dir),
+                    policy_file=policy_file)
+        stubs.stub_out_registry_and_store_server(self.stubs, self.test_dir)
+        self.addCleanup(self.stubs.UnsetAll)
 
     def _copy_data_file(self, file_name, dst_dir):
         src_file_name = os.path.join('glance/tests/etc', file_name)
@@ -54,11 +70,6 @@ class IsolatedUnitTest(unittest.TestCase):
         return dst_file_name
 
     def set_policy_rules(self, rules):
-        fap = open(self.conf.policy_file, 'w')
+        fap = open(CONF.policy_file, 'w')
         fap.write(json.dumps(rules))
         fap.close()
-
-    def tearDown(self):
-        self.stubs.UnsetAll()
-        if os.path.exists(self.test_dir):
-            shutil.rmtree(self.test_dir)

@@ -37,10 +37,11 @@ if os.path.exists(os.path.join(possible_topdir, 'glance', '__init__.py')):
 
 gettext.install('glance', unicode=1)
 
-from glance import client as glance_client
+import glance.image_cache.client
 from glance.common import exception
 from glance.common import utils
-from glance import version
+from glance.openstack.common import timeutils
+from glance.version import version_info as version
 
 
 SUCCESS = 0
@@ -61,8 +62,7 @@ def catch_error(action):
                        options.host)
                 return FAILURE
             except exception.Forbidden:
-                print "Not authorized to make this request. Check "\
-                      "your credentials (OS_AUTH_USER, OS_AUTH_KEY, ...)."
+                print "Not authorized to make this request."
                 return FAILURE
             except Exception, e:
                 options = args[0]
@@ -103,10 +103,19 @@ List all images currently cached"""
     print pretty_table.make_header()
 
     for image in images:
+        last_modified = image['last_modified']
+        last_modified = timeutils.iso8601_from_timestamp(last_modified)
+
+        last_accessed = image['last_accessed']
+        if last_accessed == 0:
+            last_accessed = "N/A"
+        else:
+            last_accessed = timeutils.iso8601_from_timestamp(last_accessed)
+
         print pretty_table.make_row(
             image['image_id'],
-            image['last_accessed'],
-            image['last_modified'],
+            last_accessed,
+            last_modified,
             image['size'],
             image['hits'])
 
@@ -147,9 +156,9 @@ Queues an image for caching"""
         print "from the cache as the first argument"
         return FAILURE
 
-    if not options.force and \
-       not user_confirm("Queue image %s for caching?" % (image_id,),
-       default=False):
+    if (not options.force and
+        not user_confirm("Queue image %s for caching?" % (image_id,),
+                         default=False)):
         return SUCCESS
 
     client = get_client(options)
@@ -174,9 +183,9 @@ Deletes an image from the cache"""
         print "from the cache as the first argument"
         return FAILURE
 
-    if not options.force and \
-       not user_confirm("Delete cached image %s?" % (image_id,),
-               default=False):
+    if (not options.force and
+        not user_confirm("Delete cached image %s?" % (image_id,),
+                         default=False)):
         return SUCCESS
 
     client = get_client(options)
@@ -194,8 +203,8 @@ def delete_all_cached_images(options, args):
 %(prog)s delete-all-cached-images [options]
 
 Removes all images from the cache"""
-    if not options.force and \
-       not user_confirm("Delete all cached images?", default=False):
+    if (not options.force and
+        not user_confirm("Delete all cached images?", default=False)):
         return SUCCESS
 
     client = get_client(options)
@@ -220,9 +229,9 @@ Deletes an image from the cache"""
         print "from the cache as the first argument"
         return FAILURE
 
-    if not options.force and \
-       not user_confirm("Delete queued image %s?" % (image_id,),
-               default=False):
+    if (not options.force and
+        not user_confirm("Delete queued image %s?" % (image_id,),
+                         default=False)):
         return SUCCESS
 
     client = get_client(options)
@@ -240,8 +249,8 @@ def delete_all_queued_images(options, args):
 %(prog)s delete-all-queued-images [options]
 
 Removes all images from the cache queue"""
-    if not options.force and \
-       not user_confirm("Delete all queued images?", default=False):
+    if (not options.force and
+        not user_confirm("Delete all queued images?", default=False)):
         return SUCCESS
 
     client = get_client(options)
@@ -259,7 +268,8 @@ def get_client(options):
     specified by the --host and --port options
     supplied to the CLI
     """
-    return glance_client.get_client(host=options.host,
+    return glance.image_cache.client.get_client(
+                host=options.host,
                 port=options.port,
                 username=options.os_username,
                 password=options.os_password,
@@ -269,6 +279,19 @@ def get_client(options):
                 auth_token=options.os_auth_token,
                 region=options.os_region_name,
                 insecure=options.insecure)
+
+
+def env(*vars, **kwargs):
+    """Search for the first defined of possibly many env vars
+
+    Returns the first environment variable defined in vars, or
+    returns the default defined in kwargs.
+    """
+    for v in vars:
+        value = os.environ.get(v, None)
+        if value:
+            return value
+    return kwargs.get('default', '')
 
 
 def create_options(parser):
@@ -281,51 +304,83 @@ def create_options(parser):
     parser.add_option('-v', '--verbose', default=False, action="store_true",
                       help="Print more verbose output")
     parser.add_option('-d', '--debug', default=False, action="store_true",
-                      help="Print more verbose output")
+                      help="Print debugging output")
     parser.add_option('-H', '--host', metavar="ADDRESS", default="0.0.0.0",
                       help="Address of Glance API host. "
-                           "Default: %default")
+                           "Default: %(default)s")
     parser.add_option('-p', '--port', dest="port", metavar="PORT",
                       type=int, default=9292,
                       help="Port the Glance API host listens on. "
-                           "Default: %default")
-    parser.add_option('-A', '--os_auth_token', '--auth_token',
-                      dest="os_auth_token", metavar="TOKEN", default=None,
-                      help="Authentication token to use to identify the "
-                           "client to the glance server.  --auth_token"
-                           "is deprecated and will be removed")
-    parser.add_option('-I', '--os_username', dest="os_username",
-                      metavar="USER", default=None,
-                      help="User name used to acquire an authentication token")
-    parser.add_option('-K', '--os_password', dest="os_password",
-                      metavar="PASSWORD", default=None,
-                      help="Password used to acquire an authentication token")
-    parser.add_option('-R', '--os_region_name', dest="os_region_name",
-                      metavar="REGION", default=None,
-                      help="Region name. When using keystone authentication "
-                      "version 2.0 or later this identifies the region "
-                      "name to use when selecting the service endpoint. A "
-                      "region name must be provided if more than one "
-                      "region endpoint is available")
-    parser.add_option('-T', '--os_tenant_name', dest="os_tenant_name",
-                      metavar="TENANT", default=None,
-                      help="Tenant name")
-    parser.add_option('-N', '--os_auth_url', dest="os_auth_url",
-                      metavar="AUTH_URL", default=None,
-                      help="Authentication URL")
+                           "Default: %(default)s")
     parser.add_option('-k', '--insecure', dest="insecure",
                       default=False, action="store_true",
                       help="Explicitly allow glance to perform \"insecure\" "
                       "SSL (https) requests. The server's certificate will "
                       "not be verified against any certificate authorities. "
                       "This option should be used with caution.")
-    parser.add_option('-S', '--os_auth_strategy', dest="os_auth_strategy",
-                      metavar="STRATEGY", default=None,
-                      help="Authentication strategy (keystone or noauth)")
     parser.add_option('-f', '--force', dest="force", metavar="FORCE",
                       default=False, action="store_true",
                       help="Prevent select actions from requesting "
                            "user confirmation")
+
+    parser.add_option('--os-auth-token',
+                      dest='os_auth_token',
+                      default=env('OS_AUTH_TOKEN'),
+                      help='Defaults to env[OS_AUTH_TOKEN]')
+    parser.add_option('-A', '--os_auth_token', '--auth_token',
+                      dest='os_auth_token',
+                      help=optparse.SUPPRESS_HELP)
+
+    parser.add_option('--os-username',
+                      dest='os_username',
+                      default=env('OS_USERNAME'),
+                      help='Defaults to env[OS_USERNAME]')
+    parser.add_option('-I', '--os_username',
+                      dest='os_username',
+                      help=optparse.SUPPRESS_HELP)
+
+    parser.add_option('--os-password',
+                      dest='os_password',
+                      default=env('OS_PASSWORD'),
+                      help='Defaults to env[OS_PASSWORD]')
+    parser.add_option('-K', '--os_password',
+                      dest='os_password',
+                      help=optparse.SUPPRESS_HELP)
+
+    parser.add_option('--os-region-name',
+                      dest='os_region_name',
+                      default=env('OS_REGION_NAME'),
+                      help='Defaults to env[OS_REGION_NAME]')
+    parser.add_option('-R', '--os_region_name',
+                      dest='os_region_name',
+                      help=optparse.SUPPRESS_HELP)
+
+    parser.add_option('--os-tenant-id',
+                      dest='os_tenant_id',
+                      default=env('OS_TENANT_ID'),
+                      help='Defaults to env[OS_TENANT_ID]')
+    parser.add_option('--os_tenant_id',
+                      dest='os_tenant_id',
+                      help=optparse.SUPPRESS_HELP)
+
+    parser.add_option('--os-tenant-name',
+                      dest='os_tenant_name',
+                      default=env('OS_TENANT_NAME'),
+                      help='Defaults to env[OS_TENANT_NAME]')
+    parser.add_option('-T', '--os_tenant_name',
+                      dest='os_tenant_name',
+                      help=optparse.SUPPRESS_HELP)
+
+    parser.add_option('--os-auth-url',
+                      default=env('OS_AUTH_URL'),
+                      help='Defaults to env[OS_AUTH_URL]')
+    parser.add_option('-N', '--os_auth_url',
+                      dest='os_auth_url',
+                      help=optparse.SUPPRESS_HELP)
+
+    parser.add_option('-S', '--os_auth_strategy', dest="os_auth_strategy",
+                      metavar="STRATEGY", default=None,
+                      help="Authentication strategy (keystone or noauth)")
 
 
 def parse_options(parser, cli_args):
@@ -444,8 +499,8 @@ Commands:
                                 from the cache
 """
 
-    oparser = optparse.OptionParser(version='%%prog %s'
-                                    % version.version_string(),
+    version_string = version.cached_version_string()
+    oparser = optparse.OptionParser(version=version_string,
                                     usage=usage.strip())
     create_options(oparser)
     (options, command, args) = parse_options(oparser, sys.argv[1:])

@@ -1,0 +1,59 @@
+#!/bin/sh
+
+set -e
+
+ETC=/etc/glance
+API_CONF=${ETC}/glance-api.conf
+GREG_CONF=${ETC}/glance-registry.conf
+
+#PKGOS-INCLUDE#
+
+write_auth_token_and_auth () {
+	db_get glance/paste-flavor || true
+	FLAVOR="$RET"
+	pkgos_inifile set ${API_CONF} paste_deploy flavor ${FLAVOR}
+	pkgos_inifile set ${GREG_CONF} paste_deploy flavor ${FLAVOR}
+
+	case "$FLAVOR" in
+	keystone*)
+		pkgos_write_admin_creds ${API_CONF} keystone_authtoken glance
+		pkgos_write_admin_creds ${GREG_CONF} keystone_authtoken glance
+	;;
+	esac
+}
+
+if [ "$1" = "configure" ] ; then
+	. /usr/share/debconf/confmodule
+	. /usr/share/dbconfig-common/dpkg/postinst
+
+	pkgos_var_user_group glance
+
+	# Make sure we have a /etc/glance folder with config files in it.
+	pkgos_write_new_conf glance glance-api.conf
+	pkgos_write_new_conf glance glance-registry.conf
+	pkgos_write_new_conf glance glance-api-paste.ini
+	pkgos_write_new_conf glance glance-registry-paste.ini
+	pkgos_write_new_conf glance glance-cache.conf
+	pkgos_write_new_conf glance glance-scrubber.conf
+	pkgos_write_new_conf glance policy.json
+
+	pkgos_dbc_postinst ${API_CONF} DEFAULT sql_connection glance $@
+	pkgos_inifile get ${API_CONF} DEFAULT sql_connection
+	pkgos_inifile set ${GREG_CONF} DEFAULT sql_connection "${RET}"
+
+        # Upgrade or create the db if directed to do so
+	db_get glance/configure_db
+	if [ "$RET" = "true" ] && [ "$dbc_upgrade" = "true" ] ; then
+		echo "Now doing glance-manage db_sync: this may take a while..."
+		su glance -c "glance-manage db_sync" || true
+	fi
+
+	write_auth_token_and_auth
+	db_stop
+
+	chown -R glance:adm /var/log/glance/
+	chmod 0750 /var/log/glance/
+	chown glance:glance -R /var/lib/glance/ /etc/glance/
+fi
+
+#DEBHELPER#

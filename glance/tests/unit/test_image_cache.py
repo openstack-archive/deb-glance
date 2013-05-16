@@ -16,18 +16,17 @@
 #    under the License.
 
 from contextlib import contextmanager
+import hashlib
 import os
-import random
-import shutil
 import StringIO
-import unittest
 
+import fixtures
 import stubout
 
-from glance import image_cache
-from glance.common import cfg
 from glance.common import exception
-from glance.common import utils
+from glance import image_cache
+#NOTE(bcwaldon): This is imported to load the registry config options
+import glance.registry
 from glance.tests import utils as test_utils
 from glance.tests.utils import skip_if_disabled, xattr_writes_supported
 
@@ -185,6 +184,31 @@ class ImageCacheTestCase(object):
                             "Image %s was not cached!" % x)
 
     @skip_if_disabled
+    def test_prune_to_zero(self):
+        """Test that an image_cache_max_size of 0 doesn't kill the pruner
+
+        This is a test specifically for LP #1039854
+        """
+        self.assertEqual(0, self.cache.get_cache_size())
+
+        FIXTURE_FILE = StringIO.StringIO(FIXTURE_DATA)
+        self.assertTrue(self.cache.cache_image_file('xxx', FIXTURE_FILE))
+
+        self.assertEqual(1024, self.cache.get_cache_size())
+
+        # OK, hit the image that is now cached...
+        buff = StringIO.StringIO()
+        with self.cache.open_for_read('xxx') as cache_file:
+            for chunk in cache_file:
+                buff.write(chunk)
+
+        self.config(image_cache_max_size=0)
+        self.cache.prune()
+
+        self.assertEqual(0, self.cache.get_cache_size())
+        self.assertFalse(self.cache.is_cached('xxx'))
+
+    @skip_if_disabled
     def test_queue(self):
         """
         Test that queueing works properly
@@ -224,8 +248,159 @@ class ImageCacheTestCase(object):
         self.assertEqual(self.cache.get_queued_images(),
                          ['0', '1', '2'])
 
+    def test_open_for_write_good(self):
+        """
+        Test to see if open_for_write works in normal case
+        """
 
-class TestImageCacheXattr(unittest.TestCase,
+        # test a good case
+        image_id = '1'
+        self.assertFalse(self.cache.is_cached(image_id))
+        with self.cache.driver.open_for_write(image_id) as cache_file:
+            cache_file.write('a')
+        self.assertTrue(self.cache.is_cached(image_id),
+                        "Image %s was NOT cached!" % image_id)
+        # make sure it has tidied up
+        incomplete_file_path = os.path.join(self.cache_dir,
+                                            'incomplete', image_id)
+        invalid_file_path = os.path.join(self.cache_dir, 'invalid', image_id)
+        self.assertFalse(os.path.exists(incomplete_file_path))
+        self.assertFalse(os.path.exists(invalid_file_path))
+
+    def test_open_for_write_with_exception(self):
+        """
+        Test to see if open_for_write works in a failure case for each driver
+        This case is where an exception is raised while the file is being
+        written. The image is partially filled in cache and filling wont resume
+        so verify the image is moved to invalid/ directory
+        """
+        # test a case where an exception is raised while the file is open
+        image_id = '1'
+        self.assertFalse(self.cache.is_cached(image_id))
+        try:
+            with self.cache.driver.open_for_write(image_id) as cache_file:
+                raise IOError
+        except Exception as e:
+            self.assertEqual(type(e), IOError)
+        self.assertFalse(self.cache.is_cached(image_id),
+                         "Image %s was cached!" % image_id)
+        # make sure it has tidied up
+        incomplete_file_path = os.path.join(self.cache_dir,
+                                            'incomplete', image_id)
+        invalid_file_path = os.path.join(self.cache_dir, 'invalid', image_id)
+        self.assertFalse(os.path.exists(incomplete_file_path))
+        self.assertTrue(os.path.exists(invalid_file_path))
+
+    def test_caching_iterator(self):
+        """
+        Test to see if the caching iterator interacts properly with the driver
+        When the iterator completes going through the data the driver should
+        have closed the image and placed it correctly
+        """
+        # test a case where an exception NOT raised while the file is open,
+        # and a consuming iterator completes
+        def consume(image_id):
+            data = ['a', 'b', 'c', 'd', 'e', 'f']
+            checksum = None
+            caching_iter = self.cache.get_caching_iter(image_id, checksum,
+                                                       iter(data))
+            self.assertEqual(list(caching_iter), data)
+
+        image_id = '1'
+        self.assertFalse(self.cache.is_cached(image_id))
+        consume(image_id)
+        self.assertTrue(self.cache.is_cached(image_id),
+                        "Image %s was NOT cached!" % image_id)
+        # make sure it has tidied up
+        incomplete_file_path = os.path.join(self.cache_dir,
+                                            'incomplete', image_id)
+        invalid_file_path = os.path.join(self.cache_dir, 'invalid', image_id)
+        self.assertFalse(os.path.exists(incomplete_file_path))
+        self.assertFalse(os.path.exists(invalid_file_path))
+
+    def test_caching_iterator_handles_backend_failure(self):
+        """
+        Test that when the backend fails, caching_iter does not continue trying
+        to consume data, and rolls back the cache.
+        """
+        def faulty_backend():
+            data = ['a', 'b', 'c', 'Fail', 'd', 'e', 'f']
+            for d in data:
+                if d == 'Fail':
+                    raise exception.GlanceException('Backend failure')
+                yield d
+
+        def consume(image_id):
+            caching_iter = self.cache.get_caching_iter(image_id, None,
+                                                       faulty_backend())
+            # excercise the caching_iter
+            list(caching_iter)
+
+        image_id = '1'
+        self.assertRaises(exception.GlanceException, consume, image_id)
+        # make sure bad image was not cached
+        self.assertFalse(self.cache.is_cached(image_id))
+
+    def test_caching_iterator_falloffend(self):
+        """
+        Test to see if the caching iterator interacts properly with the driver
+        in a case where the iterator is only partially consumed. In this case
+        the image is only partially filled in cache and filling wont resume.
+        When the iterator goes out of scope the driver should have closed the
+        image and moved it from incomplete/ to invalid/
+        """
+        # test a case where a consuming iterator just stops.
+        def falloffend(image_id):
+            data = ['a', 'b', 'c', 'd', 'e', 'f']
+            checksum = None
+            caching_iter = self.cache.get_caching_iter(image_id, checksum,
+                                                       iter(data))
+            self.assertEqual(caching_iter.next(), 'a')
+
+        image_id = '1'
+        self.assertFalse(self.cache.is_cached(image_id))
+        falloffend(image_id)
+        self.assertFalse(self.cache.is_cached(image_id),
+                         "Image %s was cached!" % image_id)
+        # make sure it has tidied up
+        incomplete_file_path = os.path.join(self.cache_dir,
+                                            'incomplete', image_id)
+        invalid_file_path = os.path.join(self.cache_dir, 'invalid', image_id)
+        self.assertFalse(os.path.exists(incomplete_file_path))
+        self.assertTrue(os.path.exists(invalid_file_path))
+
+    def test_gate_caching_iter_good_checksum(self):
+        image = "12345678990abcdefghijklmnop"
+        image_id = 123
+
+        md5 = hashlib.md5()
+        md5.update(image)
+        checksum = md5.hexdigest()
+
+        cache = image_cache.ImageCache()
+        img_iter = cache.get_caching_iter(image_id, checksum, image)
+        for chunk in img_iter:
+            pass
+        # checksum is valid, fake image should be cached:
+        self.assertTrue(cache.is_cached(image_id))
+
+    def test_gate_caching_iter_bad_checksum(self):
+        image = "12345678990abcdefghijklmnop"
+        image_id = 123
+        checksum = "foobar"  # bad.
+
+        cache = image_cache.ImageCache()
+        img_iter = cache.get_caching_iter(image_id, checksum, image)
+
+        def reader():
+            for chunk in img_iter:
+                pass
+        self.assertRaises(exception.GlanceException, reader)
+        # checksum is invalid, caching will fail:
+        self.assertFalse(cache.is_cached(image_id))
+
+
+class TestImageCacheXattr(test_utils.BaseTestCase,
                           ImageCacheTestCase):
 
     """Tests image caching when xattr is used in cache"""
@@ -236,12 +411,12 @@ class TestImageCacheXattr(unittest.TestCase,
         are working (python-xattr installed and xattr support on the
         filesystem)
         """
+        super(TestImageCacheXattr, self).setUp()
+
         if getattr(self, 'disable', False):
             return
 
-        self.cache_dir = os.path.join("/", "tmp", "test.cache.%d" %
-                                      random.randint(0, 1000000))
-        utils.safe_mkdirs(self.cache_dir)
+        self.cache_dir = self.useFixture(fixtures.TempDir()).path
 
         if not getattr(self, 'inited', False):
             try:
@@ -254,13 +429,10 @@ class TestImageCacheXattr(unittest.TestCase,
 
         self.inited = True
         self.disabled = False
-        self.conf = test_utils.TestConfigOpts({
-                'image_cache_dir': self.cache_dir,
-                'image_cache_driver': 'xattr',
-                'image_cache_max_size': 1024 * 5,
-                'registry_host': '0.0.0.0',
-                'registry_port': 9191})
-        self.cache = image_cache.ImageCache(self.conf)
+        self.config(image_cache_dir=self.cache_dir,
+                    image_cache_driver='xattr',
+                    image_cache_max_size=1024 * 5)
+        self.cache = image_cache.ImageCache()
 
         if not xattr_writes_supported(self.cache_dir):
             self.inited = True
@@ -268,12 +440,8 @@ class TestImageCacheXattr(unittest.TestCase,
             self.disabled_message = ("filesystem does not support xattr")
             return
 
-    def tearDown(self):
-        if os.path.exists(self.cache_dir):
-            shutil.rmtree(self.cache_dir)
 
-
-class TestImageCacheSqlite(unittest.TestCase,
+class TestImageCacheSqlite(test_utils.BaseTestCase,
                            ImageCacheTestCase):
 
     """Tests image caching when SQLite is used in cache"""
@@ -283,6 +451,8 @@ class TestImageCacheSqlite(unittest.TestCase,
         Test to see if the pre-requisites for the image cache
         are working (python-sqlite3 installed)
         """
+        super(TestImageCacheSqlite, self).setUp()
+
         if getattr(self, 'disable', False):
             return
 
@@ -297,24 +467,18 @@ class TestImageCacheSqlite(unittest.TestCase,
 
         self.inited = True
         self.disabled = False
-        self.cache_dir = os.path.join("/", "tmp", "test.cache.%d" %
-                                      random.randint(0, 1000000))
-        self.conf = test_utils.TestConfigOpts({
-                'image_cache_dir': self.cache_dir,
-                'image_cache_driver': 'sqlite',
-                'image_cache_max_size': 1024 * 5,
-                'registry_host': '0.0.0.0',
-                'registry_port': 9191})
-        self.cache = image_cache.ImageCache(self.conf)
-
-    def tearDown(self):
-        if os.path.exists(self.cache_dir):
-            shutil.rmtree(self.cache_dir)
+        self.cache_dir = self.useFixture(fixtures.TempDir()).path
+        self.config(image_cache_dir=self.cache_dir,
+                    image_cache_driver='sqlite',
+                    image_cache_max_size=1024 * 5)
+        self.cache = image_cache.ImageCache()
 
 
-class TestImageCacheNoDep(unittest.TestCase):
+class TestImageCacheNoDep(test_utils.BaseTestCase):
 
     def setUp(self):
+        super(TestImageCacheNoDep, self).setUp()
+
         self.driver = None
 
         def init_driver(self2):
@@ -322,9 +486,7 @@ class TestImageCacheNoDep(unittest.TestCase):
 
         self.stubs = stubout.StubOutForTesting()
         self.stubs.Set(image_cache.ImageCache, 'init_driver', init_driver)
-
-    def tearDown(self):
-        self.stubs.UnsetAll()
+        self.addCleanup(self.stubs.UnsetAll)
 
     def test_get_caching_iter_when_write_fails(self):
 
@@ -344,11 +506,10 @@ class TestImageCacheNoDep(unittest.TestCase):
                 yield FailingFile()
 
         self.driver = FailingFileDriver()
-        conf = cfg.ConfigOpts()
-        cache = image_cache.ImageCache(conf)
+        cache = image_cache.ImageCache()
         data = ['a', 'b', 'c', 'Fail', 'd', 'e', 'f']
 
-        caching_iter = cache.get_caching_iter('dummy_id', iter(data))
+        caching_iter = cache.get_caching_iter('dummy_id', None, iter(data))
         self.assertEqual(list(caching_iter), data)
 
     def test_get_caching_iter_when_open_fails(self):
@@ -363,9 +524,8 @@ class TestImageCacheNoDep(unittest.TestCase):
                 raise IOError
 
         self.driver = OpenFailingDriver()
-        conf = cfg.ConfigOpts()
-        cache = image_cache.ImageCache(conf)
+        cache = image_cache.ImageCache()
         data = ['a', 'b', 'c', 'd', 'e', 'f']
 
-        caching_iter = cache.get_caching_iter('dummy_id', iter(data))
+        caching_iter = cache.get_caching_iter('dummy_id', None, iter(data))
         self.assertEqual(list(caching_iter), data)

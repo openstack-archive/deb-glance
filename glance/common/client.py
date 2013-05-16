@@ -24,7 +24,7 @@ import errno
 import functools
 import httplib
 import os
-import select
+import re
 import urllib
 import urlparse
 
@@ -42,10 +42,14 @@ except ImportError:
 
 from glance.common import auth
 from glance.common import exception, utils
+import glance.openstack.common.log as logging
 
+LOG = logging.getLogger(__name__)
 
 # common chunk size for get and put
 CHUNKSIZE = 65536
+
+VERSION_REGEX = re.compile(r"/?v[0-9\.]+")
 
 
 def handle_unauthenticated(func):
@@ -79,76 +83,6 @@ def handle_redirects(func):
                 url = redirect.url
         raise exception.MaxRedirectsExceeded(redirects=MAX_REDIRECTS)
     return wrapped
-
-
-class ImageBodyIterator(object):
-
-    """
-    A class that acts as an iterator over an image file's
-    chunks of data.  This is returned as part of the result
-    tuple from `glance.client.Client.get_image`
-    """
-
-    def __init__(self, source):
-        """
-        Constructs the object from a readable image source
-        (such as an HTTPResponse or file-like object)
-        """
-        self.source = source
-
-    def __iter__(self):
-        """
-        Exposes an iterator over the chunks of data in the
-        image file.
-        """
-        while True:
-            chunk = self.source.read(CHUNKSIZE)
-            if chunk:
-                yield chunk
-            else:
-                break
-
-
-class SendFileIterator:
-    """
-    Emulate iterator pattern over sendfile, in order to allow
-    send progress be followed by wrapping the iteration.
-    """
-    def __init__(self, connection, body):
-        self.connection = connection
-        self.body = body
-        self.offset = 0
-        self.sending = True
-
-    def __iter__(self):
-        class OfLength:
-            def __init__(self, len):
-                self.len = len
-
-            def __len__(self):
-                return self.len
-
-        while self.sending:
-            try:
-                sent = sendfile.sendfile(self.connection.sock.fileno(),
-                                         self.body.fileno(),
-                                         self.offset,
-                                         CHUNKSIZE)
-            except OSError as e:
-                # suprisingly, sendfile may fail transiently instead of
-                # blocking, in which case we select on the socket in order
-                # to wait on its return to a writeable state before resuming
-                # the send loop
-                if e.errno in (errno.EAGAIN, errno.EBUSY):
-                    wlist = [self.connection.sock.fileno()]
-                    rfds, wfds, efds = select.select([], wlist, [])
-                    if wfds:
-                        continue
-                raise
-
-            self.sending = (sent != 0)
-            self.offset += sent
-            yield OfLength(sent)
 
 
 class HTTPSClientAuthConnection(httplib.HTTPSConnection):
@@ -202,10 +136,10 @@ class BaseClient(object):
     DEFAULT_DOC_ROOT = None
     # Standard CA file locations for Debian/Ubuntu, RedHat/Fedora,
     # Suse, FreeBSD/OpenBSD
-    DEFAULT_CA_FILE_PATH = '/etc/ssl/certs/ca-certificates.crt:'\
-        '/etc/pki/tls/certs/ca-bundle.crt:'\
-        '/etc/ssl/ca-bundle.pem:'\
-        '/etc/ssl/cert.pem'
+    DEFAULT_CA_FILE_PATH = ('/etc/ssl/certs/ca-certificates.crt:'
+                            '/etc/pki/tls/certs/ca-bundle.crt:'
+                            '/etc/ssl/ca-bundle.pem:'
+                            '/etc/ssl/cert.pem')
 
     OK_RESPONSE_CODES = (
         httplib.OK,
@@ -222,8 +156,8 @@ class BaseClient(object):
         httplib.TEMPORARY_REDIRECT,
     )
 
-    def __init__(self, host, port=None, use_ssl=False, auth_tok=None,
-                 creds=None, doc_root=None, key_file=None,
+    def __init__(self, host, port=None, timeout=None, use_ssl=False,
+                 auth_tok=None, creds=None, doc_root=None, key_file=None,
                  cert_file=None, ca_file=None, insecure=False,
                  configure_via_auth=True):
         """
@@ -231,6 +165,7 @@ class BaseClient(object):
 
         :param host: The host where service resides
         :param port: The port where service resides
+        :param timeout: Connection timeout.
         :param use_ssl: Should we use HTTPS?
         :param auth_tok: The auth token to pass to the server
         :param creds: The credentials to pass to the auth plugin
@@ -254,9 +189,17 @@ class BaseClient(object):
                         GLANCE_CLIENT_CA_FILE is looked for.
         :param insecure: Optional. If set then the server's certificate
                          will not be verified.
+        :param configure_via_auth: Optional. Defaults to True. If set, the
+                         URL returned from the service catalog for the image
+                         endpoint will **override** the URL supplied to in
+                         the host parameter.
         """
         self.host = host
         self.port = port or self.DEFAULT_PORT
+        self.timeout = timeout
+        # A value of '0' implies never timeout
+        if timeout == 0:
+            self.timeout = None
         self.use_ssl = use_ssl
         self.auth_tok = auth_tok
         self.creds = creds or {}
@@ -266,16 +209,20 @@ class BaseClient(object):
         # cannot simply do doc_root or self.DEFAULT_DOC_ROOT below.
         self.doc_root = (doc_root if doc_root is not None
                          else self.DEFAULT_DOC_ROOT)
-        self.auth_plugin = self.make_auth_plugin(self.creds)
 
         self.key_file = key_file
         self.cert_file = cert_file
         self.ca_file = ca_file
         self.insecure = insecure
+        self.auth_plugin = self.make_auth_plugin(self.creds, self.insecure)
         self.connect_kwargs = self.get_connect_kwargs()
 
     def get_connect_kwargs(self):
         connect_kwargs = {}
+
+        # Both secure and insecure connections have a timeout option
+        connect_kwargs['timeout'] = self.timeout
+
         if self.use_ssl:
             if self.key_file is None:
                 self.key_file = os.environ.get('GLANCE_CLIENT_KEY_FILE')
@@ -355,22 +302,31 @@ class BaseClient(object):
 
             <http|https>://<host>:port/doc_root
         """
+        LOG.debug(_("Configuring from URL: %s"), url)
         parsed = urlparse.urlparse(url)
         self.use_ssl = parsed.scheme == 'https'
         self.host = parsed.hostname
         self.port = parsed.port or 80
-        self.doc_root = parsed.path
+        self.doc_root = parsed.path.rstrip('/')
+
+        # We need to ensure a version identifier is appended to the doc_root
+        if not VERSION_REGEX.match(self.doc_root):
+            if self.DEFAULT_DOC_ROOT:
+                doc_root = self.DEFAULT_DOC_ROOT.lstrip('/')
+                self.doc_root += '/' + doc_root
+                msg = _("Appending doc_root %(doc_root)s to URL %(url)s")
+                LOG.debug(msg % locals())
 
         # ensure connection kwargs are re-evaluated after the service catalog
         # publicURL is parsed for potential SSL usage
         self.connect_kwargs = self.get_connect_kwargs()
 
-    def make_auth_plugin(self, creds):
+    def make_auth_plugin(self, creds, insecure):
         """
         Returns an instantiated authentication plugin.
         """
         strategy = creds.get('strategy', 'noauth')
-        plugin = auth.get_plugin_from_strategy(strategy, creds)
+        plugin = auth.get_plugin_from_strategy(strategy, creds, insecure)
         return plugin
 
     def get_connection_type(self):
@@ -423,6 +379,7 @@ class BaseClient(object):
         """
         Create a URL object we can use to pass to _do_request().
         """
+        action = urllib.quote(action)
         path = '/'.join([self.doc_root or '', action.lstrip('/')])
         scheme = "https" if self.use_ssl else "http"
         netloc = "%s:%d" % (self.host, self.port)
@@ -435,7 +392,10 @@ class BaseClient(object):
         else:
             query = None
 
-        return urlparse.ParseResult(scheme, netloc, path, '', query, '')
+        url = urlparse.ParseResult(scheme, netloc, path, '', query, '')
+        log_msg = _("Constructed URL: %s")
+        LOG.debug(log_msg, url.geturl())
+        return url
 
     @handle_redirects
     def _do_request(self, method, url, body, headers):
@@ -512,7 +472,7 @@ class BaseClient(object):
                 # conflict.
                 for header, value in headers.items():
                     if use_sendfile or header.lower() != 'content-length':
-                        c.putheader(header, value)
+                        c.putheader(header, str(value))
 
                 iter = self.image_iterator(c, headers, body)
 
@@ -551,7 +511,7 @@ class BaseClient(object):
                 raise exception.LimitExceeded(retry=_retry(res),
                                               body=res.read())
             elif status_code == httplib.INTERNAL_SERVER_ERROR:
-                raise exception.ServerError(body=res.read())
+                raise exception.ServerError()
             elif status_code == httplib.SERVICE_UNAVAILABLE:
                 raise exception.ServiceUnavailable(retry=_retry(res))
             else:
@@ -572,9 +532,9 @@ class BaseClient(object):
             return (e.errno != errno.ESPIPE)
 
     def _sendable(self, body):
-        return (SENDFILE_SUPPORTED      and
+        return (SENDFILE_SUPPORTED and
                 hasattr(body, 'fileno') and
-                self._seekable(body)    and
+                self._seekable(body) and
                 not self.use_ssl)
 
     def _iterable(self, body):

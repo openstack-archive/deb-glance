@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (c) 2010 OpenStack, LLC.
+# Copyright (c) 2010 OpenStack Foundation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@
 # Glance documentation build configuration file, created by
 # sphinx-quickstart on Tue May 18 13:50:15 2010.
 #
-# This file is execfile()'d with the current directory set to it's containing
+# This file is execfile()'d with the current directory set to its containing
 # dir.
 #
 # Note that not all possible configuration values are present in this
@@ -42,8 +42,7 @@ sys.path = [os.path.abspath('../../glance'),
 
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
-extensions = ['sphinx.ext.autodoc',
-              'sphinx.ext.coverage',
+extensions = ['sphinx.ext.coverage',
               'sphinx.ext.ifconfig',
               'sphinx.ext.intersphinx',
               'sphinx.ext.pngmath',
@@ -67,16 +66,16 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'Glance'
-copyright = u'2010-present, OpenStack, LLC.'
+copyright = u'2010, OpenStack Foundation.'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
 # built documents.
 #
 # The short X.Y version.
-from glance import version as glance_version
+from glance.version import version_info as glance_version
 # The full version, including alpha/beta/rc tags.
-release = glance_version.version_string()
+release = glance_version.version_string_with_vcs()
 # The short X.Y version.
 version = glance_version.canonical_version_string()
 
@@ -95,7 +94,7 @@ version = glance_version.canonical_version_string()
 
 # List of directories, relative to source directory, that shouldn't be searched
 # for source files.
-exclude_trees = []
+exclude_trees = ['api']
 
 # The reST default role (for this markup: `text`) to use for all documents.
 #default_role = None
@@ -143,7 +142,7 @@ man_pages = [
      [u'OpenStack'], 1),
     ('man/glancescrubber', 'glance-scrubber', u'Glance Scrubber Service',
      [u'OpenStack'], 1)
- ]
+]
 
 
 # -- Options for HTML output -------------------------------------------------
@@ -200,10 +199,10 @@ html_last_updated_fmt = os.popen(git_cmd).read()
 #html_additional_pages = {}
 
 # If false, no module index is generated.
-#html_use_modindex = True
+html_use_modindex = False
 
 # If false, no index is generated.
-#html_use_index = True
+html_use_index = False
 
 # If true, the index is split into individual pages for each letter.
 #html_split_index = False
@@ -235,8 +234,8 @@ htmlhelp_basename = 'glancedoc'
 # (source start file, target name, title, author,
 # documentclass [howto/manual]).
 latex_documents = [
-  ('index', 'Glance.tex', u'Glance Documentation',
-   u'Glance Team', 'manual'),
+    ('index', 'Glance.tex', u'Glance Documentation',
+     u'Glance Team', 'manual'),
 ]
 
 # The name of an image file (relative to this directory) to place at the top of

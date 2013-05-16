@@ -1,0 +1,39 @@
+#!/bin/sh
+
+set -e
+
+. /usr/share/debconf/confmodule
+
+API_CONF=/etc/glance/glance-api.conf
+APIPASTE_CONF=/etc/glance/glance-api-paste.ini
+GREG_CONF=/etc/glance/glance-registry.conf
+
+#PKGOS-INCLUDE#
+
+pkgos_var_user_group glance
+pkgos_dbc_read_conf -pkg glance-common ${GREG_CONF} DEFAULT sql_connection glance $@
+
+pkgos_inifile get ${API_CONF} paste_deploy flavor
+case "${RET}" in
+keystone|caching|keystone+caching|cachemanagement|keystone+cachemanagement)
+	db_set glance/paste-flavor ${RET}
+;;
+""|"NOT_FOUND")
+	# If no value in existing config file, don't set it
+	;;
+*)
+	db_set glance/paste-flavor caching
+;;
+esac
+db_input high glance/paste-flavor || true
+db_go || true
+
+db_get glance/paste-flavor
+case "$RET" in
+keystone*)
+	pkgos_read_admin_creds ${API_CONF} keystone_authtoken glance
+;;
+esac
+
+
+exit 0

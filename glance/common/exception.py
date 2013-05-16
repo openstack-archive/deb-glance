@@ -20,6 +20,8 @@
 
 import urlparse
 
+_FATAL_EXCEPTION_FORMAT_ERRORS = False
+
 
 class RedirectException(Exception):
     def __init__(self, url):
@@ -36,23 +38,19 @@ class GlanceException(Exception):
     """
     message = _("An unknown exception occurred")
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, message=None, *args, **kwargs):
+        if not message:
+            message = self.message
         try:
-            self._error_string = self.message % kwargs
-        except Exception:
-            # at least get the core message out if something happened
-            self._error_string = self.message
-        if len(args) > 0:
-            # If there is a non-kwarg parameter, assume it's the error
-            # message or reason description and tack it on to the end
-            # of the exception message
-            # Convert all arguments into their string representations...
-            args = ["%s" % arg for arg in args]
-            self._error_string = (self._error_string +
-                                  "\nDetails: %s" % '\n'.join(args))
+            message = message % kwargs
+        except Exception as e:
+            if _FATAL_EXCEPTION_FORMAT_ERRORS:
+                raise e
+            else:
+                # at least get the core message out if something happened
+                pass
 
-    def __str__(self):
-        return self._error_string
+        super(GlanceException, self).__init__(message)
 
 
 class MissingArgumentError(GlanceException):
@@ -77,7 +75,7 @@ class UnknownScheme(GlanceException):
 
 
 class BadStoreUri(GlanceException):
-    message = _("The Store URI %(uri)s was malformed. Reason: %(reason)s")
+    message = _("The Store URI was malformed.")
 
 
 class Duplicate(GlanceException):
@@ -90,11 +88,6 @@ class StorageFull(GlanceException):
 
 class StorageWriteDenied(GlanceException):
     message = _("Permission to write image storage media denied.")
-
-
-class ImportFailure(GlanceException):
-    message = _("Failed to import requested object/class: '%(import_str)s'. "
-                "Reason: %(reason)s")
 
 
 class AuthBadRequest(GlanceException):
@@ -121,6 +114,10 @@ class ForbiddenPublicImage(Forbidden):
     message = _("You are not authorized to complete this action.")
 
 
+class ProtectedImageDelete(Forbidden):
+    message = _("Image %(image_id)s is protected and cannot be deleted.")
+
+
 #NOTE(bcwaldon): here for backwards-compatability, need to deprecate.
 class NotAuthorized(Forbidden):
     message = _("You are not authorized to complete this action.")
@@ -128,6 +125,22 @@ class NotAuthorized(Forbidden):
 
 class Invalid(GlanceException):
     message = _("Data supplied was not valid.")
+
+
+class InvalidSortKey(Invalid):
+    message = _("Sort key supplied was not valid.")
+
+
+class InvalidFilterRangeValue(Invalid):
+    message = _("Unable to filter using the specified range.")
+
+
+class ReadonlyProperty(Forbidden):
+    message = _("Attribute '%(property)s' is read-only.")
+
+
+class ReservedProperty(Forbidden):
+    message = _("Attribute '%(property)s' is reserved.")
 
 
 class AuthorizationRedirect(GlanceException):
@@ -175,8 +188,7 @@ class ServiceUnavailable(GlanceException):
 
 
 class ServerError(GlanceException):
-    message = _("The request returned 500 Internal Server Error"
-                "\n\nThe response body:\n%(body)s")
+    message = _("The request returned 500 Internal Server Error.")
 
 
 class UnexpectedStatus(GlanceException):
@@ -195,12 +207,12 @@ class BadRegistryConnectionConfiguration(GlanceException):
 
 class BadStoreConfiguration(GlanceException):
     message = _("Store %(store_name)s could not be configured correctly. "
-               "Reason: %(reason)s")
+                "Reason: %(reason)s")
 
 
 class BadDriverConfiguration(GlanceException):
     message = _("Driver %(driver_name)s could not be configured correctly. "
-               "Reason: %(reason)s")
+                "Reason: %(reason)s")
 
 
 class StoreDeleteNotSupported(GlanceException):
@@ -209,7 +221,7 @@ class StoreDeleteNotSupported(GlanceException):
 
 class StoreAddDisabled(GlanceException):
     message = _("Configuration for store failed. Adding images to this "
-               "store is disabled.")
+                "store is disabled.")
 
 
 class InvalidNotifierStrategy(GlanceException):
@@ -232,3 +244,29 @@ class RegionAmbiguity(GlanceException):
     message = _("Multiple 'image' service matches for region %(region)s. This "
                 "generally means that a region is required and you have not "
                 "supplied one.")
+
+
+class WorkerCreationFailure(GlanceException):
+    message = _("Server worker creation failed: %(reason)s.")
+
+
+class SchemaLoadError(GlanceException):
+    message = _("Unable to load schema: %(reason)s")
+
+
+class InvalidObject(GlanceException):
+    message = _("Provided object does not match schema "
+                "'%(schema)s': %(reason)s")
+
+
+class UnsupportedHeaderFeature(GlanceException):
+    message = _("Provided header feature is unsupported: %(feature)s")
+
+
+class InUseByStore(GlanceException):
+    message = _("The image cannot be deleted because it is in use through "
+                "the backend store outside of Glance.")
+
+
+class ImageSizeLimitExceeded(GlanceException):
+    message = _("The provided image is too large.")

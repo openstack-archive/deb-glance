@@ -13,6 +13,24 @@ General
 - Do not write "except:", use "except Exception:" at the very least
 - Include your name with TODOs as in "#TODO(termie)"
 - Do not name anything the same name as a built-in or reserved word
+- Use the "is not" operator when testing for unequal identities. Example::
+
+    if not X is Y:  # BAD, intended behavior is ambiguous
+        pass
+
+    if X is not Y:  # OKAY, intuitive
+        pass
+
+- Use the "not in" operator for evaluating membership in a collection. Example::
+
+    if not X in Y:  # BAD, intended behavior is ambiguous
+        pass
+
+    if X not in Y:  # OKAY, intuitive
+        pass
+
+    if not (X in Y or X in Z):  # OKAY, still better than all those 'not's
+        pass
 
 
 Imports
@@ -184,3 +202,26 @@ For every new feature, unit tests should be created that both test and
 bug that had no unit test, a new passing unit test should be added. If a
 submitted bug fix does have a unit test, be sure to add a new one that fails
 without the patch and passes with the patch.
+
+
+openstack-common
+----------------
+
+A number of modules from openstack-common are imported into the project.
+
+These modules are "incubating" in openstack-common and are kept in sync
+with the help of openstack-common's update.py script. See:
+
+  http://wiki.openstack.org/CommonLibrary#Incubation
+
+The copy of the code should never be directly modified here. Please
+always update openstack-common first and then run the script to copy
+the changes across.
+
+
+Logging
+-------
+Use __name__ as the name of your logger and name your module-level logger
+objects 'LOG'::
+
+    LOG = logging.getLogger(__name__)

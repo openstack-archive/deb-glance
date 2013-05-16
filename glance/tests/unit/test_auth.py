@@ -17,11 +17,21 @@
 
 import json
 import stubout
-import unittest
 import webob
 
+from glance.api import authorization
 from glance.common import auth
 from glance.common import exception
+import glance.domain
+from glance.openstack.common import timeutils
+from glance.tests import utils
+
+
+TENANT1 = '6838eb7b-6ded-434a-882c-b344c77fe8df'
+TENANT2 = '2c014f32-55eb-467d-8fcb-4bd706012f81'
+
+UUID1 = 'c80a1a6c-bd1f-41c5-90ee-81afedb1d58d'
+UUID2 = 'a85abd86-55b3-4d5b-b0b4-5d0a6e6042fc'
 
 
 class FakeResponse(object):
@@ -78,7 +88,7 @@ class V2Token(object):
             "adminURL": "http://localhost:9292",
             "internalURL": "http://localhost:9292",
             "publicURL": "http://localhost:9292"
-    }
+        }
 
     @property
     def base_token(self):
@@ -104,14 +114,13 @@ class V2Token(object):
         }
 
 
-class TestKeystoneAuthPlugin(unittest.TestCase):
+class TestKeystoneAuthPlugin(utils.BaseTestCase):
     """Test that the Keystone auth plugin works properly"""
 
     def setUp(self):
+        super(TestKeystoneAuthPlugin, self).setUp()
         self.stubs = stubout.StubOutForTesting()
-
-    def tearDown(self):
-        self.stubs.UnsetAll()
+        self.addCleanup(self.stubs.UnsetAll)
 
     def test_required_creds(self):
         """
@@ -136,7 +145,18 @@ class TestKeystoneAuthPlugin(unittest.TestCase):
                 'username': 'user1',
                 'password': 'pass',
                 'auth_url': 'http://localhost/v2.0/'
-            }  # v2.0: missing tenant
+            },  # v2.0: missing tenant
+            {
+                'username': None,
+                'password': 'pass',
+                'auth_url': 'http://localhost/v2.0/'
+            },  # None parameter
+            {
+                'username': 'user1',
+                'password': 'pass',
+                'auth_url': 'http://localhost/v2.0/',
+                'tenant': None
+            }  # None tenant
         ]
         for creds in bad_creds:
             try:
@@ -147,41 +167,50 @@ class TestKeystoneAuthPlugin(unittest.TestCase):
             except exception.MissingCredentialError:
                 continue  # Expected
 
-    def test_invalid_auth_url(self):
+    def test_invalid_auth_url_v1(self):
         """
-        Test invalid auth URL returns a 404/400 in authenticate().
-        '404' if an attempt is made to access an invalid url on a
-        server, '400' if an attempt is made to access a url on a
-        non-existent server.
+        Test that a 400 during authenticate raises exception.AuthBadRequst
         """
-        bad_creds = [
-            {
-                'username': 'user1',
-                'auth_url': 'http://localhost/badauthurl/',
-                'password': 'pass',
-                'strategy': 'keystone',
-                'region': 'RegionOne'
-            },  # v1 Keystone
-            {
-                'username': 'user1',
-                'auth_url': 'http://localhost/badauthurl/v2.0/',
-                'password': 'pass',
-                'tenant': 'tenant1',
-                'strategy': 'keystone',
-                'region': 'RegionOne'
-            }  # v2 Keystone
-        ]
+        def fake_do_request(*args, **kwargs):
+            resp = webob.Response()
+            resp.status = 400
+            return FakeResponse(resp), ""
 
-        for creds in bad_creds:
-            try:
-                plugin = auth.KeystoneStrategy(creds)
-                plugin.authenticate()
-            except exception.AuthUrlNotFound:
-                continue  # Expected if web server running
-            except exception.AuthBadRequest:
-                continue  # Expected if no web server running
-            self.fail("Failed to raise Exception when supplying bad "
-                      "credentials: %r" % creds)
+        self.stubs.Set(auth.KeystoneStrategy, '_do_request', fake_do_request)
+
+        bad_creds = {
+            'username': 'user1',
+            'auth_url': 'http://localhost/badauthurl/',
+            'password': 'pass',
+            'strategy': 'keystone',
+            'region': 'RegionOne'
+        }
+
+        plugin = auth.KeystoneStrategy(bad_creds)
+        self.assertRaises(exception.AuthBadRequest, plugin.authenticate)
+
+    def test_invalid_auth_url_v2(self):
+        """
+        Test that a 400 during authenticate raises exception.AuthBadRequst
+        """
+        def fake_do_request(*args, **kwargs):
+            resp = webob.Response()
+            resp.status = 400
+            return FakeResponse(resp), ""
+
+        self.stubs.Set(auth.KeystoneStrategy, '_do_request', fake_do_request)
+
+        bad_creds = {
+            'username': 'user1',
+            'auth_url': 'http://localhost/badauthurl/v2.0/',
+            'password': 'pass',
+            'tenant': 'tenant1',
+            'strategy': 'keystone',
+            'region': 'RegionOne'
+        }
+
+        plugin = auth.KeystoneStrategy(bad_creds)
+        self.assertRaises(exception.AuthBadRequest, plugin.authenticate)
 
     def test_v1_auth(self):
         """Test v1 auth code paths"""
@@ -481,3 +510,313 @@ class TestKeystoneAuthPlugin(unittest.TestCase):
                       "type encountered")
         except exception.NoServiceEndpoint:
             pass
+
+
+class TestEndpoints(utils.BaseTestCase):
+
+    def setUp(self):
+        super(TestEndpoints, self).setUp()
+
+        self.service_catalog = [
+            {
+                'endpoint_links': [],
+                'endpoints': [
+                    {
+                        'adminURL': 'http://localhost:8080/',
+                        'region': 'RegionOne',
+                        'internalURL': 'http://internalURL/',
+                        'publicURL': 'http://publicURL/',
+                    },
+                ],
+                'type': 'object-store',
+                'name': 'Object Storage Service',
+            }
+        ]
+
+    def test_get_endpoint_with_custom_server_type(self):
+        endpoint = auth.get_endpoint(self.service_catalog,
+                                     service_type='object-store')
+        self.assertEquals('http://publicURL/', endpoint)
+
+    def test_get_endpoint_with_custom_endpoint_type(self):
+        endpoint = auth.get_endpoint(self.service_catalog,
+                                     service_type='object-store',
+                                     endpoint_type='internalURL')
+        self.assertEquals('http://internalURL/', endpoint)
+
+    def test_get_endpoint_raises_with_invalid_service_type(self):
+        self.assertRaises(exception.NoServiceEndpoint,
+                          auth.get_endpoint,
+                          self.service_catalog,
+                          service_type='foo')
+
+    def test_get_endpoint_raises_with_invalid_endpoint_type(self):
+        self.assertRaises(exception.NoServiceEndpoint,
+                          auth.get_endpoint,
+                          self.service_catalog,
+                          service_type='object-store',
+                          endpoint_type='foo')
+
+    def test_get_endpoint_raises_with_invalid_endpoint_region(self):
+        self.assertRaises(exception.NoServiceEndpoint,
+                          auth.get_endpoint,
+                          self.service_catalog,
+                          service_type='object-store',
+                          endpoint_region='foo',
+                          endpoint_type='internalURL')
+
+
+class TestImageMutability(utils.BaseTestCase):
+
+    def setUp(self):
+        super(TestImageMutability, self).setUp()
+        self.image_factory = glance.domain.ImageFactory()
+
+    def _is_mutable(self, tenant, owner, is_admin=False):
+        context = glance.context.RequestContext(tenant=tenant,
+                                                is_admin=is_admin)
+        image = self.image_factory.new_image(owner=owner)
+        return authorization.is_image_mutable(context, image)
+
+    def test_admin_everything_mutable(self):
+        self.assertTrue(self._is_mutable(None, None, is_admin=True))
+        self.assertTrue(self._is_mutable(None, TENANT1, is_admin=True))
+        self.assertTrue(self._is_mutable(TENANT1, None, is_admin=True))
+        self.assertTrue(self._is_mutable(TENANT1, TENANT1, is_admin=True))
+        self.assertTrue(self._is_mutable(TENANT1, TENANT2, is_admin=True))
+
+    def test_no_tenant_nothing_mutable(self):
+        self.assertFalse(self._is_mutable(None, None))
+        self.assertFalse(self._is_mutable(None, TENANT1))
+
+    def test_regular_user(self):
+        self.assertFalse(self._is_mutable(TENANT1, None))
+        self.assertFalse(self._is_mutable(TENANT1, TENANT2))
+        self.assertTrue(self._is_mutable(TENANT1, TENANT1))
+
+
+class TestImmutableImage(utils.BaseTestCase):
+    def setUp(self):
+        super(TestImmutableImage, self).setUp()
+        image_factory = glance.domain.ImageFactory()
+        self.context = glance.context.RequestContext(tenant=TENANT1)
+        image = image_factory.new_image(
+                image_id=UUID1,
+                name='Marvin',
+                owner=TENANT1,
+                disk_format='raw',
+                container_format='bare',
+                extra_properties={'foo': 'bar'},
+                tags=['ping', 'pong'],
+        )
+        self.image = authorization.ImmutableImageProxy(image, self.context)
+
+    def _test_change(self, attr, value):
+        self.assertRaises(exception.Forbidden,
+                          setattr, self.image, attr, value)
+        self.assertRaises(exception.Forbidden,
+                          delattr, self.image, attr)
+
+    def test_change_id(self):
+        self._test_change('image_id', UUID2)
+
+    def test_change_name(self):
+        self._test_change('name', 'Freddie')
+
+    def test_change_owner(self):
+        self._test_change('owner', TENANT2)
+
+    def test_change_min_disk(self):
+        self._test_change('min_disk', 100)
+
+    def test_change_min_ram(self):
+        self._test_change('min_ram', 1024)
+
+    def test_change_disk_format(self):
+        self._test_change('disk_format', 'vhd')
+
+    def test_change_container_format(self):
+        self._test_change('container_format', 'ova')
+
+    def test_change_visibility(self):
+        self._test_change('visibility', 'public')
+
+    def test_change_status(self):
+        self._test_change('status', 'active')
+
+    def test_change_created_at(self):
+        self._test_change('created_at', timeutils.utcnow())
+
+    def test_change_updated_at(self):
+        self._test_change('updated_at', timeutils.utcnow())
+
+    def test_change_locations(self):
+        self._test_change('locations', ['http://a/b/c'])
+        self.assertRaises(exception.Forbidden,
+                          self.image.locations.append, 'http://a/b/c')
+        self.assertRaises(exception.Forbidden,
+                          self.image.locations.extend, ['http://a/b/c'])
+        self.assertRaises(exception.Forbidden,
+                          self.image.locations.insert, 'foo')
+        self.assertRaises(exception.Forbidden,
+                          self.image.locations.pop)
+        self.assertRaises(exception.Forbidden,
+                          self.image.locations.remove, 'foo')
+        self.assertRaises(exception.Forbidden,
+                          self.image.locations.reverse)
+        self.assertRaises(exception.Forbidden,
+                          self.image.locations.sort)
+        self.assertRaises(exception.Forbidden,
+                          self.image.locations.__delitem__, 0)
+        self.assertRaises(exception.Forbidden,
+                          self.image.locations.__delslice__, 0, 2)
+        self.assertRaises(exception.Forbidden,
+                          self.image.locations.__setitem__, 0, 'foo')
+        self.assertRaises(exception.Forbidden,
+                          self.image.locations.__setslice__,
+                          0, 2, ['foo', 'bar'])
+        self.assertRaises(exception.Forbidden,
+                          self.image.locations.__iadd__, 'foo')
+        self.assertRaises(exception.Forbidden,
+                          self.image.locations.__imul__, 2)
+
+    def test_change_size(self):
+        self._test_change('size', 32)
+
+    def test_change_tags(self):
+        self.assertRaises(exception.Forbidden,
+                          delattr, self.image, 'tags')
+        self.assertRaises(exception.Forbidden,
+                          setattr, self.image, 'tags', ['king', 'kong'])
+        self.assertRaises(exception.Forbidden, self.image.tags.pop)
+        self.assertRaises(exception.Forbidden, self.image.tags.clear)
+        self.assertRaises(exception.Forbidden, self.image.tags.add, 'king')
+        self.assertRaises(exception.Forbidden, self.image.tags.remove, 'ping')
+        self.assertRaises(exception.Forbidden,
+                          self.image.tags.update, set(['king', 'kong']))
+        self.assertRaises(exception.Forbidden,
+                          self.image.tags.intersection_update, set([]))
+        self.assertRaises(exception.Forbidden,
+                          self.image.tags.difference_update, set([]))
+        self.assertRaises(exception.Forbidden,
+                          self.image.tags.symmetric_difference_update,
+                          set([]))
+
+    def test_change_properties(self):
+        self.assertRaises(exception.Forbidden,
+                          delattr, self.image, 'extra_properties')
+        self.assertRaises(exception.Forbidden,
+                          setattr, self.image, 'extra_properties', {})
+        self.assertRaises(exception.Forbidden,
+                          self.image.extra_properties.__delitem__, 'foo')
+        self.assertRaises(exception.Forbidden,
+                          self.image.extra_properties.__setitem__, 'foo', 'b')
+        self.assertRaises(exception.Forbidden,
+                          self.image.extra_properties.__setitem__, 'z', 'j')
+        self.assertRaises(exception.Forbidden,
+                          self.image.extra_properties.pop)
+        self.assertRaises(exception.Forbidden,
+                          self.image.extra_properties.popitem)
+        self.assertRaises(exception.Forbidden,
+                          self.image.extra_properties.setdefault, 'p', 'j')
+        self.assertRaises(exception.Forbidden,
+                          self.image.extra_properties.update, {})
+
+    def test_delete(self):
+        self.assertRaises(exception.Forbidden, self.image.delete)
+
+    def test_set_data(self):
+        self.assertRaises(exception.Forbidden,
+                          self.image.set_data, 'blah', 4)
+
+    def test_get_data(self):
+        class FakeImage(object):
+            def get_data(self):
+                return 'tiddlywinks'
+
+        image = glance.api.authorization.ImmutableImageProxy(
+                FakeImage(), self.context)
+        self.assertEquals(image.get_data(), 'tiddlywinks')
+
+
+class TestImageFactoryProxy(utils.BaseTestCase):
+    def setUp(self):
+        super(TestImageFactoryProxy, self).setUp()
+        factory = glance.domain.ImageFactory()
+        self.context = glance.context.RequestContext(tenant=TENANT1)
+        self.image_factory = authorization.ImageFactoryProxy(factory,
+                                                             self.context)
+
+    def test_default_owner_is_set(self):
+        image = self.image_factory.new_image()
+        self.assertEqual(image.owner, TENANT1)
+
+    def test_wrong_owner_cannot_be_set(self):
+        self.assertRaises(exception.Forbidden,
+                          self.image_factory.new_image, owner=TENANT2)
+
+    def test_cannot_set_owner_to_none(self):
+        self.assertRaises(exception.Forbidden,
+                          self.image_factory.new_image, owner=None)
+
+    def test_admin_can_set_any_owner(self):
+        self.context.is_admin = True
+        image = self.image_factory.new_image(owner=TENANT2)
+        self.assertEqual(image.owner, TENANT2)
+
+    def test_admin_can_set_owner_to_none(self):
+        self.context.is_admin = True
+        image = self.image_factory.new_image(owner=None)
+        self.assertEqual(image.owner, None)
+
+    def test_admin_still_gets_default_tenant(self):
+        self.context.is_admin = True
+        image = self.image_factory.new_image()
+        self.assertEqual(image.owner, TENANT1)
+
+
+class TestImageRepoProxy(utils.BaseTestCase):
+
+    class ImageRepoStub(object):
+        def __init__(self, fixtures):
+            self.fixtures = fixtures
+
+        def get(self, image_id):
+            for f in self.fixtures:
+                if f.image_id == image_id:
+                    return f
+            else:
+                raise ValueError(image_id)
+
+        def list(self, *args, **kwargs):
+            return self.fixtures
+
+    def setUp(self):
+        super(TestImageRepoProxy, self).setUp()
+        image_factory = glance.domain.ImageFactory()
+        self.fixtures = [
+            image_factory.new_image(owner=TENANT1),
+            image_factory.new_image(owner=TENANT2, visibility='public'),
+            image_factory.new_image(owner=TENANT2),
+        ]
+        self.context = glance.context.RequestContext(tenant=TENANT1)
+        image_repo = self.ImageRepoStub(self.fixtures)
+        self.image_repo = authorization.ImageRepoProxy(image_repo,
+                                                       self.context)
+
+    def test_get_mutable_image(self):
+        image = self.image_repo.get(self.fixtures[0].image_id)
+        self.assertEqual(image.image_id, self.fixtures[0].image_id)
+
+    def test_get_immutable_image(self):
+        image = self.image_repo.get(self.fixtures[1].image_id)
+        self.assertRaises(exception.Forbidden,
+                          setattr, image, 'name', 'Vince')
+
+    def test_list(self):
+        images = self.image_repo.list()
+        self.assertEqual(images[0].image_id, self.fixtures[0].image_id)
+        self.assertRaises(exception.Forbidden,
+                          setattr, images[1], 'name', 'Wally')
+        self.assertRaises(exception.Forbidden,
+                          setattr, images[2], 'name', 'Calvin')

@@ -1,3 +1,2 @@
-etc/glance-registry.conf etc/glance
-etc/glance-registry-paste.ini etc/glance
 usr/bin/glance-registry
+usr/bin/glance-replicator

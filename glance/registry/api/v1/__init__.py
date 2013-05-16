@@ -25,15 +25,15 @@ from glance.registry.api.v1 import members
 class API(wsgi.Router):
     """WSGI entry point for all Registry requests."""
 
-    def __init__(self, conf, **local_conf):
+    def __init__(self, mapper):
         mapper = routes.Mapper()
 
-        images_resource = images.create_resource(conf)
+        images_resource = images.create_resource()
         mapper.resource("image", "images", controller=images_resource,
                         collection={'detail': 'GET'})
         mapper.connect("/", controller=images_resource, action="index")
 
-        members_resource = members.create_resource(conf)
+        members_resource = members.create_resource()
         mapper.resource("member", "members", controller=members_resource,
                         parent_resource=dict(member_name='image',
                         collection_name='images'))

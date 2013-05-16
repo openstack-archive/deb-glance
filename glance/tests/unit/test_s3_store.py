@@ -17,29 +17,27 @@
 
 """Tests the S3 backend store"""
 
-import StringIO
 import hashlib
-import httplib
-import sys
-import unittest
-import urlparse
+import StringIO
 
-import stubout
 import boto.s3.connection
+import stubout
 
 from glance.common import exception
-from glance.common import utils
-from glance.store import BackendException, UnsupportedBackend
+from glance.openstack.common import uuidutils
 from glance.store.location import get_location_from_uri
+import glance.store.s3
 from glance.store.s3 import Store, get_s3_location
-from glance.tests import utils as test_utils
+from glance.store import UnsupportedBackend
+from glance.tests.unit import base
 
 
-FAKE_UUID = utils.generate_uuid()
+FAKE_UUID = uuidutils.generate_uuid()
 
 FIVE_KB = (5 * 1024)
 S3_CONF = {'verbose': True,
            'debug': True,
+           'default_store': 's3',
            's3_store_access_key': 'user',
            's3_store_secret_key': 'key',
            's3_store_host': 'localhost:8080',
@@ -158,17 +156,16 @@ def format_s3_location(user, key, authurl, bucket, obj):
                                     bucket, obj)
 
 
-class TestStore(unittest.TestCase):
+class TestStore(base.StoreClearingUnitTest):
 
     def setUp(self):
         """Establish a clean test environment"""
+        self.config(**S3_CONF)
+        super(TestStore, self).setUp()
         self.stubs = stubout.StubOutForTesting()
         stub_out_s3(self.stubs)
-        self.store = Store(test_utils.TestConfigOpts(S3_CONF))
-
-    def tearDown(self):
-        """Clear the test environment"""
-        self.stubs.UnsetAll()
+        self.store = Store()
+        self.addCleanup(self.stubs.UnsetAll)
 
     def test_get(self):
         """Test a "normal" retrieval of an image in chunks"""
@@ -185,6 +182,37 @@ class TestStore(unittest.TestCase):
             data += chunk
         self.assertEqual(expected_data, data)
 
+    def test_get_calling_format_path(self):
+        """Test a "normal" retrieval of an image in chunks"""
+        self.config(s3_store_bucket_url_format='path')
+
+        def fake_S3Connection_init(*args, **kwargs):
+            expected_cls = boto.s3.connection.OrdinaryCallingFormat
+            self.assertTrue(isinstance(kwargs.get('calling_format'),
+                                       expected_cls))
+
+        self.stubs.Set(boto.s3.connection.S3Connection, '__init__',
+                       fake_S3Connection_init)
+
+        loc = get_location_from_uri(
+            "s3://user:key@auth_address/glance/%s" % FAKE_UUID)
+        (image_s3, image_size) = self.store.get(loc)
+
+    def test_get_calling_format_default(self):
+        """Test a "normal" retrieval of an image in chunks"""
+
+        def fake_S3Connection_init(*args, **kwargs):
+            expected_cls = boto.s3.connection.SubdomainCallingFormat
+            self.assertTrue(isinstance(kwargs.get('calling_format'),
+                                       expected_cls))
+
+        self.stubs.Set(boto.s3.connection.S3Connection, '__init__',
+                       fake_S3Connection_init)
+
+        loc = get_location_from_uri(
+            "s3://user:key@auth_address/glance/%s" % FAKE_UUID)
+        (image_s3, image_size) = self.store.get(loc)
+
     def test_get_non_existing(self):
         """
         Test that trying to retrieve a s3 that doesn't exist
@@ -200,7 +228,7 @@ class TestStore(unittest.TestCase):
 
     def test_add(self):
         """Test that we can add an image via the s3 backend"""
-        expected_image_id = utils.generate_uuid()
+        expected_image_id = uuidutils.generate_uuid()
         expected_s3_size = FIVE_KB
         expected_s3_contents = "*" * expected_s3_size
         expected_checksum = hashlib.md5(expected_s3_contents).hexdigest()
@@ -246,11 +274,10 @@ class TestStore(unittest.TestCase):
                       'localhost',
                       'localhost:8080/v1']
         for variation in variations:
-            expected_image_id = utils.generate_uuid()
+            expected_image_id = uuidutils.generate_uuid()
             expected_s3_size = FIVE_KB
             expected_s3_contents = "*" * expected_s3_size
-            expected_checksum = \
-                    hashlib.md5(expected_s3_contents).hexdigest()
+            expected_checksum = hashlib.md5(expected_s3_contents).hexdigest()
             new_conf = S3_CONF.copy()
             new_conf['s3_store_host'] = variation
             expected_location = format_s3_location(
@@ -261,7 +288,8 @@ class TestStore(unittest.TestCase):
                 expected_image_id)
             image_s3 = StringIO.StringIO(expected_s3_contents)
 
-            self.store = Store(test_utils.TestConfigOpts(new_conf))
+            self.config(**new_conf)
+            self.store = Store()
             location, size, checksum = self.store.add(expected_image_id,
                                                       image_s3,
                                                       expected_s3_size)
@@ -290,12 +318,13 @@ class TestStore(unittest.TestCase):
 
     def _option_required(self, key):
         conf = S3_CONF.copy()
-        del conf[key]
+        conf[key] = None
 
         try:
-            self.store = Store(test_utils.TestConfigOpts(conf))
+            self.config(**conf)
+            self.store = Store()
             return self.store.add == self.store.add_disabled
-        except:
+        except Exception:
             return False
         return False
 
@@ -370,3 +399,17 @@ class TestStore(unittest.TestCase):
         ]
         for (url, expected) in bad_locations:
             self._do_test_get_s3_location(url, expected)
+
+    def test_calling_format_path(self):
+        self.config(s3_store_bucket_url_format='path')
+        self.assertTrue(isinstance(glance.store.s3.get_calling_format(),
+                                   boto.s3.connection.OrdinaryCallingFormat))
+
+    def test_calling_format_subdomain(self):
+        self.config(s3_store_bucket_url_format='subdomain')
+        self.assertTrue(isinstance(glance.store.s3.get_calling_format(),
+                                   boto.s3.connection.SubdomainCallingFormat))
+
+    def test_calling_format_default(self):
+        self.assertTrue(isinstance(glance.store.s3.get_calling_format(),
+                                   boto.s3.connection.SubdomainCallingFormat))

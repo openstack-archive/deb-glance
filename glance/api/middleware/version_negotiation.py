@@ -21,100 +21,71 @@ and/or Accept headers and attempts to negotiate an API controller to
 return
 """
 
-import logging
-import re
+from oslo.config import cfg
 
 from glance.api import versions
 from glance.common import wsgi
+import glance.openstack.common.log as logging
 
-logger = logging.getLogger('glance.api.middleware.version_negotiation')
+CONF = cfg.CONF
+
+LOG = logging.getLogger(__name__)
 
 
 class VersionNegotiationFilter(wsgi.Middleware):
 
-    def __init__(self, app, conf, **local_conf):
-        self.versions_app = versions.Controller(conf)
-        self.version_uri_regex = re.compile(r"^v(\d+)\.?(\d+)?")
-        self.conf = conf
+    def __init__(self, app):
+        self.versions_app = versions.Controller()
         super(VersionNegotiationFilter, self).__init__(app)
 
     def process_request(self, req):
-        """
-        If there is a version identifier in the URI, simply
-        return the correct API controller, otherwise, if we
-        find an Accept: header, process it
-        """
-        # See if a version identifier is in the URI passed to
-        # us already. If so, simply return the right version
-        # API controller
-        msg = _("Processing request: %(method)s %(path)s Accept: "
-                "%(accept)s") % ({'method': req.method,
-                'path': req.path, 'accept': req.accept})
-        logger.debug(msg)
+        """Try to find a version first in the accept header, then the URL"""
+        msg = _("Determining version of request: %(method)s %(path)s"
+                " Accept: %(accept)s")
+        args = {'method': req.method, 'path': req.path, 'accept': req.accept}
+        LOG.debug(msg % args)
 
         # If the request is for /versions, just return the versions container
+        #TODO(bcwaldon): deprecate this behavior
         if req.path_info_peek() == "versions":
             return self.versions_app
 
-        match = self._match_version_string(req.path_info_peek(), req)
-        if match:
-            if (req.environ['api.major_version'] == 1 and
-                req.environ['api.minor_version'] == 0):
-                logger.debug(_("Matched versioned URI. Version: %d.%d"),
-                             req.environ['api.major_version'],
-                             req.environ['api.minor_version'])
-                # Strip the version from the path
-                req.path_info_pop()
-                return None
-            else:
-                logger.debug(_("Unknown version in versioned URI: %d.%d. "
-                             "Returning version choices."),
-                             req.environ['api.major_version'],
-                             req.environ['api.minor_version'])
-                return self.versions_app
-
         accept = str(req.accept)
         if accept.startswith('application/vnd.openstack.images-'):
+            LOG.debug(_("Using media-type versioning"))
             token_loc = len('application/vnd.openstack.images-')
-            accept_version = accept[token_loc:]
-            match = self._match_version_string(accept_version, req)
-            if match:
-                if (req.environ['api.major_version'] == 1 and
-                    req.environ['api.minor_version'] == 0):
-                    logger.debug(_("Matched versioned media type. "
-                                 "Version: %d.%d"),
-                                 req.environ['api.major_version'],
-                                 req.environ['api.minor_version'])
-                    return None
-                else:
-                    logger.debug(_("Unknown version in accept header: %d.%d..."
-                                 "returning version choices."),
-                                 req.environ['api.major_version'],
-                                 req.environ['api.minor_version'])
-                    return self.versions_app
+            req_version = accept[token_loc:]
         else:
-            if req.accept not in ('*/*', ''):
-                logger.debug(_("Unknown accept header: %s..."
-                             "returning version choices."), req.accept)
+            LOG.debug(_("Using url versioning"))
+            # Remove version in url so it doesn't conflict later
+            req_version = req.path_info_pop()
+
+        try:
+            version = self._match_version_string(req_version)
+        except ValueError:
+            LOG.debug(_("Unknown version. Returning version choices."))
             return self.versions_app
+
+        req.environ['api.version'] = version
+        req.path_info = ''.join(('/v', str(version), req.path_info))
+        LOG.debug(_("Matched version: v%d"), version)
+        LOG.debug('new uri %s' % req.path_info)
         return None
 
-    def _match_version_string(self, subject, req):
+    def _match_version_string(self, subject):
         """
-        Given a subject string, tries to match a major and/or
-        minor version number. If found, sets the api.major_version
-        and api.minor_version environ variables.
-
-        Returns True if there was a match, false otherwise.
+        Given a string, tries to match a major and/or
+        minor version number.
 
         :param subject: The string to check
-        :param req: Webob.Request object
+        :returns version found in the subject
+        :raises ValueError if no acceptable version could be found
         """
-        match = self.version_uri_regex.match(subject)
-        if match:
-            major_version, minor_version = match.groups(0)
-            major_version = int(major_version)
-            minor_version = int(minor_version)
-            req.environ['api.major_version'] = major_version
-            req.environ['api.minor_version'] = minor_version
-        return match is not None
+        if subject in ('v1', 'v1.0', 'v1.1') and CONF.enable_v1_api:
+            major_version = 1
+        elif subject in ('v2', 'v2.0', 'v2.1') and CONF.enable_v2_api:
+            major_version = 2
+        else:
+            raise ValueError()
+
+        return major_version

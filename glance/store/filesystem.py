@@ -21,18 +21,24 @@ A simple filesystem-backed store
 
 import errno
 import hashlib
-import logging
 import os
 import urlparse
 
-from glance.common import cfg
+from oslo.config import cfg
+
 from glance.common import exception
 from glance.common import utils
+import glance.openstack.common.log as logging
 import glance.store
 import glance.store.base
 import glance.store.location
 
-logger = logging.getLogger('glance.store.filesystem')
+LOG = logging.getLogger(__name__)
+
+datadir_opt = cfg.StrOpt('filesystem_store_datadir')
+
+CONF = cfg.CONF
+CONF.register_opt(datadir_opt)
 
 
 class StoreLocation(glance.store.location.StoreLocation):
@@ -57,8 +63,9 @@ class StoreLocation(glance.store.location.StoreLocation):
         self.scheme = pieces.scheme
         path = (pieces.netloc + pieces.path).strip()
         if path == '':
-            reason = _("No path specified")
-            raise exception.BadStoreUri(uri, reason)
+            reason = _("No path specified in URI: %s") % uri
+            LOG.debug(reason)
+            raise exception.BadStoreUri('No path specified')
         self.path = path
 
 
@@ -96,7 +103,8 @@ class ChunkedFile(object):
 
 class Store(glance.store.base.Store):
 
-    datadir_opt = cfg.StrOpt('filesystem_store_datadir')
+    def get_schemes(self):
+        return ('file', 'filesystem')
 
     def configure_add(self):
         """
@@ -105,27 +113,40 @@ class Store(glance.store.base.Store):
         this method. If the store was not able to successfully configure
         itself, it should raise `exception.BadStoreConfiguration`
         """
-        self.conf.register_opt(self.datadir_opt)
-
-        self.datadir = self.conf.filesystem_store_datadir
+        self.datadir = CONF.filesystem_store_datadir
         if self.datadir is None:
-            reason = _("Could not find %s in configuration options.") % \
-                'filesystem_store_datadir'
-            logger.error(reason)
+            reason = (_("Could not find %s in configuration options.") %
+                      'filesystem_store_datadir')
+            LOG.error(reason)
             raise exception.BadStoreConfiguration(store_name="filesystem",
                                                   reason=reason)
 
         if not os.path.exists(self.datadir):
             msg = _("Directory to write image files does not exist "
                     "(%s). Creating.") % self.datadir
-            logger.info(msg)
+            LOG.info(msg)
             try:
                 os.makedirs(self.datadir)
-            except IOError:
+            except (IOError, OSError):
+                if os.path.exists(self.datadir):
+                    # NOTE(markwash): If the path now exists, some other
+                    # process must have beat us in the race condition. But it
+                    # doesn't hurt, so we can safely ignore the error.
+                    return
                 reason = _("Unable to create datadir: %s") % self.datadir
-                logger.error(reason)
+                LOG.error(reason)
                 raise exception.BadStoreConfiguration(store_name="filesystem",
                                                       reason=reason)
+
+    @staticmethod
+    def _resolve_location(location):
+        filepath = location.store_location.path
+
+        if not os.path.exists(filepath):
+            raise exception.NotFound(_("Image file %s not found") % filepath)
+
+        filesize = os.path.getsize(filepath)
+        return filepath, filesize
 
     def get(self, location):
         """
@@ -137,14 +158,25 @@ class Store(glance.store.base.Store):
                         from glance.store.location.get_location_from_uri()
         :raises `glance.exception.NotFound` if image does not exist
         """
-        loc = location.store_location
-        filepath = loc.path
-        if not os.path.exists(filepath):
-            raise exception.NotFound(_("Image file %s not found") % filepath)
-        else:
-            msg = _("Found image at %s. Returning in ChunkedFile.") % filepath
-            logger.debug(msg)
-            return (ChunkedFile(filepath), None)
+        filepath, filesize = self._resolve_location(location)
+        msg = _("Found image at %s. Returning in ChunkedFile.") % filepath
+        LOG.debug(msg)
+        return (ChunkedFile(filepath), filesize)
+
+    def get_size(self, location):
+        """
+        Takes a `glance.store.location.Location` object that indicates
+        where to find the image file and returns the image size
+
+        :param location `glance.store.location.Location` object, supplied
+                        from glance.store.location.get_location_from_uri()
+        :raises `glance.exception.NotFound` if image does not exist
+        :rtype int
+        """
+        filepath, filesize = self._resolve_location(location)
+        msg = _("Found image at %s.") % filepath
+        LOG.debug(msg)
+        return filesize
 
     def delete(self, location):
         """
@@ -161,7 +193,7 @@ class Store(glance.store.base.Store):
         fn = loc.path
         if os.path.exists(fn):
             try:
-                logger.debug(_("Deleting image at %(fn)s") % locals())
+                LOG.debug(_("Deleting image at %(fn)s") % locals())
                 os.unlink(fn)
             except OSError:
                 raise exception.Forbidden(_("You cannot delete file %s") % fn)
@@ -171,14 +203,14 @@ class Store(glance.store.base.Store):
     def add(self, image_id, image_file, image_size):
         """
         Stores an image file with supplied identifier to the backend
-        storage system and returns an `glance.store.ImageAddResult` object
-        containing information about the stored image.
+        storage system and returns a tuple containing information
+        about the stored image.
 
         :param image_id: The opaque image identifier
         :param image_file: The image data to write, as a file-like object
         :param image_size: The size of the image data to write, in bytes
 
-        :retval `glance.store.ImageAddResult` object
+        :retval tuple of URL in backing store, bytes written, and checksum
         :raises `glance.common.exception.Duplicate` if the image already
                 existed
 
@@ -199,23 +231,31 @@ class Store(glance.store.base.Store):
         try:
             with open(filepath, 'wb') as f:
                 for buf in utils.chunkreadable(image_file,
-                                              ChunkedFile.CHUNKSIZE):
+                                               ChunkedFile.CHUNKSIZE):
                     bytes_written += len(buf)
                     checksum.update(buf)
                     f.write(buf)
         except IOError as e:
-            if e.errno in [errno.EFBIG, errno.ENOSPC]:
-                raise exception.StorageFull()
-            elif e.errno == errno.EACCES:
-                raise exception.StorageWriteDenied()
-            else:
-                raise
+            if e.errno != errno.EACCES:
+                self._delete_partial(filepath, image_id)
+            exceptions = {errno.EFBIG: exception.StorageFull(),
+                          errno.ENOSPC: exception.StorageFull(),
+                          errno.EACCES: exception.StorageWriteDenied()}
+            raise exceptions.get(e.errno, e)
+        except:
+            self._delete_partial(filepath, image_id)
+            raise
 
         checksum_hex = checksum.hexdigest()
 
-        logger.debug(_("Wrote %(bytes_written)d bytes to %(filepath)s with "
-                     "checksum %(checksum_hex)s") % locals())
+        LOG.debug(_("Wrote %(bytes_written)d bytes to %(filepath)s with "
+                    "checksum %(checksum_hex)s") % locals())
         return ('file://%s' % filepath, bytes_written, checksum_hex)
 
-
-glance.store.register_store(__name__, ['filesystem', 'file'])
+    @staticmethod
+    def _delete_partial(filepath, id):
+        try:
+            os.unlink(filepath)
+        except Exception as e:
+            msg = _('Unable to remove partial image data for image %s: %s')
+            LOG.error(msg % (id, e))

@@ -15,21 +15,15 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+
 """
 Cleans up any invalid cache entries
 """
 
-import logging
-
-from glance.image_cache import ImageCache
-
-logger = logging.getLogger(__name__)
+from glance.image_cache import base
 
 
-class Cleaner(object):
-    def __init__(self, conf, **local_conf):
-        self.conf = conf
-        self.cache = ImageCache(conf)
+class Cleaner(base.CacheApp):
 
     def run(self):
         self.cache.clean()

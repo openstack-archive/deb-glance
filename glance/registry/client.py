@@ -24,7 +24,10 @@ import json
 
 from glance.common.client import BaseClient
 from glance.common import crypt
+import glance.openstack.common.log as logging
 from glance.registry.api.v1 import images
+
+LOG = logging.getLogger(__name__)
 
 
 class RegistryClient(BaseClient):
@@ -46,18 +49,18 @@ class RegistryClient(BaseClient):
                             **kwargs)
 
     def decrypt_metadata(self, image_metadata):
-        if (self.metadata_encryption_key is not None
-            and 'location' in image_metadata.keys()
-            and image_metadata['location'] is not None):
+        if (self.metadata_encryption_key is not None and
+            'location' in image_metadata and
+            image_metadata['location'] is not None):
             location = crypt.urlsafe_decrypt(self.metadata_encryption_key,
                                              image_metadata['location'])
             image_metadata['location'] = location
         return image_metadata
 
     def encrypt_metadata(self, image_metadata):
-        if (self.metadata_encryption_key is not None
-            and 'location' in image_metadata.keys()
-            and image_metadata['location'] is not None):
+        if (self.metadata_encryption_key is not None and
+            'location' in image_metadata and
+            image_metadata['location'] is not None):
             location = crypt.urlsafe_encrypt(self.metadata_encryption_key,
                                              image_metadata['location'], 64)
             image_metadata['location'] = location
@@ -79,6 +82,24 @@ class RegistryClient(BaseClient):
         for image in image_list:
             image = self.decrypt_metadata(image)
         return image_list
+
+    def do_request(self, method, action, **kwargs):
+        try:
+            res = super(RegistryClient, self).do_request(method,
+                                                         action,
+                                                         **kwargs)
+            status = res.status
+            request_id = res.getheader('x-openstack-request-id')
+            msg = _("Registry request %(method)s %(action)s HTTP %(status)s"
+                    " request id %(request_id)s")
+            LOG.debug(msg % locals())
+
+        except Exception as exc:
+            exc_name = exc.__class__.__name__
+            LOG.info(_("Registry client request %(method)s %(action)s "
+                       "raised %(exc_name)s") % locals())
+            raise
+        return res
 
     def get_images_detailed(self, **kwargs):
         """
@@ -111,14 +132,14 @@ class RegistryClient(BaseClient):
             'Content-Type': 'application/json',
         }
 
-        if 'image' not in image_metadata.keys():
+        if 'image' not in image_metadata:
             image_metadata = dict(image=image_metadata)
 
-        image_metadata['image'] = self.encrypt_metadata(
-                                      image_metadata['image'])
+        encrypted_metadata = self.encrypt_metadata(image_metadata['image'])
+        image_metadata['image'] = encrypted_metadata
         body = json.dumps(image_metadata)
 
-        res = self.do_request("POST", "/images", body, headers=headers)
+        res = self.do_request("POST", "/images", body=body, headers=headers)
         # Registry returns a JSONified dict(image=image_info)
         data = json.loads(res.read())
         image = data['image']
@@ -128,11 +149,11 @@ class RegistryClient(BaseClient):
         """
         Updates Registry's information about an image
         """
-        if 'image' not in image_metadata.keys():
+        if 'image' not in image_metadata:
             image_metadata = dict(image=image_metadata)
 
-        image_metadata['image'] = self.encrypt_metadata(
-                                      image_metadata['image'])
+        encrypted_metadata = self.encrypt_metadata(image_metadata['image'])
+        image_metadata['image'] = encrypted_metadata
         body = json.dumps(image_metadata)
 
         headers = {
@@ -142,7 +163,8 @@ class RegistryClient(BaseClient):
         if purge_props:
             headers["X-Glance-Registry-Purge-Props"] = "true"
 
-        res = self.do_request("PUT", "/images/%s" % image_id, body, headers)
+        res = self.do_request("PUT", "/images/%s" % image_id, body=body,
+                              headers=headers)
         data = json.loads(res.read())
         image = data['image']
         return self.decrypt_metadata(image)
@@ -151,8 +173,10 @@ class RegistryClient(BaseClient):
         """
         Deletes Registry's information about an image
         """
-        self.do_request("DELETE", "/images/%s" % image_id)
-        return True
+        res = self.do_request("DELETE", "/images/%s" % image_id)
+        data = json.loads(res.read())
+        image = data['image']
+        return image
 
     def get_image_members(self, image_id):
         """Returns a list of membership associations from Registry"""
@@ -179,8 +203,8 @@ class RegistryClient(BaseClient):
         headers = {'Content-Type': 'application/json', }
 
         res = self.do_request("PUT", "/images/%s/members" % image_id,
-                              body, headers)
-        return res.status == 204
+                              body=body, headers=headers)
+        return self.get_status_code(res) == 204
 
     def add_member(self, image_id, member_id, can_share=None):
         """Adds to Registry's information about image membership"""
@@ -191,12 +215,13 @@ class RegistryClient(BaseClient):
             body = json.dumps(dict(member=dict(can_share=can_share)))
             headers['Content-Type'] = 'application/json'
 
-        res = self.do_request("PUT", "/images/%s/members/%s" %
-                              (image_id, member_id), body, headers)
-        return res.status == 204
+        url = "/images/%s/members/%s" % (image_id, member_id)
+        res = self.do_request("PUT", url, body=body,
+                              headers=headers)
+        return self.get_status_code(res) == 204
 
     def delete_member(self, image_id, member_id):
         """Deletes Registry's information about image membership"""
         res = self.do_request("DELETE", "/images/%s/members/%s" %
                               (image_id, member_id))
-        return res.status == 204
+        return self.get_status_code(res) == 204

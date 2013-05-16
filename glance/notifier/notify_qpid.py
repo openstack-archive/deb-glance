@@ -15,23 +15,21 @@
 
 
 import json
-import logging
 
+from oslo.config import cfg
 import qpid.messaging
 
-from glance.common import cfg
 from glance.notifier import strategy
+import glance.openstack.common.log as logging
 
-
-logger = logging.getLogger('glance.notifier.notify_qpid')
-
+LOG = logging.getLogger(__name__)
 
 qpid_opts = [
     cfg.StrOpt('qpid_notification_exchange',
                default='glance',
                help='Qpid exchange for notifications'),
     cfg.StrOpt('qpid_notification_topic',
-               default='glance_notifications',
+               default='notifications',
                help='Qpid topic for notifications'),
     cfg.StrOpt('qpid_hostname',
                default='localhost',
@@ -44,7 +42,8 @@ qpid_opts = [
                help='Username for qpid connection'),
     cfg.StrOpt('qpid_password',
                default='',
-               help='Password for qpid connection'),
+               help='Password for qpid connection',
+               secret=True),
     cfg.StrOpt('qpid_sasl_mechanisms',
                default='',
                help='Space separated list of SASL mechanisms to use for auth'),
@@ -64,7 +63,7 @@ qpid_opts = [
                default=0,
                help='Equivalent to setting max and min to the same value'),
     cfg.IntOpt('qpid_heartbeat',
-               default=5,
+               default=60,
                help='Seconds between connection keepalive heartbeats'),
     cfg.StrOpt('qpid_protocol',
                default='tcp',
@@ -72,49 +71,45 @@ qpid_opts = [
     cfg.BoolOpt('qpid_tcp_nodelay',
                 default=True,
                 help='Disable Nagle algorithm'),
-    ]
+]
+
+CONF = cfg.CONF
+CONF.register_opts(qpid_opts)
 
 
 class QpidStrategy(strategy.Strategy):
     """A notifier that puts a message on a queue when called."""
 
-    def __init__(self, conf):
+    def _get_session(self):
         """Initialize the Qpid notification strategy."""
-        self.conf = conf
-        self.conf.register_opts(qpid_opts)
-
-        self.broker = self.conf.qpid_hostname + ":" + self.conf.qpid_port
-        self.connection = qpid.messaging.Connection(self.broker)
-        self.connection.username = self.conf.qpid_username
-        self.connection.password = self.conf.qpid_password
-        self.connection.sasl_mechanisms = self.conf.qpid_sasl_mechanisms
+        broker = CONF.qpid_hostname + ":" + CONF.qpid_port
+        self.connection = qpid.messaging.Connection(broker)
+        self.connection.username = CONF.qpid_username
+        self.connection.password = CONF.qpid_password
+        self.connection.sasl_mechanisms = CONF.qpid_sasl_mechanisms
         # Hard code this option as enabled so that reconnect logic isn't needed
         # in this file at all.
         self.connection.reconnect = True
-        if self.conf.qpid_reconnect_timeout:
-            self.connection.reconnect_timeout = (
-                                            self.conf.qpid_reconnect_timeout)
-        if self.conf.qpid_reconnect_limit:
-            self.connection.reconnect_limit = self.conf.qpid_reconnect_limit
-        if self.conf.qpid_reconnect_interval_max:
+        if CONF.qpid_reconnect_timeout:
+            self.connection.reconnect_timeout = CONF.qpid_reconnect_timeout
+        if CONF.qpid_reconnect_limit:
+            self.connection.reconnect_limit = CONF.qpid_reconnect_limit
+        if CONF.qpid_reconnect_interval_max:
             self.connection.reconnect_interval_max = (
-                                        self.conf.qpid_reconnect_interval_max)
-        if self.conf.qpid_reconnect_interval_min:
+                                        CONF.qpid_reconnect_interval_max)
+        if CONF.qpid_reconnect_interval_min:
             self.connection.reconnect_interval_min = (
-                                        self.conf.qpid_reconnect_interval_min)
-        if self.conf.qpid_reconnect_interval:
-            self.connection.reconnect_interval = (
-                                        self.conf.qpid_reconnect_interval)
-        self.connection.hearbeat = self.conf.qpid_heartbeat
-        self.connection.protocol = self.conf.qpid_protocol
-        self.connection.tcp_nodelay = self.conf.qpid_tcp_nodelay
+                                        CONF.qpid_reconnect_interval_min)
+        if CONF.qpid_reconnect_interval:
+            self.connection.reconnect_interval = CONF.qpid_reconnect_interval
+        self.connection.heartbeat = CONF.qpid_heartbeat
+        self.connection.protocol = CONF.qpid_protocol
+        self.connection.tcp_nodelay = CONF.qpid_tcp_nodelay
         self.connection.open()
-        self.session = self.connection.session()
-        logger.info(_('Connected to AMQP server on %s') % self.broker)
+        session = self.connection.session()
+        LOG.info(_('Connected to AMQP server on %s') % broker)
 
-        self.sender_info = self._sender("info")
-        self.sender_warn = self._sender("warn")
-        self.sender_error = self._sender("error")
+        return session
 
     def _sender(self, priority):
         addr_opts = {
@@ -129,19 +124,22 @@ class QpidStrategy(strategy.Strategy):
                 },
             },
         }
-        topic = "%s.%s" % (self.conf.qpid_notification_topic, priority)
-        address = "%s/%s ; %s" % (self.conf.qpid_notification_exchange, topic,
+        topic = "%s.%s" % (CONF.qpid_notification_topic, priority)
+        address = "%s/%s ; %s" % (CONF.qpid_notification_exchange, topic,
                                   json.dumps(addr_opts))
-        return self.session.sender(address)
+        return self._get_session().sender(address)
 
     def warn(self, msg):
         qpid_msg = qpid.messaging.Message(content=msg)
-        self.sender_warn.send(qpid_msg)
+        self._sender('warn').send(qpid_msg)
+        self.connection.close()
 
     def info(self, msg):
         qpid_msg = qpid.messaging.Message(content=msg)
-        self.sender_info.send(qpid_msg)
+        self._sender('info').send(qpid_msg)
+        self.connection.close()
 
     def error(self, msg):
         qpid_msg = qpid.messaging.Message(content=msg)
-        self.sender_error.send(qpid_msg)
+        self._sender('error').send(qpid_msg)
+        self.connection.close()

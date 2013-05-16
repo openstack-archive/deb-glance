@@ -18,13 +18,41 @@ _Description: Pipeline flavor:
  select "keystone". If you don't use this service, you can safely choose
  "caching" only.
 
-Template: glance/auth-url
+Template: glance/auth-host
 Type: string
-Default: http://localhost:5000
-_Description: Auth server URL:
+Default: 127.0.0.1
+_Description: Auth server hostname:
  Please specify the URL of your Glance authentication server. Typically
  this is also the URL of your OpenStack Identity Service (Keystone).
 
-Template: glance/auth-token
+Template: glance/admin-tenant-name
 Type: string
-_Description: Auth server admin token:
+Default: admin
+_Description: Auth server tenant name:
+
+Template: glance/admin-user
+Type: string
+Default: admin
+_Description: Auth server username:
+
+Template: glance/admin-password
+Type: password
+_Description: Auth server password:
+
+Template: glance/configure_db
+Type: boolean
+Default: true
+_Description: Set up a database for glance?
+ No database has been set up for glance-registry or glance-api to use. Before
+ continuing, you should make sure you have:
+ .
+  - the server host name (that server must allow TCP connections from this
+    machine);
+  - a username and password to access the database.
+  - A database type that you want to use.
+ .
+ If some of these requirements are missing, reject this option and run with
+ regular sqlite support.
+ .
+ You can change this setting later on by running 'dpkg-reconfigure -plow
+ glance-common'.

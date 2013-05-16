@@ -20,145 +20,56 @@
 import errno
 import functools
 import os
-import random
 import socket
+import StringIO
 import subprocess
-import tempfile
 
-import nose.plugins.skip
+from oslo.config import cfg
+import stubout
+import testtools
 
 from glance.common import config
-from glance.common import utils
+from glance.common import exception
 from glance.common import wsgi
+from glance import context
+
+CONF = cfg.CONF
 
 
-def get_isolated_test_env():
-    """
-    Returns a tuple of (test_id, test_dir) that is unique
-    for an isolated test environment. Also ensure the test_dir
-    is created.
-    """
-    test_id = random.randint(0, 100000)
-    test_dir = os.path.join("/", "tmp", "test.%d" % test_id)
-    utils.safe_mkdirs(test_dir)
-    return test_id, test_dir
+class BaseTestCase(testtools.TestCase):
 
+    def setUp(self):
+        super(BaseTestCase, self).setUp()
 
-class TestConfigOpts(config.GlanceConfigOpts):
-    """
-    Support easily controllable config for unit tests, avoiding the
-    need to manipulate config files directly.
+        #NOTE(bcwaldon): parse_args has to be called to register certain
+        # command-line options - specifically we need config_dir for
+        # the following policy tests
+        config.parse_args(args=[])
+        self.addCleanup(CONF.reset)
+        self.stubs = stubout.StubOutForTesting()
+        self.stubs.Set(exception, '_FATAL_EXCEPTION_FORMAT_ERRORS', True)
 
-    Configuration values are provided as a dictionary of key-value pairs,
-    in the simplest case feeding into the DEFAULT group only.
+    def tearDown(self):
+        self.stubs.UnsetAll()
+        self.stubs.SmartUnsetAll()
+        super(BaseTestCase, self).tearDown()
 
-    Non-default groups may also populated via nested dictionaries, e.g.
+    def config(self, **kw):
+        """
+        Override some configuration values.
 
-      {'snafu': {'foo': 'bar', 'bells': 'whistles'}}
+        The keyword arguments are the names of configuration options to
+        override and their values.
 
-    equates to config of form:
+        If a group argument is supplied, the overrides are applied to
+        the specified configuration option group.
 
-      [snafu]
-      foo = bar
-      bells = whistles
-
-    The config so provided is dumped to a temporary file, with its path
-    exposed via the temp_file property.
-
-    :param test_values: dictionary of key-value pairs for the
-                        DEFAULT group
-    :param groups:      nested dictionary of key-value pairs for
-                        non-default groups
-    :param clean:       flag to trigger clean up of temporary directory
-    """
-
-    def __init__(self, test_values={}, groups={}, clean=True):
-        super(TestConfigOpts, self).__init__()
-        self._test_values = test_values
-        self._test_groups = groups
-        self.clean = clean
-
-        self.temp_file = os.path.join(tempfile.mkdtemp(), 'testcfg.conf')
-
-        self()
-
-    def __call__(self):
-        self._write_tmp_config_file()
-        try:
-            super(TestConfigOpts, self).\
-                __call__(['--config-file', self.temp_file])
-        finally:
-            if self.clean:
-                os.remove(self.temp_file)
-                os.rmdir(os.path.dirname(self.temp_file))
-
-    def _write_tmp_config_file(self):
-        contents = '[DEFAULT]\n'
-        for key, value in self._test_values.items():
-            contents += '%s = %s\n' % (key, value)
-
-        for group, settings in self._test_groups.items():
-            contents += '[%s]\n' % group
-            for key, value in settings.items():
-                contents += '%s = %s\n' % (key, value)
-
-        try:
-            with open(self.temp_file, 'wb') as f:
-                f.write(contents)
-                f.flush()
-        except Exception, e:
-            if self.clean:
-                os.remove(self.temp_file)
-                os.rmdir(os.path.dirname(self.temp_file))
-            raise e
-
-
-class skip_test(object):
-    """Decorator that skips a test."""
-    def __init__(self, msg):
-        self.message = msg
-
-    def __call__(self, func):
-        def _skipper(*args, **kw):
-            """Wrapped skipper function."""
-            raise nose.SkipTest(self.message)
-        _skipper.__name__ = func.__name__
-        _skipper.__doc__ = func.__doc__
-        return _skipper
-
-
-class skip_if(object):
-    """Decorator that skips a test if condition is true."""
-    def __init__(self, condition, msg):
-        self.condition = condition
-        self.message = msg
-
-    def __call__(self, func):
-        def _skipper(*args, **kw):
-            """Wrapped skipper function."""
-            if self.condition:
-                raise nose.SkipTest(self.message)
-            func(*args, **kw)
-        _skipper.__name__ = func.__name__
-        _skipper.__doc__ = func.__doc__
-        return _skipper
-
-
-class skip_unless(object):
-    """Decorator that skips a test if condition is not true."""
-    def __init__(self, condition, msg):
-        self.condition = condition
-        self.message = msg
-
-    def __call__(self, func):
-        def _skipper(*args, **kw):
-            """Wrapped skipper function."""
-            if not self.condition:
-                raise nose.SkipTest(self.message)
-            func(*args, **kw)
-        _skipper.__name__ = func.__name__
-        _skipper.__doc__ = func.__doc__
-        return _skipper
+        All overrides are automatically cleared at the end of the current
+        test by the fixtures cleanup process.
+        """
+        group = kw.pop('group', None)
+        for k, v in kw.iteritems():
+            CONF.set_override(k, v, group)
 
 
 class requires(object):
@@ -179,6 +90,24 @@ class requires(object):
         return _runner
 
 
+class depends_on_exe(object):
+    """Decorator to skip test if an executable is unavailable"""
+    def __init__(self, exe):
+        self.exe = exe
+
+    def __call__(self, func):
+        def _runner(*args, **kw):
+            cmd = 'which %s' % self.exe
+            exitcode, out, err = execute(cmd, raise_error=False)
+            if exitcode != 0:
+                args[0].disabled_message = 'test requires exe: %s' % self.exe
+                args[0].disabled = True
+            func(*args, **kw)
+        _runner.__name__ = func.__name__
+        _runner.__doc__ = func.__doc__
+        return _runner
+
+
 def skip_if_disabled(func):
     """Decorator that skips a test if test case is disabled."""
     @functools.wraps(func)
@@ -188,7 +117,7 @@ def skip_if_disabled(func):
         message = getattr(test_obj, 'disabled_message',
                           'Test disabled')
         if getattr(test_obj, 'disabled', False):
-            raise nose.SkipTest(message)
+            test_obj.skipTest(message)
         func(*a, **kwargs)
     return wrapped
 
@@ -342,10 +271,11 @@ def xattr_writes_supported(path):
 
 
 def minimal_headers(name, public=True):
-    headers = {'Content-Type': 'application/octet-stream',
-               'X-Image-Meta-Name': name,
-               'X-Image-Meta-disk_format': 'raw',
-               'X-Image-Meta-container_format': 'ovf',
+    headers = {
+        'Content-Type': 'application/octet-stream',
+        'X-Image-Meta-Name': name,
+        'X-Image-Meta-disk_format': 'raw',
+        'X-Image-Meta-container_format': 'ovf',
     }
     if public:
         headers['X-Image-Meta-Is-Public'] = 'True'
@@ -361,14 +291,48 @@ def minimal_add_command(port, name, suffix='', public=True):
 
 class FakeAuthMiddleware(wsgi.Middleware):
 
-    def __init__(self, app, conf, **local_conf):
+    def __init__(self, app, is_admin=False):
         super(FakeAuthMiddleware, self).__init__(app)
+        self.is_admin = is_admin
 
     def process_request(self, req):
         auth_tok = req.headers.get('X-Auth-Token')
+        user = None
+        tenant = None
+        roles = []
         if auth_tok:
-            status, user, tenant, role = auth_tok.split(':')
-            req.headers['X-Identity-Status'] = status
+            user, tenant, role = auth_tok.split(':')
+            if tenant.lower() == 'none':
+                tenant = None
+            roles = [role]
             req.headers['X-User-Id'] = user
             req.headers['X-Tenant-Id'] = tenant
-            req.headers['X-Role'] = role
+            req.headers['X-Roles'] = role
+            req.headers['X-Identity-Status'] = 'Confirmed'
+        kwargs = {
+            'user': user,
+            'tenant': tenant,
+            'roles': roles,
+            'is_admin': self.is_admin,
+            'auth_tok': auth_tok,
+        }
+
+        req.context = context.RequestContext(**kwargs)
+
+
+class FakeHTTPResponse(object):
+    def __init__(self, status=200, headers=None, data=None, *args, **kwargs):
+        data = data or 'I am a teapot, short and stout\n'
+        self.data = StringIO.StringIO(data)
+        self.read = self.data.read
+        self.status = status
+        self.headers = headers or {'content-length': len(data)}
+
+    def getheader(self, name, default=None):
+        return self.headers.get(name.lower(), default)
+
+    def getheaders(self):
+        return self.headers or {}
+
+    def read(self, amt):
+        self.data.read(amt)

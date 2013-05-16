@@ -17,24 +17,27 @@
 
 """Tests the Swift backend store"""
 
-import StringIO
 import hashlib
 import httplib
+import StringIO
 import tempfile
-import unittest
+import urllib
 
+from oslo.config import cfg
 import stubout
-import swift.common.client
+import swiftclient
 
+import glance.common.auth
 from glance.common import exception
-from glance.common import utils
+from glance.openstack.common import uuidutils
 from glance.store import BackendException
-import glance.store.swift
 from glance.store.location import get_location_from_uri
-from glance.tests import utils as test_utils
+import glance.store.swift
+from glance.tests.unit import base
 
+CONF = cfg.CONF
 
-FAKE_UUID = utils.generate_uuid
+FAKE_UUID = uuidutils.generate_uuid
 
 Store = glance.store.swift.Store
 FIVE_KB = (5 * 1024)
@@ -43,6 +46,8 @@ MAX_SWIFT_OBJECT_SIZE = FIVE_GB
 SWIFT_PUT_OBJECT_CALLS = 0
 SWIFT_CONF = {'verbose': True,
               'debug': True,
+              'known_stores': ['glance.store.swift.Store'],
+              'default_store': 'swift',
               'swift_store_user': 'user',
               'swift_store_key': 'key',
               'swift_store_auth_address': 'localhost:8080',
@@ -50,33 +55,42 @@ SWIFT_CONF = {'verbose': True,
 
 
 # We stub out as little as possible to ensure that the code paths
-# between glance.store.swift and swift.common.client are tested
+# between glance.store.swift and swiftclient are tested
 # thoroughly
-def stub_out_swift_common_client(stubs, conf):
-
+def stub_out_swiftclient(stubs, swift_store_auth_version):
     fixture_containers = ['glance']
-    fixture_headers = {'glance/%s' % FAKE_UUID:
-                {'content-length': FIVE_KB,
-                 'etag': 'c2e5db72bd7fd153f53ede5da5a06de3'}}
+    fixture_container_headers = {}
+    fixture_headers = {
+        'glance/%s' % FAKE_UUID: {
+            'content-length': FIVE_KB,
+            'etag': 'c2e5db72bd7fd153f53ede5da5a06de3'
+        }
+    }
     fixture_objects = {'glance/%s' % FAKE_UUID:
                        StringIO.StringIO("*" * FIVE_KB)}
 
     def fake_head_container(url, token, container, **kwargs):
         if container not in fixture_containers:
             msg = "No container %s found" % container
-            raise swift.common.client.ClientException(msg,
-                        http_status=httplib.NOT_FOUND)
+            raise swiftclient.ClientException(msg,
+                                              http_status=httplib.NOT_FOUND)
+        return fixture_container_headers
 
     def fake_put_container(url, token, container, **kwargs):
         fixture_containers.append(container)
+
+    def fake_post_container(url, token, container, headers, http_conn=None):
+        for key, value in headers.iteritems():
+            fixture_container_headers[key] = value
 
     def fake_put_object(url, token, container, name, contents, **kwargs):
         # PUT returns the ETag header for the newly-added object
         # Large object manifest...
         global SWIFT_PUT_OBJECT_CALLS
         SWIFT_PUT_OBJECT_CALLS += 1
+        CHUNKSIZE = 64 * 1024
         fixture_key = "%s/%s" % (container, name)
-        if not fixture_key in fixture_headers.keys():
+        if fixture_key not in fixture_headers:
             if kwargs.get('headers'):
                 etag = kwargs['headers']['ETag']
                 fixture_headers[fixture_key] = {'manifest': True,
@@ -84,12 +98,12 @@ def stub_out_swift_common_client(stubs, conf):
                 return etag
             if hasattr(contents, 'read'):
                 fixture_object = StringIO.StringIO()
-                chunk = contents.read(Store.CHUNKSIZE)
+                chunk = contents.read(CHUNKSIZE)
                 checksum = hashlib.md5()
                 while chunk:
                     fixture_object.write(chunk)
                     checksum.update(chunk)
-                    chunk = contents.read(Store.CHUNKSIZE)
+                    chunk = contents.read(CHUNKSIZE)
                 etag = checksum.hexdigest()
             else:
                 fixture_object = StringIO.StringIO(contents)
@@ -97,8 +111,8 @@ def stub_out_swift_common_client(stubs, conf):
             read_len = fixture_object.len
             if read_len > MAX_SWIFT_OBJECT_SIZE:
                 msg = ('Image size:%d exceeds Swift max:%d' %
-                        (read_len, MAX_SWIFT_OBJECT_SIZE))
-                raise swift.common.client.ClientException(
+                       (read_len, MAX_SWIFT_OBJECT_SIZE))
+                raise swiftclient.ClientException(
                         msg, http_status=httplib.REQUEST_ENTITY_TOO_LARGE)
             fixture_objects[fixture_key] = fixture_object
             fixture_headers[fixture_key] = {
@@ -108,16 +122,16 @@ def stub_out_swift_common_client(stubs, conf):
         else:
             msg = ("Object PUT failed - Object with key %s already exists"
                    % fixture_key)
-            raise swift.common.client.ClientException(msg,
-                        http_status=httplib.CONFLICT)
+            raise swiftclient.ClientException(msg,
+                                              http_status=httplib.CONFLICT)
 
     def fake_get_object(url, token, container, name, **kwargs):
         # GET returns the tuple (list of headers, file object)
         fixture_key = "%s/%s" % (container, name)
-        if not fixture_key in fixture_headers:
+        if fixture_key not in fixture_headers:
             msg = "Object GET failed"
-            raise swift.common.client.ClientException(msg,
-                        http_status=httplib.NOT_FOUND)
+            raise swiftclient.ClientException(msg,
+                                              http_status=httplib.NOT_FOUND)
 
         fixture = fixture_headers[fixture_key]
         if 'manifest' in fixture:
@@ -141,16 +155,16 @@ def stub_out_swift_common_client(stubs, conf):
             return fixture_headers[fixture_key]
         except KeyError:
             msg = "Object HEAD failed - Object does not exist"
-            raise swift.common.client.ClientException(msg,
-                        http_status=httplib.NOT_FOUND)
+            raise swiftclient.ClientException(msg,
+                                              http_status=httplib.NOT_FOUND)
 
     def fake_delete_object(url, token, container, name, **kwargs):
         # DELETE returns nothing
         fixture_key = "%s/%s" % (container, name)
-        if fixture_key not in fixture_headers.keys():
+        if fixture_key not in fixture_headers:
             msg = "Object DELETE failed - Object does not exist"
-            raise swift.common.client.ClientException(msg,
-                        http_status=httplib.NOT_FOUND)
+            raise swiftclient.ClientException(msg,
+                                              http_status=httplib.NOT_FOUND)
         else:
             del fixture_headers[fixture_key]
             del fixture_objects[fixture_key]
@@ -159,46 +173,66 @@ def stub_out_swift_common_client(stubs, conf):
         return None
 
     def fake_get_auth(url, user, key, snet, auth_version, **kwargs):
+        if url is None:
+            return None, None
         if 'http' in url and '://' not in url:
             raise ValueError('Invalid url %s' % url)
         # Check the auth version against the configured value
-        if conf['swift_store_auth_version'] != auth_version:
+        if swift_store_auth_version != auth_version:
             msg = 'AUTHENTICATION failed (version mismatch)'
-            raise swift.common.client.ClientException(msg)
+            raise swiftclient.ClientException(msg)
         return None, None
 
-    stubs.Set(swift.common.client,
+    stubs.Set(swiftclient.client,
               'head_container', fake_head_container)
-    stubs.Set(swift.common.client,
+    stubs.Set(swiftclient.client,
               'put_container', fake_put_container)
-    stubs.Set(swift.common.client,
+    stubs.Set(swiftclient.client,
+              'post_container', fake_post_container)
+    stubs.Set(swiftclient.client,
               'put_object', fake_put_object)
-    stubs.Set(swift.common.client,
+    stubs.Set(swiftclient.client,
               'delete_object', fake_delete_object)
-    stubs.Set(swift.common.client,
+    stubs.Set(swiftclient.client,
               'head_object', fake_head_object)
-    stubs.Set(swift.common.client,
+    stubs.Set(swiftclient.client,
               'get_object', fake_get_object)
-    stubs.Set(swift.common.client,
+    stubs.Set(swiftclient.client,
               'get_auth', fake_get_auth)
-    stubs.Set(swift.common.client,
+    stubs.Set(swiftclient.client,
               'http_connection', fake_http_connection)
 
 
 class SwiftTests(object):
 
+    @property
+    def swift_store_user(self):
+        return urllib.quote(CONF.swift_store_user)
+
     def test_get_size(self):
         """
         Test that we can get the size of an object in the swift store
         """
-        uri = "swift://user:key@auth_address/glance/%s" % FAKE_UUID
+        uri = "swift://%s:key@auth_address/glance/%s" % (
+            self.swift_store_user, FAKE_UUID)
         loc = get_location_from_uri(uri)
         image_size = self.store.get_size(loc)
         self.assertEqual(image_size, 5120)
 
+    def test_get_size_with_multi_tenant_on(self):
+        """Test that single tenant uris work with multi tenant on."""
+        uri = ("swift://%s:key@auth_address/glance/%s" %
+               (self.swift_store_user, FAKE_UUID))
+        self.config(swift_store_multi_tenant=True)
+        #NOTE(markwash): ensure the image is found
+        context = glance.context.RequestContext()
+        size = glance.store.get_size_from_backend(context, uri)
+        self.assertEqual(size, 5120)
+
     def test_get(self):
         """Test a "normal" retrieval of an image in chunks"""
-        uri = "swift://user:key@auth_address/glance/%s" % FAKE_UUID
+        uri = "swift://%s:key@auth_address/glance/%s" % (
+            self.swift_store_user, FAKE_UUID)
         loc = get_location_from_uri(uri)
         (image_swift, image_size) = self.store.get(loc)
         self.assertEqual(image_size, 5120)
@@ -216,8 +250,9 @@ class SwiftTests(object):
         specified either via a Location header with swift+http:// or using
         http:// in the swift_store_auth_address config value
         """
-        loc = get_location_from_uri("swift+http://user:key@auth_address/"
-                                    "glance/%s" % FAKE_UUID)
+        loc = get_location_from_uri("swift+http://%s:key@auth_address/"
+                                    "glance/%s" %
+                                    (self.swift_store_user, FAKE_UUID))
         (image_swift, image_size) = self.store.get(loc)
         self.assertEqual(image_size, 5120)
 
@@ -233,7 +268,8 @@ class SwiftTests(object):
         Test that trying to retrieve a swift that doesn't exist
         raises an error
         """
-        loc = get_location_from_uri("swift://user:key@authurl/glance/noexist")
+        loc = get_location_from_uri("swift://%s:key@authurl/glance/noexist" % (
+                    self.swift_store_user))
         self.assertRaises(exception.NotFound,
                           self.store.get,
                           loc)
@@ -243,9 +279,10 @@ class SwiftTests(object):
         expected_swift_size = FIVE_KB
         expected_swift_contents = "*" * expected_swift_size
         expected_checksum = hashlib.md5(expected_swift_contents).hexdigest()
-        expected_image_id = utils.generate_uuid()
-        expected_location = 'swift+https://user:key@localhost:8080' + \
-                            '/glance/%s' % expected_image_id
+        expected_image_id = uuidutils.generate_uuid()
+        loc = 'swift+https://%s:key@localhost:8080/glance/%s'
+        expected_location = loc % (self.swift_store_user,
+                                   expected_image_id)
         image_swift = StringIO.StringIO(expected_swift_contents)
 
         global SWIFT_PUT_OBJECT_CALLS
@@ -275,40 +312,41 @@ class SwiftTests(object):
         a variety of different auth_address values
         """
         variations = {
-            'http://localhost:80': 'swift+http://user:key@localhost:80'
+            'http://localhost:80': 'swift+http://%s:key@localhost:80'
                                    '/glance/%s',
-            'http://localhost': 'swift+http://user:key@localhost/glance/%s',
-            'http://localhost/v1': 'swift+http://user:key@localhost'
+            'http://localhost': 'swift+http://%s:key@localhost/glance/%s',
+            'http://localhost/v1': 'swift+http://%s:key@localhost'
                                    '/v1/glance/%s',
-            'http://localhost/v1/': 'swift+http://user:key@localhost'
+            'http://localhost/v1/': 'swift+http://%s:key@localhost'
                                     '/v1/glance/%s',
-            'https://localhost': 'swift+https://user:key@localhost/glance/%s',
-            'https://localhost:8080': 'swift+https://user:key@localhost:8080'
+            'https://localhost': 'swift+https://%s:key@localhost/glance/%s',
+            'https://localhost:8080': 'swift+https://%s:key@localhost:8080'
                                       '/glance/%s',
-            'https://localhost/v1': 'swift+https://user:key@localhost'
+            'https://localhost/v1': 'swift+https://%s:key@localhost'
                                     '/v1/glance/%s',
-            'https://localhost/v1/': 'swift+https://user:key@localhost'
+            'https://localhost/v1/': 'swift+https://%s:key@localhost'
                                      '/v1/glance/%s',
-            'localhost': 'swift+https://user:key@localhost/glance/%s',
-            'localhost:8080/v1': 'swift+https://user:key@localhost:8080'
+            'localhost': 'swift+https://%s:key@localhost/glance/%s',
+            'localhost:8080/v1': 'swift+https://%s:key@localhost:8080'
                                  '/v1/glance/%s',
         }
 
         for variation, expected_location in variations.items():
-            image_id = utils.generate_uuid()
-            expected_location = expected_location % image_id
+            image_id = uuidutils.generate_uuid()
+            expected_location = expected_location % (
+                self.swift_store_user, image_id)
             expected_swift_size = FIVE_KB
             expected_swift_contents = "*" * expected_swift_size
             expected_checksum = \
-                    hashlib.md5(expected_swift_contents).hexdigest()
-            self.conf['swift_store_auth_address'] = variation
+                hashlib.md5(expected_swift_contents).hexdigest()
 
             image_swift = StringIO.StringIO(expected_swift_contents)
 
             global SWIFT_PUT_OBJECT_CALLS
             SWIFT_PUT_OBJECT_CALLS = 0
 
-            self.store = Store(test_utils.TestConfigOpts(self.conf))
+            self.config(swift_store_auth_address=variation)
+            self.store = Store()
             location, size, checksum = self.store.add(image_id, image_swift,
                                                       expected_swift_size)
 
@@ -330,10 +368,11 @@ class SwiftTests(object):
         Tests that adding an image with a non-existing container
         raises an appropriate exception
         """
-        self.conf['swift_store_create_container_on_put'] = 'False'
-        self.conf['swift_store_container'] = 'noexist'
+        self.config(swift_store_create_container_on_put=False,
+                    swift_store_container='noexist')
+        self.store = Store()
+
         image_swift = StringIO.StringIO("nevergonnamakeit")
-        self.store = Store(test_utils.TestConfigOpts(self.conf))
 
         global SWIFT_PUT_OBJECT_CALLS
         SWIFT_PUT_OBJECT_CALLS = 0
@@ -343,7 +382,7 @@ class SwiftTests(object):
         # simply used self.assertRaises here
         exception_caught = False
         try:
-            self.store.add(utils.generate_uuid(), image_swift, 0)
+            self.store.add(uuidutils.generate_uuid(), image_swift, 0)
         except BackendException, e:
             exception_caught = True
             self.assertTrue("container noexist does not exist "
@@ -356,20 +395,21 @@ class SwiftTests(object):
         Tests that adding an image with a non-existing container
         creates the container automatically if flag is set
         """
-        self.conf['swift_store_create_container_on_put'] = 'True'
-        self.conf['swift_store_container'] = 'noexist'
         expected_swift_size = FIVE_KB
         expected_swift_contents = "*" * expected_swift_size
         expected_checksum = hashlib.md5(expected_swift_contents).hexdigest()
-        expected_image_id = utils.generate_uuid()
-        expected_location = 'swift+https://user:key@localhost:8080' + \
-                            '/noexist/%s' % expected_image_id
+        expected_image_id = uuidutils.generate_uuid()
+        loc = 'swift+https://%s:key@localhost:8080/noexist/%s'
+        expected_location = loc % (self.swift_store_user,
+                                   expected_image_id)
         image_swift = StringIO.StringIO(expected_swift_contents)
 
         global SWIFT_PUT_OBJECT_CALLS
         SWIFT_PUT_OBJECT_CALLS = 0
 
-        self.store = Store(test_utils.TestConfigOpts(self.conf))
+        self.config(swift_store_create_container_on_put=True,
+                    swift_store_container='noexist')
+        self.store = Store()
         location, size, checksum = self.store.add(expected_image_id,
                                                   image_swift,
                                                   expected_swift_size)
@@ -394,19 +434,20 @@ class SwiftTests(object):
         and then verify that there have been a number of calls to
         put_object()...
         """
-        self.conf['swift_store_container'] = 'glance'
         expected_swift_size = FIVE_KB
         expected_swift_contents = "*" * expected_swift_size
         expected_checksum = hashlib.md5(expected_swift_contents).hexdigest()
-        expected_image_id = utils.generate_uuid()
-        expected_location = 'swift+https://user:key@localhost:8080' + \
-                            '/glance/%s' % expected_image_id
+        expected_image_id = uuidutils.generate_uuid()
+        loc = 'swift+https://%s:key@localhost:8080/glance/%s'
+        expected_location = loc % (self.swift_store_user,
+                                   expected_image_id)
         image_swift = StringIO.StringIO(expected_swift_contents)
 
         global SWIFT_PUT_OBJECT_CALLS
         SWIFT_PUT_OBJECT_CALLS = 0
 
-        self.store = Store(test_utils.TestConfigOpts(self.conf))
+        self.config(swift_store_container='glance')
+        self.store = Store()
         orig_max_size = self.store.large_object_size
         orig_temp_size = self.store.large_object_chunk_size
         try:
@@ -445,15 +486,14 @@ class SwiftTests(object):
 
         Bug lp:891738
         """
-        self.conf['swift_store_container'] = 'glance'
-
         # Set up a 'large' image of 5KB
         expected_swift_size = FIVE_KB
         expected_swift_contents = "*" * expected_swift_size
         expected_checksum = hashlib.md5(expected_swift_contents).hexdigest()
-        expected_image_id = utils.generate_uuid()
-        expected_location = 'swift+https://user:key@localhost:8080' + \
-                            '/glance/%s' % expected_image_id
+        expected_image_id = uuidutils.generate_uuid()
+        loc = 'swift+https://%s:key@localhost:8080/glance/%s'
+        expected_location = loc % (self.swift_store_user,
+                                   expected_image_id)
         image_swift = StringIO.StringIO(expected_swift_contents)
 
         global SWIFT_PUT_OBJECT_CALLS
@@ -461,7 +501,8 @@ class SwiftTests(object):
 
         # Temporarily set Swift MAX_SWIFT_OBJECT_SIZE to 1KB and add our image,
         # explicitly setting the image_length to 0
-        self.store = Store(test_utils.TestConfigOpts(self.conf))
+        self.config(swift_store_container='glance')
+        self.store = Store()
         orig_max_size = self.store.large_object_size
         orig_temp_size = self.store.large_object_chunk_size
         global MAX_SWIFT_OBJECT_SIZE
@@ -505,10 +546,12 @@ class SwiftTests(object):
                           FAKE_UUID, image_swift, 0)
 
     def _option_required(self, key):
-        del self.conf[key]
+        conf = self.getConfig()
+        conf[key] = None
 
         try:
-            self.store = Store(test_utils.TestConfigOpts(self.conf))
+            self.config(**conf)
+            self.store = Store()
             return self.store.add == self.store.add_disabled
         except:
             return False
@@ -536,7 +579,8 @@ class SwiftTests(object):
         """
         Test we can delete an existing image in the swift store
         """
-        uri = "swift://user:key@authurl/glance/%s" % FAKE_UUID
+        uri = "swift://%s:key@authurl/glance/%s" % (
+            self.swift_store_user, FAKE_UUID)
         loc = get_location_from_uri(uri)
         self.store.delete(loc)
 
@@ -547,37 +591,332 @@ class SwiftTests(object):
         Test that trying to delete a swift that doesn't exist
         raises an error
         """
-        loc = get_location_from_uri("swift://user:key@authurl/glance/noexist")
+        loc = get_location_from_uri("swift://%s:key@authurl/glance/noexist" % (
+                self.swift_store_user))
         self.assertRaises(exception.NotFound, self.store.delete, loc)
 
+    def test_read_acl_public(self):
+        """
+        Test that we can set a public read acl.
+        """
+        self.config(swift_store_multi_tenant=True)
+        context = glance.context.RequestContext()
+        store = Store(context)
+        uri = "swift+http://storeurl/glance/%s" % FAKE_UUID
+        loc = get_location_from_uri(uri)
+        store.set_acls(loc, public=True)
+        container_headers = swiftclient.client.head_container('x', 'y',
+                                                              'glance')
+        self.assertEqual(container_headers['X-Container-Read'], ".r:*")
 
-class TestStoreAuthV1(unittest.TestCase, SwiftTests):
+    def test_read_acl_tenants(self):
+        """
+        Test that we can set read acl for tenants.
+        """
+        self.config(swift_store_multi_tenant=True)
+        context = glance.context.RequestContext()
+        store = Store(context)
+        uri = "swift+http://storeurl/glance/%s" % FAKE_UUID
+        loc = get_location_from_uri(uri)
+        read_tenants = ['matt', 'mark']
+        store.set_acls(loc, read_tenants=read_tenants)
+        container_headers = swiftclient.client.head_container('x', 'y',
+                                                              'glance')
+        self.assertEqual(container_headers['X-Container-Read'],
+                         ','.join(read_tenants))
+
+    def test_read_write_public(self):
+        """
+        Test that we can set write acl for tenants.
+        """
+        self.config(swift_store_multi_tenant=True)
+        context = glance.context.RequestContext()
+        store = Store(context)
+        uri = "swift+http://storeurl/glance/%s" % FAKE_UUID
+        loc = get_location_from_uri(uri)
+        read_tenants = ['frank', 'jim']
+        store.set_acls(loc, write_tenants=read_tenants)
+        container_headers = swiftclient.client.head_container('x', 'y',
+                                                              'glance')
+        self.assertEqual(container_headers['X-Container-Write'],
+                         ','.join(read_tenants))
+
+
+class TestStoreAuthV1(base.StoreClearingUnitTest, SwiftTests):
+
+    def getConfig(self):
+        conf = SWIFT_CONF.copy()
+        conf['swift_store_auth_version'] = '1'
+        conf['swift_store_user'] = 'user'
+        return conf
 
     def setUp(self):
         """Establish a clean test environment"""
-        self.conf = SWIFT_CONF.copy()
-        self.conf['swift_store_auth_version'] = '1'
+        conf = self.getConfig()
+        self.config(**conf)
+        super(TestStoreAuthV1, self).setUp()
         self.stubs = stubout.StubOutForTesting()
-        stub_out_swift_common_client(self.stubs, self.conf)
-        self.store = Store(test_utils.TestConfigOpts(self.conf))
-
-    def tearDown(self):
-        """Clear the test environment"""
-        self.stubs.UnsetAll()
+        stub_out_swiftclient(self.stubs, conf['swift_store_auth_version'])
+        self.store = Store()
+        self.addCleanup(self.stubs.UnsetAll)
 
 
 class TestStoreAuthV2(TestStoreAuthV1):
 
+    def getConfig(self):
+        conf = super(TestStoreAuthV2, self).getConfig()
+        conf['swift_store_user'] = 'tenant:user'
+        conf['swift_store_auth_version'] = '2'
+        return conf
+
+    def test_v2_with_no_tenant(self):
+        conf = self.getConfig()
+        conf['swift_store_user'] = 'failme'
+        uri = "swift://%s:key@auth_address/glance/%s" % (
+            conf['swift_store_user'], FAKE_UUID)
+        loc = get_location_from_uri(uri)
+        self.assertRaises(exception.BadStoreUri,
+                          self.store.get,
+                          loc)
+
+    def test_v2_multi_tenant_location(self):
+        conf = self.getConfig()
+        conf['swift_store_multi_tenant'] = True
+        uri = "swift://auth_address/glance/%s" % (FAKE_UUID)
+        loc = get_location_from_uri(uri)
+        self.assertEqual('swift', loc.store_name)
+
+
+class FakeConnection(object):
+    def __init__(self, authurl, user, key, retries=5, preauthurl=None,
+                 preauthtoken=None, snet=False, starting_backoff=1,
+                 tenant_name=None, os_options={}, auth_version="1"):
+        self.authurl = authurl
+        self.user = user
+        self.key = key
+        self.preauthurl = preauthurl
+        self.preauthtoken = preauthtoken
+        self.snet = snet
+        self.tenant_name = tenant_name
+        self.os_options = os_options
+        self.auth_version = auth_version
+
+
+class TestSingleTenantStoreConnections(base.IsolatedUnitTest):
     def setUp(self):
-        """Establish a clean test environment"""
-        self.conf = SWIFT_CONF.copy()
-        self.conf['swift_store_auth_version'] = '2'
-        self.stubs = stubout.StubOutForTesting()
-        stub_out_swift_common_client(self.stubs, self.conf)
-        self.store = Store(test_utils.TestConfigOpts(self.conf))
+        super(TestSingleTenantStoreConnections, self).setUp()
+        self.stubs.Set(swiftclient, 'Connection', FakeConnection)
+        self.store = glance.store.swift.SingleTenantStore()
+        specs = {'scheme': 'swift',
+                 'auth_or_store_url': 'example.com/v2/',
+                 'user': 'tenant:user',
+                 'key': 'abcdefg',
+                 'container': 'cont',
+                 'obj': 'object'}
+        self.location = glance.store.swift.StoreLocation(specs)
+
+    def test_basic_connection(self):
+        connection = self.store.get_connection(self.location)
+        self.assertEqual(connection.authurl, 'https://example.com/v2/')
+        self.assertEqual(connection.auth_version, '2')
+        self.assertEqual(connection.user, 'user')
+        self.assertEqual(connection.tenant_name, 'tenant')
+        self.assertEqual(connection.key, 'abcdefg')
+        self.assertEqual(connection.snet, False)
+        self.assertEqual(connection.preauthurl, None)
+        self.assertEqual(connection.preauthtoken, None)
+        self.assertEqual(connection.os_options,
+                         {'service_type': 'object-store',
+                          'endpoint_type': 'publicURL'})
+
+    def test_connection_with_no_trailing_slash(self):
+        self.location.auth_or_store_url = 'example.com/v2'
+        connection = self.store.get_connection(self.location)
+        self.assertEqual(connection.authurl, 'https://example.com/v2/')
+
+    def test_connection_with_auth_v1(self):
+        self.config(swift_store_auth_version='1')
+        self.store.configure()
+        self.location.user = 'auth_v1_user'
+        connection = self.store.get_connection(self.location)
+        self.assertEqual(connection.auth_version, '1')
+        self.assertEqual(connection.user, 'auth_v1_user')
+        self.assertEqual(connection.tenant_name, None)
+
+    def test_connection_invalid_user(self):
+        self.store.configure()
+        self.location.user = 'invalid:format:user'
+        self.assertRaises(exception.BadStoreUri,
+                          self.store.get_connection, self.location)
+
+    def test_connection_missing_user(self):
+        self.store.configure()
+        self.location.user = None
+        self.assertRaises(exception.BadStoreUri,
+                          self.store.get_connection, self.location)
+
+    def test_connection_with_region(self):
+        self.config(swift_store_region='Sahara')
+        self.store.configure()
+        connection = self.store.get_connection(self.location)
+        self.assertEquals(connection.os_options,
+                          {'region_name': 'Sahara',
+                           'service_type': 'object-store',
+                           'endpoint_type': 'publicURL'})
+
+    def test_connection_with_service_type(self):
+        self.config(swift_store_service_type='shoe-store')
+        self.store.configure()
+        connection = self.store.get_connection(self.location)
+        self.assertEquals(connection.os_options,
+                          {'service_type': 'shoe-store',
+                           'endpoint_type': 'publicURL'})
+
+    def test_connection_with_endpoint_type(self):
+        self.config(swift_store_endpoint_type='internalURL')
+        self.store.configure()
+        connection = self.store.get_connection(self.location)
+        self.assertEquals(connection.os_options,
+                          {'service_type': 'object-store',
+                           'endpoint_type': 'internalURL'})
+
+    def test_connection_with_snet(self):
+        self.config(swift_enable_snet=True)
+        self.store.configure()
+        connection = self.store.get_connection(self.location)
+        self.assertEquals(connection.snet, True)
 
 
-class TestChunkReader(unittest.TestCase):
+class TestMultiTenantStoreConnections(base.IsolatedUnitTest):
+    def setUp(self):
+        super(TestMultiTenantStoreConnections, self).setUp()
+        self.stubs.Set(swiftclient, 'Connection', FakeConnection)
+        self.context = glance.context.RequestContext(
+                user='user', tenant='tenant', auth_tok='0123')
+        self.store = glance.store.swift.MultiTenantStore(self.context)
+        specs = {'scheme': 'swift',
+                 'auth_or_store_url': 'example.com',
+                 'container': 'cont',
+                 'obj': 'object'}
+        self.location = glance.store.swift.StoreLocation(specs)
+
+    def test_basic_connection(self):
+        self.store.configure()
+        connection = self.store.get_connection(self.location)
+        self.assertEqual(connection.authurl, None)
+        self.assertEqual(connection.auth_version, '2')
+        self.assertEqual(connection.user, 'user')
+        self.assertEqual(connection.tenant_name, 'tenant')
+        self.assertEqual(connection.key, None)
+        self.assertEqual(connection.snet, False)
+        self.assertEqual(connection.preauthurl, 'https://example.com')
+        self.assertEqual(connection.preauthtoken, '0123')
+        self.assertEqual(connection.os_options, {})
+
+    def test_connection_with_snet(self):
+        self.config(swift_enable_snet=True)
+        self.store.configure()
+        connection = self.store.get_connection(self.location)
+        self.assertEquals(connection.snet, True)
+
+
+class FakeGetEndpoint(object):
+    def __init__(self, response):
+        self.response = response
+
+    def __call__(self, service_catalog, service_type=None,
+                 endpoint_region=None, endpoint_type=None):
+        self.service_type = service_type
+        self.endpoint_region = endpoint_region
+        self.endpoint_type = endpoint_type
+        return self.response
+
+
+class TestCreatingLocations(base.IsolatedUnitTest):
+    def test_single_tenant_location(self):
+        self.config(swift_store_auth_address='example.com/v2',
+                    swift_store_container='container',
+                    swift_store_user='tenant:user',
+                    swift_store_key='auth_key')
+        store = glance.store.swift.SingleTenantStore()
+        location = store.create_location('image-id')
+        self.assertEquals(location.scheme, 'swift+https')
+        self.assertEquals(location.swift_url, 'https://example.com/v2')
+        self.assertEquals(location.container, 'container')
+        self.assertEquals(location.obj, 'image-id')
+        self.assertEquals(location.user, 'tenant:user')
+        self.assertEquals(location.key, 'auth_key')
+
+    def test_single_tenant_location_http(self):
+        self.config(swift_store_auth_address='http://example.com/v2',
+                    swift_store_container='container',
+                    swift_store_user='tenant:user',
+                    swift_store_key='auth_key')
+        store = glance.store.swift.SingleTenantStore()
+        location = store.create_location('image-id')
+        self.assertEquals(location.scheme, 'swift+http')
+        self.assertEquals(location.swift_url, 'http://example.com/v2')
+
+    def test_multi_tenant_location(self):
+        self.config(swift_store_container='container')
+        fake_get_endpoint = FakeGetEndpoint('https://some_endpoint')
+        self.stubs.Set(glance.common.auth, 'get_endpoint', fake_get_endpoint)
+        context = glance.context.RequestContext(
+                user='user', tenant='tenant', auth_tok='123',
+                service_catalog={})
+        store = glance.store.swift.MultiTenantStore(context)
+        location = store.create_location('image-id')
+        self.assertEquals(location.scheme, 'swift+https')
+        self.assertEquals(location.swift_url, 'https://some_endpoint')
+        self.assertEquals(location.container, 'container_image-id')
+        self.assertEquals(location.obj, 'image-id')
+        self.assertEquals(location.user, None)
+        self.assertEquals(location.key, None)
+        self.assertEquals(fake_get_endpoint.service_type, 'object-store')
+
+    def test_multi_tenant_location_http(self):
+        fake_get_endpoint = FakeGetEndpoint('http://some_endpoint')
+        self.stubs.Set(glance.common.auth, 'get_endpoint', fake_get_endpoint)
+        context = glance.context.RequestContext(
+                user='user', tenant='tenant', auth_tok='123',
+                service_catalog={})
+        store = glance.store.swift.MultiTenantStore(context)
+        location = store.create_location('image-id')
+        self.assertEquals(location.scheme, 'swift+http')
+        self.assertEquals(location.swift_url, 'http://some_endpoint')
+
+    def test_multi_tenant_location_with_region(self):
+        self.config(swift_store_region='WestCarolina')
+        fake_get_endpoint = FakeGetEndpoint('https://some_endpoint')
+        self.stubs.Set(glance.common.auth, 'get_endpoint', fake_get_endpoint)
+        context = glance.context.RequestContext(
+                user='user', tenant='tenant', auth_tok='123',
+                service_catalog={})
+        store = glance.store.swift.MultiTenantStore(context)
+        self.assertEquals(fake_get_endpoint.endpoint_region, 'WestCarolina')
+
+    def test_multi_tenant_location_custom_service_type(self):
+        self.config(swift_store_service_type='toy-store')
+        fake_get_endpoint = FakeGetEndpoint('https://some_endpoint')
+        self.stubs.Set(glance.common.auth, 'get_endpoint', fake_get_endpoint)
+        context = glance.context.RequestContext(
+                user='user', tenant='tenant', auth_tok='123',
+                service_catalog={})
+        store = glance.store.swift.MultiTenantStore(context)
+        self.assertEquals(fake_get_endpoint.service_type, 'toy-store')
+
+    def test_multi_tenant_location_custom_service_type(self):
+        self.config(swift_store_endpoint_type='InternalURL')
+        fake_get_endpoint = FakeGetEndpoint('https://some_endpoint')
+        self.stubs.Set(glance.common.auth, 'get_endpoint', fake_get_endpoint)
+        context = glance.context.RequestContext(
+                user='user', tenant='tenant', auth_tok='123',
+                service_catalog={})
+        store = glance.store.swift.MultiTenantStore(context)
+        self.assertEquals(fake_get_endpoint.endpoint_type, 'InternalURL')
+
+
+class TestChunkReader(base.StoreClearingUnitTest):
 
     def test_read_all_data(self):
         """

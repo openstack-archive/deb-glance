@@ -17,28 +17,34 @@
 
 import calendar
 import eventlet
-import logging
-import time
 import os
+import time
 
-import glance.store.filesystem
-import glance.store.http
-import glance.store.s3
-import glance.store.swift
+from oslo.config import cfg
+
+from glance.common import crypt
+from glance.common import exception
+from glance.common import utils
+from glance import context
+import glance.openstack.common.log as logging
 from glance import registry
 from glance import store
-from glance.common import cfg
-from glance.common import utils
-from glance.registry import client
 
+LOG = logging.getLogger(__name__)
 
-logger = logging.getLogger('glance.store.scrubber')
+scrubber_opts = [
+    cfg.BoolOpt('cleanup_scrubber', default=False),
+    cfg.IntOpt('cleanup_scrubber_time', default=86400)
+]
+
+CONF = cfg.CONF
+CONF.register_opts(scrubber_opts)
 
 
 class Daemon(object):
     def __init__(self, wakeup_time=300, threads=1000):
-        logger.info(_("Starting Daemon: wakeup_time=%(wakeup_time)s "
-                      "threads=%(threads)s") % locals())
+        LOG.info(_("Starting Daemon: wakeup_time=%(wakeup_time)s "
+                   "threads=%(threads)s") % locals())
         self.wakeup_time = wakeup_time
         self.event = eventlet.event.Event()
         self.pool = eventlet.greenpool.GreenPool(threads)
@@ -51,49 +57,45 @@ class Daemon(object):
             self.event.wait()
         except KeyboardInterrupt:
             msg = _("Daemon Shutdown on KeyboardInterrupt")
-            logger.info(msg)
+            LOG.info(msg)
 
     def _run(self, application):
-        logger.debug(_("Runing application"))
+        LOG.debug(_("Running application"))
         self.pool.spawn_n(application.run, self.pool, self.event)
         eventlet.spawn_after(self.wakeup_time, self._run, application)
-        logger.debug(_("Next run scheduled in %s seconds") % self.wakeup_time)
+        LOG.debug(_("Next run scheduled in %s seconds") % self.wakeup_time)
 
 
 class Scrubber(object):
     CLEANUP_FILE = ".cleanup"
 
-    opts = [
-        cfg.BoolOpt('cleanup_scrubber', default=False),
-        cfg.IntOpt('cleanup_scrubber_time', default=86400)
-        ]
+    def __init__(self):
+        self.datadir = CONF.scrubber_datadir
+        self.cleanup = CONF.cleanup_scrubber
+        self.cleanup_time = CONF.cleanup_scrubber_time
+        # configs for registry API store auth
+        self.admin_user = CONF.admin_user
+        self.admin_tenant = CONF.admin_tenant_name
 
-    def __init__(self, conf, **local_conf):
-        self.conf = conf
-        self.conf.register_opts(self.opts)
+        host, port = CONF.registry_host, CONF.registry_port
 
-        self.datadir = store.get_scrubber_datadir(conf)
-        self.cleanup = self.conf.cleanup_scrubber
-        self.cleanup_time = self.conf.cleanup_scrubber_time
+        LOG.info(_("Initializing scrubber with conf: %s") %
+                 {'datadir': self.datadir, 'cleanup': self.cleanup,
+                  'cleanup_time': self.cleanup_time,
+                  'registry_host': host, 'registry_port': port})
 
-        host, port = registry.get_registry_addr(conf)
-
-        logger.info(_("Initializing scrubber with conf: %s") %
-                    {'datadir': self.datadir, 'cleanup': self.cleanup,
-                     'cleanup_time': self.cleanup_time,
-                     'registry_host': host, 'registry_port': port})
-
-        self.registry = client.RegistryClient(host, port)
+        registry.configure_registry_client()
+        registry.configure_registry_admin_creds()
+        ctx = context.RequestContext()
+        self.registry = registry.get_registry_client(ctx)
 
         utils.safe_mkdirs(self.datadir)
-
-        store.create_stores(conf)
 
     def run(self, pool, event=None):
         now = time.time()
 
         if not os.path.exists(self.datadir):
-            logger.info(_("%s does not exist") % self.datadir)
+            LOG.info(_("%s does not exist") % self.datadir)
             return
 
         delete_work = []
@@ -115,20 +117,33 @@ class Scrubber(object):
 
                 delete_work.append((id, uri, now))
 
-        logger.info(_("Deleting %s images") % len(delete_work))
-        pool.starmap(self._delete, delete_work)
+        LOG.info(_("Deleting %s images") % len(delete_work))
+        # NOTE(bourke): The starmap must be iterated to do work
+        for job in pool.starmap(self._delete, delete_work):
+            pass
 
         if self.cleanup:
             self._cleanup(pool)
 
     def _delete(self, id, uri, now):
         file_path = os.path.join(self.datadir, str(id))
+        if CONF.metadata_encryption_key is not None:
+            uri = crypt.urlsafe_decrypt(CONF.metadata_encryption_key, uri)
         try:
-            logger.debug(_("Deleting %(uri)s") % {'uri': uri})
-            store.delete_from_backend(uri)
+            LOG.debug(_("Deleting %(uri)s") % {'uri': uri})
+            # Here we create a request context with credentials to support
+            # delayed delete when using multi-tenant backend storage
+            ctx = context.RequestContext(auth_tok=self.registry.auth_tok,
+                                         user=self.admin_user,
+                                         tenant=self.admin_tenant)
+            store.delete_from_backend(ctx, uri)
         except store.UnsupportedBackend:
-            msg = _("Failed to delete image from store (%(uri)s).")
-            logger.error(msg % {'uri': uri})
+            msg = _("Failed to delete image from store (%(id)s).")
+            LOG.error(msg % {'id': id})
+            write_queue_file(file_path, uri, now)
+        except exception.NotFound:
+            msg = _("Image not found in store (%(id)s).")
+            LOG.error(msg % {'id': id})
             write_queue_file(file_path, uri, now)
 
         self.registry.update_image(id, {'status': 'deleted'})
@@ -146,7 +161,7 @@ class Scrubber(object):
         if cleanup_time > now:
             return
 
-        logger.info(_("Getting images deleted before %s") % self.cleanup_time)
+        LOG.info(_("Getting images deleted before %s") % self.cleanup_time)
         write_queue_file(cleanup_file, 'cleanup', now)
 
         filters = {'deleted': True, 'is_public': 'none',
@@ -160,7 +175,10 @@ class Scrubber(object):
                 continue
 
             time_fmt = "%Y-%m-%dT%H:%M:%S"
-            delete_time = calendar.timegm(time.strptime(deleted_at,
+            # NOTE: Strip off microseconds which may occur after the last '.,'
+            # Example: 2012-07-07T19:14:34.974216
+            date_str = deleted_at.rsplit('.', 1)[0].rsplit(',', 1)[0]
+            delete_time = calendar.timegm(time.strptime(date_str,
                                                         time_fmt))
 
             if delete_time + self.cleanup_time > now:
@@ -170,8 +188,10 @@ class Scrubber(object):
                                 pending_delete['location'],
                                 now))
 
-        logger.info(_("Deleting %s images") % len(delete_work))
-        pool.starmap(self._delete, delete_work)
+        LOG.info(_("Deleting %s images") % len(delete_work))
+        # NOTE(bourke): The starmap must be iterated to do work
+        for job in pool.starmap(self._delete, delete_work):
+            pass
 
 
 def read_queue_file(file_path):

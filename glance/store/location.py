@@ -35,19 +35,18 @@ be the host:port of that Glance API server along with /images/<IMAGE_ID>.
 
 The Glance storage URI is an internal URI structure that Glance
 uses to maintain critical information about how to access the images
-that it stores in its storage backends. It **does contain** security
+that it stores in its storage backends. It **may contain** security
 credentials and is **not** user-facing.
 """
 
-import logging
 import urlparse
 
 from glance.common import exception
-from glance.common import utils
+import glance.openstack.common.log as logging
 
-logger = logging.getLogger('glance.store.location')
+LOG = logging.getLogger(__name__)
 
-SCHEME_TO_STORE_MAP = {}
+SCHEME_TO_CLS_MAP = {}
 
 
 def get_location_from_uri(uri):
@@ -61,6 +60,7 @@ def get_location_from_uri(uri):
     Example URIs:
         https://user:pass@example.com:80/images/some-id
         http://images.oracle.com/123456
+        swift://example.com/container/obj-id
         swift://user:account:pass@authurl.com/container/obj-id
         swift+http://user:account:pass@authurl.com/container/obj-id
         s3://accesskey:secretkey@s3.amazonaws.com/bucket/key-id
@@ -68,21 +68,22 @@ def get_location_from_uri(uri):
         file:///var/lib/glance/images/1
     """
     pieces = urlparse.urlparse(uri)
-    if pieces.scheme not in SCHEME_TO_STORE_MAP.keys():
+    if pieces.scheme not in SCHEME_TO_CLS_MAP.keys():
         raise exception.UnknownScheme(pieces.scheme)
-    loc = Location(pieces.scheme, uri=uri)
-    return loc
+    scheme_info = SCHEME_TO_CLS_MAP[pieces.scheme]
+    return Location(pieces.scheme, uri=uri,
+                    store_location_class=scheme_info['location_class'])
 
 
 def register_scheme_map(scheme_map):
     """
     Given a mapping of 'scheme' to store_name, adds the mapping to the
-    known list of schemes.
-
-    Each store should call this method and let Glance know about which
-    schemes to map to a store name.
+    known list of schemes if it does not already exist.
     """
-    SCHEME_TO_STORE_MAP.update(scheme_map)
+    for (k, v) in scheme_map.items():
+        if k not in SCHEME_TO_CLS_MAP:
+            LOG.debug("Registering scheme %s with %s", k, v)
+            SCHEME_TO_CLS_MAP[k] = v
 
 
 class Location(object):
@@ -91,11 +92,14 @@ class Location(object):
     Class describing the location of an image that Glance knows about
     """
 
-    def __init__(self, store_name, uri=None, image_id=None, store_specs=None):
+    def __init__(self, store_name, store_location_class,
+                 uri=None, image_id=None, store_specs=None):
         """
         Create a new Location object.
 
-        :param store_name: The string identifier of the storage backend
+        :param store_name: The string identifier/scheme of the storage backend
+        :param store_location_class: The store location class to use
+                                     for this location instance.
         :param image_id: The identifier of the image in whatever storage
                          backend is used.
         :param uri: Optional URI to construct location from
@@ -106,24 +110,9 @@ class Location(object):
         self.store_name = store_name
         self.image_id = image_id
         self.store_specs = store_specs or {}
-        self.store_location = self._get_store_location()
+        self.store_location = store_location_class(self.store_specs)
         if uri:
             self.store_location.parse_uri(uri)
-
-    def _get_store_location(self):
-        """
-        We find the store module and then grab an instance of the store's
-        StoreLocation class which handles store-specific location information
-        """
-        try:
-            cls = utils.import_class('%s.StoreLocation'
-                                     % SCHEME_TO_STORE_MAP[self.store_name])
-            return cls(self.store_specs)
-        except exception.NotFound:
-            msg = _("Unable to find StoreLocation class in store "
-                    "%s") % self.store_name
-            logger.error(msg)
-            return None
 
     def get_store_uri(self):
         """

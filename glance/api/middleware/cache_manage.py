@@ -19,65 +19,64 @@
 Image Cache Management API
 """
 
-import logging
-
 import routes
 
 from glance.api import cached_images
 from glance.common import wsgi
+import glance.openstack.common.log as logging
 
-logger = logging.getLogger(__name__)
+LOG = logging.getLogger(__name__)
 
 
 class CacheManageFilter(wsgi.Middleware):
-    def __init__(self, app, conf, **local_conf):
+    def __init__(self, app):
         mapper = routes.Mapper()
-        resource = cached_images.create_resource(conf)
+        resource = cached_images.create_resource()
 
         mapper.connect("/v1/cached_images",
-                      controller=resource,
-                      action="get_cached_images",
-                      conditions=dict(method=["GET"]))
+                       controller=resource,
+                       action="get_cached_images",
+                       conditions=dict(method=["GET"]))
 
         mapper.connect("/v1/cached_images/{image_id}",
-                      controller=resource,
-                      action="delete_cached_image",
-                      conditions=dict(method=["DELETE"]))
+                       controller=resource,
+                       action="delete_cached_image",
+                       conditions=dict(method=["DELETE"]))
 
         mapper.connect("/v1/cached_images",
-                      controller=resource,
-                      action="delete_cached_images",
-                      conditions=dict(method=["DELETE"]))
+                       controller=resource,
+                       action="delete_cached_images",
+                       conditions=dict(method=["DELETE"]))
 
         mapper.connect("/v1/queued_images/{image_id}",
-                      controller=resource,
-                      action="queue_image",
-                      conditions=dict(method=["PUT"]))
+                       controller=resource,
+                       action="queue_image",
+                       conditions=dict(method=["PUT"]))
 
         mapper.connect("/v1/queued_images",
-                      controller=resource,
-                      action="get_queued_images",
-                      conditions=dict(method=["GET"]))
+                       controller=resource,
+                       action="get_queued_images",
+                       conditions=dict(method=["GET"]))
 
         mapper.connect("/v1/queued_images/{image_id}",
-                      controller=resource,
-                      action="delete_queued_image",
-                      conditions=dict(method=["DELETE"]))
+                       controller=resource,
+                       action="delete_queued_image",
+                       conditions=dict(method=["DELETE"]))
 
         mapper.connect("/v1/queued_images",
-                      controller=resource,
-                      action="delete_queued_images",
-                      conditions=dict(method=["DELETE"]))
+                       controller=resource,
+                       action="delete_queued_images",
+                       conditions=dict(method=["DELETE"]))
 
         self._mapper = mapper
         self._resource = resource
 
-        logger.info(_("Initialized image cache management middleware"))
+        LOG.info(_("Initialized image cache management middleware"))
         super(CacheManageFilter, self).__init__(app)
 
     def process_request(self, request):
         # Map request to our resource object if we can handle it
-        match = self._mapper.match(request.path, request.environ)
+        match = self._mapper.match(request.path_info, request.environ)
         if match:
             request.environ['wsgiorg.routing_args'] = (None, match)
             return self._resource(request)

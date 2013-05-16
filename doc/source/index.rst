@@ -1,5 +1,5 @@
 ..
-      Copyright 2010 OpenStack, LLC
+      Copyright 2010 OpenStack Foundation
       All Rights Reserved.
 
       Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -49,6 +49,29 @@ Concepts
    identifiers
    statuses
    formats
+   common-image-properties
+
+Installing/Configuring Glance
+=============================
+
+.. toctree::
+   :maxdepth: 1
+
+   installing
+   configuring
+   authentication
+   policies
+
+Operating Glance
+================
+
+.. toctree::
+   :maxdepth: 1
+
+   controllingservers
+   db
+   cache
+   notifications
 
 Using Glance
 ============
@@ -56,28 +79,5 @@ Using Glance
 .. toctree::
    :maxdepth: 1
 
-   installing
-   controllingservers
-   configuring
-   glance
    glanceapi
-   client
-   authentication
-   policies
-   cache
-
-Developer Docs
-==============
-
-.. toctree::
-   :maxdepth: 1
-
-   architecture
-   community
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+   glanceclient

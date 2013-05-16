@@ -19,14 +19,42 @@
 Registry API
 """
 
-import logging
 import os
 
-from glance.common import cfg
+from oslo.config import cfg
+
 from glance.common import exception
+import glance.openstack.common.log as logging
 from glance.registry import client
 
-logger = logging.getLogger('glance.registry')
+LOG = logging.getLogger(__name__)
+
+registry_addr_opts = [
+    cfg.StrOpt('registry_host', default='0.0.0.0'),
+    cfg.IntOpt('registry_port', default=9191),
+]
+registry_client_opts = [
+    cfg.StrOpt('registry_client_protocol', default='http'),
+    cfg.StrOpt('registry_client_key_file'),
+    cfg.StrOpt('registry_client_cert_file'),
+    cfg.StrOpt('registry_client_ca_file'),
+    cfg.BoolOpt('registry_client_insecure', default=False),
+    cfg.IntOpt('registry_client_timeout', default=600),
+]
+registry_client_ctx_opts = [
+    cfg.StrOpt('admin_user', secret=True),
+    cfg.StrOpt('admin_password', secret=True),
+    cfg.StrOpt('admin_tenant_name', secret=True),
+    cfg.StrOpt('auth_url'),
+    cfg.StrOpt('auth_strategy', default='noauth'),
+    cfg.StrOpt('auth_region'),
+]
+
+CONF = cfg.CONF
+CONF.register_opts(registry_addr_opts)
+CONF.register_opts(registry_client_opts)
+CONF.register_opts(registry_client_ctx_opts)
+CONF.import_opt('metadata_encryption_key', 'glance.common.config')
 
 _CLIENT_CREDS = None
 _CLIENT_HOST = None
@@ -36,80 +64,51 @@ _CLIENT_KWARGS = {}
 _METADATA_ENCRYPTION_KEY = None
 
 
-registry_addr_opts = [
-    cfg.StrOpt('registry_host', default='0.0.0.0'),
-    cfg.IntOpt('registry_port', default=9191),
-    ]
-registry_client_opts = [
-    cfg.StrOpt('registry_client_protocol', default='http'),
-    cfg.StrOpt('registry_client_key_file'),
-    cfg.StrOpt('registry_client_cert_file'),
-    cfg.StrOpt('registry_client_ca_file'),
-    cfg.StrOpt('metadata_encryption_key'),
-    ]
-registry_client_ctx_opts = [
-    cfg.StrOpt('admin_user'),
-    cfg.StrOpt('admin_password'),
-    cfg.StrOpt('admin_tenant_name'),
-    cfg.StrOpt('auth_url'),
-    cfg.StrOpt('auth_strategy', default='noauth'),
-    cfg.StrOpt('auth_region'),
-    ]
-
-
-def get_registry_addr(conf):
-    conf.register_opts(registry_addr_opts)
-    return (conf.registry_host, conf.registry_port)
-
-
-def configure_registry_client(conf):
+def configure_registry_client():
     """
     Sets up a registry client for use in registry lookups
-
-    :param conf: Configuration options coming from controller
     """
     global _CLIENT_KWARGS, _CLIENT_HOST, _CLIENT_PORT, _METADATA_ENCRYPTION_KEY
     try:
-        host, port = get_registry_addr(conf)
+        host, port = CONF.registry_host, CONF.registry_port
     except cfg.ConfigFileValueError:
         msg = _("Configuration option was not valid")
-        logger.error(msg)
+        LOG.error(msg)
         raise exception.BadRegistryConnectionConfiguration(msg)
     except IndexError:
         msg = _("Could not find required configuration option")
-        logger.error(msg)
+        LOG.error(msg)
         raise exception.BadRegistryConnectionConfiguration(msg)
-
-    conf.register_opts(registry_client_opts)
 
     _CLIENT_HOST = host
     _CLIENT_PORT = port
-    _METADATA_ENCRYPTION_KEY = conf.metadata_encryption_key
+    _METADATA_ENCRYPTION_KEY = CONF.metadata_encryption_key
     _CLIENT_KWARGS = {
-        'use_ssl': conf.registry_client_protocol.lower() == 'https',
-        'key_file': conf.registry_client_key_file,
-        'cert_file': conf.registry_client_cert_file,
-        'ca_file': conf.registry_client_ca_file
-        }
+        'use_ssl': CONF.registry_client_protocol.lower() == 'https',
+        'key_file': CONF.registry_client_key_file,
+        'cert_file': CONF.registry_client_cert_file,
+        'ca_file': CONF.registry_client_ca_file,
+        'insecure': CONF.registry_client_insecure,
+        'timeout': CONF.registry_client_timeout,
+    }
 
 
-def configure_registry_admin_creds(conf):
+def configure_registry_admin_creds():
     global _CLIENT_CREDS
-    conf.register_opts(registry_client_ctx_opts)
 
-    if conf.auth_url or os.getenv('OS_AUTH_URL'):
+    if CONF.auth_url or os.getenv('OS_AUTH_URL'):
         strategy = 'keystone'
     else:
-        strategy = conf.auth_strategy
+        strategy = CONF.auth_strategy
 
     _CLIENT_CREDS = {
-        'user': conf.admin_user,
-        'password': conf.admin_password,
-        'username': conf.admin_user,
-        'tenant': conf.admin_tenant_name,
-        'auth_url': conf.auth_url,
+        'user': CONF.admin_user,
+        'password': CONF.admin_password,
+        'username': CONF.admin_user,
+        'tenant': CONF.admin_tenant_name,
+        'auth_url': CONF.auth_url,
         'strategy': strategy,
-        'region': conf.auth_region,
+        'region': CONF.auth_region,
     }
 
 
@@ -140,20 +139,20 @@ def get_image_metadata(context, image_id):
 
 
 def add_image_metadata(context, image_meta):
-    logger.debug(_("Adding image metadata..."))
+    LOG.debug(_("Adding image metadata..."))
     c = get_registry_client(context)
     return c.add_image(image_meta)
 
 
 def update_image_metadata(context, image_id, image_meta,
                           purge_props=False):
-    logger.debug(_("Updating image metadata for image %s..."), image_id)
+    LOG.debug(_("Updating image metadata for image %s..."), image_id)
     c = get_registry_client(context)
     return c.update_image(image_id, image_meta, purge_props)
 
 
 def delete_image_metadata(context, image_id):
-    logger.debug(_("Deleting image metadata for image %s..."), image_id)
+    LOG.debug(_("Deleting image metadata for image %s..."), image_id)
     c = get_registry_client(context)
     return c.delete_image(image_id)
 

@@ -57,17 +57,20 @@ from __future__ import absolute_import
 from contextlib import contextmanager
 import datetime
 import errno
-import logging
 import os
 import stat
 import time
 
+from oslo.config import cfg
 import xattr
 
 from glance.common import exception
 from glance.image_cache.drivers import base
+import glance.openstack.common.log as logging
 
-logger = logging.getLogger(__name__)
+LOG = logging.getLogger(__name__)
+
+CONF = cfg.CONF
 
 
 class Driver(base.Driver):
@@ -105,8 +108,8 @@ class Driver(base.Driver):
                         "likely you need to edit your fstab and add the "
                         "user_xattr option to the appropriate line for the "
                         "device housing the cache directory.") % locals()
-                logger.error(msg)
-                raise exception.BadDriverConfiguration(driver="xattr",
+                LOG.error(msg)
+                raise exception.BadDriverConfiguration(driver_name="xattr",
                                                        reason=msg)
         else:
             # Cleanup after ourselves...
@@ -139,7 +142,7 @@ class Driver(base.Driver):
         """
         Returns a list of records about cached images.
         """
-        logger.debug(_("Gathering cached image entries."))
+        LOG.debug(_("Gathering cached image entries."))
         entries = []
         for path in get_all_regular_files(self.base_dir):
             image_id = os.path.basename(path)
@@ -269,25 +272,25 @@ class Driver(base.Driver):
             set_attr('hits', 0)
 
             final_path = self.get_image_filepath(image_id)
-            logger.debug(_("Fetch finished, moving "
-                         "'%(incomplete_path)s' to '%(final_path)s'"),
-                         dict(incomplete_path=incomplete_path,
-                              final_path=final_path))
+            LOG.debug(_("Fetch finished, moving "
+                        "'%(incomplete_path)s' to '%(final_path)s'"),
+                      dict(incomplete_path=incomplete_path,
+                           final_path=final_path))
             os.rename(incomplete_path, final_path)
 
             # Make sure that we "pop" the image from the queue...
             if self.is_queued(image_id):
-                logger.debug(_("Removing image '%s' from queue after "
-                               "caching it."), image_id)
+                LOG.debug(_("Removing image '%s' from queue after "
+                            "caching it."), image_id)
                 os.unlink(self.get_image_filepath(image_id, 'queue'))
 
         def rollback(e):
             set_attr('error', "%s" % e)
 
             invalid_path = self.get_image_filepath(image_id, 'invalid')
-            logger.debug(_("Fetch of cache file failed, rolling back by "
-                           "moving '%(incomplete_path)s' to "
-                           "'%(invalid_path)s'") % locals())
+            LOG.debug(_("Fetch of cache file failed (%(e)s), rolling back by "
+                        "moving '%(incomplete_path)s' to "
+                        "'%(invalid_path)s'") % locals())
             os.rename(incomplete_path, invalid_path)
 
         try:
@@ -298,6 +301,14 @@ class Driver(base.Driver):
             raise
         else:
             commit()
+        finally:
+            # if the generator filling the cache file neither raises an
+            # exception, nor completes fetching all data, neither rollback
+            # nor commit will have been called, so the incomplete file
+            # will persist - in that case remove it as it is unusable
+            # example: ^c from client fetch
+            if os.path.exists(incomplete_path):
+                rollback('incomplete fetch')
 
     @contextmanager
     def open_for_read(self, image_id):
@@ -324,22 +335,22 @@ class Driver(base.Driver):
         """
         if self.is_cached(image_id):
             msg = _("Not queueing image '%s'. Already cached.") % image_id
-            logger.warn(msg)
+            LOG.warn(msg)
             return False
 
         if self.is_being_cached(image_id):
             msg = _("Not queueing image '%s'. Already being "
                     "written to cache") % image_id
-            logger.warn(msg)
+            LOG.warn(msg)
             return False
 
         if self.is_queued(image_id):
             msg = _("Not queueing image '%s'. Already queued.") % image_id
-            logger.warn(msg)
+            LOG.warn(msg)
             return False
 
         path = self.get_image_filepath(image_id, 'queue')
-        logger.debug(_("Queueing image '%s'."), image_id)
+        LOG.debug(_("Queueing image '%s'."), image_id)
 
         # Touch the file to add it to the queue
         with open(path, "w") as f:
@@ -363,26 +374,24 @@ class Driver(base.Driver):
         return [image_id for (mtime, image_id) in items]
 
     def _reap_old_files(self, dirpath, entry_type, grace=None):
-        """
-        """
         now = time.time()
         reaped = 0
         for path in get_all_regular_files(dirpath):
             mtime = os.path.getmtime(path)
             age = now - mtime
             if not grace:
-                logger.debug(_("No grace period, reaping '%(path)s'"
-                             " immediately"), locals())
+                LOG.debug(_("No grace period, reaping '%(path)s'"
+                            " immediately"), locals())
                 delete_cached_file(path)
                 reaped += 1
             elif age > grace:
-                logger.debug(_("Cache entry '%(path)s' exceeds grace period, "
-                             "(%(age)i s > %(grace)i s)"), locals())
+                LOG.debug(_("Cache entry '%(path)s' exceeds grace period, "
+                            "(%(age)i s > %(grace)i s)"), locals())
                 delete_cached_file(path)
                 reaped += 1
 
-        logger.info(_("Reaped %(reaped)s %(entry_type)s cache entries"),
-                    locals())
+        LOG.info(_("Reaped %(reaped)s %(entry_type)s cache entries"),
+                 locals())
         return reaped
 
     def reap_invalid(self, grace=None):
@@ -411,7 +420,7 @@ class Driver(base.Driver):
         self.reap_invalid()
 
         if stall_time is None:
-            stall_time = self.conf.image_cache_stall_time
+            stall_time = CONF.image_cache_stall_time
 
         self.reap_stalled(stall_time)
 
@@ -425,11 +434,11 @@ def get_all_regular_files(basepath):
 
 def delete_cached_file(path):
     if os.path.exists(path):
-        logger.debug(_("Deleting image cache file '%s'"), path)
+        LOG.debug(_("Deleting image cache file '%s'"), path)
         os.unlink(path)
     else:
-        logger.warn(_("Cached image file '%s' doesn't exist, unable to"
-                      " delete"), path)
+        LOG.warn(_("Cached image file '%s' doesn't exist, unable to"
+                   " delete"), path)
 
 
 def _make_namespaced_xattr_key(key, namespace='user'):

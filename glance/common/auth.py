@@ -31,15 +31,15 @@ Keystone (an identity management system).
     http://service_endpoint/
 """
 import json
-import logging
 import urlparse
 
 import httplib2
 
 from glance.common import exception
+import glance.openstack.common.log as logging
 
 
-logger = logging.getLogger('glance.common.auth')
+LOG = logging.getLogger(__name__)
 
 
 class BaseStrategy(object):
@@ -76,22 +76,23 @@ class NoAuthStrategy(BaseStrategy):
 class KeystoneStrategy(BaseStrategy):
     MAX_REDIRECTS = 10
 
-    def __init__(self, creds):
+    def __init__(self, creds, insecure=False):
         self.creds = creds
+        self.insecure = insecure
         super(KeystoneStrategy, self).__init__()
 
     def check_auth_params(self):
         # Ensure that supplied credential parameters are as required
         for required in ('username', 'password', 'auth_url',
                          'strategy'):
-            if required not in self.creds:
+            if self.creds.get(required) is None:
                 raise exception.MissingCredentialError(required=required)
         if self.creds['strategy'] != 'keystone':
             raise exception.BadAuthStrategy(expected='keystone',
                                             received=self.creds['strategy'])
         # For v2.0 also check tenant is present
         if self.creds['auth_url'].rstrip('/').endswith('v2.0'):
-            if 'tenant' not in self.creds:
+            if self.creds.get("tenant") is None:
                 raise exception.MissingCredentialError(required='tenant')
 
     def authenticate(self):
@@ -133,7 +134,7 @@ class KeystoneStrategy(BaseStrategy):
                 # 3. In some configurations nova makes redirection to
                 # v2.0 keystone endpoint. Also, new location does not
                 # contain real endpoint, only hostname and port.
-                if  'v2.0' not in auth_url:
+                if 'v2.0' not in auth_url:
                     auth_url = urlparse.urljoin(auth_url, 'v2.0/')
             else:
                 # If we sucessfully auth'd, then memorize the correct auth_url
@@ -182,41 +183,9 @@ class KeystoneStrategy(BaseStrategy):
         elif resp.status == 404:
             raise exception.AuthUrlNotFound(url=token_url)
         else:
-            raise Exception(_('Unexpected response: %s' % resp.status))
+            raise Exception(_('Unexpected response: %s') % resp.status)
 
     def _v2_auth(self, token_url):
-        def get_endpoint(service_catalog):
-            """
-            Select an endpoint from the service catalog
-
-            We search the full service catalog for services
-            matching both type and region. If the client
-            supplied no region then any 'image' endpoint
-            is considered a match. There must be one -- and
-            only one -- successful match in the catalog,
-            otherwise we will raise an exception.
-            """
-            # FIXME(sirp): for now just use the public url.
-            endpoint = None
-            region = self.creds.get('region')
-            for service in service_catalog:
-                try:
-                    service_type = service['type']
-                except KeyError:
-                    msg = _('Encountered service with no "type": %s' % service)
-                    logger.warn(msg)
-                    continue
-
-                if service_type == 'image':
-                    for ep in service['endpoints']:
-                        if region is None or region == ep['region']:
-                            if endpoint is not None:
-                                # This is a second match, abort
-                                raise exception.RegionAmbiguity(region=region)
-                            endpoint = ep
-            if endpoint is None:
-                raise exception.NoServiceEndpoint()
-            return endpoint['publicURL']
 
         creds = self.creds
 
@@ -226,9 +195,9 @@ class KeystoneStrategy(BaseStrategy):
                 "passwordCredentials": {
                     "username": creds['username'],
                     "password": creds['password']
-                    }
                 }
             }
+        }
 
         headers = {}
         headers['Content-Type'] = 'application/json'
@@ -239,7 +208,9 @@ class KeystoneStrategy(BaseStrategy):
 
         if resp.status == 200:
             resp_auth = json.loads(resp_body)['access']
-            self.management_url = get_endpoint(resp_auth['serviceCatalog'])
+            creds_region = self.creds.get('region')
+            self.management_url = get_endpoint(resp_auth['serviceCatalog'],
+                                               endpoint_region=creds_region)
             self.auth_token = resp_auth['token']['id']
         elif resp.status == 305:
             raise exception.RedirectException(resp['location'])
@@ -260,20 +231,55 @@ class KeystoneStrategy(BaseStrategy):
     def strategy(self):
         return 'keystone'
 
-    @staticmethod
-    def _do_request(url, method, headers=None, body=None):
+    def _do_request(self, url, method, headers=None, body=None):
         headers = headers or {}
         conn = httplib2.Http()
         conn.force_exception_to_status_code = True
+        conn.disable_ssl_certificate_validation = self.insecure
         headers['User-Agent'] = 'glance-client'
         resp, resp_body = conn.request(url, method, headers=headers, body=body)
         return resp, resp_body
 
 
-def get_plugin_from_strategy(strategy, creds=None):
+def get_plugin_from_strategy(strategy, creds=None, insecure=False):
     if strategy == 'noauth':
         return NoAuthStrategy()
     elif strategy == 'keystone':
-        return KeystoneStrategy(creds)
+        return KeystoneStrategy(creds, insecure)
     else:
         raise Exception(_("Unknown auth strategy '%s'") % strategy)
+
+
+def get_endpoint(service_catalog, service_type='image', endpoint_region=None,
+                 endpoint_type='publicURL'):
+    """
+    Select an endpoint from the service catalog
+
+    We search the full service catalog for services
+    matching both type and region. If the client
+    supplied no region then any 'image' endpoint
+    is considered a match. There must be one -- and
+    only one -- successful match in the catalog,
+    otherwise we will raise an exception.
+    """
+    endpoint = None
+    for service in service_catalog:
+        s_type = None
+        try:
+            s_type = service['type']
+        except KeyError:
+            msg = _('Encountered service with no "type": %s') % s_type
+            LOG.warn(msg)
+            continue
+
+        if s_type == service_type:
+            for ep in service['endpoints']:
+                if endpoint_region is None or endpoint_region == ep['region']:
+                    if endpoint is not None:
+                        # This is a second match, abort
+                        raise exception.RegionAmbiguity(region=endpoint_region)
+                    endpoint = ep
+    if endpoint and endpoint.get(endpoint_type):
+        return endpoint[endpoint_type]
+    else:
+        raise exception.NoServiceEndpoint()

@@ -27,7 +27,7 @@ import os
 import random
 import thread
 
-from glance.store.s3 import get_s3_location
+from glance.store.s3 import get_s3_location, get_calling_format
 
 
 FIVE_KB = 5 * 1024
@@ -84,17 +84,17 @@ def setup_http(test):
     test.http_server = remote_server
     test.http_ip = remote_ip
     test.http_port = remote_port
-
-
-def teardown_http(test):
-    if test.http_server:
-        test.http_server.shutdown()
+    test.addCleanup(test.http_server.shutdown)
 
 
 def get_http_uri(test, image_id):
     uri = 'http://%(http_ip)s:%(http_port)d/images/' % test.__dict__
     uri += image_id
     return uri
+
+
+def _uniq(value):
+    return '%s.%d' % (value, random.randint(0, 99999))
 
 
 def setup_swift(test):
@@ -114,14 +114,18 @@ def setup_swift(test):
             cp.read(CONFIG_FILE_PATH)
             defaults = cp.defaults()
             for key, value in defaults.items():
-                test.__dict__[key] = value
+                if key == 'swift_store_container':
+                    test.__dict__[key] = (_uniq(value))
+                else:
+                    test.__dict__[key] = value
+
         except ConfigParser.ParsingError, e:
             test.disabled_message = ("Failed to read test_swift.conf "
                                      "file. Got error: %s" % e)
             test.disabled = True
             return
 
-    from swift.common import client as swift_client
+    import swiftclient
 
     try:
         swift_host = test.swift_store_auth_address
@@ -137,7 +141,7 @@ def setup_swift(test):
         test.disabled = True
         return
 
-    swift_conn = swift_client.Connection(
+    swift_conn = swiftclient.Connection(
         authurl=swift_host, user=user, key=key, snet=False, retries=1)
 
     try:
@@ -152,7 +156,7 @@ def setup_swift(test):
         for container in containers:
             if container == container_name:
                 swift_conn.delete_container(container)
-    except swift_client.ClientException, e:
+    except swiftclient.ClientException, e:
         test.disabled_message = ("Failed to delete container from Swift "
                                  "Got error: %s" % e)
         test.disabled = True
@@ -162,7 +166,7 @@ def setup_swift(test):
 
     try:
         swift_conn.put_container(container_name)
-    except swift_client.ClientException, e:
+    except swiftclient.ClientException, e:
         test.disabled_message = ("Failed to create container. "
                                  "Got error: %s" % e)
         test.disabled = True
@@ -171,10 +175,14 @@ def setup_swift(test):
 
 def teardown_swift(test):
     if not test.disabled:
-        from swift.common import client as swift_client
+        import swiftclient
         try:
-            test.swift_conn.delete_container(test.swift_store_container)
-        except swift_client.ClientException, e:
+            _resp_headers, containers = swift_conn.get_account()
+            # Delete all containers matching the container name prefix
+            for container in containers:
+                if container.find(container_name) == 0:
+                    swift_conn.delete_container(container)
+        except swiftclient.ClientException, e:
             if e.http_status == httplib.CONFLICT:
                 pass
             else:
@@ -188,7 +196,7 @@ def get_swift_uri(test, image_id):
     uri = ('swift+https://%(swift_store_user)s:%(swift_store_key)s' %
            test.__dict__)
     uri += ('@%(swift_store_auth_address)s/%(swift_store_container)s/' %
-           test.__dict__)
+            test.__dict__)
     uri += image_id
     return uri.replace('@http://', '@')
 
@@ -202,9 +210,6 @@ def setup_s3(test):
         test.disabled_message = "GLANCE_TEST_S3_CONF environ not set."
         test.disabled = True
         return
-
-    def _uniq(value):
-        return '%s.%d' % (value, random.randint(0, 99999))
 
     if os.path.exists(CONFIG_FILE_PATH):
         cp = ConfigParser.RawConfigParser()
@@ -234,7 +239,11 @@ def setup_s3(test):
         test.disabled = True
         return
 
-    s3_conn = S3Connection(access_key, secret_key, host=s3_host)
+    calling_format = get_calling_format(test.s3_store_bucket_url_format)
+    s3_conn = S3Connection(access_key, secret_key,
+                           host=s3_host,
+                           is_secure=False,
+                           calling_format=calling_format)
 
     test.bucket = None
     try:

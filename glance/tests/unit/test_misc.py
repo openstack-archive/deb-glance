@@ -16,63 +16,13 @@
 #    under the License.
 
 import os
-import commands
-import datetime
-import re
-import unittest
 
 from glance.common import crypt
-from glance.common import exception
 from glance.common import utils
+from glance.tests import utils as test_utils
 
 
-def parse_mailmap(mailmap='.mailmap'):
-    mapping = {}
-    if os.path.exists(mailmap):
-        fp = open(mailmap, 'r')
-        for l in fp:
-            l = l.strip()
-            if not l.startswith('#') and ' ' in l:
-                canonical_email, alias = l.split(' ')
-                mapping[alias] = canonical_email
-    return mapping
-
-
-def str_dict_replace(s, mapping):
-    for s1, s2 in mapping.iteritems():
-        s = s.replace(s1, s2)
-    return s
-
-
-class AuthorsTestCase(unittest.TestCase):
-    def test_authors_up_to_date(self):
-
-        topdir = os.path.normpath(os.path.dirname(__file__) + '/../../..')
-        contributors = set()
-        missing = set()
-        authors_file = open(os.path.join(topdir, 'Authors'), 'r').read()
-
-        if os.path.exists(os.path.join(topdir, '.git')):
-            mailmap = parse_mailmap(os.path.join(topdir, '.mailmap'))
-            for email in commands.getoutput('git log --format=%ae').split():
-                if not email:
-                    continue
-                if "jenkins" in email and "openstack.org" in email:
-                    continue
-                email = '<' + email + '>'
-                contributors.add(str_dict_replace(email, mailmap))
-
-        for contributor in contributors:
-            if contributor == 'glance-core':
-                continue
-            if not contributor in authors_file:
-                missing.add(contributor)
-
-        self.assertTrue(len(missing) == 0,
-                        '%r not listed in Authors' % missing)
-
-
-class UtilsTestCase(unittest.TestCase):
+class UtilsTestCase(test_utils.BaseTestCase):
 
     def test_bool_from_string(self):
         true_values = ['True', True, 'true', 'TRUE', '1', 1, 'on',
@@ -90,44 +40,6 @@ class UtilsTestCase(unittest.TestCase):
         for value in false_values:
             self.assertFalse(utils.bool_from_string(value),
                              "Got True for value: %r" % value)
-
-    def test_import_class_or_object(self):
-        # Test that import_class raises a descriptive error when the
-        # class to import could not be found.
-        self.assertRaises(exception.ImportFailure, utils.import_class,
-                          'nomodule')
-
-        self.assertRaises(exception.ImportFailure, utils.import_class,
-                          'mymodule.nonexistingclass')
-
-        self.assertRaises(exception.ImportFailure, utils.import_class,
-                          'sys.nonexistingclass')
-
-        self.assertRaises(exception.ImportFailure, utils.import_object,
-                          'os.path.NONEXISTINGOBJECT')
-
-        store_class = utils.import_class('glance.store.s3.Store')
-
-        self.assertTrue(store_class.__name__ == 'Store')
-
-        # Try importing an object by supplying a class and
-        # verify the object's class name is the same as that supplied
-        ex_obj = utils.import_object('glance.common.exception.GlanceException')
-
-        self.assertTrue(ex_obj.__class__.__name__ == 'GlanceException')
-
-        # Try importing a module itself
-        module_obj = utils.import_object('glance.registry')
-
-        self.assertEqual('glance.registry', module_obj.__package__)
-
-    def test_isotime(self):
-        dt1 = datetime.datetime(2001, 11, 10, 1, 2, 3)
-        self.assertEqual('2001-11-10T01:02:03Z', utils.isotime(dt1))
-
-        iso_re = re.compile(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z')
-        now_iso = utils.isotime()
-        self.assertTrue(iso_re.match(now_iso) is not None)
 
     def test_encryption(self):
         # Check that original plaintext and unencrypted ciphertext match

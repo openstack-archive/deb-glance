@@ -1,37 +1,49 @@
 #!/usr/bin/make -f
 
-# Verbose mode
 #export DH_VERBOSE=1
+
+include /usr/share/openstack-pkg-tools/pkgos.make
+
+export OSLO_PACKAGE_VERSION=$(VERSION)
 
 %:
 	dh $@ --with python2
 
 ifeq (,$(findstring nocheck, $(DEB_BUILD_OPTIONS)))
 override_dh_auto_test:
-	bash run_tests.sh -N || true
+	bash run_tests.sh -N glance/tests || true
 endif
 
 override_dh_auto_build:
 	dh_auto_build
+
+	/usr/share/openstack-pkg-tools/pkgos_insert_include pkgos_func glance-common.config
+	/usr/share/openstack-pkg-tools/pkgos_insert_include pkgos_func glance-common.postinst
+	/usr/share/openstack-pkg-tools/pkgos_insert_include pkgos_func glance-api.config
+	/usr/share/openstack-pkg-tools/pkgos_insert_include pkgos_func glance-api.postinst
+
 ifeq (,$(findstring nodocs, $(DEB_BUILD_OPTIONS)))
 	mkdir -p doc/build
 	python setup.py build_sphinx
 else
 	mkdir -p doc/build/html
+
+override_dh_installman:
+
 endif
 
-override_dh_auto_clean:
-	dh_auto_clean
-	debconf-updatepo
-	rm -rf build doc/build glance.egg-info po/glance.pot glance/vcsversion.py
-	rm -rf glance.sqlite
+override_dh_auto_configure:
+	echo $(VERSION) > glance/versioninfo
+	dh_auto_configure
 
-get-vcs-source:
-	git remote add upstream git://github.com/openstack/glance.git || true
-	git fetch upstream
-	if ! [ -f ../glance_2012.1.orig.tar.xz ] ; then git archive --prefix=glance-2012.1/ 2012.1 | xz >../glance_2012.1.orig.tar.xz ; fi
-	if ! git checkout master ; then \
-		echo "No upstream branch: checking out" ; \
-		git checkout -b master upstream/master ; \
-	fi
-	git checkout debian/unstable
+
+override_dh_auto_clean:
+	echo $(VERSION) > glance/versioninfo
+	# dh_auto_clean
+	# debconf-updatepo
+	rm -rf doc/build
+	rm -rf glance.sqlite
+	rm -f glance/versioninfo
+	rm -f debian/glance-common.config debian/glance-common.postinst
+
+.PHONY: override_dh_auto_clean override_dh_auto_configure override_dh_builddeb override_dh_installman override_dh_auto_build

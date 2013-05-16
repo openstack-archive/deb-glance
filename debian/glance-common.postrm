@@ -2,20 +2,13 @@
 
 set -e
 
-case $1 in
-    purge)
-	echo "Purging glance. Backup of /var/lib/glance can be found at /var/lib/glance.tar.bz2" >&2
-	if ( getent passwd glance) > /dev/null 2>&1; then
-	    userdel glance || true
-	fi
-
-	if ( getent group glance) > /dev/null 2>&1; then
-	    groupdel glance || true
-	fi
-
+if [ "${1}" = "purge" ] ; then
 	[ -e /var/lib/glance ] && rm -rf /var/lib/glance
 	[ -e /var/log/glance ] && rm -rf /var/log/glance
-	;;
-esac
+
+	rm -f /etc/glance/glance-registry.conf /etc/glance/glance-registry-paste.ini /etc/glance/glance-api.conf /etc/glance/glance-api-paste.ini
+	rm -f /etc/glance/glance-cache.conf /etc/glance/glance-scrubber.conf /etc/glance/policy.json
+	[ -d /etc/glance ] && rmdir --ignore-fail-on-non-empty /etc/glance
+fi
 
 #DEBHELPER#

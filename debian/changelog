@@ -1,26 +1,57 @@
-glance (2012.1.1-5) unstable; urgency=high
+glance (2013.1-2) experimental; urgency=low
 
-  * CVE-2013-1840: fixes "Backend credentials leak in Glance v1 API"
-    (Closes: #703063).
+  * Added Should-Start/stop: postgress & mysql in the glance-registry init
+    script (Closes: #706016). Thanks to Julien Cristau for reporting it.
 
- -- Thomas Goirand <zigo@debian.org>  Fri, 15 Mar 2013 04:35:22 +0800
+ -- Thomas Goirand <zigo@debian.org>  Wed, 24 Apr 2013 00:09:42 +0800
 
-glance (2012.1.1-4) unstable; urgency=high
+glance (2013.1-1) experimental; urgency=low
 
-  * CVE-2013-0212: Backend password leak in Glance error message. Note that
-    only setups that use the single-tenant Swift store are affected.
-    (Closes: #699270).
+  * New upstream release.
 
- -- Thomas Goirand <zigo@debian.org>  Tue, 29 Jan 2013 15:56:12 +0000
+ -- Thomas Goirand <zigo@debian.org>  Mon, 28 Jan 2013 21:28:02 +0800
 
-glance (2012.1.1-3) unstable; urgency=high
+glance (2012.2.1-1) experimental; urgency=low
 
-  * New upstream patch for CVE-2012-4573. Previous patch is to be discarded,
-  according to bcwaldon on IRC (Closes: #692641).
+  [ Thomas Goirand <zigo@debian.org> ]
+  * New upstream release 2012.2.1
+  * Uses $(VERSION) when building orig.tar.xz
+  * Added .PHONY: target.
+  * Disable git fetch in clean target (sic!).
+  * All the debconf handling is now done in glance-common.
+  * Added missing VCS fields.
+  * Corrected Homepage field.
+  * Rewrote the debconf and dbconfig-common handling using the pkgos functions.
+  * Do not package /usr/bin/glance since this is provided by
+  python-glanceclient.
+  * Added mssing if [ -r /usr/share/debconf/confmodule in prerm.
+  * Removed dangerous deletion of the glance username in postrm.
+  * Added upstream patch for CVE-2012-4573: authentication bypass for image
+  deletion.
+  * Ensure we have sqlalchemy (<< 0.8).
+  * Added upstream patch FakeAuth not always admin.
 
- -- Thomas Goirand <zigo@debian.org>  Fri, 09 Nov 2012 18:38:02 +0000
+ -- Thomas Goirand <zigo@debian.org>  Sun, 02 Dec 2012 07:03:28 +0000
 
-glance (2012.1.1-2) unstable; urgency=high
+glance (2012.2~rc1-1) experimental; urgency=low
+
+  * New snapshot release
+  * Refresh all patches
+
+ -- Mehdi Abaakouk <sileht@sileht.net>  Mon, 24 Sep 2012 11:18:52 +0200
+
+glance (2012.2~f3-1) experimental; urgency=low
+
+  [ Thomas Goirand ]
+  * Now using xz compression level 9 for the debs.
+  [ Mehdi Abaakouk ]
+  * New upstream version
+  * Refresh all patches
+  * Removed test_interrupt_avoids_respawn_storm.patch (incorporated upstream)
+
+ -- Mehdi Abaakouk <sileht@sileht.net>  Mon, 10 Sep 2012 17:58:45 +0200
+
+glance (2012.1.1-2) unstable; urgency=low
 
   * Added Chinese Debconf translation, thanks to ben <duyujie.dyj@gmail.com>.
   * CVE-2012-4573: Authentication bypass for image deletion (Closes: #692641).

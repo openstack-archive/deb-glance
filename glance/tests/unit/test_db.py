@@ -1,7 +1,4 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
-# Copyright 2010-2011 OpenStack, LLC
-# Copyright 2012 Justin Santa Barbara
+# Copyright 2012 OpenStack Foundation.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -16,277 +13,343 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import datetime
-import random
+from oslo.config import cfg
 
-from glance.common import context
+from glance.common import crypt
 from glance.common import exception
-from glance.common import utils
-from glance.registry import context as rcontext
-from glance.registry.db import api as db_api
-from glance.registry.db import models as db_models
-from glance.tests.unit import base
-from glance.tests import utils as test_utils
+import glance.context
+import glance.db
+from glance.openstack.common import uuidutils
+import glance.tests.unit.utils as unit_test_utils
+import glance.tests.utils as test_utils
 
 
-_gen_uuid = utils.generate_uuid
+CONF = cfg.CONF
+CONF.import_opt('metadata_encryption_key', 'glance.common.config')
 
-UUID1 = _gen_uuid()
-UUID2 = _gen_uuid()
+UUID1 = 'c80a1a6c-bd1f-41c5-90ee-81afedb1d58d'
+UUID2 = 'a85abd86-55b3-4d5b-b0b4-5d0a6e6042fc'
+UUID3 = '971ec09a-8067-4bc8-a91f-ae3557f1c4c7'
+UUID4 = '6bbe7cc2-eae7-4c0f-b50d-a7160b0c6a86'
 
+TENANT1 = '6838eb7b-6ded-434a-882c-b344c77fe8df'
+TENANT2 = '2c014f32-55eb-467d-8fcb-4bd706012f81'
+TENANT3 = '5a3e60e8-cfa9-4a9e-a90a-62b42cea92b8'
+TENANT4 = 'c6c87f25-8a94-47ed-8c83-053c25f42df4'
 
-# The default sort order of results is whatever sort key is specified,
-# plus created_at and id for ties.  When we're not specifying a sort_key,
-# we get the default (created_at); some tests below expect the fixtures to be
-# returned in array-order; so if if the created_at timestamps are the same,
-# these tests rely on UUID1 < UUID2. Swap so that's the case.
-if UUID1 > UUID2:
-    UUID1, UUID2 = UUID2, UUID1
-
-
-CONF = {'sql_connection': 'sqlite://',
-        'verbose': False,
-        'debug': False}
+USER1 = '54492ba0-f4df-4e4e-be62-27f4d76b29cf'
 
 
-def build_fixtures(t1, t2):
-    return [
-    {'id': UUID1,
-     'name': 'fake image #1',
-     'status': 'active',
-     'disk_format': 'ami',
-     'container_format': 'ami',
-     'is_public': False,
-     'created_at': t1,
-     'updated_at': t1,
-     'deleted_at': None,
-     'deleted': False,
-     'checksum': None,
-     'min_disk': 0,
-     'min_ram': 0,
-     'size': 13,
-     'location': "swift://user:passwd@acct/container/obj.tar.0",
-     'properties': {'type': 'kernel'}},
-    {'id': UUID2,
-     'name': 'fake image #2',
-     'status': 'active',
-     'disk_format': 'vhd',
-     'container_format': 'ovf',
-     'is_public': True,
-     'created_at': t2,
-     'updated_at': t2,
-     'deleted_at': None,
-     'deleted': False,
-     'checksum': None,
-     'min_disk': 5,
-     'min_ram': 256,
-     'size': 19,
-     'location': "file:///tmp/glance-tests/2",
-     'properties': {}}]
+def _db_fixture(id, **kwargs):
+    obj = {
+        'id': id,
+        'name': None,
+        'is_public': False,
+        'properties': {},
+        'checksum': None,
+        'owner': None,
+        'status': 'queued',
+        'tags': [],
+        'size': None,
+        'locations': [],
+        'protected': False,
+        'disk_format': None,
+        'container_format': None,
+        'deleted': False,
+        'min_ram': None,
+        'min_disk': None,
+    }
+    obj.update(kwargs)
+    return obj
 
 
-class TestRegistryDb(base.IsolatedUnitTest):
+def _db_image_member_fixture(image_id, member_id, **kwargs):
+    obj = {
+        'image_id': image_id,
+        'member': member_id,
+    }
+    obj.update(kwargs)
+    return obj
+
+
+class TestImageRepo(test_utils.BaseTestCase):
 
     def setUp(self):
-        """Establish a clean test environment"""
-        super(TestRegistryDb, self).setUp()
-        conf = test_utils.TestConfigOpts(CONF)
-        self.adm_context = rcontext.RequestContext(is_admin=True)
-        self.context = rcontext.RequestContext(is_admin=False)
-        db_api.configure_db(conf)
-        self.destroy_fixtures()
-        self.create_fixtures()
+        self.db = unit_test_utils.FakeDB()
+        self.db.reset()
+        self.context = glance.context.RequestContext(
+                user=USER1, tenant=TENANT1)
+        self.image_repo = glance.db.ImageRepo(self.context, self.db)
+        self.image_factory = glance.domain.ImageFactory()
+        self._create_images()
+        self._create_image_members()
+        super(TestImageRepo, self).setUp()
 
-    def create_fixtures(self):
-        self.fixtures = self.build_fixtures()
-        for fixture in self.fixtures:
-            db_api.image_create(self.adm_context, fixture)
+    def _create_images(self):
+        self.db.reset()
+        self.images = [
+            _db_fixture(UUID1, owner=TENANT1, name='1', size=256,
+                        is_public=True, status='active'),
+            _db_fixture(UUID2, owner=TENANT1, name='2',
+                        size=512, is_public=False),
+            _db_fixture(UUID3, owner=TENANT3, name='3',
+                        size=1024, is_public=True),
+            _db_fixture(UUID4, owner=TENANT4, name='4', size=2048),
+        ]
+        [self.db.image_create(None, image) for image in self.images]
 
-    def build_fixtures(self):
-        t1 = datetime.datetime.utcnow()
-        t2 = t1 + datetime.timedelta(microseconds=1)
-        return build_fixtures(t1, t2)
+        self.db.image_tag_set_all(None, UUID1, ['ping', 'pong'])
 
-    def destroy_fixtures(self):
-        # Easiest to just drop the models and re-create them...
-        db_models.unregister_models(db_api._ENGINE)
-        db_models.register_models(db_api._ENGINE)
+    def _create_image_members(self):
+        self.image_members = [
+            _db_image_member_fixture(UUID2, TENANT2),
+            _db_image_member_fixture(UUID2, TENANT3, status='accepted'),
+        ]
+        [self.db.image_member_create(None, image_member)
+            for image_member in self.image_members]
 
-    def test_image_get(self):
-        image = db_api.image_get(self.context, UUID1)
-        self.assertEquals(image['id'], self.fixtures[0]['id'])
+    def test_get(self):
+        image = self.image_repo.get(UUID1)
+        self.assertEquals(image.image_id, UUID1)
+        self.assertEquals(image.name, '1')
+        self.assertEquals(image.tags, set(['ping', 'pong']))
+        self.assertEquals(image.visibility, 'public')
+        self.assertEquals(image.status, 'active')
+        self.assertEquals(image.size, 256)
+        self.assertEquals(image.owner, TENANT1)
 
-    def test_image_get_disallow_deleted(self):
-        db_api.image_destroy(self.adm_context, UUID1)
-        self.assertRaises(exception.NotFound, db_api.image_get,
-                          self.context, UUID1)
+    def test_get_not_found(self):
+        self.assertRaises(exception.NotFound, self.image_repo.get,
+                          uuidutils.generate_uuid())
 
-    def test_image_get_allow_deleted(self):
-        db_api.image_destroy(self.adm_context, UUID1)
-        image = db_api.image_get(self.adm_context, UUID1)
-        self.assertEquals(image['id'], self.fixtures[0]['id'])
+    def test_get_forbidden(self):
+        self.assertRaises(exception.NotFound, self.image_repo.get, UUID4)
 
-    def test_image_get_force_allow_deleted(self):
-        db_api.image_destroy(self.adm_context, UUID1)
-        image = db_api.image_get(self.context, UUID1, force_show_deleted=True)
-        self.assertEquals(image['id'], self.fixtures[0]['id'])
+    def test_list(self):
+        images = self.image_repo.list()
+        image_ids = set([i.image_id for i in images])
+        self.assertEqual(set([UUID1, UUID2, UUID3]), image_ids)
 
-    def test_image_get_all(self):
-        images = db_api.image_get_all(self.context)
-        self.assertEquals(len(images), 2)
+    def _do_test_list_status(self, status, expected):
+        self.context = glance.context.RequestContext(
+                        user=USER1, tenant=TENANT3)
+        self.image_repo = glance.db.ImageRepo(self.context, self.db)
+        images = self.image_repo.list(member_status=status)
+        self.assertEqual(expected, len(images))
 
-    def test_image_get_all_marker(self):
-        images = db_api.image_get_all(self.context, marker=UUID2)
-        self.assertEquals(len(images), 1)
+    def test_list_status(self):
+        self._do_test_list_status(None, 3)
 
-    def test_image_get_all_marker_deleted(self):
-        """Cannot specify a deleted image as a marker."""
-        db_api.image_destroy(self.adm_context, UUID1)
-        filters = {'deleted': False}
-        self.assertRaises(exception.NotFound, db_api.image_get_all,
-                          self.context, marker=UUID1, filters=filters)
+    def test_list_status_pending(self):
+        self._do_test_list_status('pending', 2)
 
-    def test_image_get_all_marker_deleted_showing_deleted_as_admin(self):
-        """Specify a deleted image as a marker if showing deleted images."""
-        db_api.image_destroy(self.adm_context, UUID1)
-        images = db_api.image_get_all(self.adm_context, marker=UUID1)
-        self.assertEquals(len(images), 0)
+    def test_list_status_rejected(self):
+        self._do_test_list_status('rejected', 2)
 
-    def test_image_get_all_marker_deleted_showing_deleted(self):
-        """Specify a deleted image as a marker if showing deleted images."""
-        db_api.image_destroy(self.adm_context, UUID1)
-        filters = {'deleted': True}
-        images = db_api.image_get_all(self.context, marker=UUID1,
-                                      filters=filters)
-        self.assertEquals(len(images), 0)
+    def test_list_status_all(self):
+        self._do_test_list_status('all', 3)
+
+    def test_list_with_marker(self):
+        full_images = self.image_repo.list()
+        full_ids = [i.image_id for i in full_images]
+        marked_images = self.image_repo.list(marker=full_ids[0])
+        actual_ids = [i.image_id for i in marked_images]
+        self.assertEqual(actual_ids, full_ids[1:])
+
+    def test_list_with_last_marker(self):
+        images = self.image_repo.list()
+        marked_images = self.image_repo.list(marker=images[-1].image_id)
+        self.assertEqual(len(marked_images), 0)
+
+    def test_limited_list(self):
+        limited_images = self.image_repo.list(limit=2)
+        self.assertEqual(len(limited_images), 2)
+
+    def test_list_with_marker_and_limit(self):
+        full_images = self.image_repo.list()
+        full_ids = [i.image_id for i in full_images]
+        marked_images = self.image_repo.list(marker=full_ids[0], limit=1)
+        actual_ids = [i.image_id for i in marked_images]
+        self.assertEqual(actual_ids, full_ids[1:2])
+
+    def test_list_private_images(self):
+        filters = {'visibility': 'private'}
+        images = self.image_repo.list(filters=filters)
+        image_ids = set([i.image_id for i in images])
+        self.assertEqual(set([UUID2]), image_ids)
+
+    def test_list_public_images(self):
+        filters = {'visibility': 'public'}
+        images = self.image_repo.list(filters=filters)
+        image_ids = set([i.image_id for i in images])
+        self.assertEqual(set([UUID1, UUID3]), image_ids)
+
+    def test_sorted_list(self):
+        images = self.image_repo.list(sort_key='size', sort_dir='asc')
+        image_ids = [i.image_id for i in images]
+        self.assertEqual([UUID1, UUID2, UUID3], image_ids)
+
+    def test_add_image(self):
+        image = self.image_factory.new_image(name='added image')
+        self.assertEqual(image.updated_at, image.created_at)
+        self.image_repo.add(image)
+        retreived_image = self.image_repo.get(image.image_id)
+        self.assertEqual(retreived_image.name, 'added image')
+        self.assertEqual(retreived_image.updated_at, image.updated_at)
+
+    def test_save_image(self):
+        image = self.image_repo.get(UUID1)
+        original_update_time = image.updated_at
+        image.name = 'foo'
+        image.tags = ['king', 'kong']
+        self.image_repo.save(image)
+        current_update_time = image.updated_at
+        self.assertTrue(current_update_time > original_update_time)
+        image = self.image_repo.get(UUID1)
+        self.assertEqual(image.name, 'foo')
+        self.assertEqual(image.tags, set(['king', 'kong']))
+        self.assertEqual(image.updated_at, current_update_time)
+
+    def test_remove_image(self):
+        image = self.image_repo.get(UUID1)
+        previous_update_time = image.updated_at
+        self.image_repo.remove(image)
+        self.assertTrue(image.updated_at > previous_update_time)
+        self.assertRaises(exception.NotFound, self.image_repo.get, UUID1)
 
 
-class TestRegistryDbWithSameTime(TestRegistryDb):
+class TestEncryptedLocations(test_utils.BaseTestCase):
+    def setUp(self):
+        super(TestEncryptedLocations, self).setUp()
+        self.db = unit_test_utils.FakeDB()
+        self.db.reset()
+        self.context = glance.context.RequestContext(
+                user=USER1, tenant=TENANT1)
+        self.image_repo = glance.db.ImageRepo(self.context, self.db)
+        self.image_factory = glance.domain.ImageFactory()
+        self.crypt_key = '0123456789abcdef'
+        self.config(metadata_encryption_key=self.crypt_key)
 
-    def build_fixtures(self):
-        t1 = datetime.datetime.utcnow()
-        t2 = t1  # Same timestamp!
-        return build_fixtures(t1, t2)
+    def test_encrypt_locations_on_add(self):
+        image = self.image_factory.new_image(UUID1)
+        image.locations = ['foo', 'bar']
+        self.image_repo.add(image)
+        db_data = self.db.image_get(self.context, UUID1)
+        self.assertNotEqual(db_data['locations'], ['foo', 'bar'])
+        decrypted_locations = [crypt.urlsafe_decrypt(self.crypt_key, l)
+                               for l in db_data['locations']]
+        self.assertEqual(decrypted_locations, ['foo', 'bar'])
+
+    def test_encrypt_locations_on_save(self):
+        image = self.image_factory.new_image(UUID1)
+        self.image_repo.add(image)
+        image.locations = ['foo', 'bar']
+        self.image_repo.save(image)
+        db_data = self.db.image_get(self.context, UUID1)
+        self.assertNotEqual(db_data['locations'], ['foo', 'bar'])
+        decrypted_locations = [crypt.urlsafe_decrypt(self.crypt_key, l)
+                               for l in db_data['locations']]
+        self.assertEqual(decrypted_locations, ['foo', 'bar'])
+
+    def test_decrypt_locations_on_get(self):
+        encrypted_locations = [crypt.urlsafe_encrypt(self.crypt_key, l)
+                               for l in ['ping', 'pong']]
+        self.assertNotEqual(encrypted_locations, ['ping', 'pong'])
+        db_data = _db_fixture(UUID1, owner=TENANT1,
+                              locations=encrypted_locations)
+        self.db.image_create(None, db_data)
+        image = self.image_repo.get(UUID1)
+        self.assertEqual(image.locations, ['ping', 'pong'])
+
+    def test_decrypt_locations_on_list(self):
+        encrypted_locations = [crypt.urlsafe_encrypt(self.crypt_key, l)
+                               for l in ['ping', 'pong']]
+        self.assertNotEqual(encrypted_locations, ['ping', 'pong'])
+        db_data = _db_fixture(UUID1, owner=TENANT1,
+                              locations=encrypted_locations)
+        self.db.image_create(None, db_data)
+        image = self.image_repo.list()[0]
+        self.assertEqual(image.locations, ['ping', 'pong'])
 
 
-class TestPagingOrder(base.IsolatedUnitTest):
-    """ Checks the paging order, by paging through random images.
-
-    It generates images with random min_disk, created_at and image id.
-    Image id is a UUID and unique, min_disk and created_at are drawn from
-    a small range so are expected to have duplicates.  Then we try paging
-    through, and check that we get back the images in the order we expect.
-    """
-
-    ITEM_COUNT = 100
-    PAGE_SIZE = 5
-    TIME_VALUES = 10
-    MINDISK_VALUES = 10
+class TestImageMemberRepo(test_utils.BaseTestCase):
 
     def setUp(self):
-        """Establish a clean test environment"""
-        super(TestPagingOrder, self).setUp()
-        conf = test_utils.TestConfigOpts(CONF)
-        self.adm_context = rcontext.RequestContext(is_admin=True)
-        self.context = rcontext.RequestContext(is_admin=False)
-        db_api.configure_db(conf)
-        self.destroy_fixtures()
-        self.create_fixtures()
+        self.db = unit_test_utils.FakeDB()
+        self.db.reset()
+        self.context = glance.context.RequestContext(
+                user=USER1, tenant=TENANT1)
+        self.image_repo = glance.db.ImageRepo(self.context, self.db)
+        self.image_member_factory = glance.domain.ImageMemberFactory()
+        self._create_images()
+        self._create_image_members()
+        image = self.image_repo.get(UUID1)
+        self.image_member_repo = glance.db.ImageMemberRepo(self.context,
+                                                           self.db, image)
+        super(TestImageMemberRepo, self).setUp()
 
-    def create_fixtures(self):
-        self.fixtures = self.build_fixtures()
-        for fixture in self.fixtures:
-            db_api.image_create(self.adm_context, fixture)
+    def _create_images(self):
+        self.images = [
+            _db_fixture(UUID1, owner=TENANT1, name='1', size=256,
+                        status='active'),
+            _db_fixture(UUID2, owner=TENANT1, name='2',
+                        size=512, is_public=False),
+        ]
+        [self.db.image_create(None, image) for image in self.images]
 
-    def destroy_fixtures(self):
-        # Easiest to just drop the models and re-create them...
-        db_models.unregister_models(db_api._ENGINE)
-        db_models.register_models(db_api._ENGINE)
+        self.db.image_tag_set_all(None, UUID1, ['ping', 'pong'])
 
-    def _build_random_image(self, t, min_disk):
-        image_id = _gen_uuid()
+    def _create_image_members(self):
+        self.image_members = [
+            _db_image_member_fixture(UUID1, TENANT2),
+            _db_image_member_fixture(UUID1, TENANT3),
+        ]
+        [self.db.image_member_create(None, image_member)
+            for image_member in self.image_members]
 
-        return {'id': image_id,
-         'name': 'fake image #' + image_id,
-         'status': 'active',
-         'disk_format': 'ami',
-         'container_format': 'ami',
-         'is_public': True,
-         'created_at': t,
-         'updated_at': t,
-         'deleted_at': None,
-         'deleted': False,
-         'checksum': None,
-         'min_disk': min_disk,
-         'min_ram': 0,
-         'size': 0,
-         'location': "file:///tmp/glance-tests/" + image_id,
-         'properties': {}}
+    def test_list(self):
+        image_members = self.image_member_repo.list()
+        image_member_ids = set([i.member_id for i in image_members])
+        self.assertEqual(set([TENANT2, TENANT3]), image_member_ids)
 
-    def build_fixtures(self):
-        self.images = []
-        t0 = datetime.datetime.utcnow()
-        for _ in xrange(0, self.ITEM_COUNT):
-            tdelta = random.uniform(0, self.TIME_VALUES)
-            min_disk = random.uniform(0, self.MINDISK_VALUES)
-            t = t0 + datetime.timedelta(microseconds=tdelta)
-            image = self._build_random_image(t, min_disk)
-            self.images.append(image)
-        return self.images
+    def test_list_no_members(self):
+        image = self.image_repo.get(UUID2)
+        self.image_member_repo_uuid2 = glance.db.ImageMemberRepo(
+                                                self.context, self.db, image)
+        image_members = self.image_member_repo_uuid2.list()
+        image_member_ids = set([i.member_id for i in image_members])
+        self.assertEqual(set([]), image_member_ids)
 
-    def _sort_results(self, sort_dir, sort_key):
-        results = self.images
-        results = sorted(results, key=lambda i: (i[sort_key],
-                                                 i['created_at'],
-                                                 i['id']))
-        if sort_dir == 'desc':
-            results.reverse()
-        return results
+    def test_save_image_member(self):
+        image_member = self.image_member_repo.get(TENANT2)
+        image_member.status = 'accepted'
+        image_member_updated = self.image_member_repo.save(image_member)
+        self.assertTrue(image_member.id, image_member_updated.id)
+        self.assertEqual(image_member_updated.status, 'accepted')
 
-    def _do_test(self, sort_dir, sort_key):
-        limit = self.PAGE_SIZE
-        marker = None
+    def test_add_image_member(self):
+        image = self.image_repo.get(UUID1)
+        image_member = self.image_member_factory.new_image_member(image,
+                                                                  TENANT4)
+        self.assertTrue(image_member.id is None)
+        retreived_image_member = self.image_member_repo.add(image_member)
+        self.assertEqual(retreived_image_member.id, image_member.id)
+        self.assertEqual(retreived_image_member.image_id,
+                         image_member.image_id)
+        self.assertEqual(retreived_image_member.member_id,
+                         image_member.member_id)
+        self.assertEqual(retreived_image_member.status,
+                         'pending')
 
-        got_ids = []
-        expected_ids = []
+    def test_remove_image_member(self):
+        image_member = self.image_member_repo.get(TENANT2)
+        self.image_member_repo.remove(image_member)
+        self.assertRaises(exception.NotFound, self.image_member_repo.get,
+                          TENANT2)
 
-        for i in self._sort_results(sort_dir, sort_key):
-            expected_ids.append(i['id'])
-
-        while True:
-            results = db_api.image_get_all(self.context,
-                                           marker=marker,
-                                           limit=limit,
-                                           sort_key=sort_key,
-                                           sort_dir=sort_dir)
-            if not results:
-                break
-
-            for result in results:
-                got_ids.append(result['id'])
-
-            # Prevent this running infinitely in error cases
-            self.assertTrue(len(got_ids) < (500 + len(expected_ids)))
-
-            marker = results[-1].id
-
-        self.assertEquals(len(got_ids), len(expected_ids))
-        self.assertEquals(got_ids, expected_ids)
-
-    def test_sort_by_disk_asc(self):
-        self._do_test('asc', 'min_disk')
-
-    def test_sort_by_disk_desc(self):
-        self._do_test('desc', 'min_disk')
-
-    def test_sort_by_created_at_asc(self):
-        self._do_test('asc', 'created_at')
-
-    def test_sort_by_created_at_desc(self):
-        self._do_test('desc', 'created_at')
-
-    def test_sort_by_id_asc(self):
-        self._do_test('asc', 'id')
-
-    def test_sort_by_id_desc(self):
-        self._do_test('desc', 'id')
+    def test_remove_image_member_does_not_exist(self):
+        image = self.image_repo.get(UUID2)
+        fake_member = glance.domain.ImageMemberFactory()\
+                                   .new_image_member(image, TENANT4)
+        self.assertRaises(exception.NotFound, self.image_member_repo.remove,
+                          fake_member)

@@ -15,15 +15,20 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import unittest
+import socket
+import time
+
+import eventlet.patcher
 import webob
 
-from glance.common import wsgi
-from glance.common import utils
 from glance.common import exception
+from glance.common import utils
+from glance.common import wsgi
+from glance.tests import utils as test_utils
 
 
-class RequestTest(unittest.TestCase):
+class RequestTest(test_utils.BaseTestCase):
+
     def test_content_type_missing(self):
         request = wsgi.Request.blank('/tests/123')
         self.assertRaises(exception.InvalidContentType,
@@ -61,8 +66,8 @@ class RequestTest(unittest.TestCase):
 
     def test_content_type_from_accept_json_xml_quality(self):
         request = wsgi.Request.blank('/tests/123')
-        request.headers["Accept"] = \
-            "application/json; q=0.3, application/xml; q=0.9"
+        request.headers["Accept"] = ("application/json; q=0.3, "
+                                     "application/xml; q=0.9")
         result = request.best_match_content_type()
         self.assertEqual(result, "application/json")
 
@@ -73,7 +78,8 @@ class RequestTest(unittest.TestCase):
         self.assertEqual(result, "application/json")
 
 
-class ResourceTest(unittest.TestCase):
+class ResourceTest(test_utils.BaseTestCase):
+
     def test_get_action_args(self):
         env = {
             'wsgiorg.routing_args': [
@@ -122,7 +128,8 @@ class ResourceTest(unittest.TestCase):
                           'index', 'on', pants='off')
 
 
-class JSONResponseSerializerTest(unittest.TestCase):
+class JSONResponseSerializerTest(test_utils.BaseTestCase):
+
     def test_to_json(self):
         fixture = {"key": "value"}
         expected = '{"key": "value"}'
@@ -141,7 +148,8 @@ class JSONResponseSerializerTest(unittest.TestCase):
         self.assertEqual(response.body, '{"key": "value"}')
 
 
-class JSONRequestDeserializerTest(unittest.TestCase):
+class JSONRequestDeserializerTest(test_utils.BaseTestCase):
+
     def test_has_body_no_content_length(self):
         request = wsgi.Request.blank('/')
         request.method = 'POST'
@@ -173,6 +181,11 @@ class JSONRequestDeserializerTest(unittest.TestCase):
         actual = wsgi.JSONRequestDeserializer().from_json(fixture)
         self.assertEqual(actual, expected)
 
+    def test_from_json_malformed(self):
+        fixture = 'kjasdklfjsklajf'
+        self.assertRaises(webob.exc.HTTPBadRequest,
+                          wsgi.JSONRequestDeserializer().from_json, fixture)
+
     def test_default_no_body(self):
         request = wsgi.Request.blank('/')
         actual = wsgi.JSONRequestDeserializer().default(request)
@@ -188,7 +201,7 @@ class JSONRequestDeserializerTest(unittest.TestCase):
         self.assertEqual(actual, expected)
 
 
-class TestHelpers(unittest.TestCase):
+class TestHelpers(test_utils.BaseTestCase):
 
     def test_headers_are_unicode(self):
         """
@@ -234,3 +247,15 @@ class TestHelpers(unittest.TestCase):
                 self.assertEqual(v, result[k])
             else:
                 self.assertFalse(k in result)
+
+
+class TestMonkeyPatch(test_utils.BaseTestCase):
+
+    def test_time_is_monkey_patched(self):
+        """
+        Test GET with no redirect
+        """
+        server = wsgi.Server()
+        server.create_pool()
+        self.assertTrue(eventlet.patcher.is_monkey_patched(time))
+        self.assertTrue(eventlet.patcher.is_monkey_patched(socket))
