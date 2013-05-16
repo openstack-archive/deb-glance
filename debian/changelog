@@ -1,5 +1,6 @@
-glance (2013.1-2) experimental; urgency=low
+glance (2013.1-2) unstable; urgency=low
 
+  * Uploading to unstable.
   * Added Should-Start/stop: postgress & mysql in the glance-registry init
     script (Closes: #706016). Thanks to Julien Cristau for reporting it.
 
