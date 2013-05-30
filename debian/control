@@ -7,49 +7,48 @@ Uploaders: Julien Danjou <acid@debian.org>,
            Ghe Rivero <ghe.rivero@stackops.com>,
            Mehdi Abaakouk <sileht@sileht.net>
 Build-Depends: debhelper (>= 9),
- po-debconf,
- python-all (>= 2.6.6-3~),
- openstack-pkg-tools,
- sqlite3
-Build-Depends-Indep:
- curl,
- pep8 (>= 1.3.3),
- python-anyjson,
- python-argparse,
- python-babel,
- python-boto,
- python-coverage,
- python-crypto,
- python-dateutil,
- python-eventlet,
- python-fixtures,
- python-glanceclient,
- python-greenlet,
- python-httplib2 (>= 0.6.0),
- python-iso8601,
- python-jsonschema,
- python-keystoneclient (>= 1:0.2),
- python-kombu,
- python-lxml,
- python-migrate,
- python-mox,
- python-nose,
- python-oslo.config,
- python-passlib,
- python-paste,
- python-pastedeploy,
- python-requests,
- python-routes,
- python-sendfile,
- python-setuptools,
- python-sphinx (>= 1.1.2),
- python-sqlalchemy-ext | python-sqlalchemy (<< 0.6.3-2),
- python-swiftclient (>= 1:1.2),
- python-testtools (>=0.9.22),
- python-tox,
- python-webob,
- python-xattr,
- procps
+               openstack-pkg-tools,
+               po-debconf,
+               python-all (>= 2.6.6-3~),
+               sqlite3
+Build-Depends-Indep: curl,
+                     pep8 (>= 1.3.3),
+                     procps,
+                     python-anyjson,
+                     python-argparse,
+                     python-babel,
+                     python-boto,
+                     python-coverage,
+                     python-crypto,
+                     python-dateutil,
+                     python-eventlet,
+                     python-fixtures,
+                     python-glanceclient,
+                     python-greenlet,
+                     python-httplib2 (>= 0.6.0),
+                     python-iso8601,
+                     python-jsonschema,
+                     python-keystoneclient (>= 1:0.2),
+                     python-kombu,
+                     python-lxml,
+                     python-migrate,
+                     python-mox,
+                     python-nose,
+                     python-oslo.config,
+                     python-passlib,
+                     python-paste,
+                     python-pastedeploy,
+                     python-requests,
+                     python-routes,
+                     python-sendfile,
+                     python-setuptools,
+                     python-sphinx (>= 1.1.2),
+                     python-sqlalchemy-ext | python-sqlalchemy (<< 0.6.3-2),
+                     python-swiftclient (>= 1:1.2),
+                     python-testtools (>=0.9.22),
+                     python-tox,
+                     python-webob,
+                     python-xattr
 Standards-Version: 3.9.4
 Homepage: http://glance.openstack.org/
 Vcs-Browser: http://anonscm.debian.org/gitweb/?p=openstack/glance.git;a=summary
@@ -59,35 +58,36 @@ Package: python-glance
 Architecture: all
 Section: python
 Pre-Depends: dpkg (>= 1.15.6~)
-Depends: ${python:Depends}, ${misc:Depends},
- libxml2-dev,
- libxslt-dev,
- python-anyjson,
- python-argparse,
- python-boto,
- python-configobj,
- python-crypto,
- python-dateutil,
- python-eventlet,
- python-greenlet,
- python-httplib2 (>= 0.6.0),
- python-iso8601,
- python-jsonschema,
- python-keystoneclient (>= 1:0.2),
- python-kombu,
- python-lxml,
- python-migrate,
- python-oslo.config,
- python-passlib,
- python-pastedeploy,
- python-requests,
- python-routes,
- python-setuptools,
- python-sqlalchemy-ext | python-sqlalchemy (<< 0.6.3-2),
- python-swiftclient (>= 1:1.2),
- python-webob,
- python-xattr,
- procps
+Depends: libxml2-dev,
+         libxslt-dev,
+         procps,
+         python-anyjson,
+         python-argparse,
+         python-boto,
+         python-configobj,
+         python-crypto,
+         python-dateutil,
+         python-eventlet,
+         python-greenlet,
+         python-httplib2 (>= 0.6.0),
+         python-iso8601,
+         python-jsonschema,
+         python-keystoneclient (>= 1:0.2),
+         python-kombu,
+         python-lxml,
+         python-migrate,
+         python-oslo.config,
+         python-passlib,
+         python-pastedeploy,
+         python-requests,
+         python-routes,
+         python-setuptools,
+         python-sqlalchemy-ext | python-sqlalchemy (<< 0.6.3-2),
+         python-swiftclient (>= 1:1.2),
+         python-webob,
+         python-xattr,
+         ${misc:Depends},
+         ${python:Depends}
 Provides: ${python:Provides}
 Description: OpenStack Image Service - Python client library
  The Glance project provides services for discovering, registering, and
@@ -101,11 +101,10 @@ Package: glance
 Architecture: all
 Section: python
 Pre-Depends: dpkg (>= 1.15.6~)
-Depends:
- glance-api (= ${source:Version}),
- glance-registry (= ${source:Version}),
- ${misc:Depends},
- ${python:Depends}
+Depends: glance-api (= ${source:Version}),
+         glance-registry (= ${source:Version}),
+         ${misc:Depends},
+         ${python:Depends}
 Suggests: python-ceph
 Description: OpenStack Image Service - metapackage
  The Glance project provides services for discovering, registering, and
@@ -134,14 +133,13 @@ Section: python
 Breaks: glance (<< 2012.1~e2-3)
 Replaces: glance (<< 2012.1~e2-3)
 Pre-Depends: dpkg (>= 1.15.6~)
-Depends:
- adduser,
- debconf,
- dbconfig-common,
- python-glance (= ${source:Version}),
- python-glanceclient,
- ${misc:Depends},
- ${python:Depends},
+Depends: adduser,
+         dbconfig-common,
+         debconf,
+         python-glance (= ${source:Version}),
+         python-glanceclient,
+         ${misc:Depends},
+         ${python:Depends}
 Description: OpenStack Image Service - common files
  The Glance project provides services for discovering, registering, and
  retrieving virtual machine images over the cloud. They may be stand-alone
@@ -154,9 +152,12 @@ Package: glance-api
 Architecture: all
 Section: python
 Pre-Depends: adduser, dpkg (>= 1.15.6~)
-Depends: ${ostack-lsb-base}, debconf, ${python:Depends}, ${misc:Depends},
- glance-common (= ${source:Version}),
- python-keystoneclient
+Depends: debconf,
+         glance-common (= ${source:Version}),
+         python-keystoneclient,
+         ${misc:Depends},
+         ${ostack-lsb-base},
+         ${python:Depends}
 Description: OpenStack Image Service - API server
  The Glance project provides services for discovering, registering, and
  retrieving virtual machine images over the cloud. They may be stand-alone
@@ -169,8 +170,11 @@ Package: glance-registry
 Architecture: all
 Section: python
 Pre-Depends: dpkg (>= 1.15.6~)
-Depends: adduser, ${ostack-lsb-base}, ${python:Depends}, ${misc:Depends},
- glance-common (= ${source:Version})
+Depends: adduser,
+         glance-common (= ${source:Version}),
+         ${misc:Depends},
+         ${ostack-lsb-base},
+         ${python:Depends}
 Description: OpenStack Image Service - registry server
  The Glance project provides services for discovering, registering, and
  retrieving virtual machine images over the cloud. They may be stand-alone
