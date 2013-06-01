@@ -1,6 +1,7 @@
-glance (2013.1-4) UNRELEASED; urgency=low
+glance (2013.1-4) unstable; urgency=low
 
   * Ran wrap-and-sort.
+  * Rebuild with new version 6 of openstack-pkg-tools.
 
  -- Thomas Goirand <zigo@debian.org>  Thu, 30 May 2013 11:21:41 +0800
 
