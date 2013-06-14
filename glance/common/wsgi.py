@@ -46,19 +46,32 @@ import glance.openstack.common.log as os_logging
 
 
 bind_opts = [
-    cfg.StrOpt('bind_host', default='0.0.0.0'),
-    cfg.IntOpt('bind_port'),
+    cfg.StrOpt('bind_host', default='0.0.0.0',
+               help=_('Address to bind the server.  Useful when '
+                      'selecting a particular network interface.')),
+    cfg.IntOpt('bind_port',
+               help=_('The port on which the server will listen.')),
 ]
 
 socket_opts = [
-    cfg.IntOpt('backlog', default=4096),
-    cfg.IntOpt('tcp_keepidle', default=600),
-    cfg.StrOpt('ca_file'),
-    cfg.StrOpt('cert_file'),
-    cfg.StrOpt('key_file'),
+    cfg.IntOpt('backlog', default=4096,
+               help=_('The backlog value that will be used when creating the '
+                      'TCP listener socket.')),
+    cfg.IntOpt('tcp_keepidle', default=600,
+               help=_('The value for the socket option TCP_KEEPIDLE.  This is'
+                      'the time in seconds that the connection must be idle '
+                      'before TCP starts sending keepalive probes.')),
+    cfg.StrOpt('ca_file', help=_('CA certificate file to use to verify '
+                                 'connecting clients.')),
+    cfg.StrOpt('cert_file', help=_('Certificate file to use when starting API '
+                                   'server securely.')),
+    cfg.StrOpt('key_file', help=_('Private key file to use when starting API '
+                                  'server securely.')),
 ]
 
-workers_opt = cfg.IntOpt('workers', default=1)
+workers_opt = cfg.IntOpt('workers', default=1,
+                         help=_('The number of child process workers that '
+                                'will be created to service API requests.'))
 
 CONF = cfg.CONF
 CONF.register_opts(bind_opts)
@@ -172,12 +185,29 @@ class Server(object):
         :param application: The application to be run in the WSGI server
         :param default_port: Port to bind to if none is specified in conf
         """
+        pgid = os.getpid()
+        try:
+            # NOTE(flaper87): Make sure this process
+            # runs in its own process group.
+            os.setpgid(pgid, pgid)
+        except OSError:
+            # NOTE(flaper87): When running glance-control,
+            # (glance's functional tests, for example)
+            # setpgid fails with EPERM as glance-control
+            # creates a fresh session, of which the newly
+            # launched service becomes the leader (session
+            # leaders may not change process groups)
+            #
+            # Running glance-(api|registry) is safe and
+            # shouldn't raise any error here.
+            pgid = 0
+
         def kill_children(*args):
             """Kills the entire process group."""
             signal.signal(signal.SIGTERM, signal.SIG_IGN)
             signal.signal(signal.SIGINT, signal.SIG_IGN)
             self.running = False
-            os.killpg(0, signal.SIGTERM)
+            os.killpg(pgid, signal.SIGTERM)
 
         def hup(*args):
             """
@@ -206,7 +236,6 @@ class Server(object):
                 self.run_child()
 
     def create_pool(self):
-        eventlet.patcher.monkey_patch(all=False, socket=True, time=True)
         return eventlet.GreenPool(size=self.threads)
 
     def wait_on_children(self):
