@@ -1,3 +1,9 @@
+glance (2013.1.2-1) unstable; urgency=low
+
+  * New upstream release.
+
+ -- Thomas Goirand <zigo@debian.org>  Fri, 14 Jun 2013 14:46:03 +0800
+
 glance (2013.1-4) unstable; urgency=low
 
   * Ran wrap-and-sort.
