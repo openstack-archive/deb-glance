@@ -1,3 +1,9 @@
+glance (2013.1.2-2) unstable; urgency=low
+
+  * Added missing schema-image.json in /etc/glance for glance-common.
+
+ -- Thomas Goirand <zigo@debian.org>  Mon, 17 Jun 2013 02:43:46 +0800
+
 glance (2013.1.2-1) unstable; urgency=low
 
   * New upstream release.
