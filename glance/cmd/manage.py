@@ -26,7 +26,6 @@ Glance Management Utility
 # Perhaps for consistency with Nova, we would then rename glance-admin ->
 # glance-manage (or the other way around)
 
-import gettext
 import os
 import sys
 
@@ -37,8 +36,6 @@ possible_topdir = os.path.normpath(os.path.join(os.path.abspath(sys.argv[0]),
                                    os.pardir))
 if os.path.exists(os.path.join(possible_topdir, 'glance', '__init__.py')):
     sys.path.insert(0, possible_topdir)
-
-gettext.install('glance', unicode=1)
 
 from oslo.config import cfg
 
@@ -115,20 +112,18 @@ def main():
         # sql_connection is only part of the glance registry.
         glance.db.add_cli_options()
 
-        default_cfg_files = cfg.find_config_files(project='glance',
-                                                  prog='glance-registry')
-
-        config.parse_args(default_config_files=default_cfg_files,
+        cfg_files = cfg.find_config_files(project='glance',
+                                          prog='glance-registry')
+        if not cfg_files:
+            cfg_files = cfg.find_config_files(project='glance',
+                                              prog='glance-api')
+        config.parse_args(default_config_files=cfg_files,
                           usage="%(prog)s [options] <cmd>")
         log.setup('glance')
-    except RuntimeError, e:
+    except RuntimeError as e:
         sys.exit("ERROR: %s" % e)
 
     try:
         CONF.command.func()
-    except exception.GlanceException, e:
+    except exception.GlanceException as e:
         sys.exit("ERROR: %s" % e)
-
-
-if __name__ == '__main__':
-    main()

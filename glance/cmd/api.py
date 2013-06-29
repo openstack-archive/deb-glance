@@ -19,14 +19,15 @@
 #    under the License.
 
 """
-Glance Image Cache Pruner
-
-This is meant to be run as a periodic task, perhaps every half-hour.
+Glance API Server
 """
 
-import gettext
+import eventlet
 import os
 import sys
+
+# Monkey patch socket and time
+eventlet.patcher.monkey_patch(all=False, socket=True, time=True)
 
 # If ../glance/__init__.py exists, add ../ to Python search path, so that
 # it will override what happens to be installed in /usr/(local/)lib/python...
@@ -36,23 +37,30 @@ possible_topdir = os.path.normpath(os.path.join(os.path.abspath(sys.argv[0]),
 if os.path.exists(os.path.join(possible_topdir, 'glance', '__init__.py')):
     sys.path.insert(0, possible_topdir)
 
-gettext.install('glance', unicode=1)
-
-from oslo.config import cfg
-
 from glance.common import config
-from glance.image_cache import pruner
+from glance.common import wsgi
+from glance.common import exception
 from glance.openstack.common import log
+import glance.store
 
-CONF = cfg.CONF
+
+def fail(returncode, e):
+    sys.stderr.write("ERROR: %s\n" % e)
+    sys.exit(returncode)
 
 
-if __name__ == '__main__':
+def main():
     try:
-        config.parse_cache_args()
+        config.parse_args()
         log.setup('glance')
 
-        app = pruner.Pruner()
-        app.run()
-    except RuntimeError, e:
-        sys.exit("ERROR: %s" % e)
+        glance.store.create_stores()
+        glance.store.verify_default_store()
+
+        server = wsgi.Server()
+        server.start(config.load_paste_app(), default_port=9292)
+        server.wait()
+    except exception.WorkerCreationFailure as e:
+        fail(2, e)
+    except RuntimeError as e:
+        fail(1, e)

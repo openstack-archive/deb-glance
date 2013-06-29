@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2010-2012 OpenStack LLC.
+# Copyright 2013 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -38,12 +38,13 @@ from glance.api import policy
 import glance.api.v1
 from glance.api.v1 import controller
 from glance.api.v1 import filters
+from glance.api.v1 import upload_utils
 from glance.common import exception
 from glance.common import utils
 from glance.common import wsgi
 from glance import notifier
 import glance.openstack.common.log as logging
-from glance import registry
+import glance.registry.client.v1.api as registry
 from glance.store import (get_from_backend,
                           get_size_from_backend,
                           safe_delete_from_backend,
@@ -169,7 +170,7 @@ class Controller(controller.BaseController):
         params = self._get_query_params(req)
         try:
             images = registry.get_images_list(req.context, **params)
-        except exception.Invalid, e:
+        except exception.Invalid as e:
             raise HTTPBadRequest(explanation="%s" % e)
 
         return dict(images=images)
@@ -209,7 +210,7 @@ class Controller(controller.BaseController):
             # information to the API end user...
             for image in images:
                 del image['location']
-        except exception.Invalid, e:
+        except exception.Invalid as e:
             raise HTTPBadRequest(explanation="%s" % e)
         return dict(images=images)
 
@@ -275,7 +276,7 @@ class Controller(controller.BaseController):
         If the above constraint is violated, we reject with 400 "Bad Request".
         """
         if source:
-            for scheme in ['s3', 'swift', 'http']:
+            for scheme in ['s3', 'swift', 'http', 'rbd']:
                 if source.lower().startswith(scheme):
                     return source
             msg = _("External sourcing not supported for store %s") % source
@@ -288,16 +289,19 @@ class Controller(controller.BaseController):
     def _copy_from(req):
         return req.headers.get('x-glance-api-copy-from')
 
-    @staticmethod
-    def _external_source(image_meta, req):
-        source = image_meta.get('location', Controller._copy_from(req))
+    def _external_source(self, image_meta, req):
+        source = image_meta.get('location')
+        if source is not None:
+            self._enforce(req, 'set_image_location')
+        else:
+            source = Controller._copy_from(req)
         return Controller._validate_source(source, req)
 
     @staticmethod
     def _get_from_store(context, where):
         try:
             image_data, image_size = get_from_backend(context, where)
-        except exception.NotFound, e:
+        except exception.NotFound as e:
             raise HTTPNotFound(explanation="%s" % e)
         image_size = int(image_size) if image_size else None
         return image_data, image_size
@@ -374,7 +378,7 @@ class Controller(controller.BaseController):
             raise HTTPConflict(explanation=msg,
                                request=req,
                                content_type="text/plain")
-        except exception.Invalid, e:
+        except exception.Invalid as e:
             msg = (_("Failed to reserve image. Got error: %(e)s") % locals())
             for line in msg.split('\n'):
                 LOG.debug(line)
@@ -408,7 +412,7 @@ class Controller(controller.BaseController):
                 image_data, image_size = self._get_from_store(req.context,
                                                               copy_from)
             except Exception as e:
-                self._safe_kill(req, image_meta['id'])
+                upload_utils.safe_kill(req, image_meta['id'])
                 msg = _("Copy from external source failed: %s") % e
                 LOG.debug(msg)
                 return
@@ -417,7 +421,7 @@ class Controller(controller.BaseController):
             try:
                 req.get_content_type('application/octet-stream')
             except exception.InvalidContentType:
-                self._safe_kill(req, image_meta['id'])
+                upload_utils.safe_kill(req, image_meta['id'])
                 msg = _("Content-Type must be application/octet-stream")
                 LOG.debug(msg)
                 raise HTTPBadRequest(explanation=msg)
@@ -436,96 +440,17 @@ class Controller(controller.BaseController):
         LOG.debug(_("Uploading image data for image %(image_id)s "
                     "to %(scheme)s store"), locals())
 
-        try:
-            self.notifier.info("image.prepare", redact_loc(image_meta))
-            location, size, checksum = store.add(
-                image_meta['id'],
-                utils.CooperativeReader(image_data),
-                image_meta['size'])
+        self.notifier.info("image.prepare", redact_loc(image_meta))
 
-            def _kill_mismatched(image_meta, attr, actual):
-                supplied = image_meta.get(attr)
-                if supplied and supplied != actual:
-                    msg = _("Supplied %(attr)s (%(supplied)s) and "
-                            "%(attr)s generated from uploaded image "
-                            "(%(actual)s) did not match. Setting image "
-                            "status to 'killed'.") % locals()
-                    LOG.error(msg)
-                    self._safe_kill(req, image_id)
-                    self._initiate_deletion(req, location, image_id)
-                    raise HTTPBadRequest(explanation=msg,
-                                         content_type="text/plain",
-                                         request=req)
+        image_meta, location = upload_utils.upload_data_to_store(req,
+                                                                 image_meta,
+                                                                 image_data,
+                                                                 store,
+                                                                 self.notifier)
 
-            # Verify any supplied size/checksum value matches size/checksum
-            # returned from store when adding image
-            _kill_mismatched(image_meta, 'size', size)
-            _kill_mismatched(image_meta, 'checksum', checksum)
+        self.notifier.info('image.upload', redact_loc(image_meta))
 
-            # Update the database with the checksum returned
-            # from the backend store
-            LOG.debug(_("Updating image %(image_id)s data. "
-                      "Checksum set to %(checksum)s, size set "
-                      "to %(size)d"), locals())
-            update_data = {'checksum': checksum,
-                           'size': size}
-            image_meta = registry.update_image_metadata(req.context,
-                                                        image_id,
-                                                        update_data)
-            self.notifier.info('image.upload', redact_loc(image_meta))
-
-            return location
-
-        except exception.Duplicate, e:
-            msg = _("Attempt to upload duplicate image: %s") % e
-            LOG.debug(msg)
-            self._safe_kill(req, image_id)
-            raise HTTPConflict(explanation=msg, request=req)
-
-        except exception.Forbidden, e:
-            msg = _("Forbidden upload attempt: %s") % e
-            LOG.debug(msg)
-            self._safe_kill(req, image_id)
-            raise HTTPForbidden(explanation=msg,
-                                request=req,
-                                content_type="text/plain")
-
-        except exception.StorageFull, e:
-            msg = _("Image storage media is full: %s") % e
-            LOG.error(msg)
-            self._safe_kill(req, image_id)
-            self.notifier.error('image.upload', msg)
-            raise HTTPRequestEntityTooLarge(explanation=msg, request=req,
-                                            content_type='text/plain')
-
-        except exception.StorageWriteDenied, e:
-            msg = _("Insufficient permissions on image storage media: %s") % e
-            LOG.error(msg)
-            self._safe_kill(req, image_id)
-            self.notifier.error('image.upload', msg)
-            raise HTTPServiceUnavailable(explanation=msg, request=req,
-                                         content_type='text/plain')
-
-        except exception.ImageSizeLimitExceeded, e:
-            msg = _("Denying attempt to upload image larger than %d bytes."
-                    % CONF.image_size_cap)
-            LOG.info(msg)
-            self._safe_kill(req, image_id)
-            raise HTTPBadRequest(explanation=msg, request=req,
-                                 content_type='text/plain')
-
-        except HTTPError, e:
-            self._safe_kill(req, image_id)
-            #NOTE(bcwaldon): Ideally, we would just call 'raise' here,
-            # but something in the above function calls is affecting the
-            # exception context and we must explicitly re-raise the
-            # caught exception.
-            raise e
-
-        except Exception, e:
-            LOG.exception(_("Failed to upload image"))
-            self._safe_kill(req, image_id)
-            raise HTTPInternalServerError(request=req)
+        return location
 
     def _activate(self, req, image_id, location):
         """
@@ -547,40 +472,13 @@ class Controller(controller.BaseController):
             self.notifier.info("image.activate", redact_loc(image_meta_data))
             self.notifier.info("image.update", redact_loc(image_meta_data))
             return image_meta_data
-        except exception.Invalid, e:
+        except exception.Invalid as e:
             msg = (_("Failed to activate image. Got error: %(e)s")
                    % locals())
             LOG.debug(msg)
             raise HTTPBadRequest(explanation=msg,
                                  request=req,
                                  content_type="text/plain")
-
-    def _kill(self, req, image_id):
-        """
-        Marks the image status to `killed`.
-
-        :param req: The WSGI/Webob Request object
-        :param image_id: Opaque image identifier
-        """
-        registry.update_image_metadata(req.context, image_id,
-                                       {'status': 'killed'})
-
-    def _safe_kill(self, req, image_id):
-        """
-        Mark image killed without raising exceptions if it fails.
-
-        Since _kill is meant to be called from exceptions handlers, it should
-        not raise itself, rather it should just log its error.
-
-        :param req: The WSGI/Webob Request object
-        :param image_id: Opaque image identifier
-        """
-        try:
-            self._kill(req, image_id)
-        except Exception, e:
-            LOG.error(_("Unable to kill image %(id)s: "
-                        "%(exc)s") % ({'id': image_id,
-                                       'exc': repr(e)}))
 
     def _upload_and_activate(self, req, image_meta):
         """
@@ -683,6 +581,8 @@ class Controller(controller.BaseController):
         is_public = image_meta.get('is_public')
         if is_public:
             self._enforce(req, 'publicize_image')
+        if Controller._copy_from(req):
+            self._enforce(req, 'copy_from')
 
         image_meta = self._reserve(req, image_meta)
         id = image_meta['id']
@@ -775,21 +675,21 @@ class Controller(controller.BaseController):
                 image_meta = self._handle_source(req, id, image_meta,
                                                  image_data)
 
-        except exception.Invalid, e:
+        except exception.Invalid as e:
             msg = (_("Failed to update image metadata. Got error: %(e)s")
                    % locals())
             LOG.debug(msg)
             raise HTTPBadRequest(explanation=msg,
                                  request=req,
                                  content_type="text/plain")
-        except exception.NotFound, e:
+        except exception.NotFound as e:
             msg = (_("Failed to find image to update: %(e)s") % locals())
             for line in msg.split('\n'):
                 LOG.info(line)
             raise HTTPNotFound(explanation=msg,
                                request=req,
                                content_type="text/plain")
-        except exception.Forbidden, e:
+        except exception.Forbidden as e:
             msg = (_("Forbidden to update image: %(e)s") % locals())
             for line in msg.split('\n'):
                 LOG.info(line)
@@ -804,13 +704,6 @@ class Controller(controller.BaseController):
         image_meta.pop('location', None)
 
         return {'image_meta': image_meta}
-
-    @staticmethod
-    def _initiate_deletion(req, location, id):
-        if CONF.delayed_delete:
-            schedule_delayed_delete_from_backend(location, id)
-        else:
-            safe_delete_from_backend(location, req.context, id)
 
     @utils.mutating
     def delete(self, req, id):
@@ -835,11 +728,16 @@ class Controller(controller.BaseController):
                                 request=req,
                                 content_type="text/plain")
 
-        if image['status'] == 'deleted':
-            msg = _("Forbidden to delete a deleted image.")
+        if image['status'] == 'pending_delete':
+            msg = (_("Forbidden to delete a %s image.") % image['status'])
             LOG.debug(msg)
             raise HTTPForbidden(explanation=msg, request=req,
                                 content_type="text/plain")
+        elif image['status'] == 'deleted':
+            msg = _("Image %s not found." % id)
+            LOG.debug(msg)
+            raise HTTPNotFound(explanation=msg, request=req,
+                               content_type="text/plain")
 
         if image['location'] and CONF.delayed_delete:
             status = 'pending_delete'
@@ -858,15 +756,16 @@ class Controller(controller.BaseController):
             # to delete the image if the backend doesn't yet store it.
             # See https://bugs.launchpad.net/glance/+bug/747799
             if image['location']:
-                self._initiate_deletion(req, image['location'], id)
-        except exception.NotFound, e:
+                upload_utils.initiate_deletion(req, image['location'], id,
+                                               CONF.delayed_delete)
+        except exception.NotFound as e:
             msg = (_("Failed to find image to delete: %(e)s") % locals())
             for line in msg.split('\n'):
                 LOG.info(line)
             raise HTTPNotFound(explanation=msg,
                                request=req,
                                content_type="text/plain")
-        except exception.Forbidden, e:
+        except exception.Forbidden as e:
             msg = (_("Forbidden to delete image: %(e)s") % locals())
             for line in msg.split('\n'):
                 LOG.info(line)

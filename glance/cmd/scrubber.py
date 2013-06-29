@@ -1,9 +1,7 @@
 #!/usr/bin/env python
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2010 United States Government as represented by the
-# Administrator of the National Aeronautics and Space Administration.
-# Copyright 2011 OpenStack LLC.
+# Copyright 2011-2012 OpenStack LLC.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -19,20 +17,9 @@
 #    under the License.
 
 """
-Glance Image Cache Invalid Cache Entry and Stalled Image cleaner
-
-This is meant to be run as a periodic task from cron.
-
-If something goes wrong while we're caching an image (for example the fetch
-times out, or an exception is raised), we create an 'invalid' entry. These
-entires are left around for debugging purposes. However, after some period of
-time, we want to clean these up.
-
-Also, if an incomplete image hangs around past the image_cache_stall_time
-period, we automatically sweep it up.
+Glance Scrub Service
 """
 
-import gettext
 import os
 import sys
 
@@ -44,23 +31,45 @@ possible_topdir = os.path.normpath(os.path.join(os.path.abspath(sys.argv[0]),
 if os.path.exists(os.path.join(possible_topdir, 'glance', '__init__.py')):
     sys.path.insert(0, possible_topdir)
 
-gettext.install('glance', unicode=1)
-
 from oslo.config import cfg
 
 from glance.common import config
-from glance.image_cache import cleaner
 from glance.openstack.common import log
+import glance.store
+import glance.store.scrubber
 
 CONF = cfg.CONF
 
 
-if __name__ == '__main__':
+def main():
+    CONF.register_cli_opt(
+        cfg.BoolOpt('daemon',
+                    short='D',
+                    default=False,
+                    help='Run as a long-running process. When not '
+                         'specified (the default) run the scrub operation '
+                         'once and then exits. When specified do not exit '
+                         'and run scrub on wakeup_time interval as '
+                         'specified in the config.'))
+    CONF.register_opt(cfg.IntOpt('wakeup_time', default=300))
+
     try:
-        config.parse_cache_args()
+
+        config.parse_args()
         log.setup('glance')
 
-        app = cleaner.Cleaner()
-        app.run()
-    except RuntimeError, e:
+        glance.store.create_stores()
+        glance.store.verify_default_store()
+
+        app = glance.store.scrubber.Scrubber()
+
+        if CONF.daemon:
+            server = glance.store.scrubber.Daemon(CONF.wakeup_time)
+            server.start(app)
+            server.wait()
+        else:
+            import eventlet
+            pool = eventlet.greenpool.GreenPool(1000)
+            scrubber = app.run(pool)
+    except RuntimeError as e:
         sys.exit("ERROR: %s" % e)

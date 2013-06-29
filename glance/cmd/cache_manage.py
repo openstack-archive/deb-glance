@@ -21,7 +21,6 @@ A simple cache management utility for Glance.
 """
 
 import functools
-import gettext
 import optparse
 import os
 import sys
@@ -34,8 +33,6 @@ possible_topdir = os.path.normpath(os.path.join(os.path.abspath(sys.argv[0]),
                                    os.pardir))
 if os.path.exists(os.path.join(possible_topdir, 'glance', '__init__.py')):
     sys.path.insert(0, possible_topdir)
-
-gettext.install('glance', unicode=1)
 
 import glance.image_cache.client
 from glance.common import exception
@@ -64,7 +61,7 @@ def catch_error(action):
             except exception.Forbidden:
                 print "Not authorized to make this request."
                 return FAILURE
-            except Exception, e:
+            except Exception as e:
                 options = args[0]
                 if options.debug:
                     raise
@@ -473,7 +470,7 @@ def user_confirm(prompt, default=False):
         return answer.lower() in ("yes", "y")
 
 
-if __name__ == '__main__':
+def main():
     usage = """
 %prog <command> [options] [args]
 
@@ -512,5 +509,5 @@ Commands:
         if options.verbose:
             print "Completed in %-0.4f sec." % (end_time - start_time)
         sys.exit(result)
-    except (RuntimeError, NotImplementedError), e:
+    except (RuntimeError, NotImplementedError) as e:
         print "ERROR: ", e

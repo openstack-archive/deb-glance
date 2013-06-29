@@ -26,7 +26,6 @@ from __future__ import with_statement
 import argparse
 import errno
 import fcntl
-import gettext
 import os
 import resource
 import signal
@@ -42,8 +41,6 @@ possible_topdir = os.path.normpath(os.path.join(os.path.abspath(sys.argv[0]),
                                    os.pardir))
 if os.path.exists(os.path.join(possible_topdir, 'glance', '__init__.py')):
     sys.path.insert(0, possible_topdir)
-
-gettext.install('glance', unicode=1)
 
 from oslo.config import cfg
 
@@ -69,6 +66,8 @@ And command is one of:
     start, stop, shutdown, restart, reload, force-reload
 
 And CONFPATH is the optional configuration file to use."""
+
+exitcode = 0
 
 
 def gated_by(predicate):
@@ -172,7 +171,7 @@ def do_start(verb, pid_file, server, args):
             redirect_stdio(server, capture_output)
             try:
                 os.execlp('%s' % server, *args)
-            except OSError, e:
+            except OSError as e:
                 msg = 'unable to launch %s. Got error: %s' % (server, e)
                 sys.exit(msg)
             sys.exit(0)
@@ -281,8 +280,8 @@ def add_command_parsers(subparsers):
     parser.set_defaults(servers=['glance-' + s for s in ALL_SERVERS])
 
 
-if __name__ == '__main__':
-    exitcode = 0
+def main():
+    global exitcode
 
     opts = [
             cfg.SubCommandOpt('server',

@@ -41,6 +41,7 @@ CONF.register_opts(policy_opts)
 
 
 DEFAULT_RULES = {
+    'context_is_admin': policy.RoleCheck('role', 'admin'),
     'default': policy.TrueCheck(),
     'manage_image_cache': policy.RoleCheck('role', 'admin'),
 }
@@ -143,6 +144,16 @@ class Enforcer(object):
         """
         return self._check(context, action, target)
 
+    def check_is_admin(self, context):
+        """Check if the given context is associated with an admin role,
+           as defined via the 'context_is_admin' RBAC rule.
+
+           :param context: Glance request context
+           :returns: A non-False value if context role is admin.
+        """
+        target = context.to_dict()
+        return self.check(context, 'context_is_admin', target)
+
 
 class ImageRepoProxy(glance.domain.proxy.Repo):
 
@@ -172,6 +183,8 @@ class ImageRepoProxy(glance.domain.proxy.Repo):
         return super(ImageRepoProxy, self).add(image)
 
 
+# TODO(mclaren): we will need to enforce the 'set_image_location'
+# policy once the relevant functionality has been added to  V2
 class ImageProxy(glance.domain.proxy.Image):
 
     def __init__(self, image, context, policy):

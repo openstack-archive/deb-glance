@@ -43,7 +43,7 @@ class TestGlanceManage(functional.FunctionalTest):
             conf_file.write(self.connection)
             conf_file.flush()
 
-        cmd = ('bin/glance-manage --config-file %s db_sync' %
+        cmd = ('glance-manage --config-file %s db_sync' %
                self.conf_filepath)
         execute(cmd, raise_error=True)
 
@@ -68,8 +68,6 @@ class TestGlanceManage(functional.FunctionalTest):
 
         self._assert_tables()
 
-        self.stop_servers()
-
     @depends_on_exe('sqlite3')
     @skip_if_disabled
     def test_db_creation_auto_create_overridden(self):
@@ -77,5 +75,3 @@ class TestGlanceManage(functional.FunctionalTest):
         self._sync_db(False)
 
         self._assert_tables()
-
-        self.stop_servers()

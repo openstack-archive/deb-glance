@@ -69,7 +69,7 @@ CONF.register_opts(db_opts)
 CONF.import_opt('debug', 'glance.openstack.common.log')
 
 
-def ping_listener(dbapi_conn, connection_rec, connection_proxy):
+def _ping_listener(dbapi_conn, connection_rec, connection_proxy):
 
     """
     Ensures that MySQL connections checked out of the
@@ -81,7 +81,7 @@ def ping_listener(dbapi_conn, connection_rec, connection_proxy):
 
     try:
         dbapi_conn.cursor().execute('select 1')
-    except dbapi_conn.OperationalError, ex:
+    except dbapi_conn.OperationalError as ex:
         if ex.args[0] in (2006, 2013, 2014, 2045, 2055):
             msg = 'Got mysql server has gone away: %s' % ex
             LOG.warn(msg)
@@ -105,16 +105,7 @@ def setup_db_env():
         sa_logger.setLevel(logging.DEBUG)
 
 
-def configure_db():
-    """
-    Establish the database, create an engine if needed, and
-    register the models.
-    """
-    setup_db_env()
-    get_engine()
-
-
-def check_mutate_authorization(context, image_ref):
+def _check_mutate_authorization(context, image_ref):
     if not is_image_mutable(context, image_ref):
         LOG.info(_("Attempted to modify image user did not own."))
         msg = _("You do not own this image")
@@ -126,12 +117,12 @@ def check_mutate_authorization(context, image_ref):
         raise exc_class(msg)
 
 
-def get_session(autocommit=True, expire_on_commit=False):
+def _get_session(autocommit=True, expire_on_commit=False):
     """Helper method to grab session"""
     global _MAKER
     if not _MAKER:
         get_engine()
-        get_maker(autocommit, expire_on_commit)
+        _get_maker(autocommit, expire_on_commit)
         assert(_MAKER)
     session = _MAKER()
     return session
@@ -158,11 +149,11 @@ def get_engine():
             _ENGINE = sqlalchemy.create_engine(_CONNECTION, **engine_args)
 
             if 'mysql' in connection_dict.drivername:
-                sqlalchemy.event.listen(_ENGINE, 'checkout', ping_listener)
+                sqlalchemy.event.listen(_ENGINE, 'checkout', _ping_listener)
 
-            _ENGINE.connect = wrap_db_error(_ENGINE.connect)
+            _ENGINE.connect = _wrap_db_error(_ENGINE.connect)
             _ENGINE.connect()
-        except Exception, err:
+        except Exception as err:
             msg = _("Error configuring registry database with supplied "
                     "sql_connection. Got error: %s") % err
             LOG.error(msg)
@@ -186,7 +177,7 @@ def get_engine():
     return _ENGINE
 
 
-def get_maker(autocommit=True, expire_on_commit=False):
+def _get_maker(autocommit=True, expire_on_commit=False):
     """Return a SQLAlchemy sessionmaker."""
     """May assign __MAKER if not already assigned"""
     global _MAKER, _ENGINE
@@ -198,7 +189,7 @@ def get_maker(autocommit=True, expire_on_commit=False):
     return _MAKER
 
 
-def is_db_connection_error(args):
+def _is_db_connection_error(args):
     """Return True if error in connecting to db."""
     # NOTE(adam_g): This is currently MySQL specific and needs to be extended
     #               to support Postgres and others.
@@ -209,13 +200,13 @@ def is_db_connection_error(args):
     return False
 
 
-def wrap_db_error(f):
+def _wrap_db_error(f):
     """Retry DB connection. Copied from nova and modified."""
     def _wrap(*args, **kwargs):
         try:
             return f(*args, **kwargs)
-        except sqlalchemy.exc.OperationalError, e:
-            if not is_db_connection_error(e.args[0]):
+        except sqlalchemy.exc.OperationalError as e:
+            if not _is_db_connection_error(e.args[0]):
                 raise
 
             remaining_attempts = _MAX_RETRIES
@@ -226,9 +217,9 @@ def wrap_db_error(f):
                 time.sleep(_RETRY_INTERVAL)
                 try:
                     return f(*args, **kwargs)
-                except sqlalchemy.exc.OperationalError, e:
+                except sqlalchemy.exc.OperationalError as e:
                     if (remaining_attempts == 0 or
-                        not is_db_connection_error(e.args[0])):
+                            not _is_db_connection_error(e.args[0])):
                         raise
                 except sqlalchemy.exc.DBAPIError:
                     raise
@@ -254,12 +245,12 @@ def image_update(context, image_id, values, purge_props=False):
 
 def image_destroy(context, image_id):
     """Destroy the image or raise if it does not exist."""
-    session = get_session()
+    session = _get_session()
     with session.begin():
         image_ref = _image_get(context, image_id, session=session)
 
         # Perform authorization check
-        check_mutate_authorization(context, image_ref)
+        _check_mutate_authorization(context, image_ref)
 
         _image_locations_set(image_ref.id, [], session)
 
@@ -290,7 +281,7 @@ def image_get(context, image_id, session=None, force_show_deleted=False):
 
 def _image_get(context, image_id, session=None, force_show_deleted=False):
     """Get an image or raise if it does not exist."""
-    session = session or get_session()
+    session = session or _get_session()
 
     try:
         query = session.query(models.Image)\
@@ -305,11 +296,15 @@ def _image_get(context, image_id, session=None, force_show_deleted=False):
         image = query.one()
 
     except sa_orm.exc.NoResultFound:
-        raise exception.NotFound("No image found with ID %s" % image_id)
+        msg = (_("No image found with ID %s") % image_id)
+        LOG.debug(msg)
+        raise exception.NotFound(msg)
 
     # Make sure they can look at it
     if not is_image_visible(context, image):
-        raise exception.Forbidden("Image not visible to you")
+        msg = (_("Forbidding request, image %s not visible") % image_id)
+        LOG.debug(msg)
+        raise exception.Forbidden(msg)
 
     return image
 
@@ -393,8 +388,8 @@ def is_image_visible(context, image, status=None):
     return False
 
 
-def paginate_query(query, model, limit, sort_keys, marker=None,
-                   sort_dir=None, sort_dirs=None):
+def _paginate_query(query, model, limit, sort_keys, marker=None,
+                    sort_dir=None, sort_dirs=None):
     """Returns a query with sorting / pagination criteria added.
 
     Pagination works by requiring a unique sort_key, specified by sort_keys.
@@ -493,7 +488,7 @@ def paginate_query(query, model, limit, sort_keys, marker=None,
 
 def image_get_all(context, filters=None, marker=None, limit=None,
                   sort_key='created_at', sort_dir='desc',
-                  member_status='accepted'):
+                  member_status='accepted', is_public=None):
     """
     Get all images that match zero or more filters.
 
@@ -504,17 +499,17 @@ def image_get_all(context, filters=None, marker=None, limit=None,
     :param limit: maximum number of images to return
     :param sort_key: image attribute by which results should be sorted
     :param sort_dir: direction in which results should be sorted (asc, desc)
+    :param member_status: only return shared images that have this membership
+                          status
+    :param is_public: If true, return only public images. If false, return
+                      only private and shared images.
     """
     filters = filters or {}
 
-    session = get_session()
+    session = _get_session()
     query = session.query(models.Image)\
                    .options(sa_orm.joinedload(models.Image.properties))\
                    .options(sa_orm.joinedload(models.Image.locations))
-
-    # NOTE(markwash) treat is_public=None as if it weren't filtered
-    if 'is_public' in filters and filters['is_public'] is None:
-        del filters['is_public']
 
     if not context.is_admin:
         visibility_filters = [models.Image.is_public == True]
@@ -540,16 +535,24 @@ def image_get_all(context, filters=None, marker=None, limit=None,
         visibility = filters.pop('visibility')
         if visibility == 'public':
             query = query.filter(models.Image.is_public == True)
-            filters['is_public'] = True
         elif visibility == 'private':
-            filters['is_public'] = False
+            query = query.filter(models.Image.is_public == False)
             if (not context.is_admin) and context.owner is not None:
                 query = query.filter(
-                            models.Image.owner == context.owner)
+                    models.Image.owner == context.owner)
         else:
             query = query.filter(
-                        models.Image.members.any(member=context.owner,
-                                                 deleted=False))
+                models.Image.members.any(member=context.owner,
+                                         deleted=False))
+
+    if is_public is not None:
+        query = query.filter(models.Image.is_public == is_public)
+
+    if 'is_public' in filters:
+        spec = models.Image.properties.any(name='is_public',
+                                           value=filters.pop('is_public'),
+                                           deleted=False)
+        query = query.filter(spec)
 
     showing_deleted = False
     if 'changes-since' in filters:
@@ -599,10 +602,10 @@ def image_get_all(context, filters=None, marker=None, limit=None,
         marker_image = _image_get(context, marker,
                                   force_show_deleted=showing_deleted)
 
-    query = paginate_query(query, models.Image, limit,
-                           [sort_key, 'created_at', 'id'],
-                           marker=marker_image,
-                           sort_dir=sort_dir)
+    query = _paginate_query(query, models.Image, limit,
+                            [sort_key, 'created_at', 'id'],
+                            marker=marker_image,
+                            sort_dir=sort_dir)
 
     return [_normalize_locations(image.to_dict()) for image in query.all()]
 
@@ -617,7 +620,7 @@ def _drop_protected_attrs(model_class, values):
             del values[attr]
 
 
-def validate_image(values):
+def _validate_image(values):
     """
     Validates the incoming data and raises a Invalid exception
     if anything is out of order.
@@ -652,7 +655,7 @@ def _image_update(context, values, image_id, purge_props=False):
     :param values: A dict of attributes to set
     :param image_id: If None, create the image, otherwise, find and update it
     """
-    session = get_session()
+    session = _get_session()
     with session.begin():
 
         # Remove the properties passed in the values mapping. We
@@ -673,7 +676,7 @@ def _image_update(context, values, image_id, purge_props=False):
             image_ref = _image_get(context, image_id, session=session)
 
             # Perform authorization check
-            check_mutate_authorization(context, image_ref)
+            _check_mutate_authorization(context, image_ref)
         else:
             if values.get('size') is not None:
                 values['size'] = int(values['size'])
@@ -704,7 +707,7 @@ def _image_update(context, values, image_id, purge_props=False):
         # investigation, the @validates decorator does not validate
         # on new records, only on existing records, which is, well,
         # idiotic.
-        values = validate_image(image_ref.to_dict())
+        values = _validate_image(image_ref.to_dict())
         _update_values(image_ref, values)
 
         try:
@@ -814,7 +817,7 @@ def _image_member_format(member_ref):
 
 def image_member_update(context, memb_id, values):
     """Update an ImageMember object"""
-    session = get_session()
+    session = _get_session()
     memb_ref = _image_member_get(context, memb_id, session)
     _image_member_update(context, memb_ref, values, session)
     return _image_member_format(memb_ref)
@@ -832,7 +835,7 @@ def _image_member_update(context, memb_ref, values, session=None):
 
 def image_member_delete(context, memb_id, session=None):
     """Delete an ImageMember object"""
-    session = session or get_session()
+    session = session or _get_session()
     member_ref = _image_member_get(context, memb_id, session)
     _image_member_delete(context, member_ref, session)
 
@@ -854,7 +857,7 @@ def image_member_find(context, image_id=None, member=None, status=None):
     :param image_id: identifier of image entity
     :param member: tenant to which membership has been granted
     """
-    session = get_session()
+    session = _get_session()
     members = _image_member_find(context, session, image_id, member, status)
     return [_image_member_format(m) for m in members]
 
@@ -896,7 +899,7 @@ def _can_show_deleted(context):
 
 
 def image_tag_set_all(context, image_id, tags):
-    session = get_session()
+    session = _get_session()
     existing_tags = set(image_tag_get_all(context, image_id, session))
     tags = set(tags)
 
@@ -914,7 +917,7 @@ def image_tag_set_all(context, image_id, tags):
 
 def image_tag_create(context, image_id, value, session=None):
     """Create an image tag."""
-    session = session or get_session()
+    session = session or _get_session()
     tag_ref = models.ImageTag(image_id=image_id, value=value)
     tag_ref.save(session=session)
     return tag_ref['value']
@@ -922,7 +925,7 @@ def image_tag_create(context, image_id, value, session=None):
 
 def image_tag_delete(context, image_id, value, session=None):
     """Delete an image tag."""
-    session = session or get_session()
+    session = session or _get_session()
     query = session.query(models.ImageTag)\
                    .filter_by(image_id=image_id)\
                    .filter_by(value=value)\
@@ -937,7 +940,7 @@ def image_tag_delete(context, image_id, value, session=None):
 
 def image_tag_get_all(context, image_id, session=None):
     """Get a list of tags for a specific image."""
-    session = session or get_session()
+    session = session or _get_session()
     tags = session.query(models.ImageTag)\
                   .filter_by(image_id=image_id)\
                   .filter_by(deleted=False)\

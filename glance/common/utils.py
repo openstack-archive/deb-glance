@@ -26,13 +26,16 @@ try:
     from eventlet import sleep
 except ImportError:
     from time import sleep
+from eventlet.green import socket
 
 import functools
 import os
 import platform
 import subprocess
 import sys
+import uuid
 
+from OpenSSL import crypto
 from oslo.config import cfg
 from webob import exc
 
@@ -44,6 +47,8 @@ CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
 
 FEATURE_BLACKLIST = ['content-length', 'content-type', 'x-image-meta-size']
+
+GLANCE_TEST_SOCKET_FD_STR = 'GLANCE_TEST_SOCKET_FD'
 
 
 def chunkreadable(iter, chunk_size=65536):
@@ -83,7 +88,7 @@ def cooperative_iter(iter):
         for chunk in iter:
             sleep(0)
             yield chunk
-    except Exception, err:
+    except Exception as err:
         msg = _("Error: cooperative_iter exception %s") % err
         LOG.error(msg)
         raise
@@ -259,7 +264,7 @@ def bool_from_string(subject):
 def safe_mkdirs(path):
     try:
         os.makedirs(path)
-    except OSError, e:
+    except OSError as e:
         if e.errno != errno.EEXIST:
             raise
 
@@ -267,7 +272,7 @@ def safe_mkdirs(path):
 def safe_remove(path):
     try:
         os.remove(path)
-    except OSError, e:
+    except OSError as e:
         if e.errno != errno.ENOENT:
             raise
 
@@ -467,3 +472,49 @@ class LazyPluggable(object):
     def __getattr__(self, key):
         backend = self.__get_backend()
         return getattr(backend, key)
+
+
+def validate_key_cert(key_file, cert_file):
+    try:
+        error_key_name = "private key"
+        error_filename = key_file
+        key_str = open(key_file, "r").read()
+        key = crypto.load_privatekey(crypto.FILETYPE_PEM, key_str)
+
+        error_key_name = "certficate"
+        error_filename = cert_file
+        cert_str = open(cert_file, "r").read()
+        cert = crypto.load_certificate(crypto.FILETYPE_PEM, cert_str)
+    except IOError, ioe:
+        raise RuntimeError(_("There is a problem with your %s "
+                             "%s.  Please verify it.  Error: %s"
+                             % (error_key_name, error_filename, ioe)))
+    except crypto.Error, ce:
+        raise RuntimeError(_("There is a problem with your %s "
+                             "%s.  Please verify it. OpenSSL error: %s"
+                             % (error_key_name, error_filename, ce)))
+
+    try:
+        data = str(uuid.uuid4())
+        digest = "sha1"
+
+        out = crypto.sign(key, data, digest)
+        crypto.verify(cert, out, data, digest)
+    except crypto.Error, ce:
+        raise RuntimeError(_("There is a problem with your key pair.  "
+                             "Please verify that cert %s and key %s "
+                             "belong together.  OpenSSL error %s"
+                             % (cert_file, key_file, ce)))
+
+
+def get_test_suite_socket():
+    global GLANCE_TEST_SOCKET_FD_STR
+    if GLANCE_TEST_SOCKET_FD_STR in os.environ:
+        fd = int(os.environ[GLANCE_TEST_SOCKET_FD_STR])
+        sock = socket.fromfd(fd, socket.AF_INET, socket.SOCK_STREAM)
+        sock = socket.SocketType(_sock=sock)
+        sock.listen(CONF.backlog)
+        del os.environ[GLANCE_TEST_SOCKET_FD_STR]
+        os.close(fd)
+        return sock
+    return None

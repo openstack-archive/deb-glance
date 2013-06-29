@@ -22,7 +22,6 @@ from __future__ import absolute_import
 import hashlib
 import httplib
 import math
-import sys
 import urllib
 import urlparse
 
@@ -274,7 +273,7 @@ class BaseStore(glance.store.base.Store):
             resp_headers, resp_body = connection.get_object(
                     container=location.container, obj=location.obj,
                     resp_chunk_size=self.CHUNKSIZE)
-        except swiftclient.ClientException, e:
+        except swiftclient.ClientException as e:
             if e.http_status == httplib.NOT_FOUND:
                 uri = location.get_uri()
                 msg = _("Swift could not find image at URI.")
@@ -312,6 +311,15 @@ class BaseStore(glance.store.base.Store):
             raise exception.BadStoreConfiguration(store_name="swift",
                                                   reason=reason)
         return result
+
+    def _delete_stale_chunks(self, connection, container, chunk_list):
+        for chunk in chunk_list:
+            LOG.debug(_("Deleting chunk %s" % chunk))
+            try:
+                connection.delete_object(container, chunk)
+            except Exception:
+                msg = _("Failed to delete orphaned chunk %s/%s")
+                LOG.exception(msg, container, chunk)
 
     def add(self, image_id, image_file, image_size, connection=None):
         location = self.create_location(image_id)
@@ -367,21 +375,12 @@ class BaseStore(glance.store.base.Store):
                             content_length=content_length)
                         written_chunks.append(chunk_name)
                     except Exception:
-                        # Save original traceback
-                        exc_type, exc_val, exc_tb = sys.exc_info()
+                        # Delete orphaned segments from swift backend
+                        self._delete_stale_chunks(connection,
+                                                  location.container,
+                                                  written_chunks)
+                        raise
 
-                        # Delete now stale segments from swift backend
-                        for chunk in written_chunks:
-                            LOG.debug(_("Deleting chunk %s" % chunk))
-                            try:
-                                connection.delete_object(location.container,
-                                                         chunk)
-                            except Exception:
-                                msg = _("Failed to delete orphan chunk %s/%s")
-                                LOG.exception(msg, location.container, chunk)
-
-                        # reraise original exception with traceback intact
-                        raise exc_type, exc_val, exc_tb
                     bytes_read = reader.bytes_read
                     msg = _("Wrote chunk %(chunk_name)s (%(chunk_id)d/"
                             "%(total_chunks)s) of length %(bytes_read)d "
@@ -427,7 +426,7 @@ class BaseStore(glance.store.base.Store):
             # GET /images/details
 
             return (location.get_uri(), image_size, obj_etag)
-        except swiftclient.ClientException, e:
+        except swiftclient.ClientException as e:
             if e.http_status == httplib.CONFLICT:
                 raise exception.Duplicate(_("Swift already has an image at "
                                             "this location"))
@@ -451,7 +450,7 @@ class BaseStore(glance.store.base.Store):
                 headers = connection.head_object(
                         location.container, location.obj)
                 manifest = headers.get('x-object-manifest')
-            except swiftclient.ClientException, e:
+            except swiftclient.ClientException as e:
                 if e.http_status != httplib.NOT_FOUND:
                     raise
             if manifest:
@@ -470,7 +469,7 @@ class BaseStore(glance.store.base.Store):
             # Delete object (or, in segmented case, the manifest)
             connection.delete_object(location.container, location.obj)
 
-        except swiftclient.ClientException, e:
+        except swiftclient.ClientException as e:
             if e.http_status == httplib.NOT_FOUND:
                 uri = location.get_uri()
                 msg = _("Swift could not find image at URI.")
@@ -488,12 +487,12 @@ class BaseStore(glance.store.base.Store):
         """
         try:
             connection.head_container(container)
-        except swiftclient.ClientException, e:
+        except swiftclient.ClientException as e:
             if e.http_status == httplib.NOT_FOUND:
                 if CONF.swift_store_create_container_on_put:
                     try:
                         connection.put_container(container)
-                    except swiftclient.ClientException, e:
+                    except swiftclient.ClientException as e:
                         msg = _("Failed to add container to Swift.\n"
                                 "Got error from Swift: %(e)s") % locals()
                         raise glance.store.BackendException(msg)
@@ -629,7 +628,7 @@ class MultiTenantStore(BaseStore):
 
         try:
             connection.post_container(location.container, headers=headers)
-        except swiftclient.ClientException, e:
+        except swiftclient.ClientException as e:
             if e.http_status == httplib.NOT_FOUND:
                 uri = location.get_uri()
                 msg = _("Swift could not find image at URI.")

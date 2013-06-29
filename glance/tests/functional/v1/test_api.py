@@ -1234,11 +1234,6 @@ class TestApi(functional.FunctionalTest):
         self.cleanup()
         self.default_store = 'shouldnotexist'
 
-        # ensure failure exit code is available to assert on
-        # -- on slower machines this needs a few seconds or
-        # the unit test will fail
-        self.api_server.server_control_options += ' --await-child=3'
-
         # ensure that the API server fails to launch
         self.start_server(self.api_server,
                           expect_launch=False,
@@ -1584,7 +1579,7 @@ class TestApi(functional.FunctionalTest):
 
         images_dir = os.path.join(self.test_dir, 'images')
         image_count = len([name for name in os.listdir(images_dir)
-                           if os.path.isfile(name)])
+                           if os.path.isfile(os.path.join(images_dir, name))])
         self.assertEquals(image_count, 0)
 
         self.stop_servers()

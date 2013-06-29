@@ -90,7 +90,7 @@ def swift_connect(auth_url, auth_version, user, key):
 def swift_list_containers(swift_conn):
     try:
         _, containers = swift_conn.get_account()
-    except Exception, e:
+    except Exception as e:
         msg = ("Failed to list containers (get_account) "
                "from Swift. Got error: %s" % e)
         raise SwiftStoreError(msg)
@@ -101,7 +101,7 @@ def swift_list_containers(swift_conn):
 def swift_create_container(swift_conn, container_name):
     try:
         swift_conn.put_container(container_name)
-    except swiftclient.ClientException, e:
+    except swiftclient.ClientException as e:
         msg = "Failed to create container. Got error: %s" % e
         raise SwiftStoreError(msg)
 
@@ -113,7 +113,7 @@ def swift_get_container(swift_conn, container_name, **kwargs):
 def swift_delete_container(swift_conn, container_name):
     try:
         swift_conn.delete_container(container_name)
-    except swiftclient.ClientException, e:
+    except swiftclient.ClientException as e:
         msg = "Failed to delete container from Swift. Got error: %s" % e
         raise SwiftStoreError(msg)
 
@@ -179,16 +179,6 @@ class TestSwiftStore(store_tests.BaseTestCase, testtools.TestCase):
         store.configure()
         store.configure_add()
         return store
-
-    def get_default_store_specs(self, image_id):
-        return {
-            'scheme': 'swift+http',
-            'auth_or_store_url': self.swift_config['swift_store_auth_address'],
-            'user': self.swift_config['swift_store_user'],
-            'key': self.swift_config['swift_store_key'],
-            'container': self.swift_config['swift_store_container'],
-            'obj': image_id,
-        }
 
     def test_object_chunking(self):
         """Upload an image that is split into multiple swift objects.

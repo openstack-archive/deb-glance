@@ -383,7 +383,7 @@ class SwiftTests(object):
         exception_caught = False
         try:
             self.store.add(uuidutils.generate_uuid(), image_swift, 0)
-        except BackendException, e:
+        except BackendException as e:
             exception_caught = True
             self.assertTrue("container noexist does not exist "
                             "in Swift" in str(e))
@@ -906,7 +906,7 @@ class TestCreatingLocations(base.IsolatedUnitTest):
         store = glance.store.swift.MultiTenantStore(context)
         self.assertEquals(fake_get_endpoint.service_type, 'toy-store')
 
-    def test_multi_tenant_location_custom_service_type(self):
+    def test_multi_tenant_location_custom_endpoint_type(self):
         self.config(swift_store_endpoint_type='InternalURL')
         fake_get_endpoint = FakeGetEndpoint('https://some_endpoint')
         self.stubs.Set(glance.common.auth, 'get_endpoint', fake_get_endpoint)
@@ -935,7 +935,7 @@ class TestChunkReader(base.StoreClearingUnitTest):
             cr = glance.store.swift.ChunkReader(infile, checksum, CHUNKSIZE)
             chunk = cr.read(CHUNKSIZE)
             bytes_read += len(chunk)
-            if len(chunk) == 0:
+            if not chunk:
                 break
         self.assertEqual(1024, bytes_read)
         data_file.close()

@@ -1,9 +1,7 @@
 #!/usr/bin/env python
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2010 United States Government as represented by the
-# Administrator of the National Aeronautics and Space Administration.
-# Copyright 2011 OpenStack LLC.
+# Copyright 2011-2012 OpenStack LLC.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -19,16 +17,14 @@
 #    under the License.
 
 """
-Reference implementation server for Glance Registry
+Glance Image Cache Pre-fetcher
+
+This is meant to be run from the command line after queueing
+images to be pretched.
 """
 
-import eventlet
-import gettext
 import os
 import sys
-
-# Monkey patch socket and time
-eventlet.patcher.monkey_patch(all=False, socket=True, time=True)
 
 # If ../glance/__init__.py exists, add ../ to Python search path, so that
 # it will override what happens to be installed in /usr/(local/)lib/python...
@@ -38,20 +34,25 @@ possible_topdir = os.path.normpath(os.path.join(os.path.abspath(sys.argv[0]),
 if os.path.exists(os.path.join(possible_topdir, 'glance', '__init__.py')):
     sys.path.insert(0, possible_topdir)
 
-gettext.install('glance', unicode=1)
+from oslo.config import cfg
 
 from glance.common import config
-from glance.common import wsgi
+from glance.image_cache import prefetcher
 from glance.openstack.common import log
+import glance.store
+
+CONF = cfg.CONF
 
 
-if __name__ == '__main__':
+def main():
     try:
-        config.parse_args()
+        config.parse_cache_args()
         log.setup('glance')
 
-        server = wsgi.Server()
-        server.start(config.load_paste_app(), default_port=9191)
-        server.wait()
-    except RuntimeError, e:
+        glance.store.create_stores()
+        glance.store.verify_default_store()
+
+        app = prefetcher.Prefetcher()
+        app.run()
+    except RuntimeError as e:
         sys.exit("ERROR: %s" % e)

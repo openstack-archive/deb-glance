@@ -19,11 +19,10 @@
 #    under the License.
 
 """
-Glance API Server
+Reference implementation server for Glance Registry
 """
 
 import eventlet
-import gettext
 import os
 import sys
 
@@ -38,32 +37,18 @@ possible_topdir = os.path.normpath(os.path.join(os.path.abspath(sys.argv[0]),
 if os.path.exists(os.path.join(possible_topdir, 'glance', '__init__.py')):
     sys.path.insert(0, possible_topdir)
 
-gettext.install('glance', unicode=1)
-
 from glance.common import config
 from glance.common import wsgi
-from glance.common import exception
 from glance.openstack.common import log
-import glance.store
 
 
-def fail(returncode, e):
-    sys.stderr.write("ERROR: %s\n" % e)
-    sys.exit(returncode)
-
-
-if __name__ == '__main__':
+def main():
     try:
         config.parse_args()
         log.setup('glance')
 
-        glance.store.create_stores()
-        glance.store.verify_default_store()
-
         server = wsgi.Server()
-        server.start(config.load_paste_app(), default_port=9292)
+        server.start(config.load_paste_app(), default_port=9191)
         server.wait()
-    except exception.WorkerCreationFailure, e:
-        fail(2, e)
-    except RuntimeError, e:
-        fail(1, e)
+    except RuntimeError as e:
+        sys.exit("ERROR: %s" % e)

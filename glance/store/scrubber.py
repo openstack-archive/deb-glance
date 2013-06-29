@@ -27,7 +27,7 @@ from glance.common import exception
 from glance.common import utils
 from glance import context
 import glance.openstack.common.log as logging
-from glance import registry
+import glance.registry.client.v1.api as registry
 from glance import store
 
 LOG = logging.getLogger(__name__)
@@ -136,7 +136,7 @@ class Scrubber(object):
         if CONF.metadata_encryption_key is not None:
             uri = crypt.urlsafe_decrypt(CONF.metadata_encryption_key, uri)
         try:
-            LOG.debug(_("Deleting %(uri)s") % {'uri': uri})
+            LOG.debug(_("Deleting %(id)s") % {'id': id})
             # Here we create a request context with credentials to support
             # delayed delete when using multi-tenant backend storage
             ctx = context.RequestContext(auth_tok=self.registry.auth_tok,

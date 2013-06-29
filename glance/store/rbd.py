@@ -27,6 +27,7 @@ import urllib
 from oslo.config import cfg
 
 from glance.common import exception
+from glance.common import utils
 import glance.openstack.common.log as logging
 import glance.store
 import glance.store.base
@@ -181,7 +182,7 @@ class Store(glance.store.base.Store):
             self.pool = str(CONF.rbd_store_pool)
             self.user = str(CONF.rbd_store_user)
             self.conf_file = str(CONF.rbd_store_ceph_conf)
-        except cfg.ConfigFileValueError, e:
+        except cfg.ConfigFileValueError as e:
             reason = _("Error in store configuration: %s") % e
             LOG.error(reason)
             raise exception.BadStoreConfiguration(store_name='rbd',
@@ -190,15 +191,38 @@ class Store(glance.store.base.Store):
     def get(self, location):
         """
         Takes a `glance.store.location.Location` object that indicates
-        where to find the image file, and returns a generator for reading
-        the image file
+        where to find the image file, and returns a tuple of generator
+        (for reading the image file) and image_size
 
         :param location `glance.store.location.Location` object, supplied
                         from glance.store.location.get_location_from_uri()
         :raises `glance.exception.NotFound` if image does not exist
         """
         loc = location.store_location
-        return (ImageIterator(str(loc.image), self), None)
+        return (ImageIterator(loc.image, self), self.get_size(location))
+
+    def get_size(self, location):
+        """
+        Takes a `glance.store.location.Location` object that indicates
+        where to find the image file, and returns the size
+
+        :param location `glance.store.location.Location` object, supplied
+                        from glance.store.location.get_location_from_uri()
+        :raises `glance.exception.NotFound` if image does not exist
+        """
+        loc = location.store_location
+        with rados.Rados(conffile=self.conf_file,
+                         rados_id=self.user) as conn:
+            with conn.open_ioctx(self.pool) as ioctx:
+                try:
+                    with rbd.Image(ioctx, loc.image,
+                                   snapshot=loc.snapshot) as image:
+                        img_info = image.stat()
+                        return img_info['size']
+                except rbd.ImageNotFound:
+                    msg = _('RBD image %s does not exist') % loc.get_uri()
+                    LOG.debug(msg)
+                    raise exception.NotFound(msg)
 
     def _create_image(self, fsid, ioctx, name, size, order):
         """
@@ -253,13 +277,11 @@ class Store(glance.store.base.Store):
                     raise exception.Duplicate(
                         _('RBD image %s already exists') % image_id)
                 with rbd.Image(ioctx, image_name) as image:
-                    bytes_left = image_size
-                    while bytes_left > 0:
-                        length = min(self.chunk_size, bytes_left)
-                        data = image_file.read(length)
-                        image.write(data, image_size - bytes_left)
-                        bytes_left -= length
-                        checksum.update(data)
+                    offset = 0
+                    chunks = utils.chunkreadable(image_file, self.chunk_size)
+                    for chunk in chunks:
+                        offset += image.write(chunk, offset)
+                        checksum.update(chunk)
                     if location.snapshot:
                         image.create_snap(location.snapshot)
                         image.protect_snap(location.snapshot)
@@ -291,7 +313,7 @@ class Store(glance.store.base.Store):
                             raise exception.InUseByStore()
                         image.remove_snap(loc.snapshot)
                 try:
-                    rbd.RBD().remove(ioctx, str(loc.image))
+                    rbd.RBD().remove(ioctx, loc.image)
                 except rbd.ImageNotFound:
                     raise exception.NotFound(
                         _('RBD image %s does not exist') % loc.image)

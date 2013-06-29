@@ -128,6 +128,8 @@ def get_socket(default_port):
                              "option value in your configuration file"))
 
     def wrap_ssl(sock):
+        utils.validate_key_cert(key_file, cert_file)
+
         ssl_kwargs = {
             'server_side': True,
             'certfile': cert_file,
@@ -141,8 +143,11 @@ def get_socket(default_port):
 
         return ssl.wrap_socket(sock, **ssl_kwargs)
 
-    sock = None
+    sock = utils.get_test_suite_socket()
     retry_until = time.time() + 30
+
+    if sock and use_ssl:
+        sock = wrap_ssl(sock)
     while not sock and time.time() < retry_until:
         try:
             sock = eventlet.listen(bind_addr,
@@ -151,7 +156,7 @@ def get_socket(default_port):
             if use_ssl:
                 sock = wrap_ssl(sock)
 
-        except socket.error, err:
+        except socket.error as err:
             if err.args[0] != errno.EADDRINUSE:
                 raise
             eventlet.sleep(0.1)
@@ -254,7 +259,7 @@ class Server(object):
                             self.running = False
                     else:
                         self.run_child()
-            except OSError, err:
+            except OSError as err:
                 if err.errno not in (errno.EINTR, errno.ECHILD):
                     raise
             except KeyboardInterrupt:
@@ -310,7 +315,7 @@ class Server(object):
                                  self.application,
                                  log=WritableLogger(self.logger),
                                  custom_pool=self.pool)
-        except socket.error, err:
+        except socket.error as err:
             if err[0] != errno.EINVAL:
                 raise
         self.pool.waitall()
@@ -401,6 +406,19 @@ class Debug(Middleware):
         print
 
 
+class APIMapper(routes.Mapper):
+    """
+    Handle route matching when url is '' because routes.Mapper returns
+    an error in this case.
+    """
+
+    def routematch(self, url=None, environ=None):
+        if url is "":
+            result = self._match("", environ)
+            return result[0], result[1]
+        return routes.Mapper.routematch(self, url, environ)
+
+
 class Router(object):
     """
     WSGI middleware that maps incoming requests to WSGI apps.
@@ -430,13 +448,14 @@ class Router(object):
           # section of the URL.
           mapper.connect(None, "/v1.0/{path_info:.*}", controller=BlogApp())
         """
+        mapper.redirect("", "/")
         self.map = mapper
         self._router = routes.middleware.RoutesMiddleware(self._dispatch,
                                                           self.map)
 
     @classmethod
     def factory(cls, global_conf, **local_conf):
-        return cls(routes.Mapper())
+        return cls(APIMapper())
 
     @webob.dec.wsgify
     def __call__(self, req):
@@ -517,6 +536,8 @@ class JSONResponseSerializer(object):
         def sanitizer(obj):
             if isinstance(obj, datetime.datetime):
                 return obj.isoformat()
+            if hasattr(obj, "to_dict"):
+                return obj.to_dict()
             return obj
 
         return json.dumps(data, default=sanitizer)
@@ -543,6 +564,7 @@ class Resource(object):
     may raise a webob.exc exception or return a dict, which will be
     serialized by requested content type.
     """
+
     def __init__(self, controller, deserializer=None, serializer=None):
         """
         :param controller: object that implement methods created by routes lib

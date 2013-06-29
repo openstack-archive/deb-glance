@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2011-2012 OpenStack LLC.
+# Copyright 2010 United States Government as represented by the
+# Administrator of the National Aeronautics and Space Administration.
+# Copyright 2011 OpenStack LLC.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -17,13 +19,19 @@
 #    under the License.
 
 """
-Glance Image Cache Pre-fetcher
+Glance Image Cache Invalid Cache Entry and Stalled Image cleaner
 
-This is meant to be run from the command line after queueing
-images to be pretched.
+This is meant to be run as a periodic task from cron.
+
+If something goes wrong while we're caching an image (for example the fetch
+times out, or an exception is raised), we create an 'invalid' entry. These
+entires are left around for debugging purposes. However, after some period of
+time, we want to clean these up.
+
+Also, if an incomplete image hangs around past the image_cache_stall_time
+period, we automatically sweep it up.
 """
 
-import gettext
 import os
 import sys
 
@@ -35,27 +43,21 @@ possible_topdir = os.path.normpath(os.path.join(os.path.abspath(sys.argv[0]),
 if os.path.exists(os.path.join(possible_topdir, 'glance', '__init__.py')):
     sys.path.insert(0, possible_topdir)
 
-gettext.install('glance', unicode=1)
-
 from oslo.config import cfg
 
 from glance.common import config
-from glance.image_cache import prefetcher
+from glance.image_cache import cleaner
 from glance.openstack.common import log
-import glance.store
 
 CONF = cfg.CONF
 
 
-if __name__ == '__main__':
+def main():
     try:
         config.parse_cache_args()
         log.setup('glance')
 
-        glance.store.create_stores()
-        glance.store.verify_default_store()
-
-        app = prefetcher.Prefetcher()
+        app = cleaner.Cleaner()
         app.run()
-    except RuntimeError, e:
+    except RuntimeError as e:
         sys.exit("ERROR: %s" % e)

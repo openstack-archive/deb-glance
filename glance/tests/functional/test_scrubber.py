@@ -78,7 +78,7 @@ class TestScrubber(functional.FunctionalTest):
         self.assertEqual(response.status, 200)
         self.assertEqual('pending_delete', response['x-image-meta-status'])
 
-        wait_for_scrub(path)
+        self.wait_for_scrub(path)
 
         self.stop_servers()
 
@@ -120,12 +120,12 @@ class TestScrubber(functional.FunctionalTest):
         time.sleep(self.api_server.scrub_time)
 
         # scrub images and make sure they get deleted
-        cmd = ("bin/glance-scrubber --config-file %s" %
+        cmd = ("glance-scrubber --config-file %s" %
                self.scrubber_daemon.conf_file_name)
         exitcode, out, err = execute(cmd, raise_error=False)
         self.assertEqual(0, exitcode)
 
-        wait_for_scrub(path)
+        self.wait_for_scrub(path)
 
         self.stop_servers()
 
@@ -180,13 +180,13 @@ class TestScrubber(functional.FunctionalTest):
         time.sleep(self.api_server.scrub_time)
 
         # call the scrubber to scrub images
-        cmd = ("bin/glance-scrubber --config-file %s" %
+        cmd = ("glance-scrubber --config-file %s" %
                self.scrubber_daemon.conf_file_name)
         exitcode, out, err = execute(cmd, raise_error=False)
         self.assertEqual(0, exitcode)
 
         # ensure the image has been successfully deleted
-        wait_for_scrub(path)
+        self.wait_for_scrub(path)
 
         self.stop_servers()
 
@@ -249,10 +249,10 @@ class TestScrubber(functional.FunctionalTest):
         loc = StoreLocation({})
         loc.parse_uri(decrypted_uri)
 
-        self.assertEqual("swift+http", loc.scheme)
+        self.assertIn(loc.scheme, ("swift+http", "swift+https"))
         self.assertEqual(image['id'], loc.obj)
 
-        wait_for_scrub(path)
+        self.wait_for_scrub(path)
 
         self.stop_servers()
 
@@ -318,33 +318,32 @@ class TestScrubber(functional.FunctionalTest):
         time.sleep(self.api_server.scrub_time)
 
         # run the scrubber app, and ensure it doesn't fall over
-        cmd = ("bin/glance-scrubber --config-file %s" %
+        cmd = ("glance-scrubber --config-file %s" %
                self.scrubber_daemon.conf_file_name)
         exitcode, out, err = execute(cmd, raise_error=False)
         self.assertEqual(0, exitcode)
 
-        wait_for_scrub(path)
+        self.wait_for_scrub(path)
 
         self.stop_servers()
 
+    def wait_for_scrub(self, path):
+        """
+        NOTE(jkoelker) The build servers sometimes take longer than 15 seconds
+        to scrub. Give it up to 5 min, checking checking every 15 seconds.
+        When/if it flips to deleted, bail immediatly.
+        """
+        http = httplib2.Http()
+        wait_for = 300    # seconds
+        check_every = 15  # seconds
+        for _ in xrange(wait_for / check_every):
+            time.sleep(check_every)
 
-def wait_for_scrub(path):
-    """
-    NOTE(jkoelker) The build servers sometimes take longer than 15 seconds to
-    scrub. Give it up to 5 min, checking checking every 15 seconds. When/if it
-    flips to deleted, bail immediatly.
-    """
-    http = httplib2.Http()
-    wait_for = 300    # seconds
-    check_every = 15  # seconds
-    for _ in xrange(wait_for / check_every):
-        time.sleep(check_every)
-
-        response, content = http.request(path, 'HEAD')
-        if (response['x-image-meta-status'] == 'deleted' and
-                response['x-image-meta-deleted'] == 'True'):
-            break
+            response, content = http.request(path, 'HEAD')
+            if (response['x-image-meta-status'] == 'deleted' and
+                    response['x-image-meta-deleted'] == 'True'):
+                break
+            else:
+                continue
         else:
-            continue
-    else:
-        self.fail('image was never scrubbed')
+            self.fail('image was never scrubbed')
