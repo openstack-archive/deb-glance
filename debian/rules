@@ -41,6 +41,8 @@ override_dh_auto_clean:
 	echo $(VERSION) > glance/versioninfo
 	# dh_auto_clean
 	# debconf-updatepo
+	find . -iname '*.pyc' -delete
+	glance.egg-info
 	rm -rf doc/build
 	rm -rf glance.sqlite
 	rm -f glance/versioninfo
