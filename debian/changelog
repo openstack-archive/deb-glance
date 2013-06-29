@@ -1,6 +1,6 @@
-glance (2013.1.2-3) UNRELEASED; urgency=low
+glance (2013.2~b1-1) unstable; urgency=low
 
-  * Glance starts after keystone, ntp and rabbitmq-server.
+  * New upstream release.
 
  -- Thomas Goirand <zigo@debian.org>  Sat, 22 Jun 2013 16:21:32 +0800
 
