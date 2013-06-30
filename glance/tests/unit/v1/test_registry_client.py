@@ -17,6 +17,10 @@
 
 import copy
 import datetime
+import os
+import stubout
+
+import mox
 
 import testtools
 
@@ -28,6 +32,8 @@ from glance.db.sqlalchemy import api as db_api
 from glance.db.sqlalchemy import models as db_models
 from glance.openstack.common import timeutils
 from glance.openstack.common import uuidutils
+import glance.registry.client.v1.api as rapi
+from glance.registry.api.v1.images import Controller as rcontroller
 from glance.registry.client.v1.api import client as rclient
 from glance.tests.unit import base
 
@@ -86,6 +92,7 @@ class TestRegistryV1Client(base.IsolatedUnitTest):
         self.destroy_fixtures()
         self.create_fixtures()
         self.client = rclient.RegistryClient("0.0.0.0")
+        self.stubs = stubout.StubOutForTesting()
 
     def tearDown(self):
         """Clear the test environment"""
@@ -456,10 +463,37 @@ class TestRegistryV1Client(base.IsolatedUnitTest):
                          'checksum': None}
 
         db_api.image_create(self.context, extra_fixture)
-        self.context = context.RequestContext(is_admin=False)
+
+        def non_admin_get_images(self, context, *args, **kwargs):
+            """Convert to non-admin context"""
+            context.is_admin = False
+            rcontroller.__get_images(self, context, *args, **kwargs)
+
+        rcontroller.__get_images = rcontroller._get_images
+        self.stubs.Set(rcontroller, '_get_images', non_admin_get_images)
         self.assertRaises(exception.Invalid,
                           self.client.get_images,
                           marker=UUID5)
+
+    def test_get_image_index_private_marker(self):
+        """Test exception is not raised if private non-owned marker is used"""
+        UUID4 = _gen_uuid()
+        extra_fixture = {'id': UUID4,
+                         'status': 'saving',
+                         'is_public': False,
+                         'disk_format': 'vhd',
+                         'container_format': 'ovf',
+                         'name': 'new name! #125',
+                         'size': 19,
+                         'checksum': None,
+                         'owner': '1234'}
+
+        db_api.image_create(self.context, extra_fixture)
+
+        try:
+            self.client.get_images(marker=UUID4)
+        except Exception as e:
+            self.fail("Unexpected exception '%s'" % e)
 
     def test_get_image_index_limit(self):
         """Test correct number of images returned with limit param."""
@@ -635,10 +669,37 @@ class TestRegistryV1Client(base.IsolatedUnitTest):
                          'checksum': None}
 
         db_api.image_create(self.context, extra_fixture)
-        self.context = context.RequestContext(is_admin=False)
+
+        def non_admin_get_images(self, context, *args, **kwargs):
+            """Convert to non-admin context"""
+            context.is_admin = False
+            rcontroller.__get_images(self, context, *args, **kwargs)
+
+        rcontroller.__get_images = rcontroller._get_images
+        self.stubs.Set(rcontroller, '_get_images', non_admin_get_images)
         self.assertRaises(exception.Invalid,
                           self.client.get_images_detailed,
                           marker=UUID5)
+
+    def test_get_image_details_private_marker(self):
+        """Test exception is not raised if private non-owned marker is used"""
+        UUID4 = _gen_uuid()
+        extra_fixture = {'id': UUID4,
+                         'status': 'saving',
+                         'is_public': False,
+                         'disk_format': 'vhd',
+                         'container_format': 'ovf',
+                         'name': 'new name! #125',
+                         'size': 19,
+                         'checksum': None,
+                         'owner': '1234'}
+
+        db_api.image_create(self.context, extra_fixture)
+
+        try:
+            self.client.get_images_detailed(marker=UUID4)
+        except Exception as e:
+            self.fail("Unexpected exception '%s'" % e)
 
     def test_get_image_details_by_name(self):
         """Tests that a detailed call can be filtered by name"""
@@ -1105,6 +1166,7 @@ class TestRegistryV1Client(base.IsolatedUnitTest):
 
 
 class TestBaseClient(testtools.TestCase):
+
     """
     Test proper actions made for both valid and invalid requests
     against a Registry service
@@ -1126,3 +1188,69 @@ class TestBaseClient(testtools.TestCase):
         self.assertEqual(expected['key_file'], actual['key_file'])
         self.assertEqual(expected['cert_file'], actual['cert_file'])
         self.assertEqual(expected['timeout'], actual['timeout'])
+
+
+class TestRegistryV1ClientApi(base.IsolatedUnitTest):
+
+    def setUp(self):
+        """Establish a clean test environment"""
+        super(TestRegistryV1ClientApi, self).setUp()
+        self.mox = mox.Mox()
+        reload(rapi)
+
+    def tearDown(self):
+        """Clear the test environment"""
+        super(TestRegistryV1ClientApi, self).tearDown()
+        self.mox.UnsetStubs()
+
+    def test_configure_registry_client_not_using_use_user_token(self):
+        self.config(use_user_token=False)
+        self.mox.StubOutWithMock(rapi, 'configure_registry_admin_creds')
+        rapi.configure_registry_admin_creds()
+
+        self.mox.ReplayAll()
+
+        rapi.configure_registry_client()
+        self.mox.VerifyAll()
+
+    def test_configure_registry_admin_creds(self):
+        expected = {
+            'user': 'user',
+            'password': 'password',
+            'username': 'user',
+            'tenant': 'tenant',
+            'auth_url': None,
+            'strategy': 'configured_strategy',
+            'region': 'region',
+        }
+        self.config(admin_user=expected['user'])
+        self.config(admin_password=expected['password'])
+        self.config(admin_tenant_name=expected['tenant'])
+        self.config(auth_strategy=expected['strategy'])
+        self.config(auth_region=expected['region'])
+        self.stubs.Set(os, 'getenv', lambda x: None)
+
+        self.assertEquals(rapi._CLIENT_CREDS, None)
+        rapi.configure_registry_admin_creds()
+        self.assertEquals(rapi._CLIENT_CREDS, expected)
+
+    def test_configure_registry_admin_creds_with_auth_url(self):
+        expected = {
+            'user': 'user',
+            'password': 'password',
+            'username': 'user',
+            'tenant': 'tenant',
+            'auth_url': 'auth_url',
+            'strategy': 'keystone',
+            'region': 'region',
+        }
+        self.config(admin_user=expected['user'])
+        self.config(admin_password=expected['password'])
+        self.config(admin_tenant_name=expected['tenant'])
+        self.config(auth_url=expected['auth_url'])
+        self.config(auth_strategy='test_strategy')
+        self.config(auth_region=expected['region'])
+
+        self.assertEquals(rapi._CLIENT_CREDS, None)
+        rapi.configure_registry_admin_creds()
+        self.assertEquals(rapi._CLIENT_CREDS, expected)

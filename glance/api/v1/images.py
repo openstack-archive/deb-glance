@@ -44,6 +44,7 @@ from glance.common import utils
 from glance.common import wsgi
 from glance import notifier
 import glance.openstack.common.log as logging
+from glance.openstack.common import strutils
 import glance.registry.client.v1.api as registry
 from glance.store import (get_from_backend,
                           get_size_from_backend,
@@ -505,17 +506,25 @@ class Controller(controller.BaseController):
                                                                   location)
 
     def _handle_source(self, req, image_id, image_meta, image_data):
+        copy_from = self._copy_from(req)
+        location = image_meta.get('location')
+        sources = filter(lambda x: x, (copy_from, location, image_data))
+        if len(sources) >= 2:
+            msg = _("It's invalid to provide multiple image sources.")
+            LOG.debug(msg)
+            raise HTTPBadRequest(explanation=msg,
+                                 request=req,
+                                 content_type="text/plain")
         if image_data:
             image_meta = self._validate_image_for_activation(req,
                                                              image_id,
                                                              image_meta)
             image_meta = self._upload_and_activate(req, image_meta)
-        elif self._copy_from(req):
+        elif copy_from:
             msg = _('Triggering asynchronous copy from external source')
             LOG.info(msg)
             self.pool.spawn_n(self._upload_and_activate, req, image_meta)
         else:
-            location = image_meta.get('location')
             if location:
                 self._validate_image_for_activation(req, image_id, image_meta)
                 image_meta = self._activate(req, image_id, location)
@@ -634,7 +643,7 @@ class Controller(controller.BaseController):
         # properties NOT to be purged. However we also disable purging of
         # properties if an image file is being uploaded...
         purge_props = req.headers.get('x-glance-registry-purge-props', True)
-        purge_props = (utils.bool_from_string(purge_props) and
+        purge_props = (strutils.bool_from_string(purge_props) and
                        image_data is None)
 
         if image_data is not None and orig_status != 'queued':

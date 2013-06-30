@@ -41,6 +41,7 @@ from webob import exc
 
 from glance.common import exception
 import glance.openstack.common.log as logging
+from glance.openstack.common import strutils
 
 CONF = cfg.CONF
 
@@ -245,20 +246,8 @@ def get_image_meta_from_headers(response):
             raise exception.Invalid
     for key in ('is_public', 'deleted', 'protected'):
         if key in result:
-            result[key] = bool_from_string(result[key])
+            result[key] = strutils.bool_from_string(result[key])
     return result
-
-
-def bool_from_string(subject):
-    """Interpret a string as a boolean-like value."""
-    if isinstance(subject, bool):
-        return subject
-    elif isinstance(subject, int):
-        return subject == 1
-    if hasattr(subject, 'startswith'):  # str or unicode...
-        if subject.strip().lower() in ('true', 'on', '1', 'yes', 'y'):
-            return True
-    return False
 
 
 def safe_mkdirs(path):
@@ -420,23 +409,25 @@ def mutating(func):
 
 
 def setup_remote_pydev_debug(host, port):
+    error_msg = ('Error setting up the debug environment.  Verify that the'
+                 ' option pydev_worker_debug_port is pointing to a valid '
+                 'hostname or IP on which a pydev server is listening on'
+                 ' the port indicated by pydev_worker_debug_port.')
 
-        error_msg = ('Error setting up the debug environment.  Verify that the'
-                     ' option pydev_worker_debug_port is pointing to a valid '
-                     'hostname or IP on which a pydev server is listening on'
-                     ' the port indicated by pydev_worker_debug_port.')
-
+    try:
         try:
             from pydev import pydevd
+        except ImportError:
+            import pydevd
 
-            pydevd.settrace(host,
-                            port=port,
-                            stdoutToServer=True,
-                            stderrToServer=True)
-            return True
-        except:
-            LOG.exception(error_msg)
-            raise
+        pydevd.settrace(host,
+                        port=port,
+                        stdoutToServer=True,
+                        stderrToServer=True)
+        return True
+    except:
+        LOG.exception(error_msg)
+        raise
 
 
 class LazyPluggable(object):

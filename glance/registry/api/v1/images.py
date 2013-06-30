@@ -27,6 +27,7 @@ from glance.common import utils
 from glance.common import wsgi
 import glance.db
 import glance.openstack.common.log as logging
+from glance.openstack.common import strutils
 from glance.openstack.common import timeutils
 from glance.openstack.common import uuidutils
 
@@ -65,7 +66,7 @@ class Controller(object):
         # admins actually means "treat me as if I'm not an admin and show me
         # all my images"
         if context.is_admin and params.get('is_public') is True:
-            context.is_admin = False
+            params['admin_as_user'] = True
             del params['is_public']
         try:
             return self.db_api.image_get_all(context, filters=filters,
@@ -273,7 +274,7 @@ class Controller(object):
         deleted = req.params.get('deleted')
         if deleted is None:
             return None
-        return utils.bool_from_string(deleted)
+        return strutils.bool_from_string(deleted)
 
     def show(self, req, id):
         """Return data about the given image id."""

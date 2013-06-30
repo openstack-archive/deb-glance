@@ -146,11 +146,9 @@ class Scrubber(object):
         except store.UnsupportedBackend:
             msg = _("Failed to delete image from store (%(id)s).")
             LOG.error(msg % {'id': id})
-            write_queue_file(file_path, uri, now)
         except exception.NotFound:
             msg = _("Image not found in store (%(id)s).")
             LOG.error(msg % {'id': id})
-            write_queue_file(file_path, uri, now)
 
         self.registry.update_image(id, {'status': 'deleted'})
         utils.safe_remove(file_path)
@@ -210,5 +208,5 @@ def read_queue_file(file_path):
 def write_queue_file(file_path, uri, delete_time):
     with open(file_path, 'w') as f:
         f.write('\n'.join([uri, str(int(delete_time))]))
-    os.chmod(file_path, 0600)
+    os.chmod(file_path, 0o600)
     os.utime(file_path, (delete_time, delete_time))

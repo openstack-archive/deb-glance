@@ -56,6 +56,20 @@ def reset():
 
 
 def setup_db_env(*args, **kwargs):
+    """
+    Setup global environment configuration variables.
+
+    We have no connection-oriented environment variables, so this is a NOOP.
+    """
+    pass
+
+
+def clear_db_env(*args, **kwargs):
+    """
+    Setup global environment configuration variables.
+
+    We have no connection-oriented environment variables, so this is a NOOP.
+    """
     pass
 
 
@@ -121,7 +135,8 @@ def _image_format(image_id, **values):
 
 
 def _filter_images(images, filters, context,
-                   status='accepted', is_public=None):
+                   status='accepted', is_public=None,
+                   admin_as_user=False):
     filtered_images = []
     if 'properties' in filters:
         prop_filter = filters.pop('properties')
@@ -137,8 +152,8 @@ def _filter_images(images, filters, context,
                                    member=context.owner, status=status)
         is_member = len(member) > 0
         has_ownership = context.owner and image['owner'] == context.owner
-        can_see = (image['is_public'] or has_ownership or context.is_admin or
-                   is_member)
+        can_see = (image['is_public'] or has_ownership or is_member or
+                   (context.is_admin and not admin_as_user))
         if not can_see:
             continue
 
@@ -149,7 +164,8 @@ def _filter_images(images, filters, context,
             elif visibility == 'private':
                 if image['is_public']:
                     continue
-                if not (has_ownership or context.is_admin):
+                if not (has_ownership or (context.is_admin
+                        and not admin_as_user)):
                     continue
             elif visibility == 'shared':
                 if not is_member:
@@ -216,9 +232,10 @@ def _do_pagination(context, images, marker, limit, show_deleted,
 
 def _sort_images(images, sort_key, sort_dir):
     reverse = False
-    if images and not images[0].get(sort_key):
+    if images and not (sort_key in images[0]):
         raise exception.InvalidSortKey()
-    keyfn = lambda x: (x[sort_key], x['created_at'], x['id'])
+    keyfn = lambda x: (x[sort_key] if x[sort_key] is not None else '',
+                       x['created_at'], x['id'])
     reverse = sort_dir == 'desc'
     images.sort(key=keyfn, reverse=reverse)
 
@@ -252,10 +269,12 @@ def image_get(context, image_id, session=None, force_show_deleted=False):
 @log_call
 def image_get_all(context, filters=None, marker=None, limit=None,
                   sort_key='created_at', sort_dir='desc',
-                  member_status='accepted', is_public=None):
+                  member_status='accepted', is_public=None,
+                  admin_as_user=False):
     filters = filters or {}
     images = DATA['images'].values()
-    images = _filter_images(images, filters, context, member_status, is_public)
+    images = _filter_images(images, filters, context, member_status,
+                            is_public, admin_as_user)
     images = _sort_images(images, sort_key, sort_dir)
     images = _do_pagination(context, images, marker, limit,
                             filters.get('deleted'))

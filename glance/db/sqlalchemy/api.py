@@ -49,6 +49,14 @@ LOG = os_logging.getLogger(__name__)
 STATUSES = ['active', 'saving', 'queued', 'killed', 'pending_delete',
             'deleted']
 
+sql_connection_opt = cfg.StrOpt('sql_connection',
+                                default='sqlite:///glance.sqlite',
+                                secret=True,
+                                metavar='CONNECTION',
+                                help=_('A valid SQLAlchemy connection '
+                                       'string for the registry database. '
+                                       'Default: %(default)s'))
+
 db_opts = [
     cfg.IntOpt('sql_idle_timeout', default=3600,
                help=_('Period in seconds after which SQLAlchemy should '
@@ -65,8 +73,17 @@ db_opts = [
 ]
 
 CONF = cfg.CONF
+CONF.register_opt(sql_connection_opt)
 CONF.register_opts(db_opts)
 CONF.import_opt('debug', 'glance.openstack.common.log')
+
+
+def add_cli_options():
+    """Allows passing sql_connection as a CLI argument."""
+
+    # NOTE(flaper87): Find a better place / way for this.
+    CONF.unregister_opt(sql_connection_opt)
+    CONF.register_cli_opt(sql_connection_opt)
 
 
 def _ping_listener(dbapi_conn, connection_rec, connection_proxy):
@@ -92,7 +109,7 @@ def _ping_listener(dbapi_conn, connection_rec, connection_proxy):
 
 def setup_db_env():
     """
-    Setup configuration for database
+    Setup global configuration for database.
     """
     global sa_logger, _IDLE_TIMEOUT, _MAX_RETRIES, _RETRY_INTERVAL, _CONNECTION
 
@@ -103,6 +120,17 @@ def setup_db_env():
     sa_logger = logging.getLogger('sqlalchemy.engine')
     if CONF.debug:
         sa_logger.setLevel(logging.DEBUG)
+
+
+def clear_db_env():
+    """
+    Unset global configuration variables for database.
+    """
+    global _ENGINE, _MAKER, _MAX_RETRIES, _RETRY_INTERVAL, _CONNECTION
+    _ENGINE = None
+    _MAKER = None
+    _MAX_RETRIES = None
+    _RETRY_INTERVAL = None
 
 
 def _check_mutate_authorization(context, image_ref):
@@ -450,11 +478,15 @@ def _paginate_query(query, model, limit, sort_keys, marker=None,
             raise exception.InvalidSortKey()
         query = query.order_by(sort_dir_func(sort_key_attr))
 
+    default = ''  # Default to an empty string if NULL
+
     # Add pagination
     if marker is not None:
         marker_values = []
         for sort_key in sort_keys:
             v = getattr(marker, sort_key)
+            if v is None:
+                v = default
             marker_values.append(v)
 
         # Build up an array of sort criteria as in the docstring
@@ -463,13 +495,19 @@ def _paginate_query(query, model, limit, sort_keys, marker=None,
             crit_attrs = []
             for j in xrange(0, i):
                 model_attr = getattr(model, sort_keys[j])
-                crit_attrs.append((model_attr == marker_values[j]))
+                attr = sa_sql.expression.case([(model_attr != None,
+                                              model_attr), ],
+                                              else_=default)
+                crit_attrs.append((attr == marker_values[j]))
 
             model_attr = getattr(model, sort_keys[i])
+            attr = sa_sql.expression.case([(model_attr != None,
+                                          model_attr), ],
+                                          else_=default)
             if sort_dirs[i] == 'desc':
-                crit_attrs.append((model_attr < marker_values[i]))
+                crit_attrs.append((attr < marker_values[i]))
             elif sort_dirs[i] == 'asc':
-                crit_attrs.append((model_attr > marker_values[i]))
+                crit_attrs.append((attr > marker_values[i]))
             else:
                 raise ValueError(_("Unknown sort direction, "
                                    "must be 'desc' or 'asc'"))
@@ -488,7 +526,8 @@ def _paginate_query(query, model, limit, sort_keys, marker=None,
 
 def image_get_all(context, filters=None, marker=None, limit=None,
                   sort_key='created_at', sort_dir='desc',
-                  member_status='accepted', is_public=None):
+                  member_status='accepted', is_public=None,
+                  admin_as_user=False):
     """
     Get all images that match zero or more filters.
 
@@ -503,33 +542,37 @@ def image_get_all(context, filters=None, marker=None, limit=None,
                           status
     :param is_public: If true, return only public images. If false, return
                       only private and shared images.
+    :param admin_as_user: For backwards compatibility. If true, then return to
+                      an admin the equivalent set of images which it would see
+                      if it were a regular user
     """
     filters = filters or {}
 
     session = _get_session()
-    query = session.query(models.Image)\
-                   .options(sa_orm.joinedload(models.Image.properties))\
-                   .options(sa_orm.joinedload(models.Image.locations))
+    query_image = session.query(models.Image)
+    query_member = session.query(models.Image).join(models.Image.members)
 
-    if not context.is_admin:
+    if (not context.is_admin) or admin_as_user == True:
         visibility_filters = [models.Image.is_public == True]
+        member_filters = [models.ImageMember.deleted == False]
 
         if context.owner is not None:
             if member_status == 'all':
                 visibility_filters.extend([
-                    models.Image.owner == context.owner,
-                    models.Image.members.any(member=context.owner,
-                                             deleted=False),
-                ])
+                    models.Image.owner == context.owner])
+                member_filters.extend([
+                    models.ImageMember.member == context.owner])
             else:
                 visibility_filters.extend([
-                    models.Image.owner == context.owner,
-                    models.Image.members.any(member=context.owner,
-                                             deleted=False,
-                                             status=member_status),
-                ])
+                    models.Image.owner == context.owner])
+                member_filters.extend([
+                    models.ImageMember.member == context.owner,
+                    models.ImageMember.status == member_status])
 
-        query = query.filter(sa_sql.or_(*visibility_filters))
+        query_image = query_image.filter(sa_sql.or_(*visibility_filters))
+        query_member = query_member.filter(sa_sql.and_(*member_filters))
+
+    query = query_image.union(query_member)
 
     if 'visibility' in filters:
         visibility = filters.pop('visibility')
@@ -537,13 +580,15 @@ def image_get_all(context, filters=None, marker=None, limit=None,
             query = query.filter(models.Image.is_public == True)
         elif visibility == 'private':
             query = query.filter(models.Image.is_public == False)
-            if (not context.is_admin) and context.owner is not None:
+            if context.owner is not None and ((not context.is_admin)
+                                              or admin_as_user == True):
                 query = query.filter(
                     models.Image.owner == context.owner)
         else:
-            query = query.filter(
-                models.Image.members.any(member=context.owner,
-                                         deleted=False))
+            query_member = query_member.filter(
+                models.ImageMember.member == context.owner,
+                models.ImageMember.deleted == False)
+            query = query_member
 
     if is_public is not None:
         query = query.filter(models.Image.is_public == is_public)
@@ -606,6 +651,9 @@ def image_get_all(context, filters=None, marker=None, limit=None,
                             [sort_key, 'created_at', 'id'],
                             marker=marker_image,
                             sort_dir=sort_dir)
+
+    query = query.options(sa_orm.joinedload(models.Image.properties))\
+                 .options(sa_orm.joinedload(models.Image.locations))
 
     return [_normalize_locations(image.to_dict()) for image in query.all()]
 

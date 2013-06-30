@@ -224,7 +224,7 @@ class Server(object):
         self.application = application
         self.sock = get_socket(default_port)
 
-        os.umask(027)  # ensure files are created with the correct privileges
+        os.umask(0o27)  # ensure files are created with the correct privileges
         self.logger = os_logging.getLogger('eventlet.wsgi.server')
 
         if CONF.workers == 0:
@@ -314,7 +314,8 @@ class Server(object):
             eventlet.wsgi.server(self.sock,
                                  self.application,
                                  log=WritableLogger(self.logger),
-                                 custom_pool=self.pool)
+                                 custom_pool=self.pool,
+                                 debug=False)
         except socket.error as err:
             if err[0] != errno.EINVAL:
                 raise
@@ -324,7 +325,7 @@ class Server(object):
         """Start a WSGI server in a new green thread."""
         self.logger.info(_("Starting single process server"))
         eventlet.wsgi.server(sock, application, custom_pool=self.pool,
-                             log=WritableLogger(self.logger))
+                             log=WritableLogger(self.logger), debug=False)
 
 
 class Middleware(object):
