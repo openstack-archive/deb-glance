@@ -1,0 +1,73 @@
+From: Monty Taylor <mordred@inaugust.com>
+Date: Sun, 30 Jun 2013 16:51:18 +0000 (+0000)
+Subject: Use python module loading to run glance-manage.
+X-Git-Url: https://review.openstack.org/gitweb?p=openstack%2Fglance.git;a=commitdiff_plain;h=a122a62328f8c443df3f2f43d0149901fa9b5b0a
+
+Use python module loading to run glance-manage.
+
+Executing glance-manage in a unittest context means that we need
+to install glance first, which breaks packaging workflow.
+
+Fixes bug 1196275.
+
+Change-Id: Idf0a332c2f2ffd3eb96d3623c32cf5383a0d9887
+---
+
+diff --git a/glance/cmd/manage.py b/glance/cmd/manage.py
+index 695b1bd..18475a6 100755
+--- a/glance/cmd/manage.py
++++ b/glance/cmd/manage.py
+@@ -127,3 +127,7 @@ def main():
+         CONF.command.func()
+     except exception.GlanceException as e:
+         sys.exit("ERROR: %s" % e)
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/glance/tests/functional/__init__.py b/glance/tests/functional/__init__.py
+index 57e0be7..d0298d6 100644
+--- a/glance/tests/functional/__init__.py
++++ b/glance/tests/functional/__init__.py
+@@ -32,6 +32,7 @@ import re
+ import shutil
+ import signal
+ import socket
++import sys
+ import tempfile
+ import time
+ import urlparse
+@@ -211,8 +212,8 @@ class Server(object):
+                 os.system('cp %s %s/tests.sqlite'
+                           % (db_location, self.test_dir))
+             else:
+-                cmd = ('glance-manage --config-file %s db_sync'
+-                       % conf_filepath)
++                cmd = ('%s -m glance.cmd.manage --config-file %s db_sync' %
++                       (sys.executable, conf_filepath))
+                 execute(cmd, no_venv=self.no_venv, exec_env=self.exec_env,
+                         expect_exit=True)
+ 
+diff --git a/glance/tests/functional/test_glance_manage.py b/glance/tests/functional/test_glance_manage.py
+index 60266f9..cef2ed9 100644
+--- a/glance/tests/functional/test_glance_manage.py
++++ b/glance/tests/functional/test_glance_manage.py
+@@ -18,6 +18,7 @@
+ """Functional test cases for glance-manage"""
+ 
+ import os
++import sys
+ 
+ from glance.common import utils
+ from glance.tests import functional
+@@ -43,8 +44,8 @@ class TestGlanceManage(functional.FunctionalTest):
+             conf_file.write(self.connection)
+             conf_file.flush()
+ 
+-        cmd = ('glance-manage --config-file %s db_sync' %
+-               self.conf_filepath)
++        cmd = ('%s -m glance.cmd.manage --config-file %s db_sync' %
++	       (sys.executable, self.conf_filepath))
+         execute(cmd, raise_error=True)
+ 
+     def _assert_tables(self):
