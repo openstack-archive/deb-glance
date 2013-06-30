@@ -1,4 +1,4 @@
-glance (2013.2~b1-1) unstable; urgency=low
+glance (2013.2~b1+20130630+gitfaff6116-1) unstable; urgency=low
 
   * New upstream release.
 
