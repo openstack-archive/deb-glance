@@ -1,6 +1,7 @@
-glance (2013.1.2-3) UNRELEASED; urgency=low
+glance (2013.1.2-3) unstable; urgency=low
 
   * Glance starts after keystone, ntp and rabbitmq-server.
+  * Rebuild to handle the new version of sqlalchemy (meaning: >= 0.8).
 
  -- Thomas Goirand <zigo@debian.org>  Sat, 22 Jun 2013 16:21:32 +0800
 
