@@ -1,0 +1,23 @@
+Description: Fixes sqlalchemy 0.8 compat
+Author: Thomas Goirand <zigo@debian.org>
+Forwarded: no
+Last-Update: 2013-07-10
+
+--- glance-2013.1.2.orig/glance/db/sqlalchemy/migrate_repo/schema.py
++++ glance-2013.1.2/glance/db/sqlalchemy/migrate_repo/schema.py
+@@ -28,13 +28,11 @@ LOG = logging.getLogger(__name__)
+ 
+ 
+ String = lambda length: sqlalchemy.types.String(
+-    length=length, convert_unicode=False, assert_unicode=None,
+-    unicode_error=None, _warn_on_bytestring=False)
++    length=length)
+ 
+ 
+ Text = lambda: sqlalchemy.types.Text(
+-    length=None, convert_unicode=False, assert_unicode=None,
+-    unicode_error=None, _warn_on_bytestring=False)
++    length=None)
+ 
+ 
+ Boolean = lambda: sqlalchemy.types.Boolean(create_constraint=True, name=None)

@@ -4,9 +4,9 @@ Forwarded: no
 
 Index: glance/etc/glance-api.conf
 ===================================================================
---- glance.orig/etc/glance-api.conf
-+++ glance/etc/glance-api.conf
-@@ -323,4 +323,4 @@
+--- glance.orig/etc/glance-api.conf	2013-07-10 22:42:43.000000000 +0800
++++ glance/etc/glance-api.conf	2013-07-10 22:42:46.000000000 +0800
+@@ -353,4 +353,4 @@
  # service name removed. For example, if your paste section name is
  # [pipeline:glance-api-keystone], you would configure the flavor below
  # as 'keystone'.
@@ -14,9 +14,9 @@ Index: glance/etc/glance-api.conf
 +flavor = caching
 Index: glance/etc/glance-registry.conf
 ===================================================================
---- glance.orig/etc/glance-registry.conf
-+++ glance/etc/glance-registry.conf
-@@ -83,4 +83,4 @@
+--- glance.orig/etc/glance-registry.conf	2013-07-10 22:42:43.000000000 +0800
++++ glance/etc/glance-registry.conf	2013-07-10 22:42:46.000000000 +0800
+@@ -87,4 +87,4 @@
  # service name removed. For example, if your paste section name is
  # [pipeline:glance-registry-keystone], you would configure the flavor below
  # as 'keystone'.

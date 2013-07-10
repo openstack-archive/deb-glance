@@ -2,6 +2,8 @@ glance (2013.1.2-4) unstable; urgency=low
 
   * Added reviewed templates from the intl team. Big thanks to them and their
     huge work! (Closes: #708659).
+  * Adds patch for sqlalchemy >= 0.8 compat.
+  * Refreshes debian/patches/default_conf.patch.
 
  -- Thomas Goirand <zigo@debian.org>  Wed, 10 Jul 2013 22:32:44 +0800
 
