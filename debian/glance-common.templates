@@ -9,10 +9,11 @@
 
 Template: glance/paste-flavor
 Type: select
-Choices: keystone, caching, keystone+caching, cachemanagement, keystone+cachemanagement
+__Choices: keystone, caching, keystone+caching, cachemanagement, keystone+cachemanagement
+Choices-C: keystone, caching, keystone+caching, cachemanagement, keystone+cachemanagement
 Default: caching
 _Description: Pipeline flavor:
- Please specify the flavor of pipeline to be used by Glance.
+ Please specify the flavor of the pipeline to be used by Glance.
  .
  If you use the OpenStack Identity Service (Keystone), you might want to
  select "keystone". If you don't use this service, you can safely choose
@@ -21,38 +22,48 @@ _Description: Pipeline flavor:
 Template: glance/auth-host
 Type: string
 Default: 127.0.0.1
-_Description: Auth server hostname:
- Please specify the URL of your Glance authentication server. Typically
- this is also the URL of your OpenStack Identity Service (Keystone).
+_Description: Authentication server hostname:
+ Please specify the hostname of the authentication server for Glance. Typically
+ this is also the hostname of the OpenStack Identity Service (Keystone).
 
 Template: glance/admin-tenant-name
 Type: string
 Default: admin
-_Description: Auth server tenant name:
+# Translators: a "tenant" in OpenStack world is
+# an entity that contains one or more username/password couples. 
+# It's typically the tenant that will be used for billing. Having more than one
+# username/password is very helpful in larger organization.
+# You're advised to either keep "tenant" without translating it
+# or keep it parenthezised. Example for French:
+# locataire ("tenant")
+_Description: Authentication server tenant name:
+ Please specify the authentication server tenant name.
 
 Template: glance/admin-user
 Type: string
 Default: admin
-_Description: Auth server username:
+_Description: Authentication server username:
+ Please specify the username to use with the authentication server.
 
 Template: glance/admin-password
 Type: password
-_Description: Auth server password:
+_Description: Authentication server password:
+ Please specify the password to use with the authentication server.
 
 Template: glance/configure_db
 Type: boolean
 Default: true
-_Description: Set up a database for glance?
+_Description: Set up a database for Glance?
  No database has been set up for glance-registry or glance-api to use. Before
- continuing, you should make sure you have:
+ continuing, you should make sure you have the following information:
  .
-  - the server host name (that server must allow TCP connections from this
+  * the type of database that you want to use;
+  * the database server hostname (that server must allow TCP connections from this
     machine);
-  - a username and password to access the database.
-  - A database type that you want to use.
+  * a username and password to access the database.
  .
- If some of these requirements are missing, reject this option and run with
- regular sqlite support.
+ If some of these requirements are missing, do not choose this option and run with
+ regular SQLite support.
  .
- You can change this setting later on by running 'dpkg-reconfigure -plow
- glance-common'.
+ You can change this setting later on by running "dpkg-reconfigure -plow
+ glance-common".
