@@ -1,3 +1,10 @@
+glance (2013.1.2-4) unstable; urgency=low
+
+  * Added reviewed templates from the intl team. Big thanks to them and their
+    huge work! (Closes: #708659).
+
+ -- Thomas Goirand <zigo@debian.org>  Wed, 10 Jul 2013 22:32:44 +0800
+
 glance (2013.1.2-3) unstable; urgency=low
 
   * Glance starts after keystone, ntp and rabbitmq-server.
