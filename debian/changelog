@@ -1,3 +1,9 @@
+glance (2013.1.2-5) unstable; urgency=low
+
+  * Ran debconf-updatepo.
+
+ -- Thomas Goirand <zigo@debian.org>  Fri, 12 Jul 2013 16:41:40 +0800
+
 glance (2013.1.2-4) unstable; urgency=low
 
   * Added reviewed templates from the intl team. Big thanks to them and their
