@@ -32,6 +32,7 @@ import re
 import shutil
 import signal
 import socket
+import sys
 import tempfile
 import time
 import urlparse
@@ -71,6 +72,7 @@ class Server(object):
         self.exec_env = None
         self.deployment_flavor = ''
         self.show_image_direct_url = False
+        self.show_multiple_locations = False
         self.enable_v1_api = True
         self.enable_v2_api = True
         self.needs_database = False
@@ -211,8 +213,8 @@ class Server(object):
                 os.system('cp %s %s/tests.sqlite'
                           % (db_location, self.test_dir))
             else:
-                cmd = ('glance-manage --config-file %s db_sync'
-                       % conf_filepath)
+                cmd = ('%s -m glance.cmd.manage --config-file %s db_sync' %
+                       (sys.executable, conf_filepath))
                 execute(cmd, no_venv=self.no_venv, exec_env=self.exec_env,
                         expect_exit=True)
 
@@ -356,6 +358,7 @@ policy_default_rule = %(policy_default_rule)s
 db_auto_create = False
 sql_connection = %(sql_connection)s
 show_image_direct_url = %(show_image_direct_url)s
+show_multiple_locations = %(show_multiple_locations)s
 enable_v1_api = %(enable_v1_api)s
 enable_v2_api= %(enable_v2_api)s
 [paste_deploy]
@@ -443,6 +446,7 @@ class RegistryServer(Server):
         self.log_file = os.path.join(self.test_dir, "registry.log")
         self.owner_is_tenant = True
         self.workers = 0
+        self.api_version = 1
         self.conf_base = """[DEFAULT]
 verbose = %(verbose)s
 debug = %(debug)s
@@ -466,7 +470,7 @@ pipeline = unauthenticated-context registryapp
 pipeline = fakeauth context registryapp
 
 [app:registryapp]
-paste.app_factory = glance.registry.api.v1:API.factory
+paste.app_factory = glance.registry.api.v%(api_version)s:API.factory
 
 [filter:context]
 paste.filter_factory = glance.api.middleware.context:ContextMiddleware.factory

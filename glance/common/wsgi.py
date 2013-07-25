@@ -69,14 +69,22 @@ socket_opts = [
                                   'server securely.')),
 ]
 
-workers_opt = cfg.IntOpt('workers', default=1,
-                         help=_('The number of child process workers that '
-                                'will be created to service API requests.'))
+eventlet_opts = [
+    cfg.IntOpt('workers', default=1,
+               help=_('The number of child process workers that will be '
+                      'created to service API requests.')),
+    cfg.StrOpt('eventlet_hub', default='poll',
+               help=_('Name of eventlet hub to use. Traditionally, we have '
+                      'only supported \'poll\', however \'selects\' may be '
+                      'appropriate for some platforms. See '
+                      'http://eventlet.net/doc/hubs.html for more details.')),
+]
+
 
 CONF = cfg.CONF
 CONF.register_opts(bind_opts)
 CONF.register_opts(socket_opts)
-CONF.register_opt(workers_opt)
+CONF.register_opts(eventlet_opts)
 
 
 class WritableLogger(object):
@@ -305,10 +313,11 @@ class Server(object):
 
         eventlet.wsgi.HttpProtocol.default_request_version = "HTTP/1.0"
         try:
-            eventlet.hubs.use_hub('poll')
+            eventlet.hubs.use_hub(cfg.CONF.eventlet_hub)
         except Exception:
-            msg = _("eventlet 'poll' hub is not available on this platform")
-            raise exception.WorkerCreationFailure(reason=msg)
+            msg = _("eventlet '%s' hub is not available on this platform")
+            raise exception.WorkerCreationFailure(
+                reason=msg % cfg.CONF.eventlet_hub)
         self.pool = self.create_pool()
         try:
             eventlet.wsgi.server(self.sock,
@@ -517,9 +526,13 @@ class JSONRequestDeserializer(object):
 
         return False
 
+    def _sanitizer(self, obj):
+        """Sanitizer method that will be passed to json.loads."""
+        return obj
+
     def from_json(self, datastring):
         try:
-            return json.loads(datastring)
+            return json.loads(datastring, object_hook=self._sanitizer)
         except ValueError:
             msg = _('Malformed JSON in request body.')
             raise webob.exc.HTTPBadRequest(explanation=msg)
@@ -533,15 +546,16 @@ class JSONRequestDeserializer(object):
 
 class JSONResponseSerializer(object):
 
-    def to_json(self, data):
-        def sanitizer(obj):
-            if isinstance(obj, datetime.datetime):
-                return obj.isoformat()
-            if hasattr(obj, "to_dict"):
-                return obj.to_dict()
-            return obj
+    def _sanitizer(self, obj):
+        """Sanitizer method that will be passed to json.dumps."""
+        if isinstance(obj, datetime.datetime):
+            return obj.isoformat()
+        if hasattr(obj, "to_dict"):
+            return obj.to_dict()
+        return obj
 
-        return json.dumps(data, default=sanitizer)
+    def to_json(self, data):
+        return json.dumps(data, default=self._sanitizer)
 
     def default(self, response, result):
         response.content_type = 'application/json'

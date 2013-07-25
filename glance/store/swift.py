@@ -424,7 +424,7 @@ class BaseStore(glance.store.base.Store):
             # the location attribute from GET /images/<ID> and
             # GET /images/details
 
-            return (location.get_uri(), image_size, obj_etag)
+            return (location.get_uri(), image_size, obj_etag, {})
         except swiftclient.ClientException as e:
             if e.http_status == httplib.CONFLICT:
                 raise exception.Duplicate(_("Swift already has an image at "
@@ -614,13 +614,15 @@ class MultiTenantStore(BaseStore):
         if public:
             headers['X-Container-Read'] = ".r:*,.rlistings"
         elif read_tenants:
-            headers['X-Container-Read'] = ','.join(read_tenants)
+            headers['X-Container-Read'] = ','.join('%s:*' % i
+                                                   for i in read_tenants)
         else:
             headers['X-Container-Read'] = ''
 
         write_tenants.extend(self.admin_tenants)
         if write_tenants:
-            headers['X-Container-Write'] = ','.join(write_tenants)
+            headers['X-Container-Write'] = ','.join('%s:*' % i
+                                                    for i in write_tenants)
         else:
             headers['X-Container-Write'] = ''
 

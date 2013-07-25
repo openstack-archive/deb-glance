@@ -65,7 +65,7 @@ class BaseTestCase(object):
         :param image_data: string representing image data fixture
         :return URI referencing newly-created backend object
         """
-        raise NotImplementedError('stash_image must be implemented')
+        raise NotImplementedError('stash_image is not implemented')
 
     def test_create_store(self):
         self.config(known_stores=[self.store_cls_path])
@@ -80,7 +80,7 @@ class BaseTestCase(object):
         image_data = StringIO.StringIO('XXX')
         image_checksum = 'bc9189406be84ec297464a514221406d'
         try:
-            uri, add_size, add_checksum = store.add(image_id, image_data, 3)
+            uri, add_size, add_checksum, _ = store.add(image_id, image_data, 3)
         except NotImplementedError:
             msg = 'Configured store can not add images'
             self.skipTest(msg)
@@ -109,7 +109,12 @@ class BaseTestCase(object):
     def test_get_remote_image(self):
         """Get an image that was created externally to Glance"""
         image_id = uuidutils.generate_uuid()
-        image_uri = self.stash_image(image_id, 'XXX')
+        try:
+            image_uri = self.stash_image(image_id, 'XXX')
+        except NotImplementedError:
+            msg = 'Configured store can not stash images'
+            self.skipTest(msg)
+
         store = self.get_store()
         location = glance.store.location.Location(
                 self.store_name,

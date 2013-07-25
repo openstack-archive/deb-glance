@@ -39,6 +39,13 @@ TENANT4 = 'c6c87f25-8a94-47ed-8c83-053c25f42df4'
 
 USER1 = '54492ba0-f4df-4e4e-be62-27f4d76b29cf'
 
+UUID1_LOCATION = 'file:///path/to/image'
+UUID1_LOCATION_METADATA = {'key': 'value'}
+UUID3_LOCATION = 'http://somehost.com/place'
+
+CHECKSUM = '93264c3edf5972c9f1cb309543d38a5c'
+CHCKSUM1 = '43264c3edf4972c9f1cb309543d38a55'
+
 
 def _db_fixture(id, **kwargs):
     obj = {
@@ -88,12 +95,17 @@ class TestImageRepo(test_utils.BaseTestCase):
     def _create_images(self):
         self.db.reset()
         self.images = [
-            _db_fixture(UUID1, owner=TENANT1, name='1', size=256,
-                        is_public=True, status='active'),
-            _db_fixture(UUID2, owner=TENANT1, name='2',
-                        size=512, is_public=False),
-            _db_fixture(UUID3, owner=TENANT3, name='3',
-                        size=1024, is_public=True),
+            _db_fixture(UUID1, owner=TENANT1, checksum=CHECKSUM,
+                        name='1', size=256,
+                        is_public=True, status='active',
+                        locations=[{'url': UUID1_LOCATION,
+                        'metadata': UUID1_LOCATION_METADATA}]),
+            _db_fixture(UUID2, owner=TENANT1, checksum=CHCKSUM1,
+                        name='2', size=512, is_public=False),
+            _db_fixture(UUID3, owner=TENANT3, checksum=CHCKSUM1,
+                        name='3', size=1024, is_public=True,
+                        locations=[{'url': UUID3_LOCATION,
+                        'metadata': {}}]),
             _db_fixture(UUID4, owner=TENANT4, name='4', size=2048),
         ]
         [self.db.image_create(None, image) for image in self.images]
@@ -117,6 +129,20 @@ class TestImageRepo(test_utils.BaseTestCase):
         self.assertEquals(image.status, 'active')
         self.assertEquals(image.size, 256)
         self.assertEquals(image.owner, TENANT1)
+
+    def test_location_value(self):
+        image = self.image_repo.get(UUID3)
+        self.assertEqual(image.locations[0]['url'], UUID3_LOCATION)
+
+    def test_location_data_value(self):
+        image = self.image_repo.get(UUID1)
+        self.assertEqual(image.locations[0]['url'], UUID1_LOCATION)
+        self.assertEqual(image.locations[0]['metadata'],
+                         UUID1_LOCATION_METADATA)
+
+    def test_location_data_exists(self):
+        image = self.image_repo.get(UUID2)
+        self.assertEqual(image.locations, [])
 
     def test_get_not_found(self):
         self.assertRaises(exception.NotFound, self.image_repo.get,
@@ -178,6 +204,26 @@ class TestImageRepo(test_utils.BaseTestCase):
         image_ids = set([i.image_id for i in images])
         self.assertEqual(set([UUID2]), image_ids)
 
+    def test_list_with_checksum_filter_single_image(self):
+        filters = {'checksum': CHECKSUM}
+        images = self.image_repo.list(filters=filters)
+        image_ids = list([i.image_id for i in images])
+        self.assertEquals(1, len(image_ids))
+        self.assertEqual([UUID1], image_ids)
+
+    def test_list_with_checksum_filter_multiple_images(self):
+        filters = {'checksum': CHCKSUM1}
+        images = self.image_repo.list(filters=filters)
+        image_ids = list([i.image_id for i in images])
+        self.assertEquals(2, len(image_ids))
+        self.assertEqual([UUID3, UUID2], image_ids)
+
+    def test_list_with_wrong_checksum(self):
+        WRONG_CHKSUM = 'd2fd42f979e1ed1aafadc7eb9354bff839c858cd'
+        filters = {'checksum': WRONG_CHKSUM}
+        images = self.image_repo.list(filters=filters)
+        self.assertEquals(0, len(images))
+
     def test_list_public_images(self):
         filters = {'visibility': 'public'}
         images = self.image_repo.list(filters=filters)
@@ -229,47 +275,59 @@ class TestEncryptedLocations(test_utils.BaseTestCase):
         self.image_factory = glance.domain.ImageFactory()
         self.crypt_key = '0123456789abcdef'
         self.config(metadata_encryption_key=self.crypt_key)
+        self.foo_bar_location = [{'url': 'foo', 'metadata': {}},
+                                 {'url': 'bar', 'metadata': {}}]
 
     def test_encrypt_locations_on_add(self):
         image = self.image_factory.new_image(UUID1)
-        image.locations = ['foo', 'bar']
+        image.locations = self.foo_bar_location
         self.image_repo.add(image)
         db_data = self.db.image_get(self.context, UUID1)
         self.assertNotEqual(db_data['locations'], ['foo', 'bar'])
-        decrypted_locations = [crypt.urlsafe_decrypt(self.crypt_key, l)
+        decrypted_locations = [crypt.urlsafe_decrypt(self.crypt_key, l['url'])
                                for l in db_data['locations']]
-        self.assertEqual(decrypted_locations, ['foo', 'bar'])
+        self.assertEqual(decrypted_locations,
+                         [l['url'] for l in self.foo_bar_location])
 
     def test_encrypt_locations_on_save(self):
         image = self.image_factory.new_image(UUID1)
         self.image_repo.add(image)
-        image.locations = ['foo', 'bar']
+        image.locations = self.foo_bar_location
         self.image_repo.save(image)
         db_data = self.db.image_get(self.context, UUID1)
         self.assertNotEqual(db_data['locations'], ['foo', 'bar'])
-        decrypted_locations = [crypt.urlsafe_decrypt(self.crypt_key, l)
+        decrypted_locations = [crypt.urlsafe_decrypt(self.crypt_key, l['url'])
                                for l in db_data['locations']]
-        self.assertEqual(decrypted_locations, ['foo', 'bar'])
+        self.assertEqual(decrypted_locations,
+                         [l['url'] for l in self.foo_bar_location])
 
     def test_decrypt_locations_on_get(self):
-        encrypted_locations = [crypt.urlsafe_encrypt(self.crypt_key, l)
-                               for l in ['ping', 'pong']]
-        self.assertNotEqual(encrypted_locations, ['ping', 'pong'])
+        url_loc = ['ping', 'pong']
+        orig_locations = [{'url': l, 'metadata': {}} for l in url_loc]
+        encrypted_locs = [crypt.urlsafe_encrypt(self.crypt_key, l)
+                          for l in url_loc]
+        encrypted_locations = [{'url': l, 'metadata': {}}
+                               for l in encrypted_locs]
+        self.assertNotEqual(encrypted_locations, orig_locations)
         db_data = _db_fixture(UUID1, owner=TENANT1,
                               locations=encrypted_locations)
         self.db.image_create(None, db_data)
         image = self.image_repo.get(UUID1)
-        self.assertEqual(image.locations, ['ping', 'pong'])
+        self.assertEqual(image.locations, orig_locations)
 
     def test_decrypt_locations_on_list(self):
-        encrypted_locations = [crypt.urlsafe_encrypt(self.crypt_key, l)
-                               for l in ['ping', 'pong']]
-        self.assertNotEqual(encrypted_locations, ['ping', 'pong'])
+        url_loc = ['ping', 'pong']
+        orig_locations = [{'url': l, 'metadata': {}} for l in url_loc]
+        encrypted_locs = [crypt.urlsafe_encrypt(self.crypt_key, l)
+                          for l in url_loc]
+        encrypted_locations = [{'url': l, 'metadata': {}}
+                               for l in encrypted_locs]
+        self.assertNotEqual(encrypted_locations, orig_locations)
         db_data = _db_fixture(UUID1, owner=TENANT1,
                               locations=encrypted_locations)
         self.db.image_create(None, db_data)
         image = self.image_repo.list()[0]
-        self.assertEqual(image.locations, ['ping', 'pong'])
+        self.assertEqual(image.locations, orig_locations)
 
 
 class TestImageMemberRepo(test_utils.BaseTestCase):

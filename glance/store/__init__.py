@@ -15,6 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import collections
 import os
 import sys
 import time
@@ -40,6 +41,8 @@ store_opts = [
                     'glance.store.rbd.Store',
                     'glance.store.s3.Store',
                     'glance.store.swift.Store',
+                    'glance.store.sheepdog.Store',
+                    'glance.store.cinder.Store',
                 ],
                 help=_('List of which store classes and store class locations '
                        'are currently known to glance at startup.')),
@@ -224,7 +227,10 @@ def get_from_backend(context, uri, **kwargs):
     loc = location.get_location_from_uri(uri)
     store = get_store_from_uri(context, uri, loc)
 
-    return store.get(loc)
+    try:
+        return store.get(loc)
+    except NotImplementedError:
+        raise exception.StoreGetNotSupported
 
 
 def get_size_from_backend(context, uri):
@@ -295,9 +301,68 @@ def schedule_delayed_delete_from_backend(uri, image_id, **kwargs):
     os.utime(file_path, (delete_time, delete_time))
 
 
+def delete_image_from_backend(context, store_api, image_id, uri):
+    if CONF.delayed_delete:
+        store_api.schedule_delayed_delete_from_backend(uri, image_id)
+    else:
+        store_api.safe_delete_from_backend(uri, context, image_id)
+
+
+def _check_meta_data(val, key=''):
+    t = type(val)
+    if t == dict:
+        for key in val:
+            _check_meta_data(val[key], key=key)
+    elif t == list:
+        ndx = 0
+        for v in val:
+            _check_meta_data(v, key='%s[%d]' % (key, ndx))
+            ndx = ndx + 1
+    elif t != unicode:
+        raise BackendException(_("The image metadata key %s has an invalid "
+                                 "type of %s.  Only dict, list, and unicode "
+                                 "are supported." % (key, str(t))))
+
+
+def store_add_to_backend(image_id, data, size, store):
+    """
+    A wrapper around a call to each stores add() method.  This gives glance
+    a common place to check the output
+
+    :param image_id:  The image add to which data is added
+    :param data: The data to be stored
+    :param size: The length of the data in bytes
+    :param store: The store to which the data is being added
+    :return: The url location of the file,
+             the size amount of data,
+             the checksum of the data
+             the storage systems metadata dictionary for the location
+    """
+    (location, size, checksum, metadata) = store.add(image_id, data, size)
+    if metadata is not None:
+        if type(metadata) != dict:
+            msg = _("The storage driver %s returned invalid metadata %s"
+                    "This must be a dictionary type" %
+                    (str(store), str(metadata)))
+            LOG.error(msg)
+            raise BackendException(msg)
+        try:
+            _check_meta_data(metadata)
+        except BackendException as e:
+            e_msg = _("A bad metadata structure was returned from the "
+                      "%s storage driver: %s.  %s." %
+                      (str(store), str(metadata), str(e)))
+            LOG.error(e_msg)
+            raise BackendException(e_msg)
+    return (location, size, checksum, metadata)
+
+
 def add_to_backend(context, scheme, image_id, data, size):
     store = get_store_from_scheme(context, scheme)
-    return store.add(image_id, data, size)
+    try:
+        return store_add_to_backend(image_id, data, size, store)
+    except NotImplementedError:
+        raise exception.StoreAddNotSupported
 
 
 def set_acls(context, location_uri, public=False, read_tenants=[],
@@ -329,7 +394,7 @@ class ImageRepoProxy(glance.domain.proxy.Repo):
             member_repo = image.get_member_repo()
             member_ids = [m.member_id for m in member_repo.list()]
         for location in image.locations:
-            self.store_api.set_acls(self.context, location, public,
+            self.store_api.set_acls(self.context, location['url'], public,
                                     read_tenants=member_ids)
 
     def add(self, image):
@@ -343,15 +408,212 @@ class ImageRepoProxy(glance.domain.proxy.Repo):
         return result
 
 
+def _check_location_uri(context, store_api, uri):
+    """
+    Check if an image location uri is valid.
+
+    :param context: Glance request context
+    :param store_api: store API module
+    :param uri: location's uri string
+    """
+    is_ok = True
+    try:
+        size = store_api.get_size_from_backend(context, uri)
+        # NOTE(zhiyan): Some stores return zero when it catch exception
+        is_ok = size > 0
+    except (exception.UnknownScheme, exception.NotFound):
+        is_ok = False
+    if not is_ok:
+        raise exception.BadStoreUri(_('Invalid location: %s') % uri)
+
+
 class ImageFactoryProxy(glance.domain.proxy.ImageFactory):
     def __init__(self, factory, context, store_api):
+        self.context = context
+        self.store_api = store_api
         proxy_kwargs = {'context': context, 'store_api': store_api}
         super(ImageFactoryProxy, self).__init__(factory,
                                                 proxy_class=ImageProxy,
                                                 proxy_kwargs=proxy_kwargs)
 
+    def new_image(self, **kwargs):
+        for l in kwargs.get('locations', []):
+            _check_location_uri(self.context, self.store_api, l['url'])
+        return super(ImageFactoryProxy, self).new_image(**kwargs)
+
+
+class StoreLocations(collections.MutableSequence):
+    """
+    The proxy for store location property. It takes responsibility for:
+    1. Location uri correctness checking when adding a new location.
+    2. Remove the image data from the store when a location is removed
+       from an image.
+    """
+    def __init__(self, image_proxy, value):
+        self.image_proxy = image_proxy
+        if isinstance(value, list):
+            self.value = value
+        else:
+            self.value = list(value)
+
+    def append(self, location):
+        _check_location_uri(self.image_proxy.context,
+                            self.image_proxy.store_api, location['url'])
+        self.value.append(location)
+
+    def extend(self, other):
+        if isinstance(other, StoreLocations):
+            self.value.extend(other.value)
+        else:
+            locations = list(other)
+            for location in locations:
+                _check_location_uri(self.image_proxy.context,
+                                    self.image_proxy.store_api,
+                                    location['url'])
+            self.value.extend(locations)
+
+    def insert(self, i, location):
+        _check_location_uri(self.image_proxy.context,
+                            self.image_proxy.store_api, location['url'])
+        self.value.insert(i, location)
+
+    def pop(self, i=-1):
+        location = self.value.pop(i)
+        try:
+            delete_image_from_backend(self.image_proxy.context,
+                                      self.image_proxy.store_api,
+                                      self.image_proxy.image.image_id,
+                                      location['url'])
+        except Exception:
+            self.value.insert(i, location)
+            raise
+        return location
+
+    def count(self, location):
+        return self.value.count(location)
+
+    def index(self, location, *args):
+        return self.value.index(location, *args)
+
+    def remove(self, location):
+        if self.count(location):
+            self.pop(self.index(location))
+        else:
+            self.value.remove(location)
+
+    def reverse(self):
+        self.value.reverse()
+
+    # Mutable sequence, so not hashable
+    __hash__ = None
+
+    def __getitem__(self, i):
+        return self.value.__getitem__(i)
+
+    def __setitem__(self, i, location):
+        _check_location_uri(self.image_proxy.context,
+                            self.image_proxy.store_api, location['url'])
+        self.value.__setitem__(i, location)
+
+    def __delitem__(self, i):
+        location = None
+        try:
+            location = self.value.__getitem__(i)
+        except Exception:
+            return self.value.__delitem__(i)
+        delete_image_from_backend(self.image_proxy.context,
+                                  self.image_proxy.store_api,
+                                  self.image_proxy.image.image_id,
+                                  location['url'])
+        self.value.__delitem__(i)
+
+    def __delslice__(self, i, j):
+        i = max(i, 0)
+        j = max(j, 0)
+        locations = []
+        try:
+            locations = self.value.__getslice__(i, j)
+        except Exception:
+            return self.value.__delslice__(i, j)
+        for location in locations:
+            delete_image_from_backend(self.image_proxy.context,
+                                      self.image_proxy.store_api,
+                                      self.image_proxy.image.image_id,
+                                      location['url'])
+            self.value.__delitem__(i)
+
+    def __iadd__(self, other):
+        if isinstance(other, StoreLocations):
+            self.value += other.value
+        else:
+            locations = list(other)
+            for location in locations:
+                _check_location_uri(self.image_proxy.context,
+                                    self.image_proxy.store_api,
+                                    location['url'])
+            self.value += locations
+        return self
+
+    def __contains__(self, location):
+        return location in self.value
+
+    def __len__(self):
+        return len(self.value)
+
+    def __cast(self, other):
+        if isinstance(other, StoreLocations):
+            return other.value
+        else:
+            return other
+
+    def __cmp__(self, other):
+        return cmp(self.value, self.__cast(other))
+
+    def __iter__(self):
+        return iter(self.value)
+
+
+def _locations_proxy(target, attr):
+    """
+    Make a location property proxy on the image object.
+
+    :param target: the image object on which to add the proxy
+    :param attr: the property proxy we want to hook
+    """
+    def get_attr(self):
+        value = getattr(getattr(self, target), attr)
+        return StoreLocations(self, value)
+
+    def set_attr(self, value):
+        if not isinstance(value, (list, StoreLocations)):
+            raise exception.BadStoreUri(_('Invalid locations: %s') % value)
+        ori_value = getattr(getattr(self, target), attr)
+        if ori_value != value:
+            # NOTE(zhiyan): Enforced locations list was previously empty list.
+            if len(ori_value) > 0:
+                raise exception.Invalid(_('Original locations is not empty: '
+                                          '%s') % ori_value)
+            # NOTE(zhiyan): Check locations are all valid.
+            for location in value:
+                _check_location_uri(self.context, self.store_api,
+                                    location['url'])
+            return setattr(getattr(self, target), attr, list(value))
+
+    def del_attr(self):
+        value = getattr(getattr(self, target), attr)
+        while len(value):
+            delete_image_from_backend(self.context, self.store_api,
+                                      self.image.image_id, value[0]['url'])
+            del value[0]
+            setattr(getattr(self, target), attr, value)
+        return delattr(getattr(self, target), attr)
+
+    return property(get_attr, set_attr, del_attr)
+
 
 class ImageProxy(glance.domain.proxy.Image):
+
+    locations = _locations_proxy('image', 'locations')
 
     def __init__(self, image, context, store_api):
         self.image = image
@@ -371,21 +633,19 @@ class ImageProxy(glance.domain.proxy.Image):
         if self.image.locations:
             if CONF.delayed_delete:
                 self.image.status = 'pending_delete'
-                for location in self.image.locations:
-                    self.store_api.schedule_delayed_delete_from_backend(
-                            location, self.image.image_id)
-            else:
-                for location in self.image.locations:
-                    self.store_api.safe_delete_from_backend(
-                            location, self.context, self.image.image_id)
+            for location in self.image.locations:
+                self.store_api.delete_image_from_backend(self.context,
+                                                         self.store_api,
+                                                         self.image.image_id,
+                                                         location['url'])
 
     def set_data(self, data, size=None):
         if size is None:
             size = 0  # NOTE(markwash): zero -> unknown size
-        location, size, checksum = self.store_api.add_to_backend(
+        location, size, checksum, loc_meta = self.store_api.add_to_backend(
                 self.context, CONF.default_store,
                 self.image.image_id, utils.CooperativeReader(data), size)
-        self.image.locations = [location]
+        self.image.locations = [{'url': location, 'metadata': loc_meta}]
         self.image.size = size
         self.image.checksum = checksum
         self.image.status = 'active'
@@ -393,9 +653,22 @@ class ImageProxy(glance.domain.proxy.Image):
     def get_data(self):
         if not self.image.locations:
             raise exception.NotFound(_("No image data could be found"))
-        data, size = self.store_api.get_from_backend(self.context,
-                                                     self.image.locations[0])
-        return data
+        err = None
+        for loc in self.image.locations:
+            try:
+                data, size = self.store_api.get_from_backend(self.context,
+                                                             loc['url'])
+
+                return data
+            except Exception as e:
+                LOG.warn(_('Get image %(id)s data from %(loc)s '
+                           'failed: %(err)s.') % {'id': self.image.image_id,
+                                                  'loc': loc, 'err': e})
+                err = e
+        # tried all locations
+        LOG.error(_('Glance tried all locations to get data for image %s '
+                    'but all have failed.') % self.image.image_id)
+        raise err
 
 
 class ImageMemberRepoProxy(glance.domain.proxy.Repo):
@@ -411,7 +684,7 @@ class ImageMemberRepoProxy(glance.domain.proxy.Repo):
         if self.image.locations and not public:
             member_ids = [m.member_id for m in self.repo.list()]
             for location in self.image.locations:
-                self.store_api.set_acls(self.context, location, public,
+                self.store_api.set_acls(self.context, location['url'], public,
                                         read_tenants=member_ids)
 
     def add(self, member):

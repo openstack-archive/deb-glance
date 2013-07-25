@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2011 OpenStack, LLC
+# Copyright 2011-2013 OpenStack, LLC
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -52,6 +52,8 @@ class TestStoreLocation(base.StoreClearingUnitTest):
             'rbd://imagename',
             'rbd://fsid/pool/image/snap',
             'rbd://%2F/%2F/%2F/%2F',
+            'sheepdog://imagename',
+            'cinder://12345678-9012-3455-6789-012345678901',
         ]
 
         for uri in good_store_uris:
@@ -361,6 +363,38 @@ class TestStoreLocation(base.StoreClearingUnitTest):
         bad_uri = 'rbd://' + unichr(300)
         self.assertRaises(exception.BadStoreUri, loc.parse_uri, bad_uri)
 
+    def test_sheepdog_store_location(self):
+        """
+        Test the specific StoreLocation for the Sheepdog store
+        """
+        uri = 'sheepdog://imagename'
+        loc = glance.store.sheepdog.StoreLocation({})
+        loc.parse_uri(uri)
+        self.assertEqual('imagename', loc.image)
+
+        bad_uri = 'sheepdog:/image'
+        self.assertRaises(exception.BadStoreUri, loc.parse_uri, bad_uri)
+
+        bad_uri = 'http://image'
+        self.assertRaises(exception.BadStoreUri, loc.parse_uri, bad_uri)
+
+    def test_cinder_store_good_location(self):
+        """
+        Test the specific StoreLocation for the Cinder store
+        """
+        good_uri = 'cinder://12345678-9012-3455-6789-012345678901'
+        loc = glance.store.cinder.StoreLocation({})
+        loc.parse_uri(good_uri)
+        self.assertEqual('12345678-9012-3455-6789-012345678901', loc.volume_id)
+
+    def test_cinder_store_bad_location(self):
+        """
+        Test the specific StoreLocation for the Cinder store
+        """
+        bad_uri = 'cinder://volume-id-is-a-uuid'
+        loc = glance.store.cinder.StoreLocation({})
+        self.assertRaises(exception.BadStoreUri, loc.parse_uri, bad_uri)
+
     def test_get_store_from_scheme(self):
         """
         Test that the backend returned by glance.store.get_backend_class
@@ -377,7 +411,9 @@ class TestStoreLocation(base.StoreClearingUnitTest):
             'filesystem': glance.store.filesystem.Store,
             'http': glance.store.http.Store,
             'https': glance.store.http.Store,
-            'rbd': glance.store.rbd.Store}
+            'rbd': glance.store.rbd.Store,
+            'sheepdog': glance.store.sheepdog.Store,
+            'cinder': glance.store.cinder.Store}
 
         ctx = context.RequestContext()
         for scheme, store in good_results.items():

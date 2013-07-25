@@ -127,6 +127,7 @@ def _image_format(image_id, **values):
     properties = values.pop('properties', {})
     properties = [{'name': k,
                    'value': v,
+                   'image_id': image_id,
                    'deleted': False} for k, v in properties.items()]
     image['properties'] = properties
 
@@ -292,11 +293,10 @@ def image_property_create(context, values):
 
 
 @log_call
-def image_property_delete(context, prop_ref, session=None):
-    image_id = prop_ref['image_id']
+def image_property_delete(context, prop_ref, image_ref, session=None):
     prop = None
-    for p in DATA['images'][image_id]['properties']:
-        if p['name'] == prop_ref['name']:
+    for p in DATA['images'][image_ref]['properties']:
+        if p['name'] == prop_ref:
             prop = p
     if not prop:
         raise exception.NotFound()
@@ -381,8 +381,10 @@ def image_create(context, image_values):
                         'created_at', 'updated_at', 'deleted_at', 'deleted',
                         'properties', 'tags'])
 
-    if set(image_values.keys()) - allowed_keys:
-        raise exception.Invalid()
+    incorrect_keys = set(image_values.keys()) - allowed_keys
+    if incorrect_keys:
+        raise exception.Invalid(
+            'The keys %s are not valid' % str(incorrect_keys))
 
     image = _image_format(image_id, **image_values)
     DATA['images'][image_id] = image
@@ -408,7 +410,8 @@ def image_update(context, image_id, image_values, purge_props=False):
             prop['deleted'] = True
 
     # add in any completly new properties
-    image['properties'].extend([{'name': k, 'value': v, 'deleted': False}
+    image['properties'].extend([{'name': k, 'value': v,
+                                 'image_id': image_id, 'deleted': False}
                                 for k, v in new_properties.items()])
 
     image['updated_at'] = timeutils.utcnow()
@@ -423,6 +426,18 @@ def image_destroy(context, image_id):
     try:
         DATA['images'][image_id]['deleted'] = True
         DATA['images'][image_id]['deleted_at'] = timeutils.utcnow()
+
+        for prop in DATA['images'][image_id]['properties']:
+            image_property_delete(context, prop['name'], image_id)
+
+        members = image_member_find(context, image_id=image_id)
+        for member in members:
+            image_member_delete(context, member['id'])
+
+        tags = image_tag_get_all(context, image_id)
+        for tag in tags:
+            image_tag_delete(context, image_id, tag)
+
         return copy.deepcopy(DATA['images'][image_id])
     except KeyError:
         raise exception.NotFound()
@@ -430,7 +445,6 @@ def image_destroy(context, image_id):
 
 @log_call
 def image_tag_get_all(context, image_id):
-    _image_get(context, image_id)
     return DATA['tags'].get(image_id, [])
 
 

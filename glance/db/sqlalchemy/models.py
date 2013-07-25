@@ -23,7 +23,7 @@ SQLAlchemy models for glance data
 from sqlalchemy import Column, Integer, String, BigInteger
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import ForeignKey, DateTime, Boolean, Text
+from sqlalchemy import ForeignKey, DateTime, Boolean, Text, PickleType
 from sqlalchemy.orm import relationship, backref, object_mapper
 from sqlalchemy import Index, UniqueConstraint
 
@@ -107,6 +107,7 @@ class ModelBase(object):
 class Image(BASE, ModelBase):
     """Represents an image in the datastore"""
     __tablename__ = 'images'
+    __table_args__ = (Index('checksum_image_idx', 'checksum'),)
 
     id = Column(String(36), primary_key=True, default=uuidutils.generate_uuid)
     name = Column(String(255))
@@ -115,7 +116,7 @@ class Image(BASE, ModelBase):
     size = Column(BigInteger)
     status = Column(String(30), nullable=False)
     is_public = Column(Boolean, nullable=False, default=False)
-    checksum = Column(String(32))
+    checksum = Column(String(32), index=True)
     min_disk = Column(Integer(), nullable=False, default=0)
     min_ram = Column(Integer(), nullable=False, default=0)
     owner = Column(String(255))
@@ -153,6 +154,7 @@ class ImageLocation(BASE, ModelBase):
     image_id = Column(String(36), ForeignKey('images.id'), nullable=False)
     image = relationship(Image, backref=backref('locations'))
     value = Column(Text(), nullable=False)
+    meta_data = Column(PickleType(), default={})
 
 
 class ImageMember(BASE, ModelBase):

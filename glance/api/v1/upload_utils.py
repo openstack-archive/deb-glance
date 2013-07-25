@@ -80,10 +80,14 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
     """
     image_id = image_meta['id']
     try:
-        location, size, checksum = store.add(
-            image_meta['id'],
-            utils.CooperativeReader(image_data),
-            image_meta['size'])
+        (location,
+         size,
+         checksum,
+         locations_metadata) = glance.store.store_add_to_backend(
+             image_meta['id'],
+             utils.CooperativeReader(image_data),
+             image_meta['size'],
+             store)
 
         def _kill_mismatched(image_meta, attr, actual):
             supplied = image_meta.get(attr)
@@ -120,6 +124,14 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
             msg = _("Image %s could not be found after upload. The image may "
                     "have been deleted during the upload.") % image_id
             LOG.info(msg)
+
+            # NOTE(jculp): we need to clean up the datastore if an image
+            # resource is deleted while the image data is being uploaded
+            #
+            # We get "location" from above call to store.add(), any
+            # exceptions that occur there handle this same issue internally,
+            # Since this is store-agnostic, should apply to all stores.
+            initiate_deletion(req, location, image_id, CONF.delayed_delete)
             raise webob.exc.HTTPPreconditionFailed(explanation=msg,
                                                    request=req,
                                                    content_type='text/plain')
@@ -173,15 +185,16 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
         # exception context and we must explicitly re-raise the
         # caught exception.
         with excutils.save_and_reraise_exception():
-            LOG.exception(_("Received HTTP error while uploading image."))
+            msg = _("Received HTTP error while uploading image %s" % image_id)
+            LOG.exception(msg)
             safe_kill(req, image_id)
 
     except Exception as e:
-        msg = _("Failed to upload image")
+        msg = _("Failed to upload image %s" % image_id)
         LOG.exception(msg)
         safe_kill(req, image_id)
         raise webob.exc.HTTPInternalServerError(explanation=msg,
                                                 request=req,
                                                 content_type='text/plain')
 
-    return image_meta, location
+    return image_meta, location, locations_metadata

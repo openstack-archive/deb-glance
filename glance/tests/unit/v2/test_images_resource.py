@@ -47,6 +47,9 @@ TENANT2 = '2c014f32-55eb-467d-8fcb-4bd706012f81'
 TENANT3 = '5a3e60e8-cfa9-4a9e-a90a-62b42cea92b8'
 TENANT4 = 'c6c87f25-8a94-47ed-8c83-053c25f42df4'
 
+CHKSUM = '93264c3edf5972c9f1cb309543d38a5c'
+CHKSUM1 = '43254c3edf6972c9f1cb309543d38a8c'
+
 
 def _db_fixture(id, **kwargs):
     obj = {
@@ -120,13 +123,22 @@ class TestImagesController(test_utils.BaseTestCase):
     def _create_images(self):
         self.db.reset()
         self.images = [
-            _db_fixture(UUID1, owner=TENANT1, name='1', size=256,
+            _db_fixture(UUID1, owner=TENANT1, checksum=CHKSUM,
+                        name='1', size=256,
                         is_public=True,
-                        locations=['%s/%s' % (BASE_URI, UUID1)]),
-            _db_fixture(UUID2, owner=TENANT1, name='2',
-                        size=512, is_public=True),
-            _db_fixture(UUID3, owner=TENANT3, name='3',
-                        size=512, is_public=True),
+                        locations=[{'url': '%s/%s' % (BASE_URI, UUID1),
+                                    'metadata': {}}],
+                        disk_format='raw',
+                        container_format='bare',
+                        status='active'),
+            _db_fixture(UUID2, owner=TENANT1, checksum=CHKSUM1,
+                        name='2', size=512,
+                        is_public=True,
+                        disk_format='raw',
+                        container_format='bare',
+                        status='active'),
+            _db_fixture(UUID3, owner=TENANT3, checksum=CHKSUM1,
+                        name='3', size=512, is_public=True),
             _db_fixture(UUID4, owner=TENANT4, name='4', size=1024),
         ]
         [self.db.image_create(None, image) for image in self.images]
@@ -221,6 +233,27 @@ class TestImagesController(test_utils.BaseTestCase):
         expected = set([UUID1])
         self.assertEqual(actual, expected)
 
+    def test_index_with_checksum_filter_single_image(self):
+        req = unit_test_utils.get_fake_request('/images?checksum=%s' % CHKSUM)
+        output = self.controller.index(req, filters={'checksum': CHKSUM})
+        self.assertEqual(1, len(output['images']))
+        actual = list([image.image_id for image in output['images']])
+        expected = [UUID1]
+        self.assertEqual(actual, expected)
+
+    def test_index_with_checksum_filter_multiple_images(self):
+        req = unit_test_utils.get_fake_request('/images?checksum=%s' % CHKSUM1)
+        output = self.controller.index(req, filters={'checksum': CHKSUM1})
+        self.assertEqual(2, len(output['images']))
+        actual = list([image.image_id for image in output['images']])
+        expected = [UUID3, UUID2]
+        self.assertEqual(actual, expected)
+
+    def test_index_with_non_existent_checksum(self):
+        req = unit_test_utils.get_fake_request('/images?checksum=236231827')
+        output = self.controller.index(req, filters={'checksum': '236231827'})
+        self.assertEqual(0, len(output['images']))
+
     def test_index_size_max_filter(self):
         request = unit_test_utils.get_fake_request('/images?size_max=512')
         output = self.controller.index(request, filters={'size_max': 512})
@@ -259,9 +292,9 @@ class TestImagesController(test_utils.BaseTestCase):
         path = '/images?status=queued'
         request = unit_test_utils.get_fake_request(path)
         output = self.controller.index(request, filters={'status': 'queued'})
-        self.assertEqual(3, len(output['images']))
+        self.assertEqual(1, len(output['images']))
         actual = set([image.image_id for image in output['images']])
-        expected = set([UUID1, UUID2, UUID3])
+        expected = set([UUID3])
         self.assertEqual(actual, expected)
 
     def test_index_with_nonexistent_name_filter(self):
@@ -282,16 +315,16 @@ class TestImagesController(test_utils.BaseTestCase):
         self.assertEqual(2, len(output['images']))
 
     def test_index_with_many_filters(self):
-        url = '/images?status=queued&name=2'
+        url = '/images?status=queued&name=3'
         request = unit_test_utils.get_fake_request(url)
         output = self.controller.index(request,
                                        filters={
                                            'status': 'queued',
-                                           'name': '2',
+                                           'name': '3',
                                        })
         self.assertEqual(1, len(output['images']))
         actual = set([image.image_id for image in output['images']])
-        expected = set([UUID2])
+        expected = set([UUID3])
         self.assertEqual(actual, expected)
 
     def test_index_with_marker(self):
@@ -478,7 +511,7 @@ class TestImagesController(test_utils.BaseTestCase):
     def test_update_replace_base_attribute(self):
         self.db.image_update(None, UUID1, {'properties': {'foo': 'bar'}})
         request = unit_test_utils.get_fake_request()
-        changes = [{'op': 'replace', 'path': 'name', 'value': 'fedora'}]
+        changes = [{'op': 'replace', 'path': ['name'], 'value': 'fedora'}]
         output = self.controller.update(request, UUID1, changes)
         self.assertEqual(output.image_id, UUID1)
         self.assertEqual(output.name, 'fedora')
@@ -488,7 +521,7 @@ class TestImagesController(test_utils.BaseTestCase):
     def test_update_replace_tags(self):
         request = unit_test_utils.get_fake_request()
         changes = [
-            {'op': 'replace', 'path': 'tags', 'value': ['king', 'kong']},
+            {'op': 'replace', 'path': ['tags'], 'value': ['king', 'kong']},
         ]
         output = self.controller.update(request, UUID1, changes)
         self.assertEqual(output.image_id, UUID1)
@@ -505,7 +538,7 @@ class TestImagesController(test_utils.BaseTestCase):
         self.assertEqual(output.extra_properties['snitch'], 'golden')
 
         changes = [
-            {'op': 'replace', 'path': 'foo', 'value': 'baz'},
+            {'op': 'replace', 'path': ['foo'], 'value': 'baz'},
         ]
         output = self.controller.update(request, UUID1, changes)
         self.assertEqual(output.image_id, UUID1)
@@ -513,11 +546,75 @@ class TestImagesController(test_utils.BaseTestCase):
         self.assertEqual(output.extra_properties['snitch'], 'golden')
         self.assertNotEqual(output.created_at, output.updated_at)
 
+    def test_update_replace_missing_property(self):
+        request = unit_test_utils.get_fake_request()
+
+        changes = [
+            {'op': 'replace', 'path': 'foo', 'value': 'baz'},
+        ]
+        self.assertRaises(webob.exc.HTTPConflict,
+                          self.controller.update, request, UUID1, changes)
+
+    def test_update_replace_locations(self):
+        request = unit_test_utils.get_fake_request()
+        changes = [{'op': 'replace', 'path': ['locations'], 'value': []}]
+        output = self.controller.update(request, UUID1, changes)
+        self.assertEqual(output.image_id, UUID1)
+        self.assertEqual(len(output.locations), 0)
+        self.assertEqual(output.status, 'queued')
+
+        new_location = {'url': '%s/fake_location' % BASE_URI, 'metadata': {}}
+        changes = [{'op': 'replace', 'path': ['locations'],
+                    'value': [new_location]}]
+        output = self.controller.update(request, UUID1, changes)
+        self.assertEqual(output.image_id, UUID1)
+        self.assertEqual(len(output.locations), 1)
+        self.assertEqual(new_location, output.locations[0])
+        self.assertEqual(output.status, 'active')
+
+    def test_update_replace_locations_non_empty(self):
+        new_location = {'url': '%s/fake_location' % BASE_URI, 'metadata': {}}
+        request = unit_test_utils.get_fake_request()
+        changes = [{'op': 'replace', 'path': ['locations'],
+                    'value': [new_location]}]
+        self.assertRaises(webob.exc.HTTPBadRequest, self.controller.update,
+                          request, UUID1, changes)
+
+    def test_update_replace_locations_invalid(self):
+        request = unit_test_utils.get_fake_request()
+        changes = [{'op': 'replace', 'path': ['locations'], 'value': []}]
+        output = self.controller.update(request, UUID1, changes)
+        self.assertEqual(output.image_id, UUID1)
+        self.assertEqual(len(output.locations), 0)
+        self.assertEqual(output.status, 'queued')
+
+        request = unit_test_utils.get_fake_request()
+        changes = [{'op': 'replace', 'path': ['locations'],
+                    'value': [{'url': 'unknow://foo', 'metadata': {}}]}]
+        self.assertRaises(webob.exc.HTTPBadRequest, self.controller.update,
+                          request, UUID1, changes)
+
+    def test_update_replace_locations_status_exception(self):
+        request = unit_test_utils.get_fake_request()
+        changes = [{'op': 'replace', 'path': ['locations'], 'value': []}]
+        output = self.controller.update(request, UUID2, changes)
+        self.assertEqual(output.image_id, UUID2)
+        self.assertEqual(len(output.locations), 0)
+        self.assertEqual(output.status, 'queued')
+
+        self.db.image_update(None, UUID2, {'disk_format': None})
+
+        new_location = {'url': '%s/fake_location' % BASE_URI, 'metadata': {}}
+        changes = [{'op': 'replace', 'path': ['locations'],
+                    'value': [new_location]}]
+        self.assertRaises(webob.exc.HTTPBadRequest, self.controller.update,
+                          request, UUID2, changes)
+
     def test_update_add_property(self):
         request = unit_test_utils.get_fake_request()
 
         changes = [
-            {'op': 'add', 'path': 'murphy', 'value': 'brown'},
+            {'op': 'add', 'path': ['murphy'], 'value': 'brown'},
         ]
         output = self.controller.update(request, UUID1, changes)
         self.assertEqual(output.image_id, UUID1)
@@ -527,14 +624,83 @@ class TestImagesController(test_utils.BaseTestCase):
     def test_update_add_base_property(self):
         self.db.image_update(None, UUID1, {'properties': {'foo': 'bar'}})
         request = unit_test_utils.get_fake_request()
-        changes = [{'op': 'add', 'path': 'name', 'value': 'fedora'}]
+        changes = [{'op': 'add', 'path': ['name'], 'value': 'fedora'}]
         self.assertRaises(webob.exc.HTTPConflict, self.controller.update,
                           request, UUID1, changes)
+
+    def test_update_add_property_already_present(self):
+        request = unit_test_utils.get_fake_request()
+        properties = {'foo': 'bar'}
+        self.db.image_update(None, UUID1, {'properties': properties})
+
+        output = self.controller.show(request, UUID1)
+        self.assertEqual(output.extra_properties['foo'], 'bar')
+
+        changes = [
+            {'op': 'add', 'path': ['foo'], 'value': 'baz'},
+        ]
+        self.assertRaises(webob.exc.HTTPConflict,
+                          self.controller.update, request, UUID1, changes)
+
+    def test_update_add_locations(self):
+        new_location = {'url': '%s/fake_location' % BASE_URI, 'metadata': {}}
+        request = unit_test_utils.get_fake_request()
+        changes = [{'op': 'add', 'path': ['locations', '-'],
+                    'value': new_location}]
+        output = self.controller.update(request, UUID1, changes)
+        self.assertEqual(output.image_id, UUID1)
+        self.assertEqual(len(output.locations), 2)
+        self.assertEqual(new_location, output.locations[1])
+
+    def test_update_add_locations_insertion(self):
+        new_location = {'url': '%s/fake_location' % BASE_URI, 'metadata': {}}
+        request = unit_test_utils.get_fake_request()
+        changes = [{'op': 'add', 'path': ['locations', '1'],
+                    'value': new_location}]
+        output = self.controller.update(request, UUID1, changes)
+        self.assertEqual(output.image_id, UUID1)
+        self.assertEqual(len(output.locations), 2)
+        self.assertEqual(new_location, output.locations[0])
+
+    def test_update_add_locations_list(self):
+        request = unit_test_utils.get_fake_request()
+        changes = [{'op': 'add', 'path': ['locations', '-'],
+                    'value': {'url': 'foo', 'metadata': {}}}]
+        self.assertRaises(webob.exc.HTTPBadRequest, self.controller.update,
+                          request, UUID1, changes)
+
+    def test_update_add_locations_invalid(self):
+        request = unit_test_utils.get_fake_request()
+        changes = [{'op': 'add', 'path': ['locations', '-'],
+                    'value': {'url': 'unknow://foo', 'metadata': {}}}]
+        self.assertRaises(webob.exc.HTTPBadRequest, self.controller.update,
+                          request, UUID1, changes)
+
+        changes = [{'op': 'add', 'path': ['locations', None],
+                    'value': {'url': 'unknow://foo', 'metadata': {}}}]
+        self.assertRaises(webob.exc.HTTPBadRequest, self.controller.update,
+                          request, UUID1, changes)
+
+    def test_update_add_locations_status_exception(self):
+        request = unit_test_utils.get_fake_request()
+        changes = [{'op': 'replace', 'path': ['locations'], 'value': []}]
+        output = self.controller.update(request, UUID2, changes)
+        self.assertEqual(output.image_id, UUID2)
+        self.assertEqual(len(output.locations), 0)
+        self.assertEqual(output.status, 'queued')
+
+        self.db.image_update(None, UUID2, {'disk_format': None})
+
+        new_location = {'url': '%s/fake_location' % BASE_URI, 'metadata': {}}
+        changes = [{'op': 'add', 'path': ['locations', '-'],
+                    'value': new_location}]
+        self.assertRaises(webob.exc.HTTPBadRequest, self.controller.update,
+                          request, UUID2, changes)
 
     def test_update_remove_base_property(self):
         self.db.image_update(None, UUID1, {'properties': {'foo': 'bar'}})
         request = unit_test_utils.get_fake_request()
-        changes = [{'op': 'remove', 'path': 'name'}]
+        changes = [{'op': 'remove', 'path': ['name']}]
         self.assertRaises(webob.exc.HTTPForbidden, self.controller.update,
                           request, UUID1, changes)
 
@@ -548,12 +714,65 @@ class TestImagesController(test_utils.BaseTestCase):
         self.assertEqual(output.extra_properties['snitch'], 'golden')
 
         changes = [
-            {'op': 'remove', 'path': 'snitch'},
+            {'op': 'remove', 'path': ['snitch']},
         ]
         output = self.controller.update(request, UUID1, changes)
         self.assertEqual(output.image_id, UUID1)
         self.assertEqual(output.extra_properties, {'foo': 'bar'})
         self.assertNotEqual(output.created_at, output.updated_at)
+
+    def test_update_remove_missing_property(self):
+        request = unit_test_utils.get_fake_request()
+
+        changes = [
+            {'op': 'remove', 'path': ['foo']},
+        ]
+        self.assertRaises(webob.exc.HTTPConflict,
+                          self.controller.update, request, UUID1, changes)
+
+    def test_update_remove_location(self):
+        request = unit_test_utils.get_fake_request()
+        changes = [{'op': 'remove', 'path': ['locations', '1']}]
+        output = self.controller.update(request, UUID1, changes)
+        self.assertEqual(output.image_id, UUID1)
+        self.assertEqual(len(output.locations), 0)
+        self.assertTrue(output.status == 'queued')
+
+        new_location = {'url': '%s/fake_location' % BASE_URI, 'metadata': {}}
+        changes = [{'op': 'add', 'path': ['locations', '-'],
+                    'value': new_location}]
+        output = self.controller.update(request, UUID1, changes)
+        self.assertEqual(output.image_id, UUID1)
+        self.assertEqual(len(output.locations), 1)
+        self.assertEqual(new_location, output.locations[0])
+        self.assertEqual(output.status, 'active')
+
+    def test_update_remove_location_invalid_pos(self):
+        request = unit_test_utils.get_fake_request()
+        changes = [{'op': 'remove', 'path': ['locations', None]}]
+        self.assertRaises(webob.exc.HTTPBadRequest, self.controller.update,
+                          request, UUID1, changes)
+        changes = [{'op': 'remove', 'path': ['locations', '0']}]
+        self.assertRaises(webob.exc.HTTPBadRequest, self.controller.update,
+                          request, UUID1, changes)
+        changes = [{'op': 'remove', 'path': ['locations', '99']}]
+        self.assertRaises(webob.exc.HTTPBadRequest, self.controller.update,
+                          request, UUID1, changes)
+        changes = [{'op': 'remove', 'path': ['locations', 'x']}]
+        self.assertRaises(webob.exc.HTTPBadRequest, self.controller.update,
+                          request, UUID1, changes)
+
+    def test_update_remove_location_store_exception(self):
+        def fake_delete_image_from_backend(self, *args, **kwargs):
+            raise Exception('fake_backend_exception')
+
+        self.stubs.Set(glance.store, 'delete_image_from_backend',
+                       fake_delete_image_from_backend)
+
+        request = unit_test_utils.get_fake_request()
+        changes = [{'op': 'remove', 'path': ['locations', '1']}]
+        self.assertRaises(webob.exc.HTTPInternalServerError,
+                          self.controller.update, request, UUID1, changes)
 
     def test_update_multiple_changes(self):
         request = unit_test_utils.get_fake_request()
@@ -561,10 +780,10 @@ class TestImagesController(test_utils.BaseTestCase):
         self.db.image_update(None, UUID1, {'properties': properties})
 
         changes = [
-            {'op': 'replace', 'path': 'min_ram', 'value': 128},
-            {'op': 'replace', 'path': 'foo', 'value': 'baz'},
-            {'op': 'remove', 'path': 'snitch'},
-            {'op': 'add', 'path': 'kb', 'value': 'dvorak'},
+            {'op': 'replace', 'path': ['min_ram'], 'value': 128},
+            {'op': 'replace', 'path': ['foo'], 'value': 'baz'},
+            {'op': 'remove', 'path': ['snitch']},
+            {'op': 'add', 'path': ['kb'], 'value': 'dvorak'},
         ]
         output = self.controller.update(request, UUID1, changes)
         self.assertEqual(output.image_id, UUID1)
@@ -576,38 +795,6 @@ class TestImagesController(test_utils.BaseTestCase):
         self.assertEqual(output.extra_properties['foo'], 'baz')
         self.assertEqual(output.extra_properties['kb'], 'dvorak')
         self.assertNotEqual(output.created_at, output.updated_at)
-
-    def test_update_replace_missing_property(self):
-        request = unit_test_utils.get_fake_request()
-
-        changes = [
-            {'op': 'replace', 'path': 'foo', 'value': 'baz'},
-        ]
-        self.assertRaises(webob.exc.HTTPConflict,
-                          self.controller.update, request, UUID1, changes)
-
-    def test_update_add_property_already_present(self):
-        request = unit_test_utils.get_fake_request()
-        properties = {'foo': 'bar'}
-        self.db.image_update(None, UUID1, {'properties': properties})
-
-        output = self.controller.show(request, UUID1)
-        self.assertEqual(output.extra_properties['foo'], 'bar')
-
-        changes = [
-            {'op': 'add', 'path': 'foo', 'value': 'baz'},
-        ]
-        self.assertRaises(webob.exc.HTTPConflict,
-                          self.controller.update, request, UUID1, changes)
-
-    def test_update_remove_missing_property(self):
-        request = unit_test_utils.get_fake_request()
-
-        changes = [
-            {'op': 'remove', 'path': 'foo'},
-        ]
-        self.assertRaises(webob.exc.HTTPConflict,
-                          self.controller.update, request, UUID1, changes)
 
     def test_update_invalid_operation(self):
         request = unit_test_utils.get_fake_request()
@@ -622,7 +809,7 @@ class TestImagesController(test_utils.BaseTestCase):
     def test_update_duplicate_tags(self):
         request = unit_test_utils.get_fake_request()
         changes = [
-            {'op': 'replace', 'path': 'tags', 'value': ['ping', 'ping']},
+            {'op': 'replace', 'path': ['tags'], 'value': ['ping', 'ping']},
         ]
         output = self.controller.update(request, UUID1, changes)
         self.assertEqual(set(['ping']), output.tags)
@@ -729,6 +916,13 @@ class TestImagesController(test_utils.BaseTestCase):
         self.assertRaises(webob.exc.HTTPBadRequest,
                           self.controller.index, request, marker=fake_uuid)
 
+    def test_invalid_locations_op_pos(self):
+        request = unit_test_utils.get_fake_request()
+        pos = self.controller._get_locations_op_pos(None, 2, True)
+        self.assertEqual(pos, None)
+        pos = self.controller._get_locations_op_pos('1', None, True)
+        self.assertEqual(pos, None)
+
 
 class TestImagesControllerPolicies(base.IsolatedUnitTest):
 
@@ -777,7 +971,7 @@ class TestImagesControllerPolicies(base.IsolatedUnitTest):
         rules = {"modify_image": False}
         self.policy.set_rules(rules)
         request = unit_test_utils.get_fake_request()
-        changes = [{'op': 'replace', 'path': 'name', 'value': 'image-2'}]
+        changes = [{'op': 'replace', 'path': ['name'], 'value': 'image-2'}]
         self.assertRaises(webob.exc.HTTPForbidden, self.controller.update,
                           request, UUID1, changes)
 
@@ -785,7 +979,8 @@ class TestImagesControllerPolicies(base.IsolatedUnitTest):
         rules = {"publicize_image": False}
         self.policy.set_rules(rules)
         request = unit_test_utils.get_fake_request()
-        changes = [{'op': 'replace', 'path': 'visibility', 'value': 'public'}]
+        changes = [{'op': 'replace', 'path': ['visibility'],
+                    'value': 'public'}]
         self.assertRaises(webob.exc.HTTPForbidden, self.controller.update,
                           request, UUID1, changes)
 
@@ -793,9 +988,49 @@ class TestImagesControllerPolicies(base.IsolatedUnitTest):
         rules = {"publicize_image": False}
         self.policy.set_rules(rules)
         request = unit_test_utils.get_fake_request()
-        changes = [{'op': 'replace', 'path': 'visibility', 'value': 'private'}]
+        changes = [{'op': 'replace', 'path': ['visibility'],
+                    'value': 'private'}]
         output = self.controller.update(request, UUID1, changes)
         self.assertEqual(output.visibility, 'private')
+
+    def test_update_get_image_location_unauthorized(self):
+        rules = {"get_image_location": False}
+        self.policy.set_rules(rules)
+        request = unit_test_utils.get_fake_request()
+        changes = [{'op': 'replace', 'path': ['locations'], 'value': []}]
+        self.assertRaises(webob.exc.HTTPForbidden, self.controller.update,
+                          request, UUID1, changes)
+
+    def test_update_set_image_location_unauthorized(self):
+        def fake_delete_image_from_backend(self, *args, **kwargs):
+            pass
+
+        rules = {"set_image_location": False}
+        self.policy.set_rules(rules)
+        new_location = {'url': '%s/fake_location' % BASE_URI, 'metadata': {}}
+        request = unit_test_utils.get_fake_request()
+        changes = [{'op': 'add', 'path': ['locations', '-'],
+                    'value': new_location}]
+        self.assertRaises(webob.exc.HTTPForbidden, self.controller.update,
+                          request, UUID1, changes)
+
+        self.stubs.Set(glance.store, 'delete_image_from_backend',
+                       fake_delete_image_from_backend)
+
+        changes = [{'op': 'replace', 'path': ['locations'], 'value': []}]
+        self.controller.update(request, UUID1, changes)
+        changes = [{'op': 'replace', 'path': ['locations'],
+                    'value': [new_location]}]
+        self.assertRaises(webob.exc.HTTPForbidden, self.controller.update,
+                          request, UUID1, changes)
+
+    def test_update_delete_image_location_unauthorized(self):
+        rules = {"delete_image_location": False}
+        self.policy.set_rules(rules)
+        request = unit_test_utils.get_fake_request()
+        changes = [{'op': 'replace', 'path': ['locations'], 'value': []}]
+        self.assertRaises(webob.exc.HTTPForbidden, self.controller.update,
+                          request, UUID1, changes)
 
     def test_delete_unauthorized(self):
         rules = {"delete_image": False}
@@ -944,15 +1179,33 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
             {'op': 'replace', 'path': '/foo', 'value': 'bar'},
             {'op': 'add', 'path': '/bebim', 'value': 'bap'},
             {'op': 'remove', 'path': '/sparks'},
+            {'op': 'add', 'path': '/locations/-',
+             'value': {'url': 'scheme3://path3', 'metadata': {}}},
+            {'op': 'add', 'path': '/locations/10',
+             'value': {'url': 'scheme4://path4', 'metadata': {}}},
+            {'op': 'remove', 'path': '/locations/2'},
+            {'op': 'replace', 'path': '/locations', 'value': []},
+            {'op': 'replace', 'path': '/locations',
+             'value': [{'url': 'scheme5://path5', 'metadata': {}},
+                       {'url': 'scheme6://path6', 'metadata': {}}]},
         ]
         request.body = json.dumps(body)
         output = self.deserializer.update(request)
         expected = {'changes': [
-            {'op': 'replace', 'path': 'name', 'value': 'fedora'},
-            {'op': 'replace', 'path': 'tags', 'value': ['king', 'kong']},
-            {'op': 'replace', 'path': 'foo', 'value': 'bar'},
-            {'op': 'add', 'path': 'bebim', 'value': 'bap'},
-            {'op': 'remove', 'path': 'sparks'},
+            {'op': 'replace', 'path': ['name'], 'value': 'fedora'},
+            {'op': 'replace', 'path': ['tags'], 'value': ['king', 'kong']},
+            {'op': 'replace', 'path': ['foo'], 'value': 'bar'},
+            {'op': 'add', 'path': ['bebim'], 'value': 'bap'},
+            {'op': 'remove', 'path': ['sparks']},
+            {'op': 'add', 'path': ['locations', '-'],
+             'value': {'url': 'scheme3://path3', 'metadata': {}}},
+            {'op': 'add', 'path': ['locations', '10'],
+             'value': {'url': 'scheme4://path4', 'metadata': {}}},
+            {'op': 'remove', 'path': ['locations', '2']},
+            {'op': 'replace', 'path': ['locations'], 'value': []},
+            {'op': 'replace', 'path': ['locations'],
+             'value': [{'url': 'scheme5://path5', 'metadata': {}},
+                       {'url': 'scheme6://path6', 'metadata': {}}]},
         ]}
         self.assertEquals(output, expected)
 
@@ -964,15 +1217,33 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
             {'replace': '/foo', 'value': 'bar'},
             {'add': '/bebim', 'value': 'bap'},
             {'remove': '/sparks'},
+            {'add': '/locations/-', 'value': {'url': 'scheme3://path3',
+                                              'metadata': {}}},
+            {'add': '/locations/10', 'value': {'url': 'scheme4://path4',
+                                               'metadata': {}}},
+            {'remove': '/locations/2'},
+            {'replace': '/locations', 'value': []},
+            {'replace': '/locations',
+             'value': [{'url': 'scheme5://path5', 'metadata': {}},
+                       {'url': 'scheme6://path6', 'metadata': {}}]},
         ]
         request.body = json.dumps(body)
         output = self.deserializer.update(request)
         expected = {'changes': [
-            {'op': 'replace', 'path': 'name', 'value': 'fedora'},
-            {'op': 'replace', 'path': 'tags', 'value': ['king', 'kong']},
-            {'op': 'replace', 'path': 'foo', 'value': 'bar'},
-            {'op': 'add', 'path': 'bebim', 'value': 'bap'},
-            {'op': 'remove', 'path': 'sparks'},
+            {'op': 'replace', 'path': ['name'], 'value': 'fedora'},
+            {'op': 'replace', 'path': ['tags'], 'value': ['king', 'kong']},
+            {'op': 'replace', 'path': ['foo'], 'value': 'bar'},
+            {'op': 'add', 'path': ['bebim'], 'value': 'bap'},
+            {'op': 'remove', 'path': ['sparks']},
+            {'op': 'add', 'path': ['locations', '-'],
+             'value': {'url': 'scheme3://path3', 'metadata': {}}},
+            {'op': 'add', 'path': ['locations', '10'],
+             'value': {'url': 'scheme4://path4', 'metadata': {}}},
+            {'op': 'remove', 'path': ['locations', '2']},
+            {'op': 'replace', 'path': ['locations'], 'value': []},
+            {'op': 'replace', 'path': ['locations'],
+             'value': [{'url': 'scheme5://path5', 'metadata': {}},
+                       {'url': 'scheme6://path6', 'metadata': {}}]},
         ]}
         self.assertEquals(output, expected)
 
@@ -988,19 +1259,27 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
             {'op': 'replace', 'path': '/disk_format', 'value': 'raw'},
             {'op': 'replace', 'path': '/min_ram', 'value': 128},
             {'op': 'replace', 'path': '/min_disk', 'value': 10},
+            {'op': 'replace', 'path': '/locations', 'value': []},
+            {'op': 'replace', 'path': '/locations',
+             'value': [{'url': 'scheme5://path5', 'metadata': {}},
+                       {'url': 'scheme6://path6', 'metadata': {}}]}
         ]
         request.body = json.dumps(body)
         output = self.deserializer.update(request)
         expected = {'changes': [
-            {'op': 'replace', 'path': 'id', 'value': UUID1},
-            {'op': 'replace', 'path': 'name', 'value': 'fedora'},
-            {'op': 'replace', 'path': 'visibility', 'value': 'public'},
-            {'op': 'replace', 'path': 'tags', 'value': ['king', 'kong']},
-            {'op': 'replace', 'path': 'protected', 'value': True},
-            {'op': 'replace', 'path': 'container_format', 'value': 'bare'},
-            {'op': 'replace', 'path': 'disk_format', 'value': 'raw'},
-            {'op': 'replace', 'path': 'min_ram', 'value': 128},
-            {'op': 'replace', 'path': 'min_disk', 'value': 10},
+            {'op': 'replace', 'path': ['id'], 'value': UUID1},
+            {'op': 'replace', 'path': ['name'], 'value': 'fedora'},
+            {'op': 'replace', 'path': ['visibility'], 'value': 'public'},
+            {'op': 'replace', 'path': ['tags'], 'value': ['king', 'kong']},
+            {'op': 'replace', 'path': ['protected'], 'value': True},
+            {'op': 'replace', 'path': ['container_format'], 'value': 'bare'},
+            {'op': 'replace', 'path': ['disk_format'], 'value': 'raw'},
+            {'op': 'replace', 'path': ['min_ram'], 'value': 128},
+            {'op': 'replace', 'path': ['min_disk'], 'value': 10},
+            {'op': 'replace', 'path': ['locations'], 'value': []},
+            {'op': 'replace', 'path': ['locations'],
+             'value': [{'url': 'scheme5://path5', 'metadata': {}},
+                       {'url': 'scheme6://path6', 'metadata': {}}]}
         ]}
         self.assertEquals(output, expected)
 
@@ -1047,7 +1326,6 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
         samples = {
             'owner': TENANT1,
             'is_public': True,
-            'locations': ['/a/b/c/d'],
             'deleted': False,
             'deleted_at': ISOTIME,
         }
@@ -1066,10 +1344,11 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
     def test_update_invalid_attributes(self):
         keys = [
             'noslash',
-            '//twoslash',
-            '/other/twoslash'
+            '///twoslash',
+            '/two/   /slash',
+            '/      /      ',
             '/trailingslash/',
-            '/lone~tilde'
+            '/lone~tilde',
             '/trailingtilde~'
         ]
 
@@ -1086,9 +1365,9 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
 
     def test_update_pointer_encoding(self):
         samples = {
-            '/keywith~1slash': 'keywith/slash',
-            '/keywith~0tilde': 'keywith~tilde',
-            '/tricky~01': 'tricky~1',
+            '/keywith~1slash': [u'keywith/slash'],
+            '/keywith~0tilde': [u'keywith~tilde'],
+            '/tricky~01': [u'tricky~1'],
         }
 
         for encoded, decoded in samples.items():
@@ -1097,6 +1376,22 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
             request.body = json.dumps(doc)
             output = self.deserializer.update(request)
             self.assertEqual(output['changes'][0]['path'], decoded)
+
+    def test_update_deep_limited_attributes(self):
+        samples = {
+            'locations/1/2': [],
+        }
+
+        for key, value in samples.items():
+            request = self._get_fake_patch_request()
+            body = [{'op': 'replace', 'path': '/%s' % key, 'value': value}]
+            request.body = json.dumps(body)
+            try:
+                self.deserializer.update(request)
+            except webob.exc.HTTPBadRequest:
+                pass  # desired behavior
+            else:
+                self.fail("Updating %s did not result in HTTPBadRequest" % key)
 
     def test_update_v2_1_missing_operations(self):
         request = self._get_fake_patch_request()
@@ -1298,7 +1593,7 @@ class TestImagesDeserializerWithExtendedSchema(test_utils.BaseTestCase):
         request.body = json.dumps(doc)
         output = self.deserializer.update(request)
         expected = {'changes': [
-            {'op': 'add', 'path': 'pants', 'value': 'off'},
+            {'op': 'add', 'path': ['pants'], 'value': 'off'},
         ]}
         self.assertEqual(expected, output)
 
@@ -1362,7 +1657,7 @@ class TestImagesDeserializerWithAdditionalProperties(test_utils.BaseTestCase):
         doc = [{'op': 'add', 'path': '/foo', 'value': 'bar'}]
         request.body = json.dumps(doc)
         output = self.deserializer.update(request)
-        change = {'op': 'add', 'path': 'foo', 'value': 'bar'}
+        change = {'op': 'add', 'path': ['foo'], 'value': 'bar'}
         self.assertEqual(output, {'changes': [change]})
 
 
@@ -1877,12 +2172,22 @@ class TestImagesSerializerDirectUrl(test_utils.BaseTestCase):
         self.active_image = _domain_fixture(
                 UUID1, name='image-1', visibility='public',
                 status='active', size=1024, created_at=DATETIME,
-                updated_at=DATETIME, locations=['http://some/fake/location'])
+                updated_at=DATETIME,
+                locations=[{'url': 'http://some/fake/location',
+                            'metadata': {}}])
 
         self.queued_image = _domain_fixture(
                 UUID2, name='image-2', status='active',
                 created_at=DATETIME, updated_at=DATETIME,
                 checksum='ca425b88f047ce8ec45ee90e813ada91')
+
+        self.location_data_image_url = 'http://abc.com/somewhere'
+        self.location_data_image_meta = {'key': 98231}
+        self.location_data_image = _domain_fixture(
+                UUID2, name='image-2', status='active',
+                created_at=DATETIME, updated_at=DATETIME,
+                locations=[{'url': self.location_data_image_url,
+                            'metadata': self.location_data_image_meta}])
 
     def _do_index(self):
         request = webob.Request.blank('/v2/images')
@@ -1908,6 +2213,17 @@ class TestImagesSerializerDirectUrl(test_utils.BaseTestCase):
 
         self.assertEqual(images[0]['direct_url'], 'http://some/fake/location')
         self.assertFalse('direct_url' in images[1])
+
+    def test_index_store_multiple_location_enabled(self):
+        self.config(show_multiple_locations=True)
+        request = webob.Request.blank('/v2/images')
+        response = webob.Response(request=request)
+        self.serializer.index(response,
+                              {'images': [self.location_data_image]}),
+        images = json.loads(response.body)['images']
+        location = images[0]['locations'][0]
+        self.assertEqual(location['url'], self.location_data_image_url)
+        self.assertEqual(location['metadata'], self.location_data_image_meta)
 
     def test_index_store_location_explicitly_disabled(self):
         self.config(show_image_direct_url=False)
