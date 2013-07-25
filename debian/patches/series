@@ -1,4 +1,3 @@
 default_conf.patch
 disable-network-for-docs.patch
 sql_conn-registry.patch
-Use_python_module_loading_to_run_glance-manage.patch
