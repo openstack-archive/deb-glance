@@ -1,6 +1,7 @@
 glance (2013.1.2-5) unstable; urgency=low
 
   * Ran debconf-updatepo.
+  * Added python-mysql (build-)depends.
 
  -- Thomas Goirand <zigo@debian.org>  Fri, 12 Jul 2013 16:41:40 +0800
 
