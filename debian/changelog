@@ -1,5 +1,6 @@
-glance (2013.1.2-5) unstable; urgency=low
+glance (2013.1.3-1) unstable; urgency=low
 
+  * New upstream point release.
   * Ran debconf-updatepo.
   * Added python-mysql (build-)depends.
   * New Japanese debconf translations thanks to victory (Closes: #693062).
