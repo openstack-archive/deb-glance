@@ -1,0 +1,230 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# victory <victory.deb@gmail.com>, 2012.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: glance\n"
+"Report-Msgid-Bugs-To: glance@packages.debian.org\n"
+"POT-Creation-Date: 2012-11-22 17:07+0000\n"
+"PO-Revision-Date: 2012-11-10 23:28+0900\n"
+"Last-Translator: victory <victory.deb@gmail.com>\n"
+"Language-Team: Japanese <debian-japanese@lists.debian.org>\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. Type: select
+#. Description
+#: ../glance-common.templates:2001
+msgid "Pipeline flavor:"
+msgstr "パイプラインの種類:"
+
+#. Type: select
+#. Description
+#: ../glance-common.templates:2001
+msgid "Please specify the flavor of pipeline to be used by Glance."
+msgstr "Glance で利用するパイプラインの種類を指定してください。"
+
+#. Type: select
+#. Description
+#: ../glance-common.templates:2001
+msgid ""
+"If you use the OpenStack Identity Service (Keystone), you might want to "
+"select \"keystone\". If you don't use this service, you can safely choose "
+"\"caching\" only."
+msgstr ""
+"OpenStack Identity Service (Keystone) を利用する場合は「keystone」を選択する"
+"こともできます。このサービスを利用しない場合は安全に「caching」だけを選択して"
+"ください。"
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:3001
+msgid "Auth server hostname:"
+msgstr "認証サーバのホスト名:"
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:3001
+msgid ""
+"Please specify the URL of your Glance authentication server. Typically this "
+"is also the URL of your OpenStack Identity Service (Keystone)."
+msgstr ""
+"Glance 認証サーバの URL を指定してください。これは通常 OpenStack Identity "
+"Service (Keystone) の URL にもなります。"
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:4001
+msgid "Auth server tenant name:"
+msgstr "認証サーバの管理用アカウント (tenant) 名"
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:5001
+msgid "Auth server username:"
+msgstr "認証サーバのユーザ名:"
+
+#. Type: password
+#. Description
+#: ../glance-common.templates:6001
+msgid "Auth server password:"
+msgstr "認証サーバのパスワード:"
+
+#. Type: boolean
+#. Description
+#: ../glance-common.templates:7001
+msgid "Set up a database for glance?"
+msgstr "glance 用のデータベースを用意しますか?"
+
+#. Type: boolean
+#. Description
+#: ../glance-common.templates:7001
+msgid ""
+"No database has been set up for glance-registry or glance-api to use. Before "
+"continuing, you should make sure you have:"
+msgstr ""
+"glance-registry または glance-api で利用するデータベースが用意されていません。"
+"続ける前に以下の情報が揃っていることを確認してください:"
+
+#. Type: boolean
+#. Description
+#: ../glance-common.templates:7001
+msgid ""
+" - the server host name (that server must allow TCP connections from this\n"
+"   machine);\n"
+" - a username and password to access the database.\n"
+" - A database type that you want to use."
+msgstr ""
+" - サーバのホスト名 (このサーバはこのマシンからの\n"
+"   TCP 接続を許可しなければなりません)\n"
+" - データベースにアクセスするためのユーザ名とパスワード\n"
+" - 使いたいデータベースの種類"
+
+#. Type: boolean
+#. Description
+#: ../glance-common.templates:7001
+msgid ""
+"If some of these requirements are missing, reject this option and run with "
+"regular sqlite support."
+msgstr ""
+"必要な情報が欠けている場合このオプションを却下して標準の SQLite を利用しま"
+"す。"
+
+#. Type: boolean
+#. Description
+#: ../glance-common.templates:7001
+msgid ""
+"You can change this setting later on by running 'dpkg-reconfigure -plow "
+"glance-common'."
+msgstr ""
+"この設定は後で「dpkg-reconfigure -plow glance-common」を実行することにより"
+"変更できます。"
+
+#. Type: boolean
+#. Description
+#: ../glance-api.templates:1001
+msgid "Register Glance in the keystone endpoint catalog?"
+msgstr "Glance を Keystone の端末リストに登録しますか?"
+
+#. Type: boolean
+#. Description
+#: ../glance-api.templates:1001
+msgid ""
+"Each Openstack services (each API) should be registered in order to be "
+"accessible. This is done using \"keystone service-create\" and \"keystone "
+"endpoint-create\". Select if you want to run these commands now."
+msgstr ""
+"OpenStack のサービスごと (API ごと) に、アクセスできるようにするため登録すべき"
+"です。「keystone service-create」と「keystone endpoint-create」を使って登録す"
+"ることができます。ここで自動的に行うことができます。"
+
+#. Type: boolean
+#. Description
+#: ../glance-api.templates:1001
+msgid ""
+"Note that you will need to have an up and running keystone server on which "
+"to connect using the Keystone auth token."
+msgstr ""
+"Keystone 認証文字列を使って接続する先の Keystone サーバが必要なことに注意して"
+"ください。"
+
+#. Type: string
+#. Description
+#: ../glance-api.templates:2001
+msgid "Keystone IP address:"
+msgstr "Keystone の IP アドレス:"
+
+#. Type: string
+#. Description
+#: ../glance-api.templates:2001
+msgid ""
+"Enter the IP address of your keystone server, so that glance-api can contact "
+"Keystone to do the Glance service and endpoint creation."
+msgstr ""
+"Keystone サーバの IP アドレスを入力してください。それにより glance-api は "
+"Keystone と通信し、Glance サービスや端末の作成ができるようになります。"
+
+#. Type: string
+#. Description
+#: ../glance-api.templates:3001
+msgid "Keystone Auth Token:"
+msgstr "Keystone 認証文字列:"
+
+#. Type: string
+#. Description
+#: ../glance-api.templates:3001
+msgid ""
+"To configure its endpoint in Keystone, glance-api needs the Keystone auth "
+"token."
+msgstr ""
+"Keystone で端末を設定するには、glance-api は Keystone 認証文字列を必要としま"
+"す。"
+
+#. Type: string
+#. Description
+#: ../glance-api.templates:4001
+msgid "Glance endpoint IP address:"
+msgstr "Glance 端末の IP アドレス:"
+
+#. Type: string
+#. Description
+#: ../glance-api.templates:4001
+msgid ""
+"Enter the IP address that will be used to contact Glance (eg: the Glance "
+"endpoint IP address)."
+msgstr ""
+"Glance への通信に利用する IP アドレス (例えば Glance 端末の IP アドレス) を入"
+"力してください。"
+
+#. Type: string
+#. Description
+#: ../glance-api.templates:4001
+msgid ""
+"This IP address should be accessible from the clients that will use this "
+"service, so if you are installing a public cloud, this should be a public IP "
+"address."
+msgstr ""
+"この IP アドレスはこのサービスを利用するクライアントからアクセスできないといけ"
+"ないので、パブリッククラウドをインストールしている場合、これは公開 IP アドレス"
+"を使うようにしてください。"
+
+#. Type: string
+#. Description
+#: ../glance-api.templates:5001
+msgid "Name of the region to register:"
+msgstr "登録する領域の名前:"
+
+#. Type: string
+#. Description
+#: ../glance-api.templates:5001
+msgid ""
+"Openstack can be used using availability zones, with each region "
+"representing a location. Please enter the zone that you wish to use when "
+"registering the endpoint."
+msgstr ""
+"OpenStack は位置を示す各領域による利用可能区分を利用することができます。端末の"
+"登録時に利用したい区分を入力してください。"
