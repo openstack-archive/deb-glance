@@ -2,6 +2,13 @@ glance (2013.1.2-5) unstable; urgency=low
 
   * Ran debconf-updatepo.
   * Added python-mysql (build-)depends.
+  * New Japanese debconf translations thanks to victory (Closes: #693062).
+  * Updates of several debconf translations:
+    - Italian, thanks to Beatrice Torracca (Closes: #719883).
+    - Danish, thanks to Joe Dalton (Closes: #720041).
+    - Czech, thanks to Michal Šimůnek (Closes: #720830).
+    - German, thanks to Chris Leick (Closes: #721084).
+    - Russian, thanks to Yuri Kozlov (Closes: #721144).
 
  -- Thomas Goirand <zigo@debian.org>  Fri, 12 Jul 2013 16:41:40 +0800
 
