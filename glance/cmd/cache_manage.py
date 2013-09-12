@@ -491,9 +491,6 @@ Commands:
     delete-queued-image         Deletes an image from the cache queue
 
     delete-all-queued-images    Deletes all images from the cache queue
-
-    clean                       Removes any stale or invalid image files
-                                from the cache
 """
 
     version_string = version.cached_version_string()
@@ -511,3 +508,6 @@ Commands:
         sys.exit(result)
     except (RuntimeError, NotImplementedError) as e:
         print "ERROR: ", e
+
+if __name__ == '__main__':
+    main()

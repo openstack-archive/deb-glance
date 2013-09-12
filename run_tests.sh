@@ -9,8 +9,8 @@ function usage {
   echo "  -f, --force              Force a clean re-build of the virtual environment. Useful when dependencies have been added."
   echo "  -u, --update             Update the virtual environment with any newer package versions"
   echo "  --unittests-only         Run unit tests only, exclude functional tests."
-  echo "  -p, --flake8               Just run flake8"
-  echo "  -P, --no-flake8            Don't run static code checks"
+  echo "  -p, --flake8             Just run flake8"
+  echo "  -P, --no-flake8          Don't run static code checks"
   echo "  -h, --help               Print this usage message"
   echo ""
   echo "Note: with no options specified, the script will try to run the tests in a virtual environment,"
@@ -68,12 +68,8 @@ function run_tests {
 
 function run_flake8 {
   echo "Running flake8 ..."
-  FLAKE8_EXCLUDE=".venv,.git,.tox,dist,doc,etc,*glance/locale*,*openstack/common*,*lib/python*,*egg,build"
-  FLAKE8_OPTIONS="--exclude=$FLAKE8_EXCLUDE"
-  FLAKE8_IGNORE="--ignore=E125,E126,E711,E712,F,H"
-  FLAKE8_INCLUDE="."
 
-  ${wrapper} flake8 $FLAKE8_OPTIONS $FLAKE8_INCLUDE $FLAKE8_IGNORE
+  ${wrapper} flake8
 }
 
 

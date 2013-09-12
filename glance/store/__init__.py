@@ -30,6 +30,7 @@ import glance.domain.proxy
 from glance.openstack.common import importutils
 import glance.openstack.common.log as logging
 from glance.store import location
+from glance.store import scrubber
 
 LOG = logging.getLogger(__name__)
 
@@ -53,8 +54,9 @@ store_opts = [
     cfg.StrOpt('scrubber_datadir',
                default='/var/lib/glance/scrubber',
                help=_('Directory that the scrubber will use to track '
-                      'information about what to delete.  Make sure this is '
-                      'also set in glance-api.conf')),
+                      'information about what to delete. '
+                      'Make sure this is set in glance-api.conf and '
+                      'glance-scrubber.conf')),
     cfg.BoolOpt('delayed_delete', default=False,
                 help=_('Turn on/off delayed delete.')),
     cfg.IntOpt('scrub_time', default=0,
@@ -265,7 +267,7 @@ def get_store_from_location(uri):
     return loc.store_name
 
 
-def safe_delete_from_backend(uri, context, image_id, **kwargs):
+def safe_delete_from_backend(context, uri, image_id, **kwargs):
     """Given a uri, delete an image from the store."""
     try:
         return delete_from_backend(context, uri, **kwargs)
@@ -281,47 +283,37 @@ def safe_delete_from_backend(uri, context, image_id, **kwargs):
         LOG.error(msg)
 
 
-def schedule_delayed_delete_from_backend(uri, image_id, **kwargs):
-    """Given a uri, schedule the deletion of an image."""
-    datadir = CONF.scrubber_datadir
-    delete_time = time.time() + CONF.scrub_time
-    file_path = os.path.join(datadir, str(image_id))
-    utils.safe_mkdirs(datadir)
-
-    if os.path.exists(file_path):
-        msg = _("Image id %(image_id)s already queued for delete") % {
-                'image_id': image_id}
-        raise exception.Duplicate(msg)
-
-    if CONF.metadata_encryption_key is not None:
-        uri = crypt.urlsafe_encrypt(CONF.metadata_encryption_key, uri, 64)
-    with open(file_path, 'w') as f:
-        f.write('\n'.join([uri, str(int(delete_time))]))
-    os.chmod(file_path, 0o600)
-    os.utime(file_path, (delete_time, delete_time))
+def schedule_delayed_delete_from_backend(context, uri, image_id, **kwargs):
+    """Given a uri, schedule the deletion of an image location."""
+    (file_queue, _db_queue) = scrubber.get_scrub_queues()
+    # NOTE(zhiyan): Defautly ask glance-api store using file based queue.
+    # In future we can change it using DB based queued instead,
+    # such as using image location's status to saving pending delete flag
+    # when that property be added.
+    file_queue.add_location(image_id, uri)
 
 
 def delete_image_from_backend(context, store_api, image_id, uri):
     if CONF.delayed_delete:
-        store_api.schedule_delayed_delete_from_backend(uri, image_id)
+        store_api.schedule_delayed_delete_from_backend(context, uri, image_id)
     else:
-        store_api.safe_delete_from_backend(uri, context, image_id)
+        store_api.safe_delete_from_backend(context, uri, image_id)
 
 
-def _check_meta_data(val, key=''):
+def check_location_metadata(val, key=''):
     t = type(val)
     if t == dict:
         for key in val:
-            _check_meta_data(val[key], key=key)
+            check_location_metadata(val[key], key=key)
     elif t == list:
         ndx = 0
         for v in val:
-            _check_meta_data(v, key='%s[%d]' % (key, ndx))
+            check_location_metadata(v, key='%s[%d]' % (key, ndx))
             ndx = ndx + 1
     elif t != unicode:
         raise BackendException(_("The image metadata key %s has an invalid "
                                  "type of %s.  Only dict, list, and unicode "
-                                 "are supported." % (key, str(t))))
+                                 "are supported.") % (key, str(t)))
 
 
 def store_add_to_backend(image_id, data, size, store):
@@ -341,17 +333,17 @@ def store_add_to_backend(image_id, data, size, store):
     (location, size, checksum, metadata) = store.add(image_id, data, size)
     if metadata is not None:
         if type(metadata) != dict:
-            msg = _("The storage driver %s returned invalid metadata %s"
-                    "This must be a dictionary type" %
-                    (str(store), str(metadata)))
+            msg = (_("The storage driver %s returned invalid metadata %s"
+                     "This must be a dictionary type") %
+                   (str(store), str(metadata)))
             LOG.error(msg)
             raise BackendException(msg)
         try:
-            _check_meta_data(metadata)
+            check_location_metadata(metadata)
         except BackendException as e:
-            e_msg = _("A bad metadata structure was returned from the "
-                      "%s storage driver: %s.  %s." %
-                      (str(store), str(metadata), str(e)))
+            e_msg = (_("A bad metadata structure was returned from the "
+                       "%s storage driver: %s.  %s.") %
+                     (str(store), str(metadata), str(e)))
             LOG.error(e_msg)
             raise BackendException(e_msg)
     return (location, size, checksum, metadata)
@@ -427,6 +419,11 @@ def _check_location_uri(context, store_api, uri):
         raise exception.BadStoreUri(_('Invalid location: %s') % uri)
 
 
+def _check_image_location(context, store_api, location):
+    _check_location_uri(context, store_api, location['url'])
+    store_api.check_location_metadata(location['metadata'])
+
+
 class ImageFactoryProxy(glance.domain.proxy.ImageFactory):
     def __init__(self, factory, context, store_api):
         self.context = context
@@ -438,7 +435,7 @@ class ImageFactoryProxy(glance.domain.proxy.ImageFactory):
 
     def new_image(self, **kwargs):
         for l in kwargs.get('locations', []):
-            _check_location_uri(self.context, self.store_api, l['url'])
+            _check_image_location(self.context, self.store_api, l)
         return super(ImageFactoryProxy, self).new_image(**kwargs)
 
 
@@ -457,8 +454,8 @@ class StoreLocations(collections.MutableSequence):
             self.value = list(value)
 
     def append(self, location):
-        _check_location_uri(self.image_proxy.context,
-                            self.image_proxy.store_api, location['url'])
+        _check_image_location(self.image_proxy.context,
+                              self.image_proxy.store_api, location)
         self.value.append(location)
 
     def extend(self, other):
@@ -467,14 +464,14 @@ class StoreLocations(collections.MutableSequence):
         else:
             locations = list(other)
             for location in locations:
-                _check_location_uri(self.image_proxy.context,
-                                    self.image_proxy.store_api,
-                                    location['url'])
+                _check_image_location(self.image_proxy.context,
+                                      self.image_proxy.store_api,
+                                      location)
             self.value.extend(locations)
 
     def insert(self, i, location):
-        _check_location_uri(self.image_proxy.context,
-                            self.image_proxy.store_api, location['url'])
+        _check_image_location(self.image_proxy.context,
+                              self.image_proxy.store_api, location)
         self.value.insert(i, location)
 
     def pop(self, i=-1):
@@ -511,8 +508,8 @@ class StoreLocations(collections.MutableSequence):
         return self.value.__getitem__(i)
 
     def __setitem__(self, i, location):
-        _check_location_uri(self.image_proxy.context,
-                            self.image_proxy.store_api, location['url'])
+        _check_image_location(self.image_proxy.context,
+                              self.image_proxy.store_api, location)
         self.value.__setitem__(i, location)
 
     def __delitem__(self, i):
@@ -548,9 +545,9 @@ class StoreLocations(collections.MutableSequence):
         else:
             locations = list(other)
             for location in locations:
-                _check_location_uri(self.image_proxy.context,
-                                    self.image_proxy.store_api,
-                                    location['url'])
+                _check_image_location(self.image_proxy.context,
+                                      self.image_proxy.store_api,
+                                      location)
             self.value += locations
         return self
 
@@ -595,8 +592,8 @@ def _locations_proxy(target, attr):
                                           '%s') % ori_value)
             # NOTE(zhiyan): Check locations are all valid.
             for location in value:
-                _check_location_uri(self.context, self.store_api,
-                                    location['url'])
+                _check_image_location(self.context, self.store_api,
+                                      location)
             return setattr(getattr(self, target), attr, list(value))
 
     def del_attr(self):

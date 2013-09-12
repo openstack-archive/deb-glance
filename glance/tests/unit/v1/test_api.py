@@ -81,7 +81,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
              'updated_at': timeutils.utcnow(),
              'deleted_at': None,
              'deleted': False,
-             'checksum': None,
+             'checksum': 'abc123',
              'size': 19,
              'locations': [{'url': "file:///%s/%s" % (self.test_dir, UUID2),
                             'metadata': {}}],
@@ -149,6 +149,80 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, 400)
         self.assertTrue('Invalid disk format' in res.body, res.body)
+
+    def test_configured_disk_format_good(self):
+        self.config(disk_formats=['foo'])
+        fixture_headers = {
+            'x-image-meta-store': 'bad',
+            'x-image-meta-name': 'bogus',
+            'x-image-meta-location': 'http://localhost:0/image.tar.gz',
+            'x-image-meta-disk-format': 'foo',
+            'x-image-meta-container-format': 'bare',
+        }
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 201)
+
+    def test_configured_disk_format_bad(self):
+        self.config(disk_formats=['foo'])
+        fixture_headers = {
+            'x-image-meta-store': 'bad',
+            'x-image-meta-name': 'bogus',
+            'x-image-meta-location': 'http://localhost:0/image.tar.gz',
+            'x-image-meta-disk-format': 'bar',
+            'x-image-meta-container-format': 'bare',
+        }
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 400)
+        self.assertTrue('Invalid disk format' in res.body, res.body)
+
+    def test_configured_container_format_good(self):
+        self.config(container_formats=['foo'])
+        fixture_headers = {
+            'x-image-meta-store': 'bad',
+            'x-image-meta-name': 'bogus',
+            'x-image-meta-location': 'http://localhost:0/image.tar.gz',
+            'x-image-meta-disk-format': 'raw',
+            'x-image-meta-container-format': 'foo',
+        }
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 201)
+
+    def test_configured_container_format_bad(self):
+        self.config(container_formats=['foo'])
+        fixture_headers = {
+            'x-image-meta-store': 'bad',
+            'x-image-meta-name': 'bogus',
+            'x-image-meta-location': 'http://localhost:0/image.tar.gz',
+            'x-image-meta-disk-format': 'raw',
+            'x-image-meta-container-format': 'bar',
+        }
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 400)
+        self.assertTrue('Invalid container format' in res.body, res.body)
 
     def test_container_and_disk_amazon_format_differs(self):
         fixture_headers = {
@@ -341,6 +415,74 @@ class TestGlanceAPI(base.IsolatedUnitTest):
 
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, 400)
+
+    def test_add_image_size_header_exceed_quota(self):
+        quota = 500
+        self.config(user_storage_quota=quota)
+        fixture_headers = {'x-image-meta-size': quota + 1,
+                           'x-image-meta-name': 'fake image #3',
+                           'x-image-meta-container_format': 'bare',
+                           'x-image-meta-disk_format': 'qcow2',
+                           'content-type': 'application/octet-stream',
+                           }
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+        req.body = 'X' * (quota + 1)
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 413)
+
+    def test_add_image_size_data_exceed_quota(self):
+        quota = 500
+        self.config(user_storage_quota=quota)
+        fixture_headers = {
+            'x-image-meta-name': 'fake image #3',
+            'x-image-meta-container_format': 'bare',
+            'x-image-meta-disk_format': 'qcow2',
+            'content-type': 'application/octet-stream',
+        }
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+
+        req.body = 'X' * (quota + 1)
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 413)
+
+    def test_add_image_size_data_exceed_quota_readd(self):
+        quota = 500
+        self.config(user_storage_quota=quota)
+        fixture_headers = {
+            'x-image-meta-name': 'fake image #3',
+            'x-image-meta-container_format': 'bare',
+            'x-image-meta-disk_format': 'qcow2',
+            'content-type': 'application/octet-stream',
+        }
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        req.body = 'X' * (quota + 1)
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 413)
+
+        used_size = sum([f['size'] for f in self.FIXTURES])
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        req.body = 'X' * (quota - used_size)
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+
+        res = req.get_response(self.api)
+        self.assertEquals(res.status_int, 201)
 
     def _add_check_no_url_info(self):
 
@@ -1667,6 +1809,72 @@ class TestGlanceAPI(base.IsolatedUnitTest):
 
         res = req.get_response(self.api)
         self.assertEquals(res.status_int, 401)
+
+    def test_active_image_immutable_props_for_user(self):
+        """
+        Tests user cannot update immutable props of active image
+        """
+        test_router_api = router.API(self.mapper)
+        self.api = test_utils.FakeAuthMiddleware(
+            test_router_api, is_admin=False)
+        fixture_header_list = [{'x-image-meta-checksum': '1234'},
+                               {'x-image-meta-size': '12345'}]
+        for fixture_header in fixture_header_list:
+            req = webob.Request.blank('/images/%s' % UUID2)
+            req.method = 'PUT'
+            for k, v in fixture_header.iteritems():
+                req = webob.Request.blank('/images/%s' % UUID2)
+                req.method = 'HEAD'
+                res = req.get_response(self.api)
+                self.assertEquals(res.status_int, 200)
+                orig_value = res.headers[k]
+
+                req = webob.Request.blank('/images/%s' % UUID2)
+                req.headers[k] = v
+                req.method = 'PUT'
+                res = req.get_response(self.api)
+                self.assertEquals(res.status_int, 403)
+                prop = k[len('x-image-meta-'):]
+                self.assertNotEqual(res.body.find("Forbidden to modify \'%s\' "
+                                                  "of active "
+                                                  "image" % prop), -1)
+
+                req = webob.Request.blank('/images/%s' % UUID2)
+                req.method = 'HEAD'
+                res = req.get_response(self.api)
+                self.assertEquals(res.status_int, 200)
+                self.assertEquals(orig_value, res.headers[k])
+
+    def test_props_of_active_image_mutable_for_admin(self):
+        """
+        Tests admin can update 'immutable' props of active image
+        """
+        test_router_api = router.API(self.mapper)
+        self.api = test_utils.FakeAuthMiddleware(
+            test_router_api, is_admin=True)
+        fixture_header_list = [{'x-image-meta-checksum': '1234'},
+                               {'x-image-meta-size': '12345'}]
+        for fixture_header in fixture_header_list:
+            req = webob.Request.blank('/images/%s' % UUID2)
+            req.method = 'PUT'
+            for k, v in fixture_header.iteritems():
+                req = webob.Request.blank('/images/%s' % UUID2)
+                req.method = 'HEAD'
+                res = req.get_response(self.api)
+                self.assertEquals(res.status_int, 200)
+                orig_value = res.headers[k]
+
+                req = webob.Request.blank('/images/%s' % UUID2)
+                req.headers[k] = v
+                req.method = 'PUT'
+                res = req.get_response(self.api)
+                self.assertEquals(res.status_int, 200)
+
+                req = webob.Request.blank('/images/%s' % UUID2)
+                req.method = 'HEAD'
+                res = req.get_response(self.api)
+                self.assertEquals(res.status_int, 200)
+                self.assertEquals(v, res.headers[k])
 
     def test_replace_members_non_existing_image(self):
         """

@@ -73,6 +73,7 @@ class Server(object):
         self.deployment_flavor = ''
         self.show_image_direct_url = False
         self.show_multiple_locations = False
+        self.property_protection_file = ''
         self.enable_v1_api = True
         self.enable_v2_api = True
         self.needs_database = False
@@ -80,7 +81,7 @@ class Server(object):
         self.sock = sock
         self.fork_socket = True
         self.process_pid = None
-        self.server_program = None
+        self.server_module = None
         self.stop_kill = False
 
     def write_conf(self, **kwargs):
@@ -137,12 +138,13 @@ class Server(object):
         """
 
         # Ensure the configuration file is written
-        overridden = self.write_conf(**kwargs)[1]
+        self.write_conf(**kwargs)
 
         self.create_database()
 
-        cmd = ("%(server_program)s --config-file %(conf_file_name)s"
+        cmd = ("%(server_module)s --config-file %(conf_file_name)s"
                % self.__dict__)
+        cmd = "%s -m %s" % (sys.executable, cmd)
         # close the sock and release the unused port closer to start time
         if self.exec_env:
             exec_env = self.exec_env.copy()
@@ -268,7 +270,7 @@ class ApiServer(Server):
                  pid_file=None, sock=None, **kwargs):
         super(ApiServer, self).__init__(test_dir, port, sock=sock)
         self.server_name = 'api'
-        self.server_program = 'glance-%s' % self.server_name
+        self.server_module = 'glance.cmd.%s' % self.server_name
         self.default_store = kwargs.get("default_store", "file")
         self.key_file = ""
         self.cert_file = ""
@@ -313,10 +315,13 @@ class ApiServer(Server):
         default_sql_connection = 'sqlite:////%s/tests.sqlite' % self.test_dir
         self.sql_connection = os.environ.get('GLANCE_TEST_SQL_CONNECTION',
                                              default_sql_connection)
+        self.user_storage_quota = 0
+        self.lock_path = self.test_dir
 
         self.conf_base = """[DEFAULT]
 verbose = %(verbose)s
 debug = %(debug)s
+default_log_levels = eventlet.wsgi.server=DEBUG
 filesystem_store_datadir=%(image_dir)s
 default_store = %(default_store)s
 bind_host = 127.0.0.1
@@ -359,8 +364,12 @@ db_auto_create = False
 sql_connection = %(sql_connection)s
 show_image_direct_url = %(show_image_direct_url)s
 show_multiple_locations = %(show_multiple_locations)s
+user_storage_quota = %(user_storage_quota)s
 enable_v1_api = %(enable_v1_api)s
+enable_v2_api = %(enable_v2_api)s
+lock_path = %(lock_path)s
 enable_v2_api= %(enable_v2_api)s
+property_protection_file = %(property_protection_file)s
 [paste_deploy]
 flavor = %(deployment_flavor)s
 """
@@ -435,7 +444,7 @@ class RegistryServer(Server):
     def __init__(self, test_dir, port, sock=None):
         super(RegistryServer, self).__init__(test_dir, port, sock=sock)
         self.server_name = 'registry'
-        self.server_program = 'glance-%s' % self.server_name
+        self.server_module = 'glance.cmd.%s' % self.server_name
 
         self.needs_database = True
         default_sql_connection = 'sqlite:////%s/tests.sqlite' % self.test_dir
@@ -447,6 +456,8 @@ class RegistryServer(Server):
         self.owner_is_tenant = True
         self.workers = 0
         self.api_version = 1
+        self.user_storage_quota = 0
+
         self.conf_base = """[DEFAULT]
 verbose = %(verbose)s
 debug = %(debug)s
@@ -460,6 +471,7 @@ api_limit_max = 1000
 limit_param_default = 25
 owner_is_tenant = %(owner_is_tenant)s
 workers = %(workers)s
+user_storage_quota = %(user_storage_quota)s
 [paste_deploy]
 flavor = %(deployment_flavor)s
 """
@@ -493,7 +505,7 @@ class ScrubberDaemon(Server):
         # NOTE(jkoelker): Set the port to 0 since we actually don't listen
         super(ScrubberDaemon, self).__init__(test_dir, 0)
         self.server_name = 'scrubber'
-        self.server_program = 'glance-%s' % self.server_name
+        self.server_module = 'glance.cmd.%s' % self.server_name
         self.daemon = daemon
 
         self.image_dir = os.path.join(self.test_dir, "images")
@@ -509,6 +521,7 @@ class ScrubberDaemon(Server):
         self.swift_store_auth_version = kwargs.get("swift_store_auth_version",
                                                    "2")
         self.metadata_encryption_key = "012345678901234567890123456789ab"
+        self.lock_path = self.test_dir
         self.conf_base = """[DEFAULT]
 verbose = %(verbose)s
 debug = %(debug)s
@@ -525,6 +538,7 @@ swift_store_user = %(swift_store_user)s
 swift_store_key = %(swift_store_key)s
 swift_store_container = %(swift_store_container)s
 swift_store_auth_version = %(swift_store_auth_version)s
+lock_path = %(lock_path)s
 """
 
     def start(self, expect_exit=True, expected_exitcode=0, **kwargs):
@@ -560,6 +574,9 @@ class FunctionalTest(test_utils.BaseTestCase):
         utils.safe_mkdirs(conf_dir)
         self.copy_data_file('schema-image.json', conf_dir)
         self.copy_data_file('policy.json', conf_dir)
+        self.copy_data_file('property-protections.conf', conf_dir)
+        self.property_file = os.path.join(conf_dir,
+                                          'property-protections.conf')
         self.policy_file = os.path.join(conf_dir, 'policy.json')
 
         self.api_server = ApiServer(self.test_dir,
@@ -759,7 +776,7 @@ class FunctionalTest(test_utils.BaseTestCase):
             s.connect(("127.0.0.1", port))
             s.close()
             return True
-        except socket.error as e:
+        except socket.error:
             return False
 
     def wait_for_servers(self, servers, expect_launch=True, timeout=10):

@@ -45,8 +45,6 @@ image_cache_opts = [
 CONF = cfg.CONF
 CONF.register_opts(image_cache_opts)
 
-DEFAULT_MAX_CACHE_SIZE = 10 * 1024 * 1024 * 1024  # 10 GB
-
 
 class ImageCache(object):
 
@@ -246,7 +244,7 @@ class ImageCache(object):
                     if (image_checksum and
                             image_checksum != current_checksum.hexdigest()):
                         msg = _("Checksum verification failed. Aborted "
-                                "caching of image '%s'." % image_id)
+                                "caching of image '%s'.") % image_id
                         raise exception.GlanceException(msg)
 
             except exception.GlanceException as e:
@@ -259,9 +257,10 @@ class ImageCache(object):
                                 "image '%s' into cache: %s. Continuing "
                                 "with response.") % (image_id, e))
 
-            # NOTE(markwash): continue responding even if caching failed
-            for chunk in image_iter:
-                yield chunk
+                # If no checksum provided continue responding even if
+                # caching failed.
+                for chunk in image_iter:
+                    yield chunk
 
         return tee_iter(image_id)
 

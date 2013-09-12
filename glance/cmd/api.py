@@ -58,9 +58,13 @@ def main():
         glance.store.verify_default_store()
 
         server = wsgi.Server()
-        server.start(config.load_paste_app(), default_port=9292)
+        server.start(config.load_paste_app('glance-api'), default_port=9292)
         server.wait()
     except exception.WorkerCreationFailure as e:
         fail(2, e)
     except RuntimeError as e:
         fail(1, e)
+
+
+if __name__ == '__main__':
+    main()

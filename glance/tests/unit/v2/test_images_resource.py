@@ -136,9 +136,12 @@ class TestImagesController(test_utils.BaseTestCase):
                         is_public=True,
                         disk_format='raw',
                         container_format='bare',
-                        status='active'),
+                        status='active',
+                        tags=['redhat', '64bit', 'power'],
+                        properties={'hypervisor_type': 'kvm'}),
             _db_fixture(UUID3, owner=TENANT3, checksum=CHKSUM1,
-                        name='3', size=512, is_public=True),
+                        name='3', size=512, is_public=True,
+                        tags=['windows', '64bit', 'x86']),
             _db_fixture(UUID4, owner=TENANT4, name='4', size=1024),
         ]
         [self.db.image_create(None, image) for image in self.images]
@@ -402,6 +405,53 @@ class TestImagesController(test_utils.BaseTestCase):
         output = self.controller.index(request)
         self.assertEqual([], output['images'])
 
+    def test_index_with_tags(self):
+        path = '/images?tag=64bit'
+        request = unit_test_utils.get_fake_request(path)
+        output = self.controller.index(request, filters={'tags': ['64bit']})
+        actual = [image.tags for image in output['images']]
+        self.assertEquals(2, len(actual))
+        self.assertEqual(True, '64bit' in actual[0])
+        self.assertEqual(True, '64bit' in actual[1])
+
+    def test_index_with_multi_tags(self):
+        path = '/images?tag=power&tag=64bit'
+        request = unit_test_utils.get_fake_request(path)
+        output = self.controller.index(request,
+                                       filters={'tags': ['power', '64bit']})
+        actual = [image.tags for image in output['images']]
+        self.assertEquals(1, len(actual))
+        self.assertEqual(True, '64bit' in actual[0])
+        self.assertEqual(True, 'power' in actual[0])
+
+    def test_index_with_multi_tags_and_nonexistent(self):
+        path = '/images?tag=power&tag=fake'
+        request = unit_test_utils.get_fake_request(path)
+        output = self.controller.index(request,
+                                       filters={'tags': ['power', 'fake']})
+        actual = [image.tags for image in output['images']]
+        self.assertEquals(0, len(actual))
+
+    def test_index_with_tags_and_properties(self):
+        path = '/images?tag=64bit&hypervisor_type=kvm'
+        request = unit_test_utils.get_fake_request(path)
+        output = self.controller.index(request,
+                                       filters={'tags': ['64bit'],
+                                                'hypervisor_type': 'kvm'})
+        tags = [image.tags for image in output['images']]
+        properties = [image.extra_properties for image in output['images']]
+        self.assertEquals(True, len(tags) == len(properties))
+        self.assertEqual(True, '64bit' in tags[0])
+        self.assertEqual('kvm', properties[0]['hypervisor_type'])
+
+    def test_index_with_non_existent_tags(self):
+        path = '/images?tag=fake'
+        request = unit_test_utils.get_fake_request(path)
+        output = self.controller.index(request,
+                                       filters={'tags': ['fake']})
+        actual = [image.tags for image in output['images']]
+        self.assertEquals(0, len(actual))
+
     def test_show(self):
         request = unit_test_utils.get_fake_request()
         output = self.controller.show(request, image_id=UUID2)
@@ -554,6 +604,125 @@ class TestImagesController(test_utils.BaseTestCase):
         ]
         self.assertRaises(webob.exc.HTTPConflict,
                           self.controller.update, request, UUID1, changes)
+
+    def test_prop_protection_with_create_and_permitted_role(self):
+        self.set_property_protections()
+        request = unit_test_utils.get_fake_request(roles=['admin'])
+        image = {'name': 'image-1'}
+        created_image = self.controller.create(request, image=image,
+                                               extra_properties={},
+                                               tags=[])
+        another_request = unit_test_utils.get_fake_request(roles=['member'])
+        changes = [
+            {'op': 'add', 'path': ['x_owner_foo'], 'value': 'bar'},
+        ]
+        output = self.controller.update(another_request,
+                                        created_image.image_id, changes)
+        self.assertEqual(output.extra_properties['x_owner_foo'], 'bar')
+
+    def test_prop_protection_with_create_and_unpermitted_role(self):
+        self.set_property_protections()
+        request = unit_test_utils.get_fake_request(roles=['admin'])
+        image = {'name': 'image-1'}
+        created_image = self.controller.create(request, image=image,
+                                               extra_properties={},
+                                               tags=[])
+        roles = ['fake_member']
+        another_request = unit_test_utils.get_fake_request(roles=roles)
+        changes = [
+            {'op': 'add', 'path': ['x_owner_foo'], 'value': 'bar'},
+        ]
+        self.assertRaises(webob.exc.HTTPForbidden,
+                          self.controller.update, another_request,
+                          created_image.image_id, changes)
+
+    def test_prop_protection_with_show_and_permitted_role(self):
+        self.set_property_protections()
+        request = unit_test_utils.get_fake_request(roles=['admin'])
+        image = {'name': 'image-1'}
+        extra_props = {'x_owner_foo': 'bar'}
+        created_image = self.controller.create(request, image=image,
+                                               extra_properties=extra_props,
+                                               tags=[])
+        another_request = unit_test_utils.get_fake_request(roles=['member'])
+        output = self.controller.show(another_request, created_image.image_id)
+        self.assertEqual(output.extra_properties['x_owner_foo'], 'bar')
+
+    def test_prop_protection_with_show_and_unpermitted_role(self):
+        self.set_property_protections()
+        request = unit_test_utils.get_fake_request(roles=['member'])
+        image = {'name': 'image-1'}
+        extra_props = {'x_owner_foo': 'bar'}
+        created_image = self.controller.create(request, image=image,
+                                               extra_properties=extra_props,
+                                               tags=[])
+        another_request = unit_test_utils.get_fake_request(roles=['fake_role'])
+        output = self.controller.show(another_request, created_image.image_id)
+        self.assertRaises(KeyError, output.extra_properties.__getitem__,
+                          'x_owner_foo')
+
+    def test_prop_protection_with_update_and_permitted_role(self):
+        self.set_property_protections()
+        request = unit_test_utils.get_fake_request(roles=['admin'])
+        image = {'name': 'image-1'}
+        extra_props = {'x_owner_foo': 'bar'}
+        created_image = self.controller.create(request, image=image,
+                                               extra_properties=extra_props,
+                                               tags=[])
+        another_request = unit_test_utils.get_fake_request(roles=['member'])
+        changes = [
+            {'op': 'replace', 'path': ['x_owner_foo'], 'value': 'baz'},
+        ]
+        output = self.controller.update(another_request,
+                                        created_image.image_id, changes)
+        self.assertEqual(output.extra_properties['x_owner_foo'], 'baz')
+
+    def test_prop_protection_with_update_and_unpermitted_role(self):
+        self.set_property_protections()
+        request = unit_test_utils.get_fake_request(roles=['admin'])
+        image = {'name': 'image-1'}
+        extra_props = {'x_owner_foo': 'bar'}
+        created_image = self.controller.create(request, image=image,
+                                               extra_properties=extra_props,
+                                               tags=[])
+        another_request = unit_test_utils.get_fake_request(roles=['fake_role'])
+        changes = [
+            {'op': 'replace', 'path': ['x_owner_foo'], 'value': 'baz'},
+        ]
+        self.assertRaises(webob.exc.HTTPConflict, self.controller.update,
+                          request, UUID1, changes)
+
+    def test_prop_protection_with_delete_and_permitted_role(self):
+        self.set_property_protections()
+        request = unit_test_utils.get_fake_request(roles=['admin'])
+        image = {'name': 'image-1'}
+        extra_props = {'x_owner_foo': 'bar'}
+        created_image = self.controller.create(request, image=image,
+                                               extra_properties=extra_props,
+                                               tags=[])
+        another_request = unit_test_utils.get_fake_request(roles=['member'])
+        changes = [
+            {'op': 'remove', 'path': ['x_owner_foo']}
+        ]
+        output = self.controller.update(another_request,
+                                        created_image.image_id, changes)
+        self.assertRaises(KeyError, output.extra_properties.__getitem__,
+                          'x_owner_foo')
+
+    def test_prop_protection_with_delete_and_unpermitted_role(self):
+        self.set_property_protections()
+        request = unit_test_utils.get_fake_request(roles=['admin'])
+        image = {'name': 'image-1'}
+        extra_props = {'x_owner_foo': 'bar'}
+        created_image = self.controller.create(request, image=image,
+                                               extra_properties=extra_props,
+                                               tags=[])
+        another_request = unit_test_utils.get_fake_request(roles=['fake_role'])
+        changes = [
+            {'op': 'remove', 'path': ['x_owner_foo']}
+        ]
+        self.assertRaises(webob.exc.HTTPConflict, self.controller.update,
+                          request, UUID1, changes)
 
     def test_update_replace_locations(self):
         request = unit_test_utils.get_fake_request()
@@ -1554,6 +1723,13 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
         self.assertRaises(webob.exc.HTTPBadRequest,
                           self.deserializer.index, request)
 
+    def test_index_with_tag(self):
+        path = '/images?tag=%s&tag=%s' % ('x86', '64bit')
+        request = unit_test_utils.get_fake_request(path)
+        output = self.deserializer.index(request)
+        self.assertEqual(sorted(output['filters']['tags']),
+                         sorted(['x86', '64bit']))
+
 
 class TestImagesDeserializerWithExtendedSchema(test_utils.BaseTestCase):
 
@@ -2245,3 +2421,32 @@ class TestImagesSerializerDirectUrl(test_utils.BaseTestCase):
         self.config(show_image_direct_url=False)
         image = self._do_show(self.active_image)
         self.assertFalse('direct_url' in image)
+
+
+class TestImageSchemaFormatConfiguration(test_utils.BaseTestCase):
+    def test_default_disk_formats(self):
+        schema = glance.api.v2.images.get_schema()
+        expected = ['ami', 'ari', 'aki', 'vhd', 'vmdk', 'raw', 'qcow2',
+                    'vdi', 'iso']
+        actual = schema.properties['disk_format']['enum']
+        self.assertEqual(expected, actual)
+
+    def test_custom_disk_formats(self):
+        self.config(disk_formats=['gabe'])
+        schema = glance.api.v2.images.get_schema()
+        expected = ['gabe']
+        actual = schema.properties['disk_format']['enum']
+        self.assertEqual(expected, actual)
+
+    def test_default_container_formats(self):
+        schema = glance.api.v2.images.get_schema()
+        expected = ['ami', 'ari', 'aki', 'bare', 'ovf']
+        actual = schema.properties['container_format']['enum']
+        self.assertEqual(expected, actual)
+
+    def test_custom_container_formats(self):
+        self.config(container_formats=['mark'])
+        schema = glance.api.v2.images.get_schema()
+        expected = ['mark']
+        actual = schema.properties['container_format']['enum']
+        self.assertEqual(expected, actual)

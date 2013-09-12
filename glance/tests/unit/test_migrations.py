@@ -299,18 +299,20 @@ class TestMigrations(utils.BaseTestCase):
         # in the databases. This just checks that the schema itself
         # upgrades successfully.
 
+        def db_version():
+            return migration_api.db_version(engine, TestMigrations.REPOSITORY)
+
         # Place the database under version control
         init_version = migration.INIT_VERSION
         if initial_version is not None:
             init_version = initial_version
         migration_api.version_control(engine, TestMigrations.REPOSITORY,
                                       init_version)
-        self.assertEqual(init_version,
-                         migration_api.db_version(engine,
-                                                  TestMigrations.REPOSITORY))
+        self.assertEqual(init_version, db_version())
 
         migration_api.upgrade(engine, TestMigrations.REPOSITORY,
                               init_version + 1)
+        self.assertEqual(init_version + 1, db_version())
 
         LOG.debug('latest version is %s' % TestMigrations.REPOSITORY.latest)
 
@@ -319,7 +321,7 @@ class TestMigrations(utils.BaseTestCase):
             # upgrade -> downgrade -> upgrade
             self._migrate_up(engine, version, with_data=True)
             if snake_walk:
-                self._migrate_down(engine, version)
+                self._migrate_down(engine, version - 1, with_data=True)
                 self._migrate_up(engine, version)
 
         if downgrade:
@@ -329,12 +331,15 @@ class TestMigrations(utils.BaseTestCase):
                 xrange(init_version + 2,
                        TestMigrations.REPOSITORY.latest + 1)):
                 # downgrade -> upgrade -> downgrade
-                self._migrate_down(engine, version)
+                self._migrate_down(engine, version - 1)
                 if snake_walk:
                     self._migrate_up(engine, version)
-                    self._migrate_down(engine, version)
+                    self._migrate_down(engine, version - 1)
 
-    def _migrate_down(self, engine, version):
+            # Ensure we made it all the way back to the first migration
+            self.assertEqual(init_version + 1, db_version())
+
+    def _migrate_down(self, engine, version, with_data=False):
         migration_api.downgrade(engine,
                                 TestMigrations.REPOSITORY,
                                 version)
@@ -342,18 +347,27 @@ class TestMigrations(utils.BaseTestCase):
                          migration_api.db_version(engine,
                                                   TestMigrations.REPOSITORY))
 
+        # NOTE(sirp): `version` is what we're downgrading to (i.e. the 'target'
+        # version). So if we have any downgrade checks, they need to be run for
+        # the previous (higher numbered) migration.
+        if with_data:
+            post_downgrade = getattr(self, "_post_downgrade_%03d" %
+                                           (version + 1), None)
+            if post_downgrade:
+                post_downgrade(engine)
+
     def _migrate_up(self, engine, version, with_data=False):
         """migrate up to a new version of the db.
 
         We allow for data insertion and post checks at every
-        migration version with special _prerun_### and
+        migration version with special _pre_upgrade_### and
         _check_### functions in the main test.
         """
         if with_data:
             data = None
-            prerun = getattr(self, "_prerun_%3.3d" % version, None)
-            if prerun:
-                data = prerun(engine)
+            pre_upgrade = getattr(self, "_pre_upgrade_%3.3d" % version, None)
+            if pre_upgrade:
+                data = pre_upgrade(engine)
 
         migration_api.upgrade(engine,
                               TestMigrations.REPOSITORY,
@@ -411,7 +425,7 @@ class TestMigrations(utils.BaseTestCase):
             self._create_unversioned_001_db(engine)
             self._walk_versions(engine, self.snake_walk, initial_version=1)
 
-    def _prerun_003(self, engine):
+    def _pre_upgrade_003(self, engine):
         now = datetime.datetime.now()
         images = get_table(engine, 'images')
         data = {'deleted': False, 'created_at': now, 'updated_at': now,
@@ -433,7 +447,7 @@ class TestMigrations(utils.BaseTestCase):
                 types.append(row['value'])
         self.assertIn(data['type'], types)
 
-    def _prerun_004(self, engine):
+    def _pre_upgrade_004(self, engine):
         """Insert checksum data sample to check if migration goes fine with
         data"""
         now = timeutils.utcnow()
@@ -453,7 +467,7 @@ class TestMigrations(utils.BaseTestCase):
         self.assertIn('checksum', images.c)
         self.assertEquals(images.c['checksum'].type.length, 32)
 
-    def _prerun_005(self, engine):
+    def _pre_upgrade_005(self, engine):
         now = timeutils.utcnow()
         images = get_table(engine, 'images')
         data = [
@@ -478,7 +492,7 @@ class TestMigrations(utils.BaseTestCase):
         for migrated in migrated_data_sizes:
             self.assertIn(migrated, sizes)
 
-    def _prerun_006(self, engine):
+    def _pre_upgrade_006(self, engine):
         now = timeutils.utcnow()
         images = get_table(engine, 'images')
         image_data = [
@@ -511,7 +525,177 @@ class TestMigrations(utils.BaseTestCase):
         for element in data:
             self.assertIn(element['key'], image_names)
 
-    def _prerun_015(self, engine):
+    def _pre_upgrade_010(self, engine):
+        """Test rows in images with NULL updated_at get updated to equal
+        created_at"""
+
+        initial_values = [
+            (datetime.datetime(1999, 1, 2, 4, 10, 20),
+             datetime.datetime(1999, 1, 2, 4, 10, 30)),
+            (datetime.datetime(1999, 2, 4, 6, 15, 25),
+             datetime.datetime(1999, 2, 4, 6, 15, 35)),
+            (datetime.datetime(1999, 3, 6, 8, 20, 30),
+             None),
+            (datetime.datetime(1999, 4, 8, 10, 25, 35),
+             None),
+        ]
+
+        images = get_table(engine, 'images')
+        for created_at, updated_at in initial_values:
+            row = dict(deleted=False,
+                       created_at=created_at,
+                       updated_at=updated_at,
+                       status='active',
+                       is_public=True,
+                       min_disk=0,
+                       min_ram=0)
+            images.insert().values(row).execute()
+
+        return initial_values
+
+    def _check_010(self, engine, data):
+        values = dict((c, u) for c, u in data)
+
+        images = get_table(engine, 'images')
+        for row in images.select().execute():
+            if row['created_at'] in values:
+                # updated_at should be unchanged if not previous NULL, or
+                # set to created_at if previously NULL
+                updated_at = values.pop(row['created_at']) or row['created_at']
+                self.assertEqual(row['updated_at'], updated_at)
+
+        # No initial values should be remaining
+        self.assertEqual(len(values), 0)
+
+    def _pre_upgrade_012(self, engine):
+        """Test rows in images have id changes from int to varchar(32) and
+        value changed from int to UUID. Also test image_members and
+        image_properties gets updated to point to new UUID keys"""
+
+        images = get_table(engine, 'images')
+        image_members = get_table(engine, 'image_members')
+        image_properties = get_table(engine, 'image_properties')
+
+        # Insert kernel, ramdisk and normal images
+        now = timeutils.utcnow()
+        data = {'created_at': now, 'updated_at': now,
+                'status': 'active', 'deleted': False,
+                'is_public': True, 'min_disk': 0, 'min_ram': 0}
+
+        test_data = {}
+        for name in ('kernel', 'ramdisk', 'normal'):
+            data['name'] = '%s migration 012 test' % name
+            result = images.insert().values(data).execute()
+            test_data[name] = result.inserted_primary_key[0]
+
+        # Insert image_members and image_properties rows
+        data = {'created_at': now, 'updated_at': now, 'deleted': False,
+                'image_id': test_data['normal'], 'member': 'foobar',
+                'can_share': False}
+        result = image_members.insert().values(data).execute()
+        test_data['member'] = result.inserted_primary_key[0]
+
+        data = {'created_at': now, 'updated_at': now, 'deleted': False,
+                'image_id': test_data['normal'], 'name': 'ramdisk_id',
+                'value': test_data['ramdisk']}
+        result = image_properties.insert().values(data).execute()
+        test_data['properties'] = [result.inserted_primary_key[0]]
+
+        data.update({'name': 'kernel_id', 'value': test_data['kernel']})
+        result = image_properties.insert().values(data).execute()
+        test_data['properties'].append(result.inserted_primary_key)
+
+        return test_data
+
+    def _check_012(self, engine, test_data):
+        images = get_table(engine, 'images')
+        image_members = get_table(engine, 'image_members')
+        image_properties = get_table(engine, 'image_properties')
+
+        # Find kernel, ramdisk and normal images. Make sure id has been
+        # changed to a uuid
+        uuids = {}
+        for name in ('kernel', 'ramdisk', 'normal'):
+            image_name = '%s migration 012 test' % name
+            rows = images.select()\
+                         .where(images.c.name == image_name)\
+                         .execute().fetchall()
+
+            self.assertEquals(len(rows), 1)
+
+            row = rows[0]
+            print repr(dict(row))
+            self.assertTrue(uuidutils.is_uuid_like(row['id']))
+
+            uuids[name] = row['id']
+
+        # Find all image_members to ensure image_id has been updated
+        results = image_members.select()\
+                               .where(image_members.c.image_id ==
+                                      uuids['normal'])\
+                               .execute().fetchall()
+        self.assertEquals(len(results), 1)
+
+        # Find all image_properties to ensure image_id has been updated
+        # as well as ensure kernel_id and ramdisk_id values have been
+        # updated too
+        results = image_properties.select()\
+                                  .where(image_properties.c.image_id ==
+                                         uuids['normal'])\
+                                  .execute().fetchall()
+        self.assertEquals(len(results), 2)
+        for row in results:
+            self.assertIn(row['name'], ('kernel_id', 'ramdisk_id'))
+
+            if row['name'] == 'kernel_id':
+                self.assertEqual(row['value'], uuids['kernel'])
+            if row['name'] == 'ramdisk_id':
+                self.assertEqual(row['value'], uuids['ramdisk'])
+
+    def _post_downgrade_012(self, engine):
+        images = get_table(engine, 'images')
+        image_members = get_table(engine, 'image_members')
+        image_properties = get_table(engine, 'image_properties')
+
+        # Find kernel, ramdisk and normal images. Make sure id has been
+        # changed back to an integer
+        ids = {}
+        for name in ('kernel', 'ramdisk', 'normal'):
+            image_name = '%s migration 012 test' % name
+            rows = images.select()\
+                         .where(images.c.name == image_name)\
+                         .execute().fetchall()
+            self.assertEquals(len(rows), 1)
+
+            row = rows[0]
+            self.assertFalse(uuidutils.is_uuid_like(row['id']))
+
+            ids[name] = row['id']
+
+        # Find all image_members to ensure image_id has been updated
+        results = image_members.select()\
+                               .where(image_members.c.image_id ==
+                                      ids['normal'])\
+                               .execute().fetchall()
+        self.assertEquals(len(results), 1)
+
+        # Find all image_properties to ensure image_id has been updated
+        # as well as ensure kernel_id and ramdisk_id values have been
+        # updated too
+        results = image_properties.select()\
+                                  .where(image_properties.c.image_id ==
+                                         ids['normal'])\
+                                  .execute().fetchall()
+        self.assertEquals(len(results), 2)
+        for row in results:
+            self.assertIn(row['name'], ('kernel_id', 'ramdisk_id'))
+
+            if row['name'] == 'kernel_id':
+                self.assertEqual(row['value'], str(ids['kernel']))
+            if row['name'] == 'ramdisk_id':
+                self.assertEqual(row['value'], str(ids['ramdisk']))
+
+    def _pre_upgrade_015(self, engine):
         images = get_table(engine, 'images')
         unquoted_locations = [
             'swift://acct:usr:pass@example.com/container/obj-id',
@@ -543,7 +727,7 @@ class TestMigrations(utils.BaseTestCase):
         for loc in quoted_locations:
             self.assertIn(loc, locations)
 
-    def _prerun_016(self, engine):
+    def _pre_upgrade_016(self, engine):
         images = get_table(engine, 'images')
         now = datetime.datetime.now()
         temp = dict(deleted=False,
@@ -573,7 +757,7 @@ class TestMigrations(utils.BaseTestCase):
                         "columns! image_members table columns: %s"
                         % image_members.c.keys())
 
-    def _prerun_017(self, engine):
+    def _pre_upgrade_017(self, engine):
         metadata_encryption_key = 'a' * 16
         self.config(metadata_encryption_key=metadata_encryption_key)
         images = get_table(engine, 'images')
@@ -641,7 +825,7 @@ class TestMigrations(utils.BaseTestCase):
             if not location in actual_location:
                 self.fail(_("location: %s data lost") % location)
 
-    def _prerun_019(self, engine):
+    def _pre_upgrade_019(self, engine):
         images = get_table(engine, 'images')
         now = datetime.datetime.now()
         base_values = {
@@ -675,7 +859,7 @@ class TestMigrations(utils.BaseTestCase):
         images = get_table(engine, 'images')
         self.assertFalse('location' in images.c)
 
-    def _prerun_026(self, engine):
+    def _pre_upgrade_026(self, engine):
         image_locations = get_table(engine, 'image_locations')
 
         now = datetime.datetime.now()

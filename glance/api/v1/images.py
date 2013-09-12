@@ -48,18 +48,17 @@ from glance.openstack.common import strutils
 import glance.registry.client.v1.api as registry
 from glance.store import (get_from_backend,
                           get_size_from_backend,
-                          safe_delete_from_backend,
-                          schedule_delayed_delete_from_backend,
                           get_store_from_location,
                           get_store_from_scheme)
 
-CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
 SUPPORTED_PARAMS = glance.api.v1.SUPPORTED_PARAMS
 SUPPORTED_FILTERS = glance.api.v1.SUPPORTED_FILTERS
-CONTAINER_FORMATS = ['ami', 'ari', 'aki', 'bare', 'ovf']
-DISK_FORMATS = ['ami', 'ari', 'aki', 'vhd', 'vmdk', 'raw', 'qcow2', 'vdi',
-                'iso']
+ACTIVE_IMMUTABLE = glance.api.v1.ACTIVE_IMMUTABLE
+
+CONF = cfg.CONF
+CONF.import_opt('disk_formats', 'glance.domain')
+CONF.import_opt('container_formats', 'glance.domain')
 
 
 def validate_image_meta(req, values):
@@ -69,12 +68,12 @@ def validate_image_meta(req, values):
     container_format = values.get('container_format')
 
     if 'disk_format' in values:
-        if disk_format not in DISK_FORMATS:
+        if disk_format not in CONF.disk_formats:
             msg = "Invalid disk format '%s' for image." % disk_format
             raise HTTPBadRequest(explanation=msg, request=req)
 
     if 'container_format' in values:
-        if container_format not in CONTAINER_FORMATS:
+        if container_format not in CONF.container_formats:
             msg = "Invalid container format '%s' for image." % container_format
             raise HTTPBadRequest(explanation=msg, request=req)
 
@@ -639,6 +638,17 @@ class Controller(controller.BaseController):
                                 request=req,
                                 content_type="text/plain")
 
+        if req.context.is_admin is False:
+            # Once an image is 'active' only an admin can
+            # modify certain core metadata keys
+            for key in ACTIVE_IMMUTABLE:
+                if (orig_status == 'active' and image_meta.get(key) is not None
+                    and image_meta.get(key) != orig_image_meta.get(key)):
+                    msg = _("Forbidden to modify '%s' of active image.") % key
+                    raise HTTPForbidden(explanation=msg,
+                                        request=req,
+                                        content_type="text/plain")
+
         # The default behaviour for a PUT /images/<IMAGE_ID> is to
         # override any properties that were previously set. This, however,
         # leads to a number of issues for the common use case where a caller
@@ -748,7 +758,7 @@ class Controller(controller.BaseController):
             raise HTTPForbidden(explanation=msg, request=req,
                                 content_type="text/plain")
         elif image['status'] == 'deleted':
-            msg = _("Image %s not found." % id)
+            msg = _("Image %s not found.") % id
             LOG.debug(msg)
             raise HTTPNotFound(explanation=msg, request=req,
                                content_type="text/plain")

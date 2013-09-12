@@ -22,6 +22,7 @@ from oslo.config import cfg
 import urlparse
 
 from glance.common import exception
+from glance.openstack.common import excutils
 import glance.openstack.common.log as logging
 import glance.store
 import glance.store.base
@@ -38,8 +39,13 @@ except ImportError:
 LOG = logging.getLogger(__name__)
 
 gridfs_opts = [
-    cfg.StrOpt('mongodb_store_uri'),
-    cfg.StrOpt('mongodb_store_db', default=None),
+    cfg.StrOpt('mongodb_store_uri',
+               help="Hostname or IP address of the instance to connect to, "
+                    "or a mongodb URI, or a list of hostnames / mongodb URIs. "
+                    "If host is an IPv6 literal it must be enclosed "
+                    "in '[' and ']' characters following the RFC2732 "
+                    "URL syntax (e.g. '[::1]' for localhost)"),
+    cfg.StrOpt('mongodb_store_db', default=None, help='Database to use'),
 ]
 
 CONF = cfg.CONF
@@ -180,8 +186,14 @@ class Store(glance.store.base.Store):
         LOG.debug(_("Adding a new image to GridFS with id %s and size %s") %
                  (image_id, image_size))
 
-        self.fs.put(image_file, _id=image_id)
-        image = self._get_file(loc)
+        try:
+            self.fs.put(image_file, _id=image_id)
+            image = self._get_file(loc)
+        except:
+            # Note(zhiyan): clean up already received data when
+            # error occurs such as ImageSizeLimitExceeded exception.
+            with excutils.save_and_reraise_exception():
+                self.fs.delete(image_id)
 
         LOG.debug(_("Uploaded image %s, md5 %s, length %s to GridFS") %
                  (image._id, image.md5, image.length))

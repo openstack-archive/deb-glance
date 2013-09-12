@@ -21,6 +21,7 @@ import webob.exc
 from glance.common import exception
 from glance.openstack.common import excutils
 from glance.common import utils
+import glance.db
 import glance.openstack.common.log as logging
 import glance.registry.client.v1.api as registry
 import glance.store
@@ -40,9 +41,10 @@ def initiate_deletion(req, location, id, delayed_delete=False):
     :param delayed_delete: whether data deletion will be delayed
     """
     if delayed_delete:
-        glance.store.schedule_delayed_delete_from_backend(location, id)
+        glance.store.schedule_delayed_delete_from_backend(req.context,
+                                                          location, id)
     else:
-        glance.store.safe_delete_from_backend(location, req.context, id)
+        glance.store.safe_delete_from_backend(req.context, location, id)
 
 
 def _kill(req, image_id):
@@ -79,7 +81,16 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
     Upload image data to the store and cleans up on error.
     """
     image_id = image_meta['id']
+
+    db_api = glance.db.get_api()
+    image_size = image_meta.get('size', None)
+
     try:
+        remaining = glance.api.common.check_quota(
+            req.context, image_size, db_api, image_id=image_id)
+        if remaining is not None:
+            image_data = utils.LimitingReader(image_data, remaining)
+
         (location,
          size,
          checksum,
@@ -88,6 +99,18 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
              utils.CooperativeReader(image_data),
              image_meta['size'],
              store)
+
+        try:
+            # recheck the quota in case there were simultaneous uploads that
+            # did not provide the size
+            glance.api.common.check_quota(
+                req.context, size, db_api, image_id=image_id)
+        except exception.StorageQuotaFull:
+            LOG.info(_('Cleaning up %s after exceeding the quota %s')
+                     % image_id)
+            glance.store.safe_delete_from_backend(
+                location, req.context, image_meta['id'])
+            raise
 
         def _kill_mismatched(image_meta, attr, actual):
             supplied = image_meta.get(attr)
@@ -140,6 +163,7 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
         msg = _("Attempt to upload duplicate image: %s") % e
         LOG.debug(msg)
         safe_kill(req, image_id)
+        notifier.error('image.upload', msg)
         raise webob.exc.HTTPConflict(explanation=msg,
                                      request=req,
                                      content_type="text/plain")
@@ -148,6 +172,7 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
         msg = _("Forbidden upload attempt: %s") % e
         LOG.debug(msg)
         safe_kill(req, image_id)
+        notifier.error('image.upload', msg)
         raise webob.exc.HTTPForbidden(explanation=msg,
                                       request=req,
                                       content_type="text/plain")
@@ -171,10 +196,21 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
                                                content_type='text/plain')
 
     except exception.ImageSizeLimitExceeded as e:
-        msg = _("Denying attempt to upload image larger than %d bytes."
-                % CONF.image_size_cap)
+        msg = (_("Denying attempt to upload image larger than %d bytes.")
+               % CONF.image_size_cap)
         LOG.info(msg)
         safe_kill(req, image_id)
+        notifier.error('image.upload', msg)
+        raise webob.exc.HTTPRequestEntityTooLarge(explanation=msg,
+                                                  request=req,
+                                                  content_type='text/plain')
+
+    except exception.StorageQuotaFull as e:
+        msg = (_("Denying attempt to upload image because it exceeds the ."
+                 "quota: %s") % e)
+        LOG.info(msg)
+        safe_kill(req, image_id)
+        notifier.error('image.upload', msg)
         raise webob.exc.HTTPRequestEntityTooLarge(explanation=msg,
                                                   request=req,
                                                   content_type='text/plain')
@@ -184,15 +220,25 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
         # but something in the above function calls is affecting the
         # exception context and we must explicitly re-raise the
         # caught exception.
+        msg = _("Received HTTP error while uploading image %s") % image_id
+        notifier.error('image.upload', msg)
         with excutils.save_and_reraise_exception():
-            msg = _("Received HTTP error while uploading image %s" % image_id)
             LOG.exception(msg)
             safe_kill(req, image_id)
 
+    except (ValueError, IOError) as e:
+        msg = _("Client disconnected before sending all data to backend")
+        LOG.debug(msg)
+        safe_kill(req, image_id)
+        raise webob.exc.HTTPBadRequest(explanation=msg,
+                                       content_type="text/plain",
+                                       request=req)
+
     except Exception as e:
-        msg = _("Failed to upload image %s" % image_id)
+        msg = _("Failed to upload image %s") % image_id
         LOG.exception(msg)
         safe_kill(req, image_id)
+        notifier.error('image.upload', msg)
         raise webob.exc.HTTPInternalServerError(explanation=msg,
                                                 request=req,
                                                 content_type='text/plain')

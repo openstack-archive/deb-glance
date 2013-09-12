@@ -20,6 +20,7 @@ from glance.common import wsgi
 import glance.context
 import glance.db.simple.api as simple_db
 import glance.openstack.common.log as logging
+import glance.store
 
 
 CONF = cfg.CONF
@@ -39,14 +40,14 @@ BASE_URI = 'swift+http://storeurl.com/container'
 
 
 def get_fake_request(path='', method='POST', is_admin=False, user=USER1,
-                     tenant=TENANT1):
+                     roles=['member'], tenant=TENANT1):
     req = wsgi.Request.blank(path)
     req.method = method
 
     kwargs = {
         'user': user,
         'tenant': tenant,
-        'roles': [],
+        'roles': roles,
         'is_admin': is_admin,
     }
 
@@ -84,6 +85,7 @@ class FakeDB(object):
             'images': {},
             'members': [],
             'tags': {},
+            'locations': [],
         }
 
     def __getattr__(self, key):
@@ -122,20 +124,20 @@ class FakeStoreAPI(object):
         except KeyError:
             raise exception.NotFound()
 
-    def safe_delete_from_backend(self, uri, context, id, **kwargs):
+    def safe_delete_from_backend(self, context, uri, id, **kwargs):
         try:
             del self.data[uri]
         except KeyError:
             pass
 
-    def schedule_delayed_delete_from_backend(self, uri, id, **kwargs):
+    def schedule_delayed_delete_from_backend(self, context, uri, id, **kwargs):
         pass
 
     def delete_image_from_backend(self, context, store_api, image_id, uri):
         if CONF.delayed_delete:
-            self.schedule_delayed_delete_from_backend(uri, image_id)
+            self.schedule_delayed_delete_from_backend(context, uri, image_id)
         else:
-            self.safe_delete_from_backend(uri, context, image_id)
+            self.safe_delete_from_backend(context, uri, image_id)
 
     def get_size_from_backend(self, context, location):
         return self.get_from_backend(context, location)[1]
@@ -157,6 +159,9 @@ class FakeStoreAPI(object):
         self.data[image_id] = (data, size)
         checksum = 'Z'
         return (image_id, size, checksum, self.store_metadata)
+
+    def check_location_metadata(self, val, key=''):
+        glance.store.check_location_metadata(val)
 
 
 class FakePolicyEnforcer(object):

@@ -368,6 +368,133 @@ class TestImages(functional.FunctionalTest):
 
         self.stop_servers()
 
+    def test_property_protections(self):
+        # Enable property protection
+        self.api_server.property_protection_file = self.property_file
+        self.start_servers(**self.__dict__.copy())
+
+        # Image list should be empty
+        path = self._url('/v2/images')
+        response = requests.get(path, headers=self._headers())
+        self.assertEqual(200, response.status_code)
+        images = json.loads(response.text)['images']
+        self.assertEqual(0, len(images))
+
+        ## Create an image for role member with extra props
+        # Raises 403 since user is not allowed to set 'foo'
+        path = self._url('/v2/images')
+        headers = self._headers({'content-type': 'application/json',
+                                 'X-Roles': 'member'})
+        data = json.dumps({'name': 'image-1', 'foo': 'bar',
+                           'disk_format': 'aki', 'container_format': 'aki',
+                           'x_owner_foo': 'o_s_bar'})
+        response = requests.post(path, headers=headers, data=data)
+        self.assertEqual(403, response.status_code)
+
+        ## Create an image for role member without 'foo'
+        path = self._url('/v2/images')
+        headers = self._headers({'content-type': 'application/json',
+                                 'X-Roles': 'member'})
+        data = json.dumps({'name': 'image-1', 'disk_format': 'aki',
+                           'container_format': 'aki',
+                           'x_owner_foo': 'o_s_bar'})
+        response = requests.post(path, headers=headers, data=data)
+        self.assertEqual(201, response.status_code)
+
+        # Returned image entity should have 'x_owner_foo'
+        image = json.loads(response.text)
+        image_id = image['id']
+        expected_image = {
+            'status': 'queued',
+            'name': 'image-1',
+            'tags': [],
+            'visibility': 'private',
+            'self': '/v2/images/%s' % image_id,
+            'protected': False,
+            'file': '/v2/images/%s/file' % image_id,
+            'min_disk': 0,
+            'x_owner_foo': 'o_s_bar',
+            'min_ram': 0,
+            'schema': '/v2/schemas/image',
+        }
+        for key, value in expected_image.items():
+            self.assertEqual(image[key], value, key)
+
+        # Create an image for role spl_role with extra props
+        path = self._url('/v2/images')
+        headers = self._headers({'content-type': 'application/json',
+                                 'X-Roles': 'spl_role'})
+        data = json.dumps({'name': 'image-1',
+                           'disk_format': 'aki', 'container_format': 'aki',
+                           'spl_create_prop': 'create_bar',
+                           'spl_read_prop': 'read_bar',
+                           'spl_update_prop': 'update_bar',
+                           'spl_delete_prop': 'delete_bar'})
+        response = requests.post(path, headers=headers, data=data)
+        self.assertEqual(201, response.status_code)
+        image = json.loads(response.text)
+        image_id = image['id']
+
+        # Attempt to replace, add and remove properties which are forbidden
+        path = self._url('/v2/images/%s' % image_id)
+        media_type = 'application/openstack-images-v2.1-json-patch'
+        headers = self._headers({'content-type': media_type,
+                                 'X-Roles': 'spl_role'})
+        data = json.dumps([
+            {'op': 'replace', 'path': '/spl_read_prop', 'value': 'r'},
+            {'op': 'replace', 'path': '/spl_update_prop', 'value': 'u'},
+        ])
+        response = requests.patch(path, headers=headers, data=data)
+        self.assertEqual(403, response.status_code, response.text)
+
+        # Attempt to replace, add and remove properties which are forbidden
+        path = self._url('/v2/images/%s' % image_id)
+        media_type = 'application/openstack-images-v2.1-json-patch'
+        headers = self._headers({'content-type': media_type,
+                                 'X-Roles': 'spl_role'})
+        data = json.dumps([
+            {'op': 'add', 'path': '/spl_new_prop', 'value': 'new'},
+            {'op': 'remove', 'path': '/spl_create_prop'},
+            {'op': 'remove', 'path': '/spl_delete_prop'},
+        ])
+        response = requests.patch(path, headers=headers, data=data)
+        self.assertEqual(403, response.status_code, response.text)
+
+        # Attempt to replace, add and remove properties
+        path = self._url('/v2/images/%s' % image_id)
+        media_type = 'application/openstack-images-v2.1-json-patch'
+        headers = self._headers({'content-type': media_type,
+                                 'X-Roles': 'spl_role'})
+        data = json.dumps([
+            {'op': 'replace', 'path': '/spl_update_prop', 'value': 'u'},
+            {'op': 'remove', 'path': '/spl_delete_prop'},
+        ])
+        response = requests.patch(path, headers=headers, data=data)
+        self.assertEqual(200, response.status_code, response.text)
+
+        # Returned image entity should reflect the changes
+        image = json.loads(response.text)
+
+        # 'spl_update_prop' has update permission for spl_role
+        # hence the value has changed
+        self.assertEqual('u', image['spl_update_prop'])
+
+        # 'spl_delete_prop' has delete permission for spl_role
+        # hence the property has been deleted
+        self.assertTrue('spl_delete_prop' not in image.keys())
+
+        # Image Deletion should work
+        path = self._url('/v2/images/%s' % image_id)
+        response = requests.delete(path, headers=self._headers())
+        self.assertEqual(204, response.status_code)
+
+        # This image should be no longer be directly accessible
+        path = self._url('/v2/images/%s' % image_id)
+        response = requests.get(path, headers=self._headers())
+        self.assertEqual(404, response.status_code)
+
+        self.stop_servers()
+
     def test_tag_lifecycle(self):
         # Create an image with a tag - duplicate should be ignored
         path = self._url('/v2/images')
@@ -425,6 +552,37 @@ class TestImages(functional.FunctionalTest):
         tags = json.loads(response.text)['tags']
         self.assertEqual(['gabe@example.com', 'snozz', 'sniff'], tags)
 
+        # Query images by single tag
+        path = self._url('/v2/images?tag=sniff')
+        response = requests.get(path, headers=self._headers())
+        self.assertEqual(200, response.status_code)
+        images = json.loads(response.text)['images']
+        self.assertEqual(1, len(images))
+        self.assertEqual('image-1', images[0]['name'])
+
+        # Query images by multiple tags
+        path = self._url('/v2/images?tag=sniff&tag=snozz')
+        response = requests.get(path, headers=self._headers())
+        self.assertEqual(200, response.status_code)
+        images = json.loads(response.text)['images']
+        self.assertEqual(1, len(images))
+        self.assertEqual('image-1', images[0]['name'])
+
+        # Query images by tag and other attributes
+        path = self._url('/v2/images?tag=sniff&status=queued')
+        response = requests.get(path, headers=self._headers())
+        self.assertEqual(200, response.status_code)
+        images = json.loads(response.text)['images']
+        self.assertEqual(1, len(images))
+        self.assertEqual('image-1', images[0]['name'])
+
+        # Query images by tag and a nonexistent tag
+        path = self._url('/v2/images?tag=sniff&tag=fake')
+        response = requests.get(path, headers=self._headers())
+        self.assertEqual(200, response.status_code)
+        images = json.loads(response.text)['images']
+        self.assertEqual(0, len(images))
+
         # The tag should be deletable
         path = self._url('/v2/images/%s/tags/gabe%%40example.com' % image_id)
         response = requests.delete(path, headers=self._headers())
@@ -441,6 +599,13 @@ class TestImages(functional.FunctionalTest):
         path = self._url('/v2/images/%s/tags/gabe%%40example.com' % image_id)
         response = requests.delete(path, headers=self._headers())
         self.assertEqual(404, response.status_code)
+
+        # The tags won't be able to to query the images after deleting
+        path = self._url('/v2/images?tag=gabe%%40example.com')
+        response = requests.get(path, headers=self._headers())
+        self.assertEqual(200, response.status_code)
+        images = json.loads(response.text)['images']
+        self.assertEqual(0, len(images))
 
         self.stop_servers()
 
@@ -1073,3 +1238,86 @@ class TestImageMembers(functional.FunctionalTest):
         self.assertEqual(404, response.status_code)
 
         self.stop_servers()
+
+
+class TestQuotas(functional.FunctionalTest):
+
+    def setUp(self):
+        super(TestQuotas, self).setUp()
+        self.cleanup()
+        self.api_server.deployment_flavor = 'noauth'
+        self.user_storage_quota = 100
+        self.start_servers(**self.__dict__.copy())
+
+    def _url(self, path):
+        return 'http://127.0.0.1:%d%s' % (self.api_port, path)
+
+    def _headers(self, custom_headers=None):
+        base_headers = {
+            'X-Identity-Status': 'Confirmed',
+            'X-Auth-Token': '932c5c84-02ac-4fe5-a9ba-620af0e2bb96',
+            'X-User-Id': 'f9a41d13-0c13-47e9-bee2-ce4e8bfe958e',
+            'X-Tenant-Id': TENANT1,
+            'X-Roles': 'member',
+        }
+        base_headers.update(custom_headers or {})
+        return base_headers
+
+    def test_image_upload_under_quota(self):
+        # Image list should be empty
+        path = self._url('/v2/images')
+        response = requests.get(path, headers=self._headers())
+        self.assertEqual(200, response.status_code)
+        images = json.loads(response.text)['images']
+        self.assertEqual(0, len(images))
+
+        # Create an image (with a deployer-defined property)
+        path = self._url('/v2/images')
+        headers = self._headers({'content-type': 'application/json'})
+        data = json.dumps({'name': 'image-2',
+                           'disk_format': 'aki', 'container_format': 'aki'})
+        response = requests.post(path, headers=headers, data=data)
+        self.assertEqual(201, response.status_code)
+        image = json.loads(response.text)
+        image_id = image['id']
+
+        # upload data
+        data = 'x' * (self.user_storage_quota - 1)
+        path = self._url('/v2/images/%s/file' % image_id)
+        headers = self._headers({'Content-Type': 'application/octet-stream'})
+        response = requests.put(path, headers=headers, data=data)
+        self.assertEqual(204, response.status_code)
+
+        # Deletion should work
+        path = self._url('/v2/images/%s' % image_id)
+        response = requests.delete(path, headers=self._headers())
+        self.assertEqual(204, response.status_code)
+
+    def test_image_upload_exceed_quota(self):
+        # Image list should be empty
+        path = self._url('/v2/images')
+        response = requests.get(path, headers=self._headers())
+        self.assertEqual(200, response.status_code)
+        images = json.loads(response.text)['images']
+        self.assertEqual(0, len(images))
+
+        # Create an image (with a deployer-defined property)
+        path = self._url('/v2/images')
+        headers = self._headers({'content-type': 'application/json'})
+        data = json.dumps({'name': 'image-1', 'type': 'kernel', 'foo': 'bar',
+                           'disk_format': 'aki', 'container_format': 'aki'})
+        response = requests.post(path, headers=headers, data=data)
+        self.assertEqual(201, response.status_code)
+        image = json.loads(response.text)
+        image_id = image['id']
+
+        # upload data
+        data = 'x' * (self.user_storage_quota + 1)
+        path = self._url('/v2/images/%s/file' % image_id)
+        headers = self._headers({'Content-Type': 'application/octet-stream'})
+        response = requests.put(path, headers=headers, data=data)
+        self.assertEqual(413, response.status_code)
+
+        path = self._url('/v2/images/%s' % image_id)
+        response = requests.delete(path, headers=self._headers())
+        self.assertEqual(204, response.status_code)

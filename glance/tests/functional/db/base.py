@@ -158,14 +158,18 @@ class DriverTests(object):
         fixture = {'status': 'queued',
                    'locations': locations}
         image = self.db_api.image_create(self.context, fixture)
-        self.assertEqual(locations, image['locations'])
+        actual = [{'url': l['url'], 'metadata': l['metadata']}
+                  for l in image['locations']]
+        self.assertEqual(locations, actual)
 
     def test_image_create_with_location_data(self):
         location_data = [{'url': 'a', 'metadata': {'key': 'value'}},
                          {'url': 'b', 'metadata': {}}]
         fixture = {'status': 'queued', 'locations': location_data}
         image = self.db_api.image_create(self.context, fixture)
-        self.assertEqual(location_data, image['locations'])
+        actual = [{'url': l['url'], 'metadata': l['metadata']}
+                  for l in image['locations']]
+        self.assertEqual(location_data, actual)
 
     def test_image_create_properties(self):
         fixture = {'status': 'queued', 'properties': {'ping': 'pong'}}
@@ -537,25 +541,124 @@ class DriverTests(object):
 
     def test_image_get_all_owned(self):
         TENANT1 = uuidutils.generate_uuid()
-        ctxt1 = context.RequestContext(is_admin=False, tenant=TENANT1,
+        ctxt1 = context.RequestContext(is_admin=False,
+                                       tenant=TENANT1,
                                        auth_tok='user:%s:user' % TENANT1)
         UUIDX = uuidutils.generate_uuid()
-        self.db_api.image_create(ctxt1, {'id': UUIDX,
-                                         'status': 'queued',
-                                         'owner': TENANT1})
+        image_meta_data = {'id': UUIDX, 'status': 'queued', 'owner': TENANT1}
+        self.db_api.image_create(ctxt1, image_meta_data)
 
         TENANT2 = uuidutils.generate_uuid()
-        ctxt2 = context.RequestContext(is_admin=False, tenant=TENANT2,
+        ctxt2 = context.RequestContext(is_admin=False,
+                                       tenant=TENANT2,
                                        auth_tok='user:%s:user' % TENANT2)
         UUIDY = uuidutils.generate_uuid()
-        self.db_api.image_create(ctxt2, {'id': UUIDY,
-                                         'status': 'queued',
-                                         'owner': TENANT2})
+        image_meta_data = {'id': UUIDY, 'status': 'queued', 'owner': TENANT2}
+        self.db_api.image_create(ctxt2, image_meta_data)
 
         images = self.db_api.image_get_all(ctxt1)
+
         image_ids = [image['id'] for image in images]
         expected = [UUIDX, UUID3, UUID2, UUID1]
         self.assertEqual(sorted(expected), sorted(image_ids))
+
+    def test_image_get_all_owned_checksum(self):
+        TENANT1 = uuidutils.generate_uuid()
+        ctxt1 = context.RequestContext(is_admin=False,
+                                       tenant=TENANT1,
+                                       auth_tok='user:%s:user' % TENANT1)
+        UUIDX = uuidutils.generate_uuid()
+        CHECKSUM1 = '91264c3edf5972c9f1cb309543d38a5c'
+        image_meta_data = {
+            'id': UUIDX,
+            'status': 'queued',
+            'checksum': CHECKSUM1,
+            'owner': TENANT1
+        }
+        self.db_api.image_create(ctxt1, image_meta_data)
+        image_member_data = {
+            'image_id': UUIDX,
+            'member': TENANT1,
+            'can_share': False,
+            "status": "accepted",
+        }
+        self.db_api.image_member_create(ctxt1, image_member_data)
+
+        TENANT2 = uuidutils.generate_uuid()
+        ctxt2 = context.RequestContext(is_admin=False,
+                                       tenant=TENANT2,
+                                       auth_tok='user:%s:user' % TENANT2)
+        UUIDY = uuidutils.generate_uuid()
+        CHECKSUM2 = '92264c3edf5972c9f1cb309543d38a5c'
+        image_meta_data = {
+            'id': UUIDY,
+            'status': 'queued',
+            'checksum': CHECKSUM2,
+            'owner': TENANT2
+        }
+        self.db_api.image_create(ctxt2, image_meta_data)
+        image_member_data = {
+            'image_id': UUIDY,
+            'member': TENANT2,
+            'can_share': False,
+            "status": "accepted",
+        }
+        self.db_api.image_member_create(ctxt2, image_member_data)
+
+        filters = {'visibility': 'shared', 'checksum': CHECKSUM2}
+        images = self.db_api.image_get_all(ctxt2, filters)
+
+        self.assertEquals(1, len(images))
+        self.assertEqual(UUIDY, images[0]['id'])
+
+    def test_image_get_all_with_filter_tags(self):
+        self.db_api.image_tag_create(self.context, UUID1, 'x86')
+        self.db_api.image_tag_create(self.context, UUID1, '64bit')
+        self.db_api.image_tag_create(self.context, UUID2, 'power')
+        self.db_api.image_tag_create(self.context, UUID2, '64bit')
+        images = self.db_api.image_get_all(self.context,
+                                           filters={'tags': ['64bit']})
+        self.assertEquals(len(images), 2)
+        image_ids = [image['id'] for image in images]
+        expected = [UUID1, UUID2]
+        self.assertEquals(sorted(expected), sorted(image_ids))
+
+    def test_image_get_all_with_filter_multi_tags(self):
+        self.db_api.image_tag_create(self.context, UUID1, 'x86')
+        self.db_api.image_tag_create(self.context, UUID1, '64bit')
+        self.db_api.image_tag_create(self.context, UUID2, 'power')
+        self.db_api.image_tag_create(self.context, UUID2, '64bit')
+        images = self.db_api.image_get_all(self.context,
+                                           filters={'tags': ['64bit', 'power']
+                                                    })
+        self.assertEquals(len(images), 1)
+        self.assertEquals(UUID2, images[0]['id'])
+
+    def test_image_get_all_with_filter_tags_and_nonexistent(self):
+        self.db_api.image_tag_create(self.context, UUID1, 'x86')
+        images = self.db_api.image_get_all(self.context,
+                                           filters={'tags': ['x86', 'fake']
+                                                    })
+        self.assertEquals(len(images), 0)
+
+    def test_image_get_all_with_filter_deleted_tags(self):
+        tag = self.db_api.image_tag_create(self.context, UUID1, 'AIX')
+        images = self.db_api.image_get_all(self.context,
+                                           filters={
+                                               'tags': [tag],
+                                           })
+        self.assertEquals(len(images), 1)
+        self.db_api.image_tag_delete(self.context, UUID1, tag)
+        images = self.db_api.image_get_all(self.context,
+                                           filters={
+                                               'tags': [tag],
+                                           })
+        self.assertEquals(len(images), 0)
+
+    def test_image_get_all_with_filter_undefined_tags(self):
+        images = self.db_api.image_get_all(self.context,
+                                           filters={'tags': ['fake']})
+        self.assertEquals(len(images), 0)
 
     def test_image_paginate(self):
         """Paginate through a list of images using limit and marker"""
@@ -585,35 +688,98 @@ class DriverTests(object):
         self.assertEquals(2, len(images))
 
     def test_image_destroy(self):
-        fixture = {'name': 'ping', 'value': 'pong', 'image_id': UUID3}
+        location_data = [{'url': 'a', 'metadata': {'key': 'value'}},
+                         {'url': 'b', 'metadata': {}}]
+        fixture = {'status': 'queued', 'locations': location_data}
+        image = self.db_api.image_create(self.context, fixture)
+        IMG_ID = image['id']
+
+        fixture = {'name': 'ping', 'value': 'pong', 'image_id': IMG_ID}
         prop = self.db_api.image_property_create(self.context, fixture)
         TENANT2 = uuidutils.generate_uuid()
-        fixture = {'image_id': UUID3, 'member': TENANT2, 'can_share': False}
+        fixture = {'image_id': IMG_ID, 'member': TENANT2, 'can_share': False}
         member = self.db_api.image_member_create(self.context, fixture)
-        self.db_api.image_tag_create(self.context, UUID3, 'snarf')
+        self.db_api.image_tag_create(self.context, IMG_ID, 'snarf')
 
-        self.assertEquals(('ping', 'pong', UUID3, False),
+        self.assertEqual(location_data, image['locations'])
+        self.assertEquals(('ping', 'pong', IMG_ID, False),
                           (prop['name'], prop['value'],
                            prop['image_id'], prop['deleted']))
-        self.assertEquals((TENANT2, UUID3, False),
+        self.assertEquals((TENANT2, IMG_ID, False),
                           (member['member'], member['image_id'],
                            member['can_share']))
         self.assertEqual(['snarf'],
-                         self.db_api.image_tag_get_all(self.context, UUID3))
+                         self.db_api.image_tag_get_all(self.context, IMG_ID))
 
-        image = self.db_api.image_destroy(self.adm_context, UUID3)
+        image = self.db_api.image_destroy(self.adm_context, IMG_ID)
         self.assertTrue(image['deleted'])
         self.assertTrue(image['deleted_at'])
         self.assertRaises(exception.NotFound, self.db_api.image_get,
-                          self.context, UUID3)
+                          self.context, IMG_ID)
 
+        self.assertEquals([], image['locations'])
         prop = image['properties'][0]
-        self.assertEquals(('ping', UUID3, True),
+        self.assertEquals(('ping', IMG_ID, True),
                           (prop['name'], prop['image_id'], prop['deleted']))
-        members = self.db_api.image_member_find(self.context, UUID3)
+        self.context.auth_tok = 'user:%s:user' % TENANT2
+        members = self.db_api.image_member_find(self.context, IMG_ID)
         self.assertEquals([], members)
-        tags = self.db_api.image_tag_get_all(self.context, UUID3)
+        tags = self.db_api.image_tag_get_all(self.context, IMG_ID)
         self.assertEquals([], tags)
+
+    def test_image_destroy_with_delete_all(self):
+        """ Check the image child element's _image_delete_all methods
+
+        checks if all the image_delete_all methods deletes only the child
+        elements of the image to be deleted.
+        """
+        TENANT2 = uuidutils.generate_uuid()
+        location_data = [{'url': 'a', 'metadata': {'key': 'value'}},
+                         {'url': 'b', 'metadata': {}}]
+
+        def _create_image_with_child_entries():
+            fixture = {'status': 'queued', 'locations': location_data}
+
+            image_id = self.db_api.image_create(self.context, fixture)['id']
+
+            fixture = {'name': 'ping', 'value': 'pong', 'image_id': image_id}
+            self.db_api.image_property_create(self.context, fixture)
+            fixture = {'image_id': image_id, 'member': TENANT2,
+                       'can_share': False}
+            self.db_api.image_member_create(self.context, fixture)
+            self.db_api.image_tag_create(self.context, image_id, 'snarf')
+            return image_id
+
+        ACTIVE_IMG_ID = _create_image_with_child_entries()
+        DEL_IMG_ID = _create_image_with_child_entries()
+
+        deleted_image = self.db_api.image_destroy(self.adm_context, DEL_IMG_ID)
+        self.assertTrue(deleted_image['deleted'])
+        self.assertTrue(deleted_image['deleted_at'])
+        self.assertRaises(exception.NotFound, self.db_api.image_get,
+                          self.context, DEL_IMG_ID)
+
+        active_image = self.db_api.image_get(self.context, ACTIVE_IMG_ID)
+        self.assertFalse(active_image['deleted'])
+        self.assertFalse(active_image['deleted_at'])
+
+        self.assertEqual(location_data, active_image['locations'])
+        self.assertEquals(1, len(active_image['properties']))
+        prop = active_image['properties'][0]
+        self.assertEquals(('ping', 'pong', ACTIVE_IMG_ID),
+                          (prop['name'], prop['value'],
+                           prop['image_id']))
+        self.assertEquals((False, None),
+                          (prop['deleted'], prop['deleted_at']))
+        self.context.auth_tok = 'user:%s:user' % TENANT2
+        members = self.db_api.image_member_find(self.context, ACTIVE_IMG_ID)
+        self.assertEquals(1, len(members))
+        member = members[0]
+        self.assertEquals((TENANT2, ACTIVE_IMG_ID, False),
+                          (member['member'], member['image_id'],
+                           member['can_share']))
+        tags = self.db_api.image_tag_get_all(self.context, ACTIVE_IMG_ID)
+        self.assertEquals(['snarf'], tags)
 
     def test_image_get_multiple_members(self):
         TENANT1 = uuidutils.generate_uuid()
@@ -745,7 +911,6 @@ class DriverTests(object):
         memberships = self.db_api.image_member_find(self.context)
         self.assertEqual([], memberships)
 
-        create_time = timeutils.utcnow()
         TENANT1 = uuidutils.generate_uuid()
         # NOTE(flaper87): Update auth token, otherwise
         # non visible members won't be returned.
@@ -924,6 +1089,79 @@ class DriverTests(object):
         self.assertEqual(1, len(self.db_api.image_member_find(self.context)))
         member = self.db_api.image_member_delete(self.context, member['id'])
         self.assertEqual(0, len(self.db_api.image_member_find(self.context)))
+
+
+class DriverQuotaTests(test_utils.BaseTestCase):
+
+    def setUp(self):
+        super(DriverQuotaTests, self).setUp()
+        self.owner_id1 = uuidutils.generate_uuid()
+        self.context1 = context.RequestContext(
+            is_admin=False, auth_tok='user:user:user', user=self.owner_id1)
+        self.db_api = db_tests.get_db(self.config)
+        db_tests.reset_db(self.db_api)
+        self.addCleanup(timeutils.clear_time_override)
+        dt1 = timeutils.utcnow()
+        dt2 = dt1 + datetime.timedelta(microseconds=5)
+        fixtures = [
+            {
+                'id': UUID1,
+                'created_at': dt1,
+                'updated_at': dt1,
+                'size': 13,
+                'owner': self.owner_id1,
+            },
+            {
+                'id': UUID2,
+                'created_at': dt1,
+                'updated_at': dt2,
+                'size': 17,
+                'owner': self.owner_id1,
+            },
+            {
+                'id': UUID3,
+                'created_at': dt2,
+                'updated_at': dt2,
+                'size': 7,
+                'owner': self.owner_id1,
+            },
+        ]
+        self.owner1_fixtures = [
+            build_image_fixture(**fixture) for fixture in fixtures]
+
+        for fixture in self.owner1_fixtures:
+            self.db_api.image_create(self.context1, fixture)
+
+    def test_storage_quota(self):
+        total = reduce(lambda x, y: x + y,
+                       [f['size'] for f in self.owner1_fixtures])
+        x = self.db_api.user_get_storage_usage(self.context1, self.owner_id1)
+        self.assertEqual(total, x)
+
+    def test_storage_quota_without_image_id(self):
+        total = reduce(lambda x, y: x + y,
+                       [f['size'] for f in self.owner1_fixtures])
+        total = total - self.owner1_fixtures[0]['size']
+        x = self.db_api.user_get_storage_usage(
+            self.context1, self.owner_id1,
+            image_id=self.owner1_fixtures[0]['id'])
+        self.assertEqual(total, x)
+
+    def test_storage_quota_multiple_locations(self):
+        dt1 = timeutils.utcnow()
+        sz = 53
+        new_fixture_dict = {'id': 'SOMEID', 'created_at': dt1,
+                            'updated_at': dt1, 'size': sz,
+                            'owner': self.owner_id1}
+        new_fixture = build_image_fixture(**new_fixture_dict)
+        new_fixture['locations'].append({'url': 'file:///some/path/file',
+                                         'metadata': {}})
+        self.db_api.image_create(self.context1, new_fixture)
+
+        total = reduce(lambda x, y: x + y,
+                       [f['size'] for f in self.owner1_fixtures]) + (sz * 2)
+        x = self.db_api.user_get_storage_usage(self.context1, self.owner_id1)
+        self.assertEqual(total, x)
 
 
 class TestVisibility(test_utils.BaseTestCase):

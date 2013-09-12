@@ -70,6 +70,9 @@ db_opts = [
     cfg.BoolOpt('db_auto_create', default=False,
                 help=_('A boolean that determines if the database will be '
                        'automatically created.')),
+    cfg.BoolOpt('sqlalchemy_debug', default=False,
+                help=_('Enable debug logging in sqlalchemy which prints '
+                       'every query and result'))
 ]
 
 CONF = cfg.CONF
@@ -118,7 +121,7 @@ def setup_db_env():
     _RETRY_INTERVAL = CONF.sql_retry_interval
     _CONNECTION = CONF.sql_connection
     sa_logger = logging.getLogger('sqlalchemy.engine')
-    if CONF.debug:
+    if CONF.sqlalchemy_debug:
         sa_logger.setLevel(logging.DEBUG)
 
 
@@ -188,7 +191,7 @@ def get_engine():
             raise
 
         sa_logger = logging.getLogger('sqlalchemy.engine')
-        if CONF.debug:
+        if CONF.sqlalchemy_debug:
             sa_logger.setLevel(logging.DEBUG)
 
         if CONF.db_auto_create:
@@ -280,21 +283,17 @@ def image_destroy(context, image_id):
         # Perform authorization check
         _check_mutate_authorization(context, image_ref)
 
-        _image_locations_set(image_ref.id, [], session)
-
         image_ref.delete(session=session)
+        delete_time = image_ref.deleted_at
 
-        for prop_ref in image_ref.properties:
-            image_property_delete(context, prop_ref.name,
-                                  image_id, session=session)
+        _image_locations_delete_all(context, image_ref.id, delete_time,
+                                    session)
 
-        members = _image_member_find(context, session, image_id=image_id)
-        for memb_ref in members:
-            _image_member_delete(context, memb_ref, session)
+        _image_property_delete_all(context, image_id, delete_time, session)
 
-        tag_values = image_tag_get_all(context, image_id, session=session)
-        for tag_value in tag_values:
-            image_tag_delete(context, image_id, tag_value, session=session)
+        _image_member_delete_all(context, image_id, delete_time, session)
+
+        _image_tag_delete_all(context, image_id, delete_time, session)
 
     return _normalize_locations(image_ref)
 
@@ -609,8 +608,8 @@ def image_get_all(context, filters=None, marker=None, limit=None,
     showing_deleted = False
 
     if 'checksum' in filters:
-        checksum = filters.get('checksum')
-        query = query.filter_by(checksum=checksum)
+        checksum = filters.pop('checksum')
+        query = query.filter(models.Image.checksum == checksum)
 
     if 'changes-since' in filters:
         # normalize timestamp to UTC, as sqlalchemy doesn't appear to
@@ -631,6 +630,12 @@ def image_get_all(context, filters=None, marker=None, limit=None,
         query = query.filter(models.Image.properties.any(name=k,
                                                          value=v,
                                                          deleted=False))
+
+    if 'tags' in filters:
+        tags = filters.pop('tags')
+        for tag in tags:
+            query = query.filter(models.Image.tags.any(value=tag,
+                                                       deleted=False))
 
     for (k, v) in filters.items():
         if v is not None:
@@ -659,8 +664,11 @@ def image_get_all(context, filters=None, marker=None, limit=None,
         marker_image = _image_get(context, marker,
                                   force_show_deleted=showing_deleted)
 
+    sort_keys = ['created_at', 'id']
+    sort_keys.insert(0, sort_key) if sort_key not in sort_keys else sort_keys
+
     query = _paginate_query(query, models.Image, limit,
-                            [sort_key, 'created_at', 'id'],
+                            sort_keys,
                             marker=marker_image,
                             sort_dir=sort_dir)
 
@@ -680,6 +688,17 @@ def _drop_protected_attrs(model_class, values):
             del values[attr]
 
 
+def _image_get_disk_usage_by_owner(owner, session, image_id=None):
+    query = session.query(models.Image)
+    query = query.filter(models.Image.owner == owner)
+    if image_id is not None:
+        query = query.filter(models.Image.id != image_id)
+    query = query.filter(models.Image.size > 0)
+    images = query.all()
+    total = sum([i.size * len(i.locations) for i in images])
+    return total
+
+
 def _validate_image(values):
     """
     Validates the incoming data and raises a Invalid exception
@@ -687,7 +706,6 @@ def _validate_image(values):
 
     :param values: Mapping of image metadata to check
     """
-    status = values.get('status')
 
     status = values.get('status', None)
     if not status:
@@ -800,6 +818,16 @@ def _image_locations_set(image_id, locations, session):
         location_ref.save()
 
 
+def _image_locations_delete_all(context, image_id, delete_time=None,
+                                session=None):
+    """Delete all image locations for given image"""
+    locs_updated_count = _image_child_entry_delete_all(models.ImageLocation,
+                                                       image_id,
+                                                       delete_time,
+                                                       session)
+    return locs_updated_count
+
+
 def _set_properties_for_image(context, image_ref, properties,
                               purge_props=False, session=None):
     """
@@ -833,6 +861,38 @@ def _set_properties_for_image(context, image_ref, properties,
                                       image_ref.id, session=session)
 
 
+def _image_child_entry_delete_all(child_model_cls, image_id, delete_time=None,
+                                  session=None):
+    """Deletes all the child entries for the given image id.
+
+    Deletes all the child entries of the given child entry ORM model class
+    using the parent image's id.
+
+    The child entry ORM model class can be one of the following:
+    model.ImageLocation, model.ImageProperty, model.ImageMember and
+    model.ImageTag.
+
+    :param child_model_cls: the ORM model class.
+    :param image_id: id of the image whose child entries are to be deleted.
+    :param delete_time: datetime of deletion to be set.
+                        If None, uses current datetime.
+    :param session: A SQLAlchemy session to use (if present)
+
+    :rtype: int
+    :return: The number of child entries got soft-deleted.
+    """
+    session = session or _get_session()
+
+    query = session.query(child_model_cls) \
+        .filter_by(image_id=image_id) \
+        .filter_by(deleted=False)
+
+    delete_time = delete_time or timeutils.utcnow()
+
+    count = query.update({"deleted": True, "deleted_at": delete_time})
+    return count
+
+
 def image_property_create(context, values, session=None):
     """Create an ImageProperty object"""
     prop_ref = models.ImageProperty()
@@ -860,6 +920,16 @@ def image_property_delete(context, prop_ref, image_ref, session=None):
                                                          name=prop_ref).one()
     prop.delete(session=session)
     return prop
+
+
+def _image_property_delete_all(context, image_id, delete_time=None,
+                               session=None):
+    """Delete all image properties for given image"""
+    props_updated_count = _image_child_entry_delete_all(models.ImageProperty,
+                                                        image_id,
+                                                        delete_time,
+                                                        session)
+    return props_updated_count
 
 
 def image_member_create(context, values, session=None):
@@ -909,6 +979,16 @@ def image_member_delete(context, memb_id, session=None):
 
 def _image_member_delete(context, memb_ref, session):
     memb_ref.delete(session=session)
+
+
+def _image_member_delete_all(context, image_id, delete_time=None,
+                             session=None):
+    """Delete all image members for given image"""
+    members_updated_count = _image_child_entry_delete_all(models.ImageMember,
+                                                          image_id,
+                                                          delete_time,
+                                                          session)
+    return members_updated_count
 
 
 def _image_member_get(context, memb_id, session):
@@ -1005,6 +1085,15 @@ def image_tag_delete(context, image_id, value, session=None):
     tag_ref.delete(session=session)
 
 
+def _image_tag_delete_all(context, image_id, delete_time=None, session=None):
+    """Delete all image tags for given image"""
+    tags_updated_count = _image_child_entry_delete_all(models.ImageTag,
+                                                       image_id,
+                                                       delete_time,
+                                                       session)
+    return tags_updated_count
+
+
 def image_tag_get_all(context, image_id, session=None):
     """Get a list of tags for a specific image."""
     session = session or _get_session()
@@ -1014,3 +1103,10 @@ def image_tag_get_all(context, image_id, session=None):
                   .order_by(sqlalchemy.asc(models.ImageTag.created_at))\
                   .all()
     return [tag['value'] for tag in tags]
+
+
+def user_get_storage_usage(context, owner_id, image_id=None, session=None):
+    session = session or _get_session()
+    total_size = _image_get_disk_usage_by_owner(
+        owner_id, session, image_id=image_id)
+    return total_size

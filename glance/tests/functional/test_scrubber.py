@@ -17,6 +17,7 @@
 
 import json
 import os
+import sys
 import time
 
 import httplib2
@@ -120,8 +121,9 @@ class TestScrubber(functional.FunctionalTest):
         time.sleep(self.api_server.scrub_time)
 
         # scrub images and make sure they get deleted
-        cmd = ("glance-scrubber --config-file %s" %
-               self.scrubber_daemon.conf_file_name)
+        exe_cmd = "%s -m glance.cmd.scrubber" % sys.executable
+        cmd = ("%s --config-file %s" %
+               (exe_cmd, self.scrubber_daemon.conf_file_name))
         exitcode, out, err = execute(cmd, raise_error=False)
         self.assertEqual(0, exitcode)
 
@@ -180,8 +182,9 @@ class TestScrubber(functional.FunctionalTest):
         time.sleep(self.api_server.scrub_time)
 
         # call the scrubber to scrub images
-        cmd = ("glance-scrubber --config-file %s" %
-               self.scrubber_daemon.conf_file_name)
+        exe_cmd = "%s -m glance.cmd.scrubber" % sys.executable
+        cmd = ("%s --config-file %s" %
+               (exe_cmd, self.scrubber_daemon.conf_file_name))
         exitcode, out, err = execute(cmd, raise_error=False)
         self.assertEqual(0, exitcode)
 
@@ -239,7 +242,7 @@ class TestScrubber(functional.FunctionalTest):
         # it and checking the image_id is intact
         file_path = os.path.join(self.api_server.scrubber_datadir,
                                  str(image_id))
-        marker_uri = ''
+        marker_uri = None
         with open(file_path, 'r') as f:
             marker_uri = f.readline().strip()
         self.assertTrue(marker_uri is not None)
@@ -318,8 +321,9 @@ class TestScrubber(functional.FunctionalTest):
         time.sleep(self.api_server.scrub_time)
 
         # run the scrubber app, and ensure it doesn't fall over
-        cmd = ("glance-scrubber --config-file %s" %
-               self.scrubber_daemon.conf_file_name)
+        exe_cmd = "%s -m glance.cmd.scrubber" % sys.executable
+        cmd = ("%s --config-file %s" %
+               (exe_cmd, self.scrubber_daemon.conf_file_name))
         exitcode, out, err = execute(cmd, raise_error=False)
         self.assertEqual(0, exitcode)
 
@@ -380,8 +384,9 @@ class TestScrubber(functional.FunctionalTest):
         time.sleep(self.api_server.scrub_time)
 
         # run the scrubber app, and ensure it doesn't fall over
-        cmd = ("glance-scrubber --config-file %s" %
-               self.scrubber_daemon.conf_file_name)
+        exe_cmd = "%s -m glance.cmd.scrubber" % sys.executable
+        cmd = ("%s --config-file %s" %
+               (exe_cmd, self.scrubber_daemon.conf_file_name))
         exitcode, out, err = execute(cmd, raise_error=False)
         self.assertEqual(0, exitcode)
 

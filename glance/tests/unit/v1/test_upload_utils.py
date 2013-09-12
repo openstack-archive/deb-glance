@@ -43,7 +43,7 @@ class TestUploadUtils(base.StoreClearingUnitTest):
         id = unit_test_utils.UUID1
 
         self.mox.StubOutWithMock(glance.store, "safe_delete_from_backend")
-        glance.store.safe_delete_from_backend(location, req.context, id)
+        glance.store.safe_delete_from_backend(req.context, location, id)
         self.mox.ReplayAll()
 
         upload_utils.initiate_deletion(req, location, id)
@@ -57,7 +57,8 @@ class TestUploadUtils(base.StoreClearingUnitTest):
 
         self.mox.StubOutWithMock(glance.store,
                                  "schedule_delayed_delete_from_backend")
-        glance.store.schedule_delayed_delete_from_backend(location,
+        glance.store.schedule_delayed_delete_from_backend(req.context,
+                                                          location,
                                                           id)
         self.mox.ReplayAll()
 
@@ -154,7 +155,7 @@ class TestUploadUtils(base.StoreClearingUnitTest):
                                        update_data
                                        ).AndReturn(
                                            image_meta.update(update_data))
-
+        notifier.error('image.upload', mox.IgnoreArg())
         self.mox.ReplayAll()
 
         self.assertRaises(webob.exc.HTTPBadRequest,
@@ -190,7 +191,7 @@ class TestUploadUtils(base.StoreClearingUnitTest):
                                        image_meta['id'],
                                        update_data).AndReturn(
                                                image_meta.update(update_data))
-
+        notifier.error('image.upload', mox.IgnoreArg())
         self.mox.ReplayAll()
 
         self.assertRaises(webob.exc.HTTPBadRequest,
@@ -260,12 +261,14 @@ class TestUploadUtils(base.StoreClearingUnitTest):
         self.mox.VerifyAll()
 
     def test_upload_data_to_store_duplicate(self):
-        self._test_upload_data_to_store_exception(exception.Duplicate,
-                                                  webob.exc.HTTPConflict)
+        self._test_upload_data_to_store_exception_with_notify(
+                                        exception.Duplicate,
+                                        webob.exc.HTTPConflict)
 
     def test_upload_data_to_store_forbidden(self):
-        self._test_upload_data_to_store_exception(exception.Forbidden,
-                                                  webob.exc.HTTPForbidden)
+        self._test_upload_data_to_store_exception_with_notify(
+                                        exception.Forbidden,
+                                        webob.exc.HTTPForbidden)
 
     def test_upload_data_to_store_storage_full(self):
         self._test_upload_data_to_store_exception_with_notify(
@@ -278,17 +281,27 @@ class TestUploadUtils(base.StoreClearingUnitTest):
                                         webob.exc.HTTPServiceUnavailable)
 
     def test_upload_data_to_store_size_limit_exceeded(self):
-        self._test_upload_data_to_store_exception(
+        self._test_upload_data_to_store_exception_with_notify(
                                         exception.ImageSizeLimitExceeded,
                                         webob.exc.HTTPRequestEntityTooLarge)
 
     def test_upload_data_to_store_http_error(self):
-        self._test_upload_data_to_store_exception(
+        self._test_upload_data_to_store_exception_with_notify(
                                         webob.exc.HTTPError,
                                         webob.exc.HTTPError)
 
-    def test_upload_data_to_store_exception(self):
+    def test_upload_data_to_store_client_disconnect(self):
         self._test_upload_data_to_store_exception(
+                                        ValueError,
+                                        webob.exc.HTTPBadRequest)
+
+    def test_upload_data_to_store_client_disconnect_ioerror(self):
+        self._test_upload_data_to_store_exception(
+                                        IOError,
+                                        webob.exc.HTTPBadRequest)
+
+    def test_upload_data_to_store_exception(self):
+        self._test_upload_data_to_store_exception_with_notify(
                                         Exception,
                                         webob.exc.HTTPInternalServerError)
 
@@ -322,6 +335,7 @@ class TestUploadUtils(base.StoreClearingUnitTest):
                                        mox.IsA(bool))
         self.mox.StubOutWithMock(upload_utils, "safe_kill")
         upload_utils.safe_kill(req, image_meta['id'])
+        notifier.error('image.upload', mox.IgnoreArg())
         self.mox.ReplayAll()
 
         self.assertRaises(webob.exc.HTTPPreconditionFailed,

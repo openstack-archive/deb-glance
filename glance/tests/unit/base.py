@@ -25,6 +25,7 @@ import stubout
 
 from glance import store
 from glance.store import location
+from glance.store import sheepdog
 from glance.tests import stubs
 from glance.tests import utils as test_utils
 
@@ -39,8 +40,16 @@ class StoreClearingUnitTest(test_utils.BaseTestCase):
         super(StoreClearingUnitTest, self).setUp()
         # Ensure stores + locations cleared
         location.SCHEME_TO_CLS_MAP = {}
-        store.create_stores()
+
+        self._create_stores()
         self.addCleanup(setattr, location, 'SCHEME_TO_CLS_MAP', dict())
+
+    def _create_stores(self):
+        """Create known stores. Mock out sheepdog's subprocess dependency
+        on collie.
+        """
+        self.stubs.Set(sheepdog.Store, 'configure_add', lambda x: None)
+        store.create_stores()
 
 
 class IsolatedUnitTest(StoreClearingUnitTest):
@@ -54,18 +63,17 @@ class IsolatedUnitTest(StoreClearingUnitTest):
     def setUp(self):
         super(IsolatedUnitTest, self).setUp()
         self.test_dir = self.useFixture(fixtures.TempDir()).path
-        self.stubs = stubout.StubOutForTesting()
         policy_file = self._copy_data_file('policy.json', self.test_dir)
         self.config(sql_connection='sqlite://',
                     verbose=False,
                     debug=False,
                     default_store='filesystem',
                     filesystem_store_datadir=os.path.join(self.test_dir),
-                    policy_file=policy_file)
+                    policy_file=policy_file,
+                    lock_path=os.path.join(self.test_dir))
         stubs.stub_out_registry_and_store_server(self.stubs,
                                                  self.test_dir,
                                                  registry=self.registry)
-        self.addCleanup(self.stubs.UnsetAll)
 
     def _copy_data_file(self, file_name, dst_dir):
         src_file_name = os.path.join('glance/tests/etc', file_name)

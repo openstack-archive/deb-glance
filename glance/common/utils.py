@@ -49,6 +49,18 @@ LOG = logging.getLogger(__name__)
 
 FEATURE_BLACKLIST = ['content-length', 'content-type', 'x-image-meta-size']
 
+# Whitelist of v1 API headers of form x-image-meta-xxx
+IMAGE_META_HEADERS = ['x-image-meta-location', 'x-image-meta-size',
+                      'x-image-meta-is_public', 'x-image-meta-disk_format',
+                      'x-image-meta-container_format', 'x-image-meta-name',
+                      'x-image-meta-status', 'x-image-meta-copy_from',
+                      'x-image-meta-uri', 'x-image-meta-checksum',
+                      'x-image-meta-created_at', 'x-image-meta-updated_at',
+                      'x-image-meta-deleted-at', 'x-image-meta-min_ram',
+                      'x-image-meta-min_disk', 'x-image-meta-owner',
+                      'x-image-meta-store', 'x-image-meta-id',
+                      'x-image-meta-protected', 'x-image-meta-deleted']
+
 GLANCE_TEST_SOCKET_FD_STR = 'GLANCE_TEST_SOCKET_FD'
 
 
@@ -237,6 +249,9 @@ def get_image_meta_from_headers(response):
             properties[field_name] = value or None
         elif key.startswith('x-image-meta-'):
             field_name = key[len('x-image-meta-'):].replace('-', '_')
+            if 'x-image-meta-' + field_name not in IMAGE_META_HEADERS:
+                msg = _("Bad header: %(header_name)s") % {'header_name': key}
+                raise exc.HTTPBadRequest(msg, content_type="text/plain")
             result[field_name] = value or None
     result['properties'] = properties
     if 'size' in result:
@@ -478,12 +493,12 @@ def validate_key_cert(key_file, cert_file):
         cert = crypto.load_certificate(crypto.FILETYPE_PEM, cert_str)
     except IOError, ioe:
         raise RuntimeError(_("There is a problem with your %s "
-                             "%s.  Please verify it.  Error: %s"
-                             % (error_key_name, error_filename, ioe)))
+                             "%s.  Please verify it.  Error: %s")
+                           % (error_key_name, error_filename, ioe))
     except crypto.Error, ce:
         raise RuntimeError(_("There is a problem with your %s "
-                             "%s.  Please verify it. OpenSSL error: %s"
-                             % (error_key_name, error_filename, ce)))
+                             "%s.  Please verify it. OpenSSL error: %s")
+                           % (error_key_name, error_filename, ce))
 
     try:
         data = str(uuid.uuid4())
@@ -494,8 +509,8 @@ def validate_key_cert(key_file, cert_file):
     except crypto.Error, ce:
         raise RuntimeError(_("There is a problem with your key pair.  "
                              "Please verify that cert %s and key %s "
-                             "belong together.  OpenSSL error %s"
-                             % (cert_file, key_file, ce)))
+                             "belong together.  OpenSSL error %s")
+                           % (cert_file, key_file, ce))
 
 
 def get_test_suite_socket():

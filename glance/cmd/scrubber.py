@@ -61,7 +61,7 @@ def main():
         glance.store.create_stores()
         glance.store.verify_default_store()
 
-        app = glance.store.scrubber.Scrubber()
+        app = glance.store.scrubber.Scrubber(glance.store)
 
         if CONF.daemon:
             server = glance.store.scrubber.Daemon(CONF.wakeup_time)
@@ -73,3 +73,7 @@ def main():
             scrubber = app.run(pool)
     except RuntimeError as e:
         sys.exit("ERROR: %s" % e)
+
+
+if __name__ == '__main__':
+    main()

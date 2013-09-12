@@ -26,6 +26,7 @@ import hashlib
 import json
 import os
 import shutil
+import sys
 import time
 
 import httplib2
@@ -52,9 +53,6 @@ class BaseCacheMiddlewareTest(object):
         """
         self.cleanup()
         self.start_servers(**self.__dict__.copy())
-
-        api_port = self.api_port
-        registry_port = self.registry_port
 
         # Add an image and verify a 200 OK is returned
         image_data = "*" * FIVE_KB
@@ -186,9 +184,6 @@ class BaseCacheMiddlewareTest(object):
         self.start_servers(**self.__dict__.copy())
 
         setup_http(self)
-
-        api_port = self.api_port
-        registry_port = self.registry_port
 
         # Add a remote image and verify a 201 Created is returned
         remote_uri = get_http_uri(self, '2')
@@ -343,9 +338,6 @@ class BaseCacheManageMiddlewareTest(object):
         self.cleanup()
         self.start_servers(**self.__dict__.copy())
 
-        api_port = self.api_port
-        registry_port = self.registry_port
-
         self.verify_no_images()
 
         image_id = self.add_image("Image1")
@@ -369,6 +361,17 @@ class BaseCacheManageMiddlewareTest(object):
 
         data = json.loads(content)
         self.assertTrue('cached_images' in data)
+
+        # Verify the last_modified/last_accessed values are valid floats
+        for cached_image in data['cached_images']:
+            for time_key in ('last_modified', 'last_accessed'):
+                time_val = cached_image[time_key]
+                try:
+                    float(time_val)
+                except ValueError:
+                    self.fail('%s time %s for cached image %s not a valid '
+                              'float' % (time_key, time_val,
+                                         cached_image['image_id']))
 
         cached_images = data['cached_images']
         self.assertEqual(1, len(cached_images))
@@ -405,8 +408,6 @@ class BaseCacheManageMiddlewareTest(object):
         """
         self.cleanup()
         self.start_servers(**self.__dict__.copy())
-
-        api_port = self.api_port
 
         self.verify_no_images()
 
@@ -484,15 +485,56 @@ class BaseCacheManageMiddlewareTest(object):
         self.stop_servers()
 
     @skip_if_disabled
+    def test_cache_manage_delete_queued_images(self):
+        """
+        Tests that all queued images may be deleted at once
+        """
+        self.cleanup()
+        self.start_servers(**self.__dict__.copy())
+
+        self.verify_no_images()
+
+        ids = {}
+        NUM_IMAGES = 4
+
+        # Add and then queue some images
+        for x in xrange(0, NUM_IMAGES):
+            ids[x] = self.add_image("Image%s" % str(x))
+            path = "http://%s:%d/v1/queued_images/%s" % ("127.0.0.1",
+                                                         self.api_port, ids[x])
+            http = httplib2.Http()
+            response, content = http.request(path, 'PUT')
+            self.assertEqual(response.status, 200)
+
+        # Delete all queued images
+        path = "http://%s:%d/v1/queued_images" % ("127.0.0.1", self.api_port)
+        http = httplib2.Http()
+        response, content = http.request(path, 'DELETE')
+        self.assertEqual(response.status, 200)
+
+        data = json.loads(content)
+        num_deleted = data['num_deleted']
+        self.assertEqual(NUM_IMAGES, num_deleted)
+
+        # Verify a second delete now returns num_deleted=0
+        path = "http://%s:%d/v1/queued_images" % ("127.0.0.1", self.api_port)
+        http = httplib2.Http()
+        response, content = http.request(path, 'DELETE')
+        self.assertEqual(response.status, 200)
+
+        data = json.loads(content)
+        num_deleted = data['num_deleted']
+        self.assertEqual(0, num_deleted)
+
+        self.stop_servers()
+
+    @skip_if_disabled
     def test_queue_and_prefetch(self):
         """
         Tests that images may be queued and prefetched
         """
         self.cleanup()
         self.start_servers(**self.__dict__.copy())
-
-        api_port = self.api_port
-        registry_port = self.registry_port
 
         cache_config_filepath = os.path.join(self.test_dir, 'etc',
                                              'glance-cache.conf')
@@ -534,8 +576,8 @@ log_file = %(log_file)s
 
         self.verify_no_cached_images()
 
-        cmd = ("glance-cache-prefetcher --config-file %s" %
-               cache_config_filepath)
+        cmd = ("%s -m glance.cmd.cache_prefetcher --config-file %s" %
+               (sys.executable, cache_config_filepath))
 
         exitcode, out, err = execute(cmd)
 

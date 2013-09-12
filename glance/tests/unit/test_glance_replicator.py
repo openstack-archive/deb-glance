@@ -195,12 +195,15 @@ class ImageServiceTestCase(test_utils.BaseTestCase):
     def test_rest_dict_to_headers(self):
         i = {'banana': 42,
              'gerkin': 12,
-             'properties': {'frog': 1}
+             'properties': {'frog': 1,
+                            'kernel_id': None}
              }
         o = glance_replicator.ImageService._dict_to_headers(i)
         self.assertTrue('x-image-meta-banana' in o)
         self.assertTrue('x-image-meta-gerkin' in o)
         self.assertTrue('x-image-meta-property-frog' in o)
+        self.assertTrue('x-image-meta-property-kernel_id' in o)
+        self.assertEqual(o['x-image-meta-property-kernel_id'], '')
         self.assertFalse('properties' in o)
 
     def test_rest_add_image(self):
@@ -298,6 +301,38 @@ def get_image_service():
     return FakeImageService
 
 
+def check_no_args(command, args):
+    options = UserDict.UserDict()
+    no_args_error = False
+
+    orig_img_service = glance_replicator.get_image_service
+    try:
+        glance_replicator.get_image_service = get_image_service
+        command(options, args)
+    except TypeError:
+        no_args_error = True
+    finally:
+        glance_replicator.get_image_service = orig_img_service
+
+    return no_args_error
+
+
+def check_bad_args(command, args):
+    options = UserDict.UserDict()
+    bad_args_error = False
+
+    orig_img_service = glance_replicator.get_image_service
+    try:
+        glance_replicator.get_image_service = get_image_service
+        command(options, args)
+    except ValueError:
+        bad_args_error = True
+    finally:
+        glance_replicator.get_image_service = orig_img_service
+
+    return bad_args_error
+
+
 class ReplicationCommandsTestCase(test_utils.BaseTestCase):
     def test_replication_size(self):
         options = UserDict.UserDict()
@@ -318,6 +353,16 @@ class ReplicationCommandsTestCase(test_utils.BaseTestCase):
 
         output = output.rstrip()
         self.assertEqual(output, 'Total size is 400 bytes across 2 images')
+
+    def test_replication_size_with_no_args(self):
+        args = []
+        command = glance_replicator.replication_size
+        self.assertTrue(check_no_args(command, args))
+
+    def test_replication_size_with_bad_args(self):
+        args = ['aaa']
+        command = glance_replicator.replication_size
+        self.assertTrue(check_bad_args(command, args))
 
     def test_replication_dump(self):
         tempdir = self.useFixture(fixtures.TempDir()).path
@@ -356,6 +401,16 @@ class ReplicationCommandsTestCase(test_utils.BaseTestCase):
                 self.assertTrue('status' in d)
                 self.assertTrue('id' in d)
                 self.assertTrue('size' in d)
+
+    def test_replication_dump_with_no_args(self):
+        args = []
+        command = glance_replicator.replication_dump
+        self.assertTrue(check_no_args(command, args))
+
+    def test_replication_dump_with_bad_args(self):
+        args = ['aaa', 'bbb']
+        command = glance_replicator.replication_dump
+        self.assertTrue(check_bad_args(command, args))
 
     def test_replication_load(self):
         tempdir = self.useFixture(fixtures.TempDir()).path
@@ -416,6 +471,16 @@ class ReplicationCommandsTestCase(test_utils.BaseTestCase):
         self.assertTrue(new_id in updated)
         self.assertFalse(new_id_missing_data in updated)
 
+    def test_replication_load_with_no_args(self):
+        args = []
+        command = glance_replicator.replication_load
+        self.assertTrue(check_no_args(command, args))
+
+    def test_replication_load_with_bad_args(self):
+        args = ['aaa', 'bbb']
+        command = glance_replicator.replication_load
+        self.assertTrue(check_bad_args(command, args))
+
     def test_replication_livecopy(self):
         options = UserDict.UserDict()
         options.chunksize = 4096
@@ -433,6 +498,16 @@ class ReplicationCommandsTestCase(test_utils.BaseTestCase):
             glance_replicator.get_image_service = orig_img_service
 
         self.assertEqual(len(updated), 2)
+
+    def test_replication_livecopy_with_no_args(self):
+        args = []
+        command = glance_replicator.replication_livecopy
+        self.assertTrue(check_no_args(command, args))
+
+    def test_replication_livecopy_with_bad_args(self):
+        args = ['aaa', 'bbb']
+        command = glance_replicator.replication_livecopy
+        self.assertTrue(check_bad_args(command, args))
 
     def test_replication_compare(self):
         options = UserDict.UserDict()
@@ -456,6 +531,16 @@ class ReplicationCommandsTestCase(test_utils.BaseTestCase):
         self.assertTrue('37ff82db-afca-48c7-ae0b-ddc7cf83e3db' in differences)
         self.assertEqual(differences['37ff82db-afca-48c7-ae0b-ddc7cf83e3db'],
                          'diff')
+
+    def test_replication_compare_with_no_args(self):
+        args = []
+        command = glance_replicator.replication_compare
+        self.assertTrue(check_no_args(command, args))
+
+    def test_replication_compare_with_bad_args(self):
+        args = ['aaa', 'bbb']
+        command = glance_replicator.replication_compare
+        self.assertTrue(check_bad_args(command, args))
 
 
 class ReplicationUtilitiesTestCase(test_utils.BaseTestCase):

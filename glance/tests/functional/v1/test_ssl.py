@@ -7,7 +7,7 @@
 #    not use this file except in compliance with the License. You may obtain
 #    a copy of the License at
 #
-#         https://www.apache.org/licenses/LICENSE-2.0
+#         http://www.apache.org/licenses/LICENSE-2.0
 #
 #    Unless required by applicable law or agreed to in writing, software
 #    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -470,8 +470,13 @@ class TestSSL(functional.FunctionalTest):
         self.start_servers(**self.__dict__.copy())
 
         versions = {'versions': [{
-            "id": "v2.1",
+            "id": "v2.2",
             "status": "CURRENT",
+            "links": [{
+                "rel": "self",
+                "href": "https://127.0.0.1:%d/v2/" % self.api_port}]}, {
+            "id": "v2.1",
+            "status": "SUPPORTED",
             "links": [{
                 "rel": "self",
                 "href": "https://127.0.0.1:%d/v2/" % self.api_port}]}, {
@@ -692,7 +697,6 @@ class TestSSL(functional.FunctionalTest):
         with tempfile.NamedTemporaryFile() as test_data_file:
             test_data_file.write("XXX")
             test_data_file.flush()
-        path = "https://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
         headers = {'X-Image-Meta-Name': 'Image1',
                    'X-Image-Meta-Container-Format': 'ovf',
                    'X-Image-Meta-Disk-Format': 'vdi'}

@@ -37,6 +37,8 @@ import glance.store
 LOG = logging.getLogger(__name__)
 
 CONF = cfg.CONF
+CONF.import_opt('disk_formats', 'glance.domain')
+CONF.import_opt('container_formats', 'glance.domain')
 
 
 class ImagesController(object):
@@ -115,11 +117,17 @@ class ImagesController(object):
                     image_repo.save(image)
 
         except exception.NotFound:
-            msg = _("Failed to find image %(image_id)s to update" % locals())
+            msg = _("Failed to find image %(image_id)s to update") % locals()
             LOG.info(msg)
             raise webob.exc.HTTPNotFound(explanation=msg)
         except exception.Forbidden as e:
             raise webob.exc.HTTPForbidden(explanation=unicode(e))
+        except exception.StorageQuotaFull as e:
+            msg = (_("Denying attempt to upload image because it exceeds the ."
+                     "quota: %s") % e)
+            LOG.info(msg)
+            raise webob.exc.HTTPRequestEntityTooLarge(
+                explanation=msg, request=req, content_type='text/plain')
 
         return image
 
@@ -347,20 +355,20 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
         We only accept a limited form of json pointers.
         """
         if not pointer.startswith('/'):
-            msg = _('Pointer `%s` does not start with "/".' % pointer)
+            msg = _('Pointer `%s` does not start with "/".') % pointer
             raise webob.exc.HTTPBadRequest(explanation=msg)
         if re.search('/\s*?/', pointer[1:]):
-            msg = _('Pointer `%s` contains adjacent "/".' % pointer)
+            msg = _('Pointer `%s` contains adjacent "/".') % pointer
             raise webob.exc.HTTPBadRequest(explanation=msg)
         if len(pointer) > 1 and pointer.endswith('/'):
-            msg = _('Pointer `%s` end with "/".' % pointer)
+            msg = _('Pointer `%s` end with "/".') % pointer
             raise webob.exc.HTTPBadRequest(explanation=msg)
         if pointer[1:].strip() == '/':
-            msg = _('Pointer `%s` does not contains valid token.' % pointer)
+            msg = _('Pointer `%s` does not contains valid token.') % pointer
             raise webob.exc.HTTPBadRequest(explanation=msg)
         if re.search('~[^01]', pointer) or pointer.endswith('~'):
             msg = _('Pointer `%s` contains "~" not part of'
-                    ' a recognized escape sequence.' % pointer)
+                    ' a recognized escape sequence.') % pointer
             raise webob.exc.HTTPBadRequest(explanation=msg)
 
     def _get_change_value(self, raw_change, op):
@@ -384,8 +392,8 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
         partial_image = None
         if len(change['path']) == 1:
             partial_image = {path_root: change['value']}
-        elif ((path_root in _BASE_PROPERTIES.keys()) and
-              (_BASE_PROPERTIES[path_root].get('type', '') == 'array')):
+        elif ((path_root in _get_base_properties().keys()) and
+              (_get_base_properties()[path_root].get('type', '') == 'array')):
             # NOTE(zhiyan): cient can use PATCH API to adding element to
             # the image's existing set property directly.
             # Such as: 1. using '/locations/N' path to adding a location
@@ -476,14 +484,14 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
 
     def _validate_sort_dir(self, sort_dir):
         if sort_dir not in ['asc', 'desc']:
-            msg = _('Invalid sort direction: %s' % sort_dir)
+            msg = _('Invalid sort direction: %s') % sort_dir
             raise webob.exc.HTTPBadRequest(explanation=msg)
 
         return sort_dir
 
     def _validate_member_status(self, member_status):
         if member_status not in ['pending', 'accepted', 'rejected', 'all']:
-            msg = _('Invalid status: %s' % member_status)
+            msg = _('Invalid status: %s') % member_status
             raise webob.exc.HTTPBadRequest(explanation=msg)
 
         return member_status
@@ -503,6 +511,14 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
         marker = params.pop('marker', None)
         sort_dir = params.pop('sort_dir', 'desc')
         member_status = params.pop('member_status', 'accepted')
+
+        # NOTE (flwang) To avoid using comma or any predefined chars to split
+        # multiple tags, now we allow user specify multiple 'tag' parameters
+        # in URL, such as v2/images?tag=x86&tag=64bit.
+        tags = []
+        while 'tag' in params:
+            tags.append(params.pop('tag').strip())
+
         query_params = {
             'sort_key': params.pop('sort_key', 'created_at'),
             'sort_dir': self._validate_sort_dir(sort_dir),
@@ -515,6 +531,9 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
 
         if limit is not None:
             query_params['limit'] = self._validate_limit(limit)
+
+        if tags:
+            query_params['filters']['tags'] = tags
 
         return query_params
 
@@ -591,123 +610,136 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
         response.status_int = 204
 
 
-_BASE_PROPERTIES = {
-    'id': {
-        'type': 'string',
-        'description': _('An identifier for the image'),
-        'pattern': ('^([0-9a-fA-F]){8}-([0-9a-fA-F]){4}-([0-9a-fA-F]){4}'
-                    '-([0-9a-fA-F]){4}-([0-9a-fA-F]){12}$'),
-    },
-    'name': {
-        'type': 'string',
-        'description': _('Descriptive name for the image'),
-        'maxLength': 255,
-    },
-    'status': {
-        'type': 'string',
-        'description': _('Status of the image'),
-        'enum': ['queued', 'saving', 'active', 'killed',
-                 'deleted', 'pending_delete'],
-    },
-    'visibility': {
-        'type': 'string',
-        'description': _('Scope of image accessibility'),
-        'enum': ['public', 'private'],
-    },
-    'protected': {
-        'type': 'boolean',
-        'description': _('If true, image will not be deletable.'),
-    },
-    'checksum': {
-        'type': 'string',
-        'description': _('md5 hash of image contents.'),
-        'type': 'string',
-        'maxLength': 32,
-    },
-    'size': {
-        'type': 'integer',
-        'description': _('Size of image file in bytes'),
-    },
-    'container_format': {
-        'type': 'string',
-        'description': _('Format of the container'),
-        'type': 'string',
-        'enum': ['bare', 'ovf', 'ami', 'aki', 'ari'],
-    },
-    'disk_format': {
-        'type': 'string',
-        'description': _('Format of the disk'),
-        'type': 'string',
-        'enum': ['raw', 'vhd', 'vmdk', 'vdi', 'iso', 'qcow2',
-                 'aki', 'ari', 'ami'],
-    },
-    'created_at': {
-        'type': 'string',
-        'description': _('Date and time of image registration'),
-        #TODO(bcwaldon): our jsonschema library doesn't seem to like the
-        # format attribute, figure out why!
-        #'format': 'date-time',
-    },
-    'updated_at': {
-        'type': 'string',
-        'description': _('Date and time of the last image modification'),
-        #'format': 'date-time',
-    },
-    'tags': {
-        'type': 'array',
-        'description': _('List of strings related to the image'),
-        'items': {
+def _get_base_properties():
+    return {
+        'id': {
             'type': 'string',
+            'description': _('An identifier for the image'),
+            'pattern': ('^([0-9a-fA-F]){8}-([0-9a-fA-F]){4}-([0-9a-fA-F]){4}'
+                        '-([0-9a-fA-F]){4}-([0-9a-fA-F]){12}$'),
+        },
+        'name': {
+            'type': 'string',
+            'description': _('Descriptive name for the image'),
             'maxLength': 255,
         },
-    },
-    'direct_url': {
-        'type': 'string',
-        'description': _('URL to access the image file kept in external '
-                         'store'),
-    },
-    'min_ram': {
-        'type': 'integer',
-        'description': _('Amount of ram (in MB) required to boot image.'),
-    },
-    'min_disk': {
-        'type': 'integer',
-        'description': _('Amount of disk space (in GB) required to boot '
-                         'image.'),
-    },
-    'self': {'type': 'string'},
-    'file': {'type': 'string'},
-    'schema': {'type': 'string'},
-    'locations': {
-        'type': 'array',
-        'items': {
-            'type': 'object',
-            'properties': {
-                'url': {
-                    'type': 'string',
-                    'maxLength': 255,
-                },
-                'metadata': {
-                    'type': 'object',
-                },
-            },
-            'required': ['url', 'metadata'],
+        'status': {
+            'type': 'string',
+            'description': _('Status of the image (READ-ONLY)'),
+            'enum': ['queued', 'saving', 'active', 'killed',
+                     'deleted', 'pending_delete'],
         },
-        'description': _('A set of URLs to access the image file kept in '
-                         'external store'),
-    },
-}
+        'visibility': {
+            'type': 'string',
+            'description': _('Scope of image accessibility'),
+            'enum': ['public', 'private'],
+        },
+        'protected': {
+            'type': 'boolean',
+            'description': _('If true, image will not be deletable.'),
+        },
+        'checksum': {
+            'type': 'string',
+            'description': _('md5 hash of image contents. (READ-ONLY)'),
+            'type': 'string',
+            'maxLength': 32,
+        },
+        'size': {
+            'type': 'integer',
+            'description': _('Size of image file in bytes (READ-ONLY)'),
+        },
+        'container_format': {
+            'type': 'string',
+            'description': _('Format of the container'),
+            'type': 'string',
+            'enum': CONF.container_formats,
+        },
+        'disk_format': {
+            'type': 'string',
+            'description': _('Format of the disk'),
+            'type': 'string',
+            'enum': CONF.disk_formats,
+        },
+        'created_at': {
+            'type': 'string',
+            'description': _('Date and time of image registration'
+                             ' (READ-ONLY)'),
+            #TODO(bcwaldon): our jsonschema library doesn't seem to like the
+            # format attribute, figure out why!
+            #'format': 'date-time',
+        },
+        'updated_at': {
+            'type': 'string',
+            'description': _('Date and time of the last image modification'
+                             ' (READ-ONLY)'),
+            #'format': 'date-time',
+        },
+        'tags': {
+            'type': 'array',
+            'description': _('List of strings related to the image'),
+            'items': {
+                'type': 'string',
+                'maxLength': 255,
+            },
+        },
+        'direct_url': {
+            'type': 'string',
+            'description': _('URL to access the image file kept in external '
+                             'store (READ-ONLY)'),
+        },
+        'min_ram': {
+            'type': 'integer',
+            'description': _('Amount of ram (in MB) required to boot image.'),
+        },
+        'min_disk': {
+            'type': 'integer',
+            'description': _('Amount of disk space (in GB) required to boot '
+                             'image.'),
+        },
+        'self': {
+            'type': 'string',
+            'description': '(READ-ONLY)'
+        },
+        'file': {
+            'type': 'string',
+            'description': '(READ-ONLY)'
+        },
+        'schema': {
+            'type': 'string',
+            'description': '(READ-ONLY)'
+        },
+        'locations': {
+            'type': 'array',
+            'items': {
+                'type': 'object',
+                'properties': {
+                    'url': {
+                        'type': 'string',
+                        'maxLength': 255,
+                    },
+                    'metadata': {
+                        'type': 'object',
+                    },
+                },
+                'required': ['url', 'metadata'],
+            },
+            'description': _('A set of URLs to access the image file kept in '
+                             'external store'),
+        },
+    }
 
-_BASE_LINKS = [
-    {'rel': 'self', 'href': '{self}'},
-    {'rel': 'enclosure', 'href': '{file}'},
-    {'rel': 'describedby', 'href': '{schema}'},
-]
+
+def _get_base_links():
+    return [
+        {'rel': 'self', 'href': '{self}'},
+        {'rel': 'enclosure', 'href': '{file}'},
+        {'rel': 'describedby', 'href': '{schema}'},
+    ]
 
 
 def get_schema(custom_properties=None):
-    properties = copy.deepcopy(_BASE_PROPERTIES)
-    links = copy.deepcopy(_BASE_LINKS)
+    properties = _get_base_properties()
+    links = _get_base_links()
     if CONF.allow_additional_image_properties:
         schema = glance.schema.PermissiveSchema('image', properties, links)
     else:

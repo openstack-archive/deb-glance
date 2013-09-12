@@ -48,7 +48,12 @@ def main():
         log.setup('glance')
 
         server = wsgi.Server()
-        server.start(config.load_paste_app(), default_port=9191)
+        server.start(config.load_paste_app('glance-registry'),
+                     default_port=9191)
         server.wait()
     except RuntimeError as e:
         sys.exit("ERROR: %s" % e)
+
+
+if __name__ == '__main__':
+    main()

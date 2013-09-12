@@ -151,10 +151,8 @@ class Driver(base.Driver):
             entry['image_id'] = image_id
 
             file_info = os.stat(path)
-            entry['last_modified'] = iso8601_from_timestamp(
-                file_info[stat.ST_MTIME])
-            entry['last_accessed'] = iso8601_from_timestamp(
-                file_info[stat.ST_ATIME])
+            entry['last_modified'] = file_info[stat.ST_MTIME]
+            entry['last_accessed'] = file_info[stat.ST_ATIME]
             entry['size'] = file_info[stat.ST_SIZE]
             entry['hits'] = self.get_hit_count(image_id)
 
@@ -222,7 +220,7 @@ class Driver(base.Driver):
         """
         Removes all queued image files and any attributes about the images
         """
-        files = [f for f in self.get_cache_files(self.queue_dir)]
+        files = [f for f in get_all_regular_files(self.queue_dir)]
         for file in files:
             os.unlink(file)
         return len(files)
@@ -501,7 +499,3 @@ def inc_xattr(path, key, n=1):
     count = int(get_xattr(path, key))
     count += n
     set_xattr(path, key, str(count))
-
-
-def iso8601_from_timestamp(timestamp):
-    return datetime.datetime.utcfromtimestamp(timestamp).isoformat()
