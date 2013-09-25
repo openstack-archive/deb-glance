@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: glance\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
-"POT-Creation-Date: 2013-07-12 16:41+0800\n"
+"POT-Creation-Date: 2013-09-25 15:31+0800\n"
 "PO-Revision-Date: 2013-09-11 08:47+0100\n"
 "Last-Translator: Julien Patriarca <leatherface@debian.org>\n"
 "Language-Team: FRENCH <debian-l10n-french@lists.debian.org>\n"
@@ -199,6 +199,67 @@ msgid ""
 msgstr ""
 "Vous pouvez modifier ce réglage plus tard en lançant « dpkg-reconfigure -"
 "plow glance-common »."
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:8001
+msgid "IP address of your RabbitMQ host:"
+msgstr ""
+
+#. Type: string
+#. Description
+#. Type: string
+#. Description
+#. Type: password
+#. Description
+#: ../glance-common.templates:8001 ../glance-common.templates:9001
+#: ../glance-common.templates:10001
+msgid ""
+"In order to interoperate with other components of OpenStack, this package "
+"needs to connect to a central RabbitMQ server."
+msgstr ""
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:8001
+#, fuzzy
+#| msgid "Please specify the password to use with the authentication server."
+msgid "Please specify the IP address of that server."
+msgstr ""
+"Veuillez indiquer le mot de passe à utiliser sur le serveur "
+"d'authentification."
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:9001
+msgid "Username for connection to the RabbitMQ server:"
+msgstr ""
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:9001
+#, fuzzy
+#| msgid "Please specify the username to use with the authentication server."
+msgid "Please specify the username used to connect to the RabbitMQ server."
+msgstr ""
+"Veuillez indiquer le nom d'utilisateur à utiliser sur le serveur "
+"d'authentification."
+
+#. Type: password
+#. Description
+#: ../glance-common.templates:10001
+msgid "Password for connection to the RabbitMQ server:"
+msgstr ""
+
+#. Type: password
+#. Description
+#: ../glance-common.templates:10001
+#, fuzzy
+#| msgid "Please specify the password to use with the authentication server."
+msgid "Please specify the password used to connect to the RabbitMQ server."
+msgstr ""
+"Veuillez indiquer le mot de passe à utiliser sur le serveur "
+"d'authentification."
 
 #. Type: boolean
 #. Description
