@@ -67,3 +67,29 @@ _Description: Set up a database for Glance?
  .
  You can change this setting later on by running "dpkg-reconfigure -plow
  glance-common".
+
+Template: glance/rabbit_host
+Type: string
+Default: localhost
+_Description: IP address of your RabbitMQ host:
+ In order to interoperate with other components of OpenStack, this package
+ needs to connect to a central RabbitMQ server.
+ .
+ Please specify the IP address of that server.
+
+Template: glance/rabbit_userid
+Type: string
+Default: guest
+_Description: Username for connection to the RabbitMQ server:
+ In order to interoperate with other components of OpenStack, this package
+ needs to connect to a central RabbitMQ server.
+ .
+ Please specify the username used to connect to the RabbitMQ server.
+
+Template: glance/rabbit_password
+Type: password
+_Description: Password for connection to the RabbitMQ server:
+ In order to interoperate with other components of OpenStack, this package
+ needs to connect to a central RabbitMQ server.
+ .
+ Please specify the password used to connect to the RabbitMQ server.

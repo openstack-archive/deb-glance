@@ -41,6 +41,8 @@ if [ "$1" = "configure" ] ; then
 	pkgos_inifile get ${API_CONF} DEFAULT sql_connection
 	pkgos_inifile set ${GREG_CONF} DEFAULT sql_connection "${RET}"
 
+	pkgos_rabbit_write_conf ${API_CONF} DEFAULT glance
+
         # Upgrade or create the db if directed to do so
 	db_get glance/configure_db
 	if [ "$RET" = "true" ] && [ "$dbc_upgrade" = "true" ] ; then

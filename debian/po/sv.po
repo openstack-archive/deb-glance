@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: glance\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
-"POT-Creation-Date: 2013-07-12 16:41+0800\n"
+"POT-Creation-Date: 2013-09-25 15:31+0800\n"
 "PO-Revision-Date: 2012-06-08 08:58+0100\n"
 "Last-Translator: Martin Bagge / brother <brother@bsnet.se>\n"
 "Language-Team: Swedish <debian-l10n-swedish@lists.debian.org>\n"
@@ -223,6 +223,57 @@ msgid ""
 msgstr ""
 "Denna inställning kan ändras senare genom att köra \"dpkg-reconfigure -plow "
 "glance-registry\""
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:8001
+msgid "IP address of your RabbitMQ host:"
+msgstr ""
+
+#. Type: string
+#. Description
+#. Type: string
+#. Description
+#. Type: password
+#. Description
+#: ../glance-common.templates:8001 ../glance-common.templates:9001
+#: ../glance-common.templates:10001
+msgid ""
+"In order to interoperate with other components of OpenStack, this package "
+"needs to connect to a central RabbitMQ server."
+msgstr ""
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:8001
+#, fuzzy
+#| msgid "Please specify the flavor of pipeline to be used by Glance."
+msgid "Please specify the IP address of that server."
+msgstr "Ange vilken typ av förmedling som ska användas av Glance."
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:9001
+msgid "Username for connection to the RabbitMQ server:"
+msgstr ""
+
+#. Type: string
+#. Description
+#: ../glance-common.templates:9001
+msgid "Please specify the username used to connect to the RabbitMQ server."
+msgstr ""
+
+#. Type: password
+#. Description
+#: ../glance-common.templates:10001
+msgid "Password for connection to the RabbitMQ server:"
+msgstr ""
+
+#. Type: password
+#. Description
+#: ../glance-common.templates:10001
+msgid "Please specify the password used to connect to the RabbitMQ server."
+msgstr ""
 
 #. Type: boolean
 #. Description
