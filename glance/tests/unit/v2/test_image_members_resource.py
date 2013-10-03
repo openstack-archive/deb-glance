@@ -280,6 +280,7 @@ class TestImageMembersController(test_utils.BaseTestCase):
         image_id = UUID2
         res = self.controller.delete(request, image_id, member_id)
         self.assertEqual(res.body, '')
+        self.assertEqual(res.status_code, 204)
         found_member = self.db.image_member_find(
                 request.context, image_id=image_id, member=member_id)
         self.assertEqual(found_member, [])
@@ -448,6 +449,12 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
 
     def test_create_no_body(self):
         request = unit_test_utils.get_fake_request()
+        self.assertRaises(webob.exc.HTTPBadRequest, self.deserializer.create,
+                          request)
+
+    def test_create_member_empty(self):
+        request = unit_test_utils.get_fake_request()
+        request.body = json.dumps({'member': ''})
         self.assertRaises(webob.exc.HTTPBadRequest, self.deserializer.create,
                           request)
 

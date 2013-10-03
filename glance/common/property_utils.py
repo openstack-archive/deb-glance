@@ -20,9 +20,12 @@ import re
 from oslo.config import cfg
 import webob.exc
 
+from glance.common.ordereddict import OrderedDict
 from glance.openstack.common import log as logging
 
-CONFIG = ConfigParser.SafeConfigParser()
+# NOTE(bourke): The default dict_type is collections.OrderedDict in py27, but
+# we must set manually for compatibility with py26
+CONFIG = ConfigParser.SafeConfigParser(dict_type=OrderedDict)
 LOG = logging.getLogger(__name__)
 
 property_opts = [
@@ -44,7 +47,7 @@ def is_property_protection_enabled():
 class PropertyRules(object):
 
     def __init__(self):
-        self.rules = {}
+        self.rules = []
         self._load_rules()
 
     def _load_rules(self):
@@ -76,13 +79,13 @@ class PropertyRules(object):
                             (operation, property_exp)))
                     LOG.warn(msg)
 
-            self.rules[compiled_rule] = property_dict
+            self.rules.append((compiled_rule, property_dict))
 
     def _compile_rule(self, rule):
         try:
             return re.compile(rule)
         except Exception as e:
-            msg = _("Encountered a malfored property protection rule %s:%s."
+            msg = _("Encountered a malformed property protection rule %s:%s."
                     % (rule, e))
             LOG.error(msg)
             raise webob.exc.HTTPInternalServerError(explanation=msg)
@@ -94,7 +97,7 @@ class PropertyRules(object):
         if action not in ['create', 'read', 'update', 'delete']:
             return False
 
-        for rule_exp, rule in self.rules.items():
+        for rule_exp, rule in self.rules:
             if rule_exp.search(str(property_name)):
                 if set(roles).intersection(set(rule.get(action))):
                     return True

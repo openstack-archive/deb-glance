@@ -146,7 +146,7 @@ class ImageMembersController(object):
             member_repo = image.get_member_repo()
             member = member_repo.get(member_id)
             member_repo.remove(member)
-            return webob.Response(body='', status=200)
+            return webob.Response(body='', status=204)
         except exception.NotFound as e:
             raise webob.exc.HTTPNotFound(explanation=unicode(e))
         except exception.Forbidden as e:
@@ -169,8 +169,13 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
         body = self._get_request_body(request)
         try:
             member_id = body['member']
+            if not member_id:
+                raise ValueError()
         except KeyError:
             msg = _("Member to be added not specified")
+            raise webob.exc.HTTPBadRequest(explanation=msg)
+        except ValueError:
+            msg = _("Member can't be empty")
             raise webob.exc.HTTPBadRequest(explanation=msg)
         return dict(member_id=member_id)
 
