@@ -11,7 +11,8 @@ export OSLO_PACKAGE_VERSION=$(VERSION)
 
 ifeq (,$(findstring nocheck, $(DEB_BUILD_OPTIONS)))
 override_dh_auto_test:
-	nosetests || true
+	./run_tests.sh -P -N || true
+	#nosetests || true
 endif
 
 override_dh_auto_build:
