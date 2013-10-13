@@ -376,7 +376,10 @@ class Middleware(object):
             return response
         response = req.get_response(self.application)
         response.request = req
-        return self.process_response(response)
+        try:
+            return self.process_response(response)
+        except webob.exc.HTTPException as e:
+            return e
 
 
 class Debug(Middleware):
@@ -609,6 +612,8 @@ class Resource(object):
             self.dispatch(self.serializer, action, response, action_result)
             return response
 
+        except webob.exc.HTTPException as e:
+            return e
         # return unserializable result (typically a webob exc)
         except Exception:
             return action_result
