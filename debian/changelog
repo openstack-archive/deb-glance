@@ -1,3 +1,9 @@
+glance (2013.2~rc2-1) experimental; urgency=low
+
+  * New upstream release.
+
+ -- Thomas Goirand <zigo@debian.org>  Sun, 13 Oct 2013 16:32:00 +0800
+
 glance (2013.2~rc1-1) experimental; urgency=low
 
   * New upstream release.
