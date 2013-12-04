@@ -1,3 +1,13 @@
+glance (2013.2-2) unstable; urgency=medium
+
+  * Adding new debconf template translations and updates, with thanks:
+    - Russian, Yuri Kozlov <yuray@komyakino.ru> (Closes: #729773).
+    - French, Julien Patriarca <leatherface@debian.org> (Closes: #728768).
+    - Portugese, Traduz <traduz@debianpt.org> (Closes: #726958).
+    - Spanish, Camaleón <noelamac@gmail.com> (Closes: #726738).
+
+ -- Thomas Goirand <zigo@debian.org>  Wed, 04 Dec 2013 16:05:43 +0800
+
 glance (2013.2-1) unstable; urgency=low
 
   * New upstream release.

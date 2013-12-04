@@ -8,7 +8,7 @@ msgstr ""
 "Project-Id-Version: glance\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
 "POT-Creation-Date: 2013-09-25 15:31+0800\n"
-"PO-Revision-Date: 2013-09-11 08:47+0100\n"
+"PO-Revision-Date: 2013-10-26 18:35+0100\n"
 "Last-Translator: Julien Patriarca <leatherface@debian.org>\n"
 "Language-Team: FRENCH <debian-l10n-french@lists.debian.org>\n"
 "Language: fr\n"
@@ -116,8 +116,7 @@ msgstr "Nom d'espace client du serveur d'authentification :"
 #: ../glance-common.templates:4001
 msgid "Please specify the authentication server tenant name."
 msgstr ""
-"Veuillez indiquer le serveur d'authentification pour le nom de l'espace "
-"client."
+"Veuillez indiquer le nom de l'espace client du serveur d'authentification."
 
 #. Type: string
 #. Description
@@ -137,7 +136,7 @@ msgstr ""
 #. Description
 #: ../glance-common.templates:6001
 msgid "Authentication server password:"
-msgstr "Mot de passe du serveur d'authentification :"
+msgstr "Mot de passe pour le serveur d'authentification :"
 
 #. Type: password
 #. Description
@@ -161,7 +160,7 @@ msgid ""
 "continuing, you should make sure you have the following information:"
 msgstr ""
 "Aucune base de données n'a été installée pour le registre de glance ou pour "
-"l'api de glance. Avant de continuer, assurez vous d'avoir :"
+"l'API de Glance. Avant de continuer, assurez vous d'avoir :"
 
 #. Type: boolean
 #. Description
@@ -173,12 +172,11 @@ msgid ""
 "   machine);\n"
 " * a username and password to access the database."
 msgstr ""
-"- Le type de base de données que vous souhaitez utiliser;\n"
-"- le nom d'hôte du serveur de base de données (ce serveur doit accepter les "
-"connexions TCP depuis cette\n"
-"  machine);\n"
-"- un nom d'utilisateur et un mot de passe pour accéder à cette base de "
-"données."
+" - Le type de base de données que vous souhaitez utiliser ;\n"
+" - le nom d'hôte du serveur de base de données (ce serveur\n"
+"   doit accepter les connexions TCP depuis cette machine);\n"
+" - un nom d'utilisateur et un mot de passe pour accéder\n"
+"   à cette base de données."
 
 #. Type: boolean
 #. Description
@@ -188,7 +186,7 @@ msgid ""
 "with regular SQLite support."
 msgstr ""
 "Si certains de ces prérequis sont manquants, ignorer cette option et "
-"exécuter l'application avec le support sqlite normal."
+"exécutez l'application avec le support SQLite normal."
 
 #. Type: boolean
 #. Description
@@ -204,7 +202,7 @@ msgstr ""
 #. Description
 #: ../glance-common.templates:8001
 msgid "IP address of your RabbitMQ host:"
-msgstr ""
+msgstr "Adresse IP de votre hôte RabbitMQ :"
 
 #. Type: string
 #. Description
@@ -218,48 +216,45 @@ msgid ""
 "In order to interoperate with other components of OpenStack, this package "
 "needs to connect to a central RabbitMQ server."
 msgstr ""
+"Afin de pouvoir interagir avec d'autres composants d'OpenStack, ce paquet "
+"doit se connecter à un serveur centralisé RabbitMQ."
 
 #. Type: string
 #. Description
 #: ../glance-common.templates:8001
-#, fuzzy
 #| msgid "Please specify the password to use with the authentication server."
 msgid "Please specify the IP address of that server."
-msgstr ""
-"Veuillez indiquer le mot de passe à utiliser sur le serveur "
-"d'authentification."
+msgstr "Veuillez indiquer l'adresse IP de ce serveur."
 
 #. Type: string
 #. Description
 #: ../glance-common.templates:9001
 msgid "Username for connection to the RabbitMQ server:"
-msgstr ""
+msgstr "Nom d'utilisateur pour la connexion au serveur RabbitMQ : "
 
 #. Type: string
 #. Description
 #: ../glance-common.templates:9001
-#, fuzzy
 #| msgid "Please specify the username to use with the authentication server."
 msgid "Please specify the username used to connect to the RabbitMQ server."
 msgstr ""
-"Veuillez indiquer le nom d'utilisateur à utiliser sur le serveur "
-"d'authentification."
+"Veuillez indiquer le nom d'utilisateur à utiliser pour se connecter au "
+"serveur RabbitMQ."
 
 #. Type: password
 #. Description
 #: ../glance-common.templates:10001
 msgid "Password for connection to the RabbitMQ server:"
-msgstr ""
+msgstr "Mot de passe pour la connexion au serveur RabbitMQ : "
 
 #. Type: password
 #. Description
 #: ../glance-common.templates:10001
-#, fuzzy
 #| msgid "Please specify the password to use with the authentication server."
 msgid "Please specify the password used to connect to the RabbitMQ server."
 msgstr ""
-"Veuillez indiquer le mot de passe à utiliser sur le serveur "
-"d'authentification."
+"Veuillez indiquer le mot de passe à utiliser pour se connecter au "
+"serveur RabbitMQ."
 
 #. Type: boolean
 #. Description
@@ -276,7 +271,7 @@ msgid ""
 "endpoint-create\". This can be done automatically now."
 msgstr ""
 "Chaque service OpenStack (chaque API) doit être enregistré pour être "
-"accessible. Ceci peut être fait en utilisant « keystone service-create » et "
+"accessible. Cela peut être fait en utilisant « keystone service-create » et "
 "« keystone endpoint-create ». Cela peut maintenant être fait automatiquement."
 
 #. Type: boolean
@@ -302,9 +297,9 @@ msgid ""
 "Please enter the IP address of the Keystone server, so that glance-api can "
 "contact Keystone to do the Glance service and endpoint creation."
 msgstr ""
-"Veuillez indiquer l'adresse IP du serveur Keystone, pour que l'api de glance "
-"puisse contacter Keystone pour établir le service Glance ainsi que la "
-"création du point d'accès."
+"Veuillez indiquer l'adresse IP du serveur Keystone, pour que l'API de Glance "
+"puisse contacter Keystone pour établir le service Glance et créer le point "
+"d'accès."
 
 #. Type: password
 #. Description
@@ -319,7 +314,7 @@ msgid ""
 "To configure its endpoint in Keystone, glance-api needs the Keystone "
 "authentication token."
 msgstr ""
-"Pour configurer son point d'accès dans Keystone, l'api de glance a besoin du "
+"Pour configurer son point d'accès dans Keystone, l'API de Glance a besoin du "
 "jeton d'authentification Keystone."
 
 #. Type: string
@@ -344,7 +339,7 @@ msgid ""
 "address."
 msgstr ""
 "Cette adresse IP doit être accessible depuis les clients qui utiliseront ce "
-"service, donc si vous installez un nuage public, elle devra être une adresse "
+"service, donc si vous installez un nuage public, ce devra être une adresse "
 "IP publique."
 
 #. Type: string
