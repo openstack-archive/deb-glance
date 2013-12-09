@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2011 OpenStack, LLC
+# Copyright 2011 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -38,12 +38,13 @@ import os
 import tempfile
 
 from glance.openstack.common import timeutils
+from glance.openstack.common import units
 from glance.openstack.common import uuidutils
 from glance.tests import functional
 from glance.tests.utils import skip_if_disabled, minimal_headers
 
-FIVE_KB = 5 * 1024
-FIVE_GB = 5 * 1024 * 1024 * 1024
+FIVE_KB = 5 * units.Ki
+FIVE_GB = 5 * units.Gi
 TEST_VAR_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__),
                                             '../..', 'var'))
 
@@ -474,27 +475,27 @@ class TestSSL(functional.FunctionalTest):
             "status": "CURRENT",
             "links": [{
                 "rel": "self",
-                "href": "https://127.0.0.1:%d/v2/" % self.api_port}]}, {
-            "id": "v2.1",
-            "status": "SUPPORTED",
-            "links": [{
-                "rel": "self",
-                "href": "https://127.0.0.1:%d/v2/" % self.api_port}]}, {
-            "id": "v2.0",
-            "status": "SUPPORTED",
-            "links": [{
-                "rel": "self",
-                "href": "https://127.0.0.1:%d/v2/" % self.api_port}]}, {
-            "id": "v1.1",
-            "status": "CURRENT",
-            "links": [{
-                "rel": "self",
-                "href": "https://127.0.0.1:%d/v1/" % self.api_port}]}, {
-            "id": "v1.0",
-            "status": "SUPPORTED",
-            "links": [{
-                "rel": "self",
-                "href": "https://127.0.0.1:%d/v1/" % self.api_port}]}]}
+                "href": "https://127.0.0.1:%d/v2/" % self.api_port}]},
+                {"id": "v2.1",
+                 "status": "SUPPORTED",
+                 "links": [{
+                     "rel": "self",
+                     "href": "https://127.0.0.1:%d/v2/" % self.api_port}]},
+                {"id": "v2.0",
+                 "status": "SUPPORTED",
+                 "links": [{
+                     "rel": "self",
+                     "href": "https://127.0.0.1:%d/v2/" % self.api_port}]},
+                {"id": "v1.1",
+                 "status": "CURRENT",
+                 "links": [{
+                     "rel": "self",
+                     "href": "https://127.0.0.1:%d/v1/" % self.api_port}]},
+                {"id": "v1.0",
+                 "status": "SUPPORTED",
+                 "links": [{
+                     "rel": "self",
+                     "href": "https://127.0.0.1:%d/v1/" % self.api_port}]}]}
         versions_json = json.dumps(versions)
         images = {'images': []}
         images_json = json.dumps(images)

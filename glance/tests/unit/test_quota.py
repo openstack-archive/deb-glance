@@ -1,18 +1,19 @@
 # Copyright 2013, Red Hat, Inc.
 # All Rights Reserved.
 #
-#    Licensed under the Apache License, Version 2.0 (the 'License'); you may
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
 #    a copy of the License at
 #
 #         http://www.apache.org/licenses/LICENSE-2.0
 #
 #    Unless required by applicable law or agreed to in writing, software
-#    distributed under the License is distributed on an 'AS IS' BASIS, WITHOUT
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import mock
 import mox
 
 from glance.common import exception
@@ -66,6 +67,7 @@ class FakeImage(object):
     size = None
     image_id = 'someid'
     locations = [{'url': 'file:///not/a/path', 'metadata': {}}]
+    tags = set([])
 
     def set_data(self, data, size=None):
         self.size = 0
@@ -257,3 +259,201 @@ class TestImageQuota(test_utils.BaseTestCase):
             self.fail('Should have raised the quota exception')
         except exception.StorageQuotaFull:
             pass
+
+
+class TestImagePropertyQuotas(test_utils.BaseTestCase):
+    def setUp(self):
+        super(TestImagePropertyQuotas, self).setUp()
+        self.base_image = mock.Mock()
+        self.image = glance.quota.ImageProxy(self.base_image,
+                                             mock.Mock(),
+                                             mock.Mock())
+
+        self.image_repo_mock = mock.Mock()
+
+        self.image_repo_proxy = glance.quota.ImageRepoProxy(
+                                    self.image_repo_mock,
+                                    mock.Mock(),
+                                    mock.Mock())
+
+    def test_save_image_with_image_property(self):
+        self.config(image_property_quota=1)
+
+        self.image.extra_properties = {'foo': 'bar'}
+        self.image_repo_proxy.save(self.image)
+
+        self.image_repo_mock.save.assert_called_once_with(self.base_image)
+
+    def test_save_image_too_many_image_properties(self):
+        self.config(image_property_quota=1)
+
+        self.image.extra_properties = {'foo': 'bar', 'foo2': 'bar2'}
+        exc = self.assertRaises(exception.ImagePropertyLimitExceeded,
+                                self.image_repo_proxy.save, self.image)
+        self.assertTrue("Attempted: 2, Maximum: 1" in str(exc))
+
+    def test_save_image_unlimited_image_properties(self):
+        self.config(image_property_quota=-1)
+
+        self.image.extra_properties = {'foo': 'bar'}
+        self.image_repo_proxy.save(self.image)
+
+        self.image_repo_mock.save.assert_called_once_with(self.base_image)
+
+    def test_add_image_with_image_property(self):
+        self.config(image_property_quota=1)
+
+        self.image.extra_properties = {'foo': 'bar'}
+        self.image_repo_proxy.add(self.image)
+
+        self.image_repo_mock.add.assert_called_once_with(self.base_image)
+
+    def test_add_image_too_many_image_properties(self):
+        self.config(image_property_quota=1)
+
+        self.image.extra_properties = {'foo': 'bar', 'foo2': 'bar2'}
+        exc = self.assertRaises(exception.ImagePropertyLimitExceeded,
+                                self.image_repo_proxy.add, self.image)
+        self.assertTrue("Attempted: 2, Maximum: 1" in str(exc))
+
+    def test_add_image_unlimited_image_properties(self):
+        self.config(image_property_quota=-1)
+
+        self.image.extra_properties = {'foo': 'bar'}
+        self.image_repo_proxy.add(self.image)
+
+        self.image_repo_mock.add.assert_called_once_with(self.base_image)
+
+
+class TestImageTagQuotas(test_utils.BaseTestCase):
+    def setUp(self):
+        super(TestImageTagQuotas, self).setUp()
+        self.base_image = mock.Mock()
+        self.base_image.tags = set([])
+        self.image = glance.quota.ImageProxy(self.base_image,
+                                             mock.Mock(),
+                                             mock.Mock())
+
+        self.image_repo_mock = mock.Mock()
+        self.image_repo_proxy = glance.quota.ImageRepoProxy(
+                                    self.image_repo_mock,
+                                    mock.Mock(),
+                                    mock.Mock())
+
+    def test_replace_image_tag(self):
+        self.config(image_tag_quota=1)
+        self.image.tags = ['foo']
+        self.assertEqual(len(self.image.tags), 1)
+
+    def test_replace_too_many_image_tags(self):
+        self.config(image_tag_quota=0)
+
+        exc = self.assertRaises(exception.ImageTagLimitExceeded,
+                                setattr, self.image, 'tags', ['foo', 'bar'])
+        self.assertTrue('Attempted: 2, Maximum: 0' in str(exc))
+        self.assertEqual(len(self.image.tags), 0)
+
+    def test_replace_unlimited_image_tags(self):
+        self.config(image_tag_quota=-1)
+        self.image.tags = ['foo']
+        self.assertEqual(len(self.image.tags), 1)
+
+    def test_add_image_tag(self):
+        self.config(image_tag_quota=1)
+        self.image.tags.add('foo')
+        self.assertEqual(len(self.image.tags), 1)
+
+    def test_add_too_many_image_tags(self):
+        self.config(image_tag_quota=1)
+        self.image.tags.add('foo')
+        exc = self.assertRaises(exception.ImageTagLimitExceeded,
+                                self.image.tags.add, 'bar')
+        self.assertTrue('Attempted: 2, Maximum: 1' in str(exc))
+
+    def test_add_unlimited_image_tags(self):
+        self.config(image_tag_quota=-1)
+        self.image.tags.add('foo')
+        self.assertEqual(len(self.image.tags), 1)
+
+    def test_remove_image_tag_while_over_quota(self):
+        self.config(image_tag_quota=1)
+        self.image.tags.add('foo')
+        self.assertEqual(len(self.image.tags), 1)
+        self.config(image_tag_quota=0)
+        self.image.tags.remove('foo')
+        self.assertEqual(len(self.image.tags), 0)
+
+
+class TestQuotaImageTagsProxy(test_utils.BaseTestCase):
+    def setUp(self):
+        super(TestQuotaImageTagsProxy, self).setUp()
+
+    def test_add(self):
+        proxy = glance.quota.QuotaImageTagsProxy(set([]))
+        proxy.add('foo')
+        self.assertTrue('foo' in proxy)
+
+    def test_add_too_many_tags(self):
+        self.config(image_tag_quota=0)
+        proxy = glance.quota.QuotaImageTagsProxy(set([]))
+        exc = self.assertRaises(exception.ImageTagLimitExceeded,
+                                proxy.add, 'bar')
+        self.assertTrue('Attempted: 1, Maximum: 0' in str(exc))
+
+    def test_equals(self):
+        proxy = glance.quota.QuotaImageTagsProxy(set([]))
+        self.assertEqual(set([]), proxy)
+
+    def test_contains(self):
+        proxy = glance.quota.QuotaImageTagsProxy(set(['foo']))
+        self.assertTrue('foo' in proxy)
+
+    def test_len(self):
+        proxy = glance.quota.QuotaImageTagsProxy(set(['foo',
+                                                      'bar',
+                                                      'baz',
+                                                      'niz']))
+        self.assertEqual(len(proxy), 4)
+
+    def test_iter(self):
+        items = set(['foo', 'bar', 'baz', 'niz'])
+        proxy = glance.quota.QuotaImageTagsProxy(items.copy())
+        self.assertEqual(len(items), 4)
+        for item in proxy:
+            items.remove(item)
+        self.assertEqual(len(items), 0)
+
+
+class TestImageMemberQuotas(test_utils.BaseTestCase):
+    def setUp(self):
+        super(TestImageMemberQuotas, self).setUp()
+        db_api = unit_test_utils.FakeDB()
+        context = FakeContext()
+        self.image = mock.Mock()
+        self.base_image_member_factory = mock.Mock()
+        self.image_member_factory = glance.quota.ImageMemberFactoryProxy(
+                                    self.base_image_member_factory, context,
+                                    db_api)
+
+    def test_new_image_member(self):
+        self.config(image_member_quota=1)
+
+        self.image_member_factory.new_image_member(self.image,
+                                                   'fake_id')
+        self.base_image_member_factory.new_image_member\
+            .assert_called_once_with(self.image.base, 'fake_id')
+
+    def test_new_image_member_unlimited_members(self):
+        self.config(image_member_quota=-1)
+
+        self.image_member_factory.new_image_member(self.image,
+                                                   'fake_id')
+        self.base_image_member_factory.new_image_member\
+            .assert_called_once_with(self.image.base, 'fake_id')
+
+    def test_new_image_member_too_many_members(self):
+        self.config(image_member_quota=0)
+
+        self.assertRaises(exception.ImageMemberLimitExceeded,
+                          self.image_member_factory.new_image_member,
+                          self.image, 'fake_id')

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2011 OpenStack, LLC
+# Copyright 2011 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -19,6 +19,7 @@
 """
 A simple cache management utility for Glance.
 """
+from __future__ import print_function
 
 import functools
 import optparse
@@ -34,9 +35,9 @@ possible_topdir = os.path.normpath(os.path.join(os.path.abspath(sys.argv[0]),
 if os.path.exists(os.path.join(possible_topdir, 'glance', '__init__.py')):
     sys.path.insert(0, possible_topdir)
 
-import glance.image_cache.client
 from glance.common import exception
 from glance.common import utils
+import glance.image_cache.client
 from glance.openstack.common import timeutils
 from glance.version import version_info as version
 
@@ -55,20 +56,20 @@ def catch_error(action):
                 return SUCCESS if ret is None else ret
             except exception.NotFound:
                 options = args[0]
-                print ("Cache management middleware not enabled on host %s" %
-                       options.host)
+                print("Cache management middleware not enabled on host %s" %
+                      options.host)
                 return FAILURE
             except exception.Forbidden:
-                print "Not authorized to make this request."
+                print("Not authorized to make this request.")
                 return FAILURE
             except Exception as e:
                 options = args[0]
                 if options.debug:
                     raise
-                print "Failed to %s. Got error:" % action
+                print("Failed to %s. Got error:" % action)
                 pieces = unicode(e).split('\n')
                 for piece in pieces:
-                    print piece
+                    print(piece)
                 return FAILURE
 
         return wrapper
@@ -77,17 +78,17 @@ def catch_error(action):
 
 @catch_error('show cached images')
 def list_cached(options, args):
-    """
-%(prog)s list-cached [options]
+    """%(prog)s list-cached [options]
 
-List all images currently cached"""
+List all images currently cached.
+    """
     client = get_client(options)
     images = client.get_cached_images()
     if not images:
-        print "No cached images."
+        print("No cached images.")
         return SUCCESS
 
-    print "Found %d cached images..." % len(images)
+    print("Found %d cached images..." % len(images))
 
     pretty_table = utils.PrettyTable()
     pretty_table.add_column(36, label="ID")
@@ -97,7 +98,7 @@ List all images currently cached"""
     pretty_table.add_column(14, label="Size", just="r")
     pretty_table.add_column(10, label="Hits", just="r")
 
-    print pretty_table.make_header()
+    print(pretty_table.make_header())
 
     for image in images:
         last_modified = image['last_modified']
@@ -109,48 +110,48 @@ List all images currently cached"""
         else:
             last_accessed = timeutils.iso8601_from_timestamp(last_accessed)
 
-        print pretty_table.make_row(
+        print(pretty_table.make_row(
             image['image_id'],
             last_accessed,
             last_modified,
             image['size'],
-            image['hits'])
+            image['hits']))
 
 
 @catch_error('show queued images')
 def list_queued(options, args):
-    """
-%(prog)s list-queued [options]
+    """%(prog)s list-queued [options]
 
-List all images currently queued for caching"""
+List all images currently queued for caching.
+    """
     client = get_client(options)
     images = client.get_queued_images()
     if not images:
-        print "No queued images."
+        print("No queued images.")
         return SUCCESS
 
-    print "Found %d queued images..." % len(images)
+    print("Found %d queued images..." % len(images))
 
     pretty_table = utils.PrettyTable()
     pretty_table.add_column(36, label="ID")
 
-    print pretty_table.make_header()
+    print(pretty_table.make_header())
 
     for image in images:
-        print pretty_table.make_row(image)
+        print(pretty_table.make_row(image))
 
 
 @catch_error('queue the specified image for caching')
 def queue_image(options, args):
-    """
-%(prog)s queue-image <IMAGE_ID> [options]
+    """%(prog)s queue-image <IMAGE_ID> [options]
 
-Queues an image for caching"""
-    try:
+Queues an image for caching
+"""
+    if len(args) == 1:
         image_id = args.pop()
-    except IndexError:
-        print "Please specify the ID of the image you wish to queue "
-        print "from the cache as the first argument"
+    else:
+        print("Please specify one and only ID of the image you wish to ")
+        print("queue from the cache as the first argument")
         return FAILURE
 
     if (not options.force and
@@ -162,7 +163,7 @@ Queues an image for caching"""
     client.queue_image_for_caching(image_id)
 
     if options.verbose:
-        print "Queued image %(image_id)s for caching" % locals()
+        print("Queued image %(image_id)s for caching" % locals())
 
     return SUCCESS
 
@@ -170,14 +171,15 @@ Queues an image for caching"""
 @catch_error('delete the specified cached image')
 def delete_cached_image(options, args):
     """
-%(prog)s delete-cached-image [options]
+%(prog)s delete-cached-image <IMAGE_ID> [options]
 
-Deletes an image from the cache"""
-    try:
+Deletes an image from the cache
+    """
+    if len(args) == 1:
         image_id = args.pop()
-    except IndexError:
-        print "Please specify the ID of the image you wish to delete "
-        print "from the cache as the first argument"
+    else:
+        print("Please specify one and only ID of the image you wish to ")
+        print("delete from the cache as the first argument")
         return FAILURE
 
     if (not options.force and
@@ -189,17 +191,17 @@ Deletes an image from the cache"""
     client.delete_cached_image(image_id)
 
     if options.verbose:
-        print "Deleted cached image %(image_id)s" % locals()
+        print("Deleted cached image %(image_id)s" % locals())
 
     return SUCCESS
 
 
 @catch_error('Delete all cached images')
 def delete_all_cached_images(options, args):
-    """
-%(prog)s delete-all-cached-images [options]
+    """%(prog)s delete-all-cached-images [options]
 
-Removes all images from the cache"""
+Remove all images from the cache.
+    """
     if (not options.force and
         not user_confirm("Delete all cached images?", default=False)):
         return SUCCESS
@@ -208,7 +210,7 @@ Removes all images from the cache"""
     num_deleted = client.delete_all_cached_images()
 
     if options.verbose:
-        print "Deleted %(num_deleted)s cached images" % locals()
+        print("Deleted %(num_deleted)s cached images" % locals())
 
     return SUCCESS
 
@@ -216,14 +218,15 @@ Removes all images from the cache"""
 @catch_error('delete the specified queued image')
 def delete_queued_image(options, args):
     """
-%(prog)s delete-queued-image [options]
+%(prog)s delete-queued-image <IMAGE_ID> [options]
 
-Deletes an image from the cache"""
-    try:
+Deletes an image from the cache
+    """
+    if len(args) == 1:
         image_id = args.pop()
-    except IndexError:
-        print "Please specify the ID of the image you wish to delete "
-        print "from the cache as the first argument"
+    else:
+        print("Please specify one and only ID of the image you wish to ")
+        print("delete from the cache as the first argument")
         return FAILURE
 
     if (not options.force and
@@ -235,17 +238,17 @@ Deletes an image from the cache"""
     client.delete_queued_image(image_id)
 
     if options.verbose:
-        print "Deleted queued image %(image_id)s" % locals()
+        print("Deleted queued image %(image_id)s" % locals())
 
     return SUCCESS
 
 
 @catch_error('Delete all queued images')
 def delete_all_queued_images(options, args):
-    """
-%(prog)s delete-all-queued-images [options]
+    """%(prog)s delete-all-queued-images [options]
 
-Removes all images from the cache queue"""
+Remove all images from the cache queue.
+    """
     if (not options.force and
         not user_confirm("Delete all queued images?", default=False)):
         return SUCCESS
@@ -254,14 +257,14 @@ Removes all images from the cache queue"""
     num_deleted = client.delete_all_queued_images()
 
     if options.verbose:
-        print "Deleted %(num_deleted)s queued images" % locals()
+        print("Deleted %(num_deleted)s queued images" % locals())
 
     return SUCCESS
 
 
 def get_client(options):
-    """
-    Returns a new client object to a Glance server
+    """Return a new client object to a Glance server.
+
     specified by the --host and --port options
     supplied to the CLI
     """
@@ -279,7 +282,7 @@ def get_client(options):
 
 
 def env(*vars, **kwargs):
-    """Search for the first defined of possibly many env vars
+    """Search for the first defined of possibly many env vars.
 
     Returns the first environment variable defined in vars, or
     returns the default defined in kwargs.
@@ -292,8 +295,7 @@ def env(*vars, **kwargs):
 
 
 def create_options(parser):
-    """
-    Sets up the CLI and config-file options that may be
+    """Set up the CLI and config-file options that may be
     parsed and program commands.
 
     :param parser: The option parser
@@ -419,7 +421,7 @@ def print_help(options, args):
     command_name = args.pop()
     command = lookup_command(parser, command_name)
 
-    print command.__doc__ % {'prog': os.path.basename(sys.argv[0])}
+    print(command.__doc__ % {'prog': os.path.basename(sys.argv[0])})
 
 
 def lookup_command(parser, command_name):
@@ -449,8 +451,7 @@ def lookup_command(parser, command_name):
 
 
 def user_confirm(prompt, default=False):
-    """
-    Yes/No question dialog with user.
+    """Yes/No question dialog with user.
 
     :param prompt: question/statement to present to user (string)
     :param default: boolean value to return if empty string
@@ -504,10 +505,10 @@ Commands:
         result = command(options, args)
         end_time = time.time()
         if options.verbose:
-            print "Completed in %-0.4f sec." % (end_time - start_time)
+            print("Completed in %-0.4f sec." % (end_time - start_time))
         sys.exit(result)
     except (RuntimeError, NotImplementedError) as e:
-        print "ERROR: ", e
+        print("ERROR: ", e)
 
 if __name__ == '__main__':
     main()

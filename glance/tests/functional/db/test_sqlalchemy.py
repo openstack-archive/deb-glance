@@ -1,4 +1,5 @@
 # Copyright 2012 OpenStack Foundation
+# Copyright 2013 IBM Corp.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -60,7 +61,8 @@ class TestSqlAlchemyMembershipVisibility(base.TestMembershipVisibility,
 
 
 class TestSqlAlchemyDBDataIntegrity(base.TestDriver):
-    """ Test class for checking the data integrity in the database.
+    """Test class for checking the data integrity in the database.
+
     Helpful in testing scenarios specific to the sqlalchemy api.
     """
 
@@ -74,7 +76,7 @@ class TestSqlAlchemyDBDataIntegrity(base.TestDriver):
 
         def fake_paginate_query(query, model, limit,
                                 sort_keys, marker, sort_dir):
-            self.assertEquals(sort_keys, ['created_at', 'id'])
+            self.assertEqual(sort_keys, ['created_at', 'id'])
             return original_method(query, model, limit,
                                    sort_keys, marker, sort_dir)
 
@@ -88,7 +90,7 @@ class TestSqlAlchemyDBDataIntegrity(base.TestDriver):
 
         def fake_paginate_query(query, model, limit,
                                 sort_keys, marker, sort_dir):
-            self.assertEquals(sort_keys, ['name', 'created_at', 'id'])
+            self.assertEqual(sort_keys, ['name', 'created_at', 'id'])
             return original_method(query, model, limit,
                                    sort_keys, marker, sort_dir)
 
@@ -96,3 +98,11 @@ class TestSqlAlchemyDBDataIntegrity(base.TestDriver):
                        fake_paginate_query)
         images = self.db_api.image_get_all(self.context,
                                            sort_key='name')
+
+
+class TestSqlAlchemyTask(base.DriverTaskTests):
+
+    def setUp(self):
+        db_tests.load(get_db, reset_db)
+        super(TestSqlAlchemyTask, self).setUp()
+        self.addCleanup(db_tests.reset)

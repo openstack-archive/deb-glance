@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2011-2012 OpenStack, LLC
+# Copyright 2011-2012 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -24,6 +24,7 @@ import httplib2
 import swiftclient
 
 from glance.common import crypt
+from glance.openstack.common import units
 from glance.store.swift import StoreLocation
 from glance.tests import functional
 from glance.tests.functional.store.test_swift import parse_config
@@ -32,7 +33,7 @@ from glance.tests.functional.store.test_swift import swift_connect
 from glance.tests.utils import execute
 
 
-TEST_IMAGE_DATA = '*' * 5 * 1024
+TEST_IMAGE_DATA = '*' * 5 * units.Ki
 TEST_IMAGE_META = {
     'name': 'test_image',
     'is_public': False,
@@ -315,7 +316,7 @@ class TestScrubber(functional.FunctionalTest):
             swift.head_object(swift_config['swift_store_container'], image_id)
             self.fail('image should have been deleted from swift')
         except swiftclient.ClientException as e:
-            self.assertEquals(e.http_status, 404)
+            self.assertEqual(e.http_status, 404)
 
         # wait for the scrub time on the image to pass
         time.sleep(self.api_server.scrub_time)

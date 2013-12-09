@@ -15,8 +15,11 @@
 
 import webob.exc
 
+from glance.api import policy
+from glance.common import exception
 from glance.common import property_utils
-from glance.tests import utils
+import glance.context
+from glance.tests.unit import base
 
 CONFIG_SECTIONS = [
     '^x_owner_.*',
@@ -26,20 +29,30 @@ CONFIG_SECTIONS = [
     'spl_update_prop',
     'spl_update_only_prop',
     'spl_delete_prop',
+    '^x_all_permitted.*',
+    '^x_none_permitted.*',
+    'x_invalid_all_and_none',
+    'x_none_read',
+    'x_none_update',
+    'x_none_delete',
     '.*'
 ]
 
 
-class TestPropertyRules(utils.BaseTestCase):
+def create_context(policy, roles=[]):
+    return glance.context.RequestContext(roles=roles,
+                                         policy_enforcer=policy)
+
+
+class TestPropertyRulesWithRoles(base.IsolatedUnitTest):
 
     def setUp(self):
-        super(TestPropertyRules, self).setUp()
+        super(TestPropertyRulesWithRoles, self).setUp()
         self.set_property_protections()
+        self.policy = policy.Enforcer()
 
     def tearDown(self):
-        for section in property_utils.CONFIG.sections():
-            property_utils.CONFIG.remove_section(section)
-        super(TestPropertyRules, self).tearDown()
+        super(TestPropertyRulesWithRoles, self).tearDown()
 
     def test_is_property_protections_enabled_true(self):
         self.config(property_protection_file="property-protections.conf")
@@ -51,7 +64,7 @@ class TestPropertyRules(utils.BaseTestCase):
 
     def test_property_protection_file_doesnt_exist(self):
         self.config(property_protection_file='fake-file.conf')
-        self.assertRaises(webob.exc.HTTPInternalServerError,
+        self.assertRaises(exception.InvalidPropertyProtectionConfiguration,
                           property_utils.PropertyRules)
 
     def test_property_protection_with_malformed_rule(self):
@@ -60,7 +73,7 @@ class TestPropertyRules(utils.BaseTestCase):
                                       'update': ['fake-role'],
                                       'delete': ['fake-role']}}
         self.set_property_protection_rules(malformed_rules)
-        self.assertRaises(webob.exc.HTTPInternalServerError,
+        self.assertRaises(exception.InvalidPropertyProtectionConfiguration,
                           property_utils.PropertyRules)
 
     def test_property_protection_with_missing_operation(self):
@@ -68,7 +81,7 @@ class TestPropertyRules(utils.BaseTestCase):
                                                    'update': ['fake-role'],
                                                    'delete': ['fake-role']}}
         self.set_property_protection_rules(rules_with_missing_operation)
-        self.assertRaises(webob.exc.HTTPInternalServerError,
+        self.assertRaises(exception.InvalidPropertyProtectionConfiguration,
                           property_utils.PropertyRules)
 
     def test_property_protection_with_misspelt_operation(self):
@@ -77,7 +90,7 @@ class TestPropertyRules(utils.BaseTestCase):
                                                     'update': ['fake-role'],
                                                     'delete': ['fake-role']}}
         self.set_property_protection_rules(rules_with_misspelt_operation)
-        self.assertRaises(webob.exc.HTTPInternalServerError,
+        self.assertRaises(exception.InvalidPropertyProtectionConfiguration,
                           property_utils.PropertyRules)
 
     def test_property_protection_with_whitespace(self):
@@ -92,81 +105,85 @@ class TestPropertyRules(utils.BaseTestCase):
         self.set_property_protection_rules(rules_whitespace)
         self.rules_checker = property_utils.PropertyRules()
         self.assertTrue(self.rules_checker.check_property_rules('test_prop_1',
-                        'read', ['member']))
+                        'read', create_context(self.policy, ['member'])))
         self.assertTrue(self.rules_checker.check_property_rules('test_prop_1',
-                        'read', ['fake-role']))
+                        'read', create_context(self.policy, ['fake-role'])))
 
     def test_check_property_rules_invalid_action(self):
-        self.rules_checker = property_utils.PropertyRules()
+        self.rules_checker = property_utils.PropertyRules(self.policy)
         self.assertFalse(self.rules_checker.check_property_rules('test_prop',
-                         'hall', ['admin']))
+                         'hall', create_context(self.policy, ['admin'])))
 
     def test_check_property_rules_read_permitted_admin_role(self):
-        self.rules_checker = property_utils.PropertyRules()
+        self.rules_checker = property_utils.PropertyRules(self.policy)
         self.assertTrue(self.rules_checker.check_property_rules('test_prop',
-                        'read', ['admin']))
+                        'read', create_context(self.policy, ['admin'])))
 
     def test_check_property_rules_read_permitted_specific_role(self):
-        self.rules_checker = property_utils.PropertyRules()
+        self.rules_checker = property_utils.PropertyRules(self.policy)
         self.assertTrue(self.rules_checker.check_property_rules(
-                        'x_owner_prop', 'read', ['member']))
+                        'x_owner_prop', 'read',
+                        create_context(self.policy, ['member'])))
 
     def test_check_property_rules_read_unpermitted_role(self):
-        self.rules_checker = property_utils.PropertyRules()
+        self.rules_checker = property_utils.PropertyRules(self.policy)
         self.assertFalse(self.rules_checker.check_property_rules('test_prop',
-                         'read', ['member']))
+                         'read', create_context(self.policy, ['member'])))
 
     def test_check_property_rules_create_permitted_admin_role(self):
-        self.rules_checker = property_utils.PropertyRules()
+        self.rules_checker = property_utils.PropertyRules(self.policy)
         self.assertTrue(self.rules_checker.check_property_rules('test_prop',
-                        'create', ['admin']))
+                        'create', create_context(self.policy, ['admin'])))
 
     def test_check_property_rules_create_permitted_specific_role(self):
-        self.rules_checker = property_utils.PropertyRules()
+        self.rules_checker = property_utils.PropertyRules(self.policy)
         self.assertTrue(self.rules_checker.check_property_rules(
-                        'x_owner_prop', 'create', ['member']))
+                        'x_owner_prop', 'create',
+                        create_context(self.policy, ['member'])))
 
     def test_check_property_rules_create_unpermitted_role(self):
-        self.rules_checker = property_utils.PropertyRules()
+        self.rules_checker = property_utils.PropertyRules(self.policy)
         self.assertFalse(self.rules_checker.check_property_rules('test_prop',
-                         'create', ['member']))
+                         'create', create_context(self.policy, ['member'])))
 
     def test_check_property_rules_update_permitted_admin_role(self):
-        self.rules_checker = property_utils.PropertyRules()
+        self.rules_checker = property_utils.PropertyRules(self.policy)
         self.assertTrue(self.rules_checker.check_property_rules('test_prop',
-                        'update', ['admin']))
+                        'update', create_context(self.policy, ['admin'])))
 
     def test_check_property_rules_update_permitted_specific_role(self):
-        self.rules_checker = property_utils.PropertyRules()
+        self.rules_checker = property_utils.PropertyRules(self.policy)
         self.assertTrue(self.rules_checker.check_property_rules(
-                        'x_owner_prop', 'update', ['member']))
+                        'x_owner_prop', 'update',
+                        create_context(self.policy, ['member'])))
 
     def test_check_property_rules_update_unpermitted_role(self):
-        self.rules_checker = property_utils.PropertyRules()
+        self.rules_checker = property_utils.PropertyRules(self.policy)
         self.assertFalse(self.rules_checker.check_property_rules('test_prop',
-                         'update', ['member']))
+                         'update', create_context(self.policy, ['member'])))
 
     def test_check_property_rules_delete_permitted_admin_role(self):
-        self.rules_checker = property_utils.PropertyRules()
+        self.rules_checker = property_utils.PropertyRules(self.policy)
         self.assertTrue(self.rules_checker.check_property_rules('test_prop',
-                        'delete', ['admin']))
+                        'delete', create_context(self.policy, ['admin'])))
 
     def test_check_property_rules_delete_permitted_specific_role(self):
-        self.rules_checker = property_utils.PropertyRules()
+        self.rules_checker = property_utils.PropertyRules(self.policy)
         self.assertTrue(self.rules_checker.check_property_rules(
-                        'x_owner_prop', 'delete', ['member']))
+                        'x_owner_prop', 'delete',
+                        create_context(self.policy, ['member'])))
 
     def test_check_property_rules_delete_unpermitted_role(self):
-        self.rules_checker = property_utils.PropertyRules()
+        self.rules_checker = property_utils.PropertyRules(self.policy)
         self.assertFalse(self.rules_checker.check_property_rules('test_prop',
-                         'delete', ['member']))
+                         'delete', create_context(self.policy, ['member'])))
 
     def test_property_config_loaded_in_order(self):
         """
         Verify the order of loaded config sections matches that from the
         configuration file
         """
-        self.rules_checker = property_utils.PropertyRules()
+        self.rules_checker = property_utils.PropertyRules(self.policy)
         self.assertEqual(property_utils.CONFIG.sections(), CONFIG_SECTIONS)
 
     def test_property_rules_loaded_in_order(self):
@@ -174,7 +191,275 @@ class TestPropertyRules(utils.BaseTestCase):
         Verify rules are iterable in the same order as read from the config
         file
         """
-        self.rules_checker = property_utils.PropertyRules()
+        self.rules_checker = property_utils.PropertyRules(self.policy)
         for i in xrange(len(property_utils.CONFIG.sections())):
             self.assertEqual(property_utils.CONFIG.sections()[i],
                              self.rules_checker.rules[i][0].pattern)
+
+    def test_check_property_rules_create_all_permitted(self):
+        self.rules_checker = property_utils.PropertyRules()
+        self.assertTrue(self.rules_checker.check_property_rules(
+            'x_all_permitted', 'create', create_context(self.policy, [''])))
+
+    def test_check_property_rules_read_all_permitted(self):
+        self.rules_checker = property_utils.PropertyRules()
+        self.assertTrue(self.rules_checker.check_property_rules(
+            'x_all_permitted', 'read', create_context(self.policy, [''])))
+
+    def test_check_property_rules_update_all_permitted(self):
+        self.rules_checker = property_utils.PropertyRules()
+        self.assertTrue(self.rules_checker.check_property_rules(
+            'x_all_permitted', 'update', create_context(self.policy, [''])))
+
+    def test_check_property_rules_delete_all_permitted(self):
+        self.rules_checker = property_utils.PropertyRules()
+        self.assertTrue(self.rules_checker.check_property_rules(
+            'x_all_permitted', 'delete', create_context(self.policy, [''])))
+
+    def test_check_property_rules_create_none_permitted(self):
+        self.rules_checker = property_utils.PropertyRules()
+        self.assertFalse(self.rules_checker.check_property_rules(
+            'x_none_permitted', 'create', create_context(self.policy, [''])))
+
+    def test_check_property_rules_read_none_permitted(self):
+        self.rules_checker = property_utils.PropertyRules()
+        self.assertFalse(self.rules_checker.check_property_rules(
+            'x_none_permitted', 'read', create_context(self.policy, [''])))
+
+    def test_check_property_rules_update_none_permitted(self):
+        self.rules_checker = property_utils.PropertyRules()
+        self.assertFalse(self.rules_checker.check_property_rules(
+            'x_none_permitted', 'update', create_context(self.policy, [''])))
+
+    def test_check_property_rules_delete_none_permitted(self):
+        self.rules_checker = property_utils.PropertyRules()
+        self.assertFalse(self.rules_checker.check_property_rules(
+            'x_none_permitted', 'delete', create_context(self.policy, [''])))
+
+    def test_check_property_rules_create_all_and_none(self):
+        self.rules_checker = property_utils.PropertyRules()
+        self.assertRaises(webob.exc.HTTPInternalServerError,
+                          self.rules_checker.check_property_rules,
+                          'x_invalid_all_and_none', 'create',
+                          create_context(self.policy, ['']))
+
+    def test_check_property_rules_read_all_and_none(self):
+        self.rules_checker = property_utils.PropertyRules()
+        self.assertRaises(webob.exc.HTTPInternalServerError,
+                          self.rules_checker.check_property_rules,
+                          'x_invalid_all_and_none', 'read',
+                          create_context(self.policy, ['']))
+
+    def test_check_property_rules_update_all_and_none(self):
+        self.rules_checker = property_utils.PropertyRules()
+        self.assertRaises(webob.exc.HTTPInternalServerError,
+                          self.rules_checker.check_property_rules,
+                          'x_invalid_all_and_none', 'update',
+                          create_context(self.policy, ['']))
+
+    def test_check_property_rules_delete_all_and_none(self):
+        self.rules_checker = property_utils.PropertyRules()
+        self.assertRaises(webob.exc.HTTPInternalServerError,
+                          self.rules_checker.check_property_rules,
+                          'x_invalid_all_and_none', 'delete',
+                          create_context(self.policy, ['']))
+
+    def test_check_property_rules_read_none(self):
+        self.rules_checker = property_utils.PropertyRules()
+        self.assertTrue(self.rules_checker.check_property_rules(
+            'x_none_read', 'create',
+            create_context(self.policy, ['admin', 'member'])))
+        self.assertFalse(self.rules_checker.check_property_rules(
+            'x_none_read', 'read',
+            create_context(self.policy, [''])))
+        self.assertFalse(self.rules_checker.check_property_rules(
+            'x_none_read', 'update',
+            create_context(self.policy, [''])))
+        self.assertFalse(self.rules_checker.check_property_rules(
+            'x_none_read', 'delete',
+            create_context(self.policy, [''])))
+
+    def test_check_property_rules_update_none(self):
+        self.rules_checker = property_utils.PropertyRules()
+        self.assertTrue(self.rules_checker.check_property_rules(
+            'x_none_update', 'create',
+            create_context(self.policy, ['admin', 'member'])))
+        self.assertTrue(self.rules_checker.check_property_rules(
+            'x_none_update', 'read',
+            create_context(self.policy, ['admin', 'member'])))
+        self.assertFalse(self.rules_checker.check_property_rules(
+            'x_none_update', 'update',
+            create_context(self.policy, [''])))
+        self.assertTrue(self.rules_checker.check_property_rules(
+            'x_none_update', 'delete',
+            create_context(self.policy, ['admin', 'member'])))
+
+    def test_check_property_rules_delete_none(self):
+        self.rules_checker = property_utils.PropertyRules()
+        self.assertTrue(self.rules_checker.check_property_rules(
+            'x_none_delete', 'create',
+            create_context(self.policy, ['admin', 'member'])))
+        self.assertTrue(self.rules_checker.check_property_rules(
+            'x_none_delete', 'read',
+            create_context(self.policy, ['admin', 'member'])))
+        self.assertTrue(self.rules_checker.check_property_rules(
+            'x_none_delete', 'update',
+            create_context(self.policy, ['admin', 'member'])))
+        self.assertFalse(self.rules_checker.check_property_rules(
+            'x_none_delete', 'delete',
+            create_context(self.policy, [''])))
+
+
+class TestPropertyRulesWithPolicies(base.IsolatedUnitTest):
+
+    def setUp(self):
+        super(TestPropertyRulesWithPolicies, self).setUp()
+        self.set_property_protections(use_policies=True)
+        self.policy = policy.Enforcer()
+        self.rules_checker = property_utils.PropertyRules(self.policy)
+
+    def tearDown(self):
+        super(TestPropertyRulesWithPolicies, self).tearDown()
+
+    def test_check_property_rules_create_permitted_specific_policy(self):
+        self.assertTrue(self.rules_checker.check_property_rules(
+                        'spl_creator_policy', 'create',
+                        create_context(self.policy, ['spl_role'])))
+
+    def test_check_property_rules_create_unpermitted_policy(self):
+        self.assertFalse(self.rules_checker.check_property_rules(
+                         'spl_creator_policy', 'create',
+                         create_context(self.policy, ['fake-role'])))
+
+    def test_check_property_rules_read_permitted_specific_policy(self):
+        self.assertTrue(self.rules_checker.check_property_rules(
+                        'spl_creator_policy', 'read',
+                        create_context(self.policy, ['spl_role'])))
+
+    def test_check_property_rules_read_unpermitted_policy(self):
+        self.assertFalse(self.rules_checker.check_property_rules(
+                         'spl_creator_policy', 'read',
+                         create_context(self.policy, ['fake-role'])))
+
+    def test_check_property_rules_update_permitted_specific_policy(self):
+        self.assertTrue(self.rules_checker.check_property_rules(
+                        'spl_creator_policy', 'update',
+                        create_context(self.policy, ['admin'])))
+
+    def test_check_property_rules_update_unpermitted_policy(self):
+        self.assertFalse(self.rules_checker.check_property_rules(
+                         'spl_creator_policy', 'update',
+                         create_context(self.policy, ['fake-role'])))
+
+    def test_check_property_rules_delete_permitted_specific_policy(self):
+        self.assertTrue(self.rules_checker.check_property_rules(
+                        'spl_creator_policy', 'delete',
+                        create_context(self.policy, ['admin'])))
+
+    def test_check_property_rules_delete_unpermitted_policy(self):
+        self.assertFalse(self.rules_checker.check_property_rules(
+                         'spl_creator_policy', 'delete',
+                         create_context(self.policy, ['fake-role'])))
+
+    def test_property_protection_with_malformed_rule(self):
+        malformed_rules = {'^[0-9)': {'create': ['fake-policy'],
+                                      'read': ['fake-policy'],
+                                      'update': ['fake-policy'],
+                                      'delete': ['fake-policy']}}
+        self.set_property_protection_rules(malformed_rules)
+        self.assertRaises(exception.InvalidPropertyProtectionConfiguration,
+                          property_utils.PropertyRules)
+
+    def test_property_protection_with_multiple_policies(self):
+        malformed_rules = {'^x_.*': {'create': ['fake-policy, another_pol'],
+                                     'read': ['fake-policy'],
+                                     'update': ['fake-policy'],
+                                     'delete': ['fake-policy']}}
+        self.set_property_protection_rules(malformed_rules)
+        self.assertRaises(exception.InvalidPropertyProtectionConfiguration,
+                          property_utils.PropertyRules)
+
+    def test_check_property_rules_create_all_permitted(self):
+        self.rules_checker = property_utils.PropertyRules()
+        self.assertTrue(self.rules_checker.check_property_rules(
+            'x_all_permitted', 'create', create_context(self.policy, [''])))
+
+    def test_check_property_rules_read_all_permitted(self):
+        self.rules_checker = property_utils.PropertyRules()
+        self.assertTrue(self.rules_checker.check_property_rules(
+            'x_all_permitted', 'read', create_context(self.policy, [''])))
+
+    def test_check_property_rules_update_all_permitted(self):
+        self.rules_checker = property_utils.PropertyRules()
+        self.assertTrue(self.rules_checker.check_property_rules(
+            'x_all_permitted', 'update', create_context(self.policy, [''])))
+
+    def test_check_property_rules_delete_all_permitted(self):
+        self.rules_checker = property_utils.PropertyRules()
+        self.assertTrue(self.rules_checker.check_property_rules(
+            'x_all_permitted', 'delete', create_context(self.policy, [''])))
+
+    def test_check_property_rules_create_none_permitted(self):
+        self.rules_checker = property_utils.PropertyRules()
+        self.assertFalse(self.rules_checker.check_property_rules(
+            'x_none_permitted', 'create', create_context(self.policy, [''])))
+
+    def test_check_property_rules_read_none_permitted(self):
+        self.rules_checker = property_utils.PropertyRules()
+        self.assertFalse(self.rules_checker.check_property_rules(
+            'x_none_permitted', 'read', create_context(self.policy, [''])))
+
+    def test_check_property_rules_update_none_permitted(self):
+        self.rules_checker = property_utils.PropertyRules()
+        self.assertFalse(self.rules_checker.check_property_rules(
+            'x_none_permitted', 'update', create_context(self.policy, [''])))
+
+    def test_check_property_rules_delete_none_permitted(self):
+        self.rules_checker = property_utils.PropertyRules()
+        self.assertFalse(self.rules_checker.check_property_rules(
+            'x_none_permitted', 'delete', create_context(self.policy, [''])))
+
+    def test_check_property_rules_read_none(self):
+        self.rules_checker = property_utils.PropertyRules()
+        self.assertTrue(self.rules_checker.check_property_rules(
+            'x_none_read', 'create',
+            create_context(self.policy, ['admin', 'member'])))
+        self.assertFalse(self.rules_checker.check_property_rules(
+            'x_none_read', 'read',
+            create_context(self.policy, [''])))
+        self.assertFalse(self.rules_checker.check_property_rules(
+            'x_none_read', 'update',
+            create_context(self.policy, [''])))
+        self.assertFalse(self.rules_checker.check_property_rules(
+            'x_none_read', 'delete',
+            create_context(self.policy, [''])))
+
+    def test_check_property_rules_update_none(self):
+        self.rules_checker = property_utils.PropertyRules()
+        self.assertTrue(self.rules_checker.check_property_rules(
+            'x_none_update', 'create',
+            create_context(self.policy, ['admin', 'member'])))
+        self.assertTrue(self.rules_checker.check_property_rules(
+            'x_none_update', 'read',
+            create_context(self.policy, ['admin', 'member'])))
+        self.assertFalse(self.rules_checker.check_property_rules(
+            'x_none_update', 'update',
+            create_context(self.policy, [''])))
+        self.assertTrue(self.rules_checker.check_property_rules(
+            'x_none_update', 'delete',
+            create_context(self.policy, ['admin', 'member'])))
+
+    def test_check_property_rules_delete_none(self):
+        self.rules_checker = property_utils.PropertyRules()
+        self.assertTrue(self.rules_checker.check_property_rules(
+            'x_none_delete', 'create',
+            create_context(self.policy, ['admin', 'member'])))
+        self.assertTrue(self.rules_checker.check_property_rules(
+            'x_none_delete', 'read',
+            create_context(self.policy, ['admin', 'member'])))
+        self.assertTrue(self.rules_checker.check_property_rules(
+            'x_none_delete', 'update',
+            create_context(self.policy, ['admin', 'member'])))
+        self.assertFalse(self.rules_checker.check_property_rules(
+            'x_none_delete', 'delete',
+            create_context(self.policy, [''])))

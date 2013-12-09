@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2011 OpenStack, LLC
+# Copyright 2011 OpenStack Foundation
 # Copyright 2012 RedHat Inc.
 # All Rights Reserved.
 #
@@ -19,10 +19,10 @@
 """Base class for all storage backends"""
 
 from glance.common import exception
-from glance.common import utils
 from glance.openstack.common import importutils
 import glance.openstack.common.log as logging
 from glance.openstack.common import strutils
+from glance.openstack.common import units
 
 LOG = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ def _exception_to_unicode(exc):
 
 class Store(object):
 
-    CHUNKSIZE = (16 * 1024 * 1024)  # 16M
+    CHUNKSIZE = 16 * units.Mi  # 16M
 
     def __init__(self, context=None, location=None):
         """

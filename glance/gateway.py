@@ -1,4 +1,5 @@
 # Copyright 2012 OpenStack Foundation
+# Copyright 2013 IBM Corp.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -44,7 +45,7 @@ class Gateway(object):
         notifier_image_factory = glance.notifier.ImageFactoryProxy(
                 policy_image_factory, context, self.notifier)
         if property_utils.is_property_protection_enabled():
-            property_rules = property_utils.PropertyRules()
+            property_rules = property_utils.PropertyRules(self.policy)
             protected_image_factory = property_protections.\
                 ProtectedImageFactoryProxy(notifier_image_factory, context,
                                            property_rules)
@@ -57,8 +58,10 @@ class Gateway(object):
 
     def get_image_member_factory(self, context):
         image_factory = glance.domain.ImageMemberFactory()
+        quota_image_factory = glance.quota.ImageMemberFactoryProxy(
+                image_factory, context, self.db_api)
         policy_member_factory = policy.ImageMemberFactoryProxy(
-                image_factory, context, self.policy)
+                quota_image_factory, context, self.policy)
         authorized_image_factory = authorization.ImageMemberFactoryProxy(
                                     policy_member_factory, context)
         return authorized_image_factory
@@ -74,7 +77,7 @@ class Gateway(object):
         notifier_image_repo = glance.notifier.ImageRepoProxy(
                 policy_image_repo, context, self.notifier)
         if property_utils.is_property_protection_enabled():
-            property_rules = property_utils.PropertyRules()
+            property_rules = property_utils.PropertyRules(self.policy)
             protected_image_repo = property_protections.\
                 ProtectedImageRepoProxy(notifier_image_repo, context,
                                         property_rules)
@@ -85,3 +88,23 @@ class Gateway(object):
                     notifier_image_repo, context)
 
         return authorized_image_repo
+
+    def get_task_factory(self, context):
+        task_factory = glance.domain.TaskFactory()
+        policy_task_factory = policy.TaskFactoryProxy(
+                task_factory, context, self.policy)
+        notifier_task_factory = glance.notifier.TaskFactoryProxy(
+                policy_task_factory, context, self.notifier)
+        authorized_task_factory = authorization.TaskFactoryProxy(
+            notifier_task_factory, context)
+        return authorized_task_factory
+
+    def get_task_repo(self, context):
+        task_repo = glance.db.TaskRepo(context, self.db_api)
+        policy_task_repo = policy.TaskRepoProxy(
+                task_repo, context, self.policy)
+        notifier_task_repo = glance.notifier.TaskRepoProxy(
+                policy_task_repo, context, self.notifier)
+        authorized_task_repo = authorization.TaskRepoProxy(
+            notifier_task_repo, context)
+        return authorized_task_repo

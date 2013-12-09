@@ -23,14 +23,11 @@ import copy
 
 import eventlet
 from oslo.config import cfg
-from webob.exc import (HTTPError,
-                       HTTPNotFound,
+from webob.exc import (HTTPNotFound,
                        HTTPConflict,
                        HTTPBadRequest,
                        HTTPForbidden,
-                       HTTPRequestEntityTooLarge,
-                       HTTPInternalServerError,
-                       HTTPServiceUnavailable)
+                       HTTPRequestEntityTooLarge)
 from webob import Response
 
 from glance.api import common
@@ -60,6 +57,7 @@ ACTIVE_IMMUTABLE = glance.api.v1.ACTIVE_IMMUTABLE
 CONF = cfg.CONF
 CONF.import_opt('disk_formats', 'glance.domain')
 CONF.import_opt('container_formats', 'glance.domain')
+CONF.import_opt('image_property_quota', 'glance.common.config')
 
 
 def validate_image_meta(req, values):
@@ -138,7 +136,7 @@ class Controller(controller.BaseController):
         self.policy = policy.Enforcer()
         self.pool = eventlet.GreenPool(size=1024)
         if property_utils.is_property_protection_enabled():
-            self.prop_enforcer = property_utils.PropertyRules()
+            self.prop_enforcer = property_utils.PropertyRules(self.policy)
         else:
             self.prop_enforcer = None
 
@@ -148,6 +146,33 @@ class Controller(controller.BaseController):
             self.policy.enforce(req.context, action, {})
         except exception.Forbidden:
             raise HTTPForbidden()
+
+    def _enforce_image_property_quota(self,
+                                      image_meta,
+                                      orig_image_meta=None,
+                                      purge_props=False,
+                                      req=None):
+        if CONF.image_property_quota < 0:
+            # If value is negative, allow unlimited number of properties
+            return
+
+        props = image_meta['properties'].keys()
+
+        # NOTE(ameade): If we are not removing existing properties,
+        # take them in to account
+        if (not purge_props) and orig_image_meta:
+            original_props = orig_image_meta['properties'].keys()
+            props.extend(original_props)
+            props = set(props)
+
+        if len(props) > CONF.image_property_quota:
+            msg = (_("The limit has been exceeded on the number of allowed "
+                     "image properties. Attempted: %s, Maximum: %s") %
+                   (len(props), CONF.image_property_quota))
+            LOG.info(msg)
+            raise HTTPRequestEntityTooLarge(explanation=msg,
+                                            request=req,
+                                            content_type="text/plain")
 
     def _enforce_create_protected_props(self, create_props, req):
         """
@@ -161,8 +186,8 @@ class Controller(controller.BaseController):
         if property_utils.is_property_protection_enabled():
             for key in create_props:
                 if (self.prop_enforcer.check_property_rules(
-                        key, 'create', req.context.roles) is False):
-                    msg = _("Property '%s' is protected" % key)
+                        key, 'create', req.context) is False):
+                    msg = _("Property '%s' is protected") % key
                     LOG.debug(msg)
                     raise HTTPForbidden(explanation=msg,
                                         request=req,
@@ -178,7 +203,7 @@ class Controller(controller.BaseController):
         if property_utils.is_property_protection_enabled():
             for key in image_meta['properties'].keys():
                 if (self.prop_enforcer.check_property_rules(
-                        key, 'read', req.context.roles) is False):
+                        key, 'read', req.context) is False):
                     image_meta['properties'].pop(key)
 
     def _enforce_update_protected_props(self, update_props, image_meta,
@@ -201,12 +226,12 @@ class Controller(controller.BaseController):
         if property_utils.is_property_protection_enabled():
             for key in update_props:
                 has_read = self.prop_enforcer.check_property_rules(
-                        key, 'read', req.context.roles)
+                        key, 'read', req.context)
                 if ((self.prop_enforcer.check_property_rules(
-                        key, 'update', req.context.roles) is False and
+                        key, 'update', req.context) is False and
                         image_meta['properties'][key] !=
                         orig_meta['properties'][key]) or not has_read):
-                    msg = _("Property '%s' is protected" % key)
+                    msg = _("Property '%s' is protected") % key
                     LOG.debug(msg)
                     raise HTTPForbidden(explanation=msg,
                                         request=req,
@@ -233,14 +258,14 @@ class Controller(controller.BaseController):
         if property_utils.is_property_protection_enabled():
             for key in delete_props:
                 if (self.prop_enforcer.check_property_rules(
-                        key, 'read', req.context.roles) is False):
+                        key, 'read', req.context) is False):
                     # NOTE(bourke): if read protected, re-add to image_meta to
                     # prevent deletion
                     image_meta['properties'][key] = \
                         orig_meta['properties'][key]
                 elif (self.prop_enforcer.check_property_rules(
-                        key, 'delete', req.context.roles) is False):
-                    msg = _("Property '%s' is protected" % key)
+                        key, 'delete', req.context) is False):
+                    msg = _("Property '%s' is protected") % key
                     LOG.debug(msg)
                     raise HTTPForbidden(explanation=msg,
                                         request=req,
@@ -280,7 +305,7 @@ class Controller(controller.BaseController):
 
     def detail(self, req):
         """
-        Returns detailed information for all public, available images
+        Returns detailed information for all available images
 
         :param req: The WSGI/Webob Request object
         :retval The response body is a mapping of the following form::
@@ -486,7 +511,7 @@ class Controller(controller.BaseController):
                                request=req,
                                content_type="text/plain")
         except exception.Invalid as e:
-            msg = (_("Failed to reserve image. Got error: %(e)s") % locals())
+            msg = _("Failed to reserve image. Got error: %(e)s") % {'e': e}
             for line in msg.split('\n'):
                 LOG.debug(line)
             raise HTTPBadRequest(explanation=msg,
@@ -526,7 +551,7 @@ class Controller(controller.BaseController):
             image_meta['size'] = image_size or image_meta['size']
         else:
             try:
-                req.get_content_type('application/octet-stream')
+                req.get_content_type(('application/octet-stream',))
             except exception.InvalidContentType:
                 upload_utils.safe_kill(req, image_meta['id'])
                 msg = _("Content-Type must be application/octet-stream")
@@ -545,7 +570,8 @@ class Controller(controller.BaseController):
                                        {'status': 'saving'})
 
         LOG.debug(_("Uploading image data for image %(image_id)s "
-                    "to %(scheme)s store"), locals())
+                    "to %(scheme)s store"), {'image_id': image_id,
+                                             'scheme': scheme})
 
         self.notifier.info("image.prepare", redact_loc(image_meta))
 
@@ -581,8 +607,7 @@ class Controller(controller.BaseController):
             self.notifier.info("image.update", redact_loc(image_meta_data))
             return image_meta_data
         except exception.Invalid as e:
-            msg = (_("Failed to activate image. Got error: %(e)s")
-                   % locals())
+            msg = _("Failed to activate image. Got error: %(e)s") % {'e': e}
             LOG.debug(msg)
             raise HTTPBadRequest(explanation=msg,
                                  request=req,
@@ -724,6 +749,8 @@ class Controller(controller.BaseController):
         self._enforce_create_protected_props(image_meta['properties'].keys(),
                                              req)
 
+        self._enforce_image_property_quota(image_meta, req=req)
+
         image_meta = self._reserve(req, image_meta)
         id = image_meta['id']
 
@@ -826,6 +853,11 @@ class Controller(controller.BaseController):
                     orig_keys.difference(new_keys), image_meta,
                     orig_image_meta, req)
 
+        self._enforce_image_property_quota(image_meta,
+                                           orig_image_meta=orig_image_meta,
+                                           purge_props=purge_props,
+                                           req=req)
+
         try:
             if location:
                 image_meta['size'] = self._get_size(req.context, image_meta,
@@ -841,21 +873,21 @@ class Controller(controller.BaseController):
                                                  image_data)
 
         except exception.Invalid as e:
-            msg = (_("Failed to update image metadata. Got error: %(e)s")
-                   % locals())
+            msg = (_("Failed to update image metadata. Got error: %(e)s") %
+                   {'e': e})
             LOG.debug(msg)
             raise HTTPBadRequest(explanation=msg,
                                  request=req,
                                  content_type="text/plain")
         except exception.NotFound as e:
-            msg = (_("Failed to find image to update: %(e)s") % locals())
+            msg = _("Failed to find image to update: %(e)s") % {'e': e}
             for line in msg.split('\n'):
                 LOG.info(line)
             raise HTTPNotFound(explanation=msg,
                                request=req,
                                content_type="text/plain")
         except exception.Forbidden as e:
-            msg = (_("Forbidden to update image: %(e)s") % locals())
+            msg = _("Forbidden to update image: %(e)s") % {'e': e}
             for line in msg.split('\n'):
                 LOG.info(line)
             raise HTTPForbidden(explanation=msg,
@@ -915,7 +947,8 @@ class Controller(controller.BaseController):
             # Delete the image from the registry first, since we rely on it
             # for authorization checks.
             # See https://bugs.launchpad.net/glance/+bug/1065187
-            registry.update_image_metadata(req.context, id, {'status': status})
+            image = registry.update_image_metadata(req.context, id,
+                                                   {'status': status})
             registry.delete_image_metadata(req.context, id)
 
             # The image's location field may be None in the case
@@ -926,14 +959,14 @@ class Controller(controller.BaseController):
                 upload_utils.initiate_deletion(req, image['location'], id,
                                                CONF.delayed_delete)
         except exception.NotFound as e:
-            msg = (_("Failed to find image to delete: %(e)s") % locals())
+            msg = _("Failed to find image to delete: %(e)s") % {'e': e}
             for line in msg.split('\n'):
                 LOG.info(line)
             raise HTTPNotFound(explanation=msg,
                                request=req,
                                content_type="text/plain")
         except exception.Forbidden as e:
-            msg = (_("Forbidden to delete image: %(e)s") % locals())
+            msg = _("Forbidden to delete image: %(e)s") % {'e': e}
             for line in msg.split('\n'):
                 LOG.info(line)
             raise HTTPForbidden(explanation=msg,

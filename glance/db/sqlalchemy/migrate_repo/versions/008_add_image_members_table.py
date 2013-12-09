@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2011 OpenStack LLC.
+# Copyright 2011 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -15,8 +15,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from migrate.changeset import *
-from sqlalchemy import *
+from migrate.changeset import *  # noqa
+from sqlalchemy import *  # noqa
 
 from glance.db.sqlalchemy.migrate_repo.schema import (
     Boolean, DateTime, Integer, String, create_tables,
@@ -76,8 +76,11 @@ def get_image_members_table(meta):
                           mysql_engine='InnoDB',
                           extend_existing=True)
 
-    Index('ix_image_members_image_id_member', image_members.c.image_id,
-          image_members.c.member)
+    # DB2: an index has already been created for the UniqueConstraint option
+    # specified on the Table() statement above.
+    if meta.bind.name != "ibm_db_sa":
+        Index('ix_image_members_image_id_member', image_members.c.image_id,
+              image_members.c.member)
 
     return image_members
 

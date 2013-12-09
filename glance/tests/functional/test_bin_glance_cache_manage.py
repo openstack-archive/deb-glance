@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2011 OpenStack, LLC
+# Copyright 2011 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -24,10 +24,11 @@ import json
 import os
 import sys
 
+from glance.openstack.common import units
 from glance.tests import functional
 from glance.tests.utils import execute, minimal_headers
 
-FIVE_KB = 5 * 1024
+FIVE_KB = 5 * units.Ki
 
 
 class TestBinGlanceCacheManage(functional.FunctionalTest):
@@ -134,7 +135,7 @@ class TestBinGlanceCacheManage(functional.FunctionalTest):
 
         # Add a few images and cache the second one of them
         # by GETing the image...
-        for x in xrange(0, 4):
+        for x in xrange(4):
             ids[x] = self.add_image("Image%s" % x)
 
         path = "http://%s:%d/v1/images/%s" % ("127.0.0.1", api_port,
@@ -181,7 +182,7 @@ class TestBinGlanceCacheManage(functional.FunctionalTest):
 
         # Add a few images and cache the second one of them
         # by GETing the image...
-        for x in xrange(0, 4):
+        for x in xrange(4):
             ids[x] = self.add_image("Image%s" % x)
 
         # Queue second image and then cache it
@@ -279,7 +280,7 @@ log_file = %(log_file)s
         self.assertTrue('No queued images' in out.strip())
 
         # Queue all images
-        for x in xrange(0, 4):
+        for x in xrange(4):
             cmd = ("%s --port=%d --force "
                    "queue-image %s") % (exe_cmd, api_port, ids[x])
 
@@ -310,5 +311,35 @@ log_file = %(log_file)s
 
         self.assertEqual(0, exitcode)
         self.assertTrue('No queued images' in out.strip())
+
+        # verify two image id when queue-image
+        cmd = ("%s --port=%d --force "
+               "queue-image %s %s") % (exe_cmd, api_port, ids[0], ids[1])
+
+        exitcode, out, err = execute(cmd, raise_error=False)
+
+        self.assertEqual(1, exitcode)
+        self.assertTrue('Please specify one and only ID of '
+                        'the image you wish to ' in out.strip())
+
+        # verify two image id when delete-queued-image
+        cmd = ("%s --port=%d --force delete-queued-image "
+               "%s %s") % (exe_cmd, api_port, ids[0], ids[1])
+
+        exitcode, out, err = execute(cmd, raise_error=False)
+
+        self.assertEqual(1, exitcode)
+        self.assertTrue('Please specify one and only ID of '
+                        'the image you wish to ' in out.strip())
+
+        # verify two image id when delete-cached-image
+        cmd = ("%s --port=%d --force delete-cached-image "
+               "%s %s") % (exe_cmd, api_port, ids[0], ids[1])
+
+        exitcode, out, err = execute(cmd, raise_error=False)
+
+        self.assertEqual(1, exitcode)
+        self.assertTrue('Please specify one and only ID of '
+                        'the image you wish to ' in out.strip())
 
         self.stop_servers()

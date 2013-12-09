@@ -2,8 +2,9 @@
 
 # Copyright 2010 United States Government as represented by the
 # Administrator of the National Aeronautics and Space Administration.
-# Copyright 2010-2011 OpenStack LLC.
+# Copyright 2010-2011 OpenStack Foundation
 # Copyright 2012 Justin Santa Barbara
+# Copyright 2013 IBM Corp.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -18,9 +19,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-"""
-Defines interface for DB access
-"""
+
+"""Defines interface for DB access."""
 
 import logging
 import time
@@ -90,9 +90,7 @@ def add_cli_options():
 
 
 def _ping_listener(dbapi_conn, connection_rec, connection_proxy):
-
-    """
-    Ensures that MySQL connections checked out of the
+    """Ensures that MySQL connections checked out of the
     pool are alive.
 
     Borrowed from:
@@ -111,9 +109,7 @@ def _ping_listener(dbapi_conn, connection_rec, connection_proxy):
 
 
 def setup_db_env():
-    """
-    Setup global configuration for database.
-    """
+    """Setup global configuration for database."""
     global sa_logger, _IDLE_TIMEOUT, _MAX_RETRIES, _RETRY_INTERVAL, _CONNECTION
 
     _IDLE_TIMEOUT = CONF.sql_idle_timeout
@@ -149,7 +145,7 @@ def _check_mutate_authorization(context, image_ref):
 
 
 def _get_session(autocommit=True, expire_on_commit=False):
-    """Helper method to grab session"""
+    """Helper method to grab session."""
     global _MAKER
     if not _MAKER:
         get_engine()
@@ -497,9 +493,9 @@ def _paginate_query(query, model, limit, sort_keys, marker=None,
 
         # Build up an array of sort criteria as in the docstring
         criteria_list = []
-        for i in xrange(0, len(sort_keys)):
+        for i in xrange(len(sort_keys)):
             crit_attrs = []
-            for j in xrange(0, i):
+            for j in xrange(i):
                 model_attr = getattr(model, sort_keys[j])
                 attr = sa_sql.expression.case([(model_attr != None,
                                               model_attr), ],
@@ -530,6 +526,132 @@ def _paginate_query(query, model, limit, sort_keys, marker=None,
     return query
 
 
+def _make_conditions_from_filters(filters, is_public=None):
+    #NOTE(venkatesh) make copy of the filters are to be altered in this method.
+    filters = filters.copy()
+
+    image_conditions = []
+    prop_conditions = []
+    tag_conditions = []
+
+    if is_public is not None:
+        image_conditions.append(models.Image.is_public == is_public)
+
+    if 'checksum' in filters:
+        checksum = filters.pop('checksum')
+        image_conditions.append(models.Image.checksum == checksum)
+
+    if 'is_public' in filters:
+        key = 'is_public'
+        value = filters.pop('is_public')
+        prop_filters = _make_image_property_condition(key=key, value=value)
+        prop_conditions.append(prop_filters)
+
+    for (k, v) in filters.pop('properties', {}).items():
+        prop_filters = _make_image_property_condition(key=k, value=v)
+        prop_conditions.append(prop_filters)
+
+    if 'changes-since' in filters:
+        # normalize timestamp to UTC, as sqlalchemy doesn't appear to
+        # respect timezone offsets
+        changes_since = timeutils.normalize_time(filters.pop('changes-since'))
+        image_conditions.append(models.Image.updated_at > changes_since)
+
+    if 'deleted' in filters:
+        deleted_filter = filters.pop('deleted')
+        image_conditions.append(models.Image.deleted == deleted_filter)
+        # TODO(bcwaldon): handle this logic in registry server
+        if not deleted_filter:
+            image_statuses = [s for s in STATUSES if s != 'killed']
+            image_conditions.append(models.Image.status.in_(image_statuses))
+
+    if 'tags' in filters:
+        tags = filters.pop('tags')
+        for tag in tags:
+            tag_filters = [models.ImageTag.deleted == False]
+            tag_filters.extend([models.ImageTag.value == tag])
+            tag_conditions.append(tag_filters)
+
+    filters = dict([(k, v) for k, v in filters.items() if v is not None])
+
+    for (k, v) in filters.items():
+        key = k
+        if k.endswith('_min') or k.endswith('_max'):
+            key = key[0:-4]
+            try:
+                v = int(filters.pop(k))
+            except ValueError:
+                msg = _("Unable to filter on a range "
+                        "with a non-numeric value.")
+                raise exception.InvalidFilterRangeValue(msg)
+
+            if k.endswith('_min'):
+                image_conditions.append(getattr(models.Image, key) >= v)
+            if k.endswith('_max'):
+                image_conditions.append(getattr(models.Image, key) <= v)
+
+    for (k, v) in filters.items():
+        value = filters.pop(k)
+        if hasattr(models.Image, k):
+            image_conditions.append(getattr(models.Image, k) == value)
+        else:
+            prop_filters = _make_image_property_condition(key=k, value=value)
+            prop_conditions.append(prop_filters)
+
+    return image_conditions, prop_conditions, tag_conditions
+
+
+def _make_image_property_condition(key, value):
+    prop_filters = [models.ImageProperty.deleted == False]
+    prop_filters.extend([models.ImageProperty.name == key])
+    prop_filters.extend([models.ImageProperty.value == value])
+    return prop_filters
+
+
+def _select_images_query(context, image_conditions, admin_as_user,
+                         member_status, visibility):
+    session = _get_session()
+
+    img_conditional_clause = sa_sql.and_(*image_conditions)
+
+    regular_user = (not context.is_admin) or admin_as_user
+
+    query_member = session.query(models.Image) \
+        .join(models.Image.members) \
+        .filter(img_conditional_clause)
+    if regular_user:
+        member_filters = [models.ImageMember.deleted == False]
+        if context.owner is not None:
+            member_filters.extend([models.ImageMember.member == context.owner])
+            if member_status != 'all':
+                member_filters.extend([
+                    models.ImageMember.status == member_status])
+        query_member = query_member.filter(sa_sql.and_(*member_filters))
+
+    #NOTE(venkatesh) if the 'visibility' is set to 'shared', we just
+    # query the image members table. No union is required.
+    if visibility is not None and visibility == 'shared':
+        return query_member
+
+    query_image = session.query(models.Image)\
+        .filter(img_conditional_clause)
+    if regular_user:
+        query_image = query_image.filter(models.Image.is_public == True)
+        query_image_owner = None
+        if context.owner is not None:
+            query_image_owner = session.query(models.Image) \
+                .filter(models.Image.owner == context.owner) \
+                .filter(img_conditional_clause)
+        if query_image_owner is not None:
+            query = query_image.union(query_image_owner, query_member)
+        else:
+            query = query_image.union(query_member)
+        return query
+    else:
+        #Admin user
+        return query_image
+
+
 def image_get_all(context, filters=None, marker=None, limit=None,
                   sort_key='created_at', sort_dir='desc',
                   member_status='accepted', is_public=None,
@@ -554,114 +676,39 @@ def image_get_all(context, filters=None, marker=None, limit=None,
     """
     filters = filters or {}
 
-    session = _get_session()
-    query_image = session.query(models.Image)
-    query_member = session.query(models.Image).join(models.Image.members)
+    visibility = filters.pop('visibility', None)
+    showing_deleted = 'changes-since' in filters or filters.get('deleted',
+                                                                False)
 
-    if (not context.is_admin) or admin_as_user == True:
-        visibility_filters = [models.Image.is_public == True]
-        member_filters = [models.ImageMember.deleted == False]
+    img_conditions, prop_conditions, tag_conditions = \
+        _make_conditions_from_filters(filters, is_public)
 
-        if context.owner is not None:
-            if member_status == 'all':
-                visibility_filters.extend([
-                    models.Image.owner == context.owner])
-                member_filters.extend([
-                    models.ImageMember.member == context.owner])
-            else:
-                visibility_filters.extend([
-                    models.Image.owner == context.owner])
-                member_filters.extend([
-                    models.ImageMember.member == context.owner,
-                    models.ImageMember.status == member_status])
+    query = _select_images_query(context,
+                                 img_conditions,
+                                 admin_as_user,
+                                 member_status,
+                                 visibility)
 
-        query_image = query_image.filter(sa_sql.or_(*visibility_filters))
-        query_member = query_member.filter(sa_sql.and_(*member_filters))
-
-    query = query_image.union(query_member)
-
-    if 'visibility' in filters:
-        visibility = filters.pop('visibility')
+    if visibility is not None:
         if visibility == 'public':
             query = query.filter(models.Image.is_public == True)
         elif visibility == 'private':
             query = query.filter(models.Image.is_public == False)
-            if context.owner is not None and ((not context.is_admin)
-                                              or admin_as_user == True):
-                query = query.filter(
-                    models.Image.owner == context.owner)
-        else:
-            query_member = query_member.filter(
-                models.ImageMember.member == context.owner,
-                models.ImageMember.deleted == False)
-            query = query_member
 
-    if is_public is not None:
-        query = query.filter(models.Image.is_public == is_public)
+    if prop_conditions:
+        for prop_condition in prop_conditions:
+            query = query.join(models.ImageProperty, aliased=True)\
+                .filter(sa_sql.and_(*prop_condition))
 
-    if 'is_public' in filters:
-        spec = models.Image.properties.any(name='is_public',
-                                           value=filters.pop('is_public'),
-                                           deleted=False)
-        query = query.filter(spec)
-
-    showing_deleted = False
-
-    if 'checksum' in filters:
-        checksum = filters.pop('checksum')
-        query = query.filter(models.Image.checksum == checksum)
-
-    if 'changes-since' in filters:
-        # normalize timestamp to UTC, as sqlalchemy doesn't appear to
-        # respect timezone offsets
-        changes_since = timeutils.normalize_time(filters.pop('changes-since'))
-        query = query.filter(models.Image.updated_at > changes_since)
-        showing_deleted = True
-
-    if 'deleted' in filters:
-        deleted_filter = filters.pop('deleted')
-        query = query.filter_by(deleted=deleted_filter)
-        showing_deleted = deleted_filter
-        # TODO(bcwaldon): handle this logic in registry server
-        if not deleted_filter:
-            query = query.filter(models.Image.status != 'killed')
-
-    for (k, v) in filters.pop('properties', {}).items():
-        query = query.filter(models.Image.properties.any(name=k,
-                                                         value=v,
-                                                         deleted=False))
-
-    if 'tags' in filters:
-        tags = filters.pop('tags')
-        for tag in tags:
-            query = query.filter(models.Image.tags.any(value=tag,
-                                                       deleted=False))
-
-    for (k, v) in filters.items():
-        if v is not None:
-            key = k
-            if k.endswith('_min') or k.endswith('_max'):
-                key = key[0:-4]
-                try:
-                    v = int(v)
-                except ValueError:
-                    msg = _("Unable to filter on a range "
-                            "with a non-numeric value.")
-                    raise exception.InvalidFilterRangeValue(msg)
-
-            if k.endswith('_min'):
-                query = query.filter(getattr(models.Image, key) >= v)
-            elif k.endswith('_max'):
-                query = query.filter(getattr(models.Image, key) <= v)
-            elif hasattr(models.Image, key):
-                query = query.filter(getattr(models.Image, key) == v)
-            else:
-                query = query.filter(models.Image.properties.any(name=key,
-                                                                 value=v))
+    if tag_conditions:
+        for tag_condition in tag_conditions:
+            query = query.join(models.ImageTag, aliased=True)\
+                .filter(sa_sql.and_(*tag_condition))
 
     marker_image = None
     if marker is not None:
-        marker_image = _image_get(context, marker,
+        marker_image = _image_get(context,
+                                  marker,
                                   force_show_deleted=showing_deleted)
 
     sort_keys = ['created_at', 'id']
@@ -894,7 +941,7 @@ def _image_child_entry_delete_all(child_model_cls, image_id, delete_time=None,
 
 
 def image_property_create(context, values, session=None):
-    """Create an ImageProperty object"""
+    """Create an ImageProperty object."""
     prop_ref = models.ImageProperty()
     prop = _image_property_update(context, prop_ref, values, session=session)
     return prop.to_dict()
@@ -902,7 +949,7 @@ def image_property_create(context, values, session=None):
 
 def _image_property_update(context, prop_ref, values, session=None):
     """
-    Used internally by image_property_create and image_property_update
+    Used internally by image_property_create and image_property_update.
     """
     _drop_protected_attrs(models.ImageProperty, values)
     values["deleted"] = False
@@ -913,7 +960,7 @@ def _image_property_update(context, prop_ref, values, session=None):
 
 def image_property_delete(context, prop_ref, image_ref, session=None):
     """
-    Used internally by image_property_create and image_property_update
+    Used internally by image_property_create and image_property_update.
     """
     session = session or _get_session()
     prop = session.query(models.ImageProperty).filter_by(image_id=image_ref,
@@ -933,14 +980,14 @@ def _image_property_delete_all(context, image_id, delete_time=None,
 
 
 def image_member_create(context, values, session=None):
-    """Create an ImageMember object"""
+    """Create an ImageMember object."""
     memb_ref = models.ImageMember()
     _image_member_update(context, memb_ref, values, session=session)
     return _image_member_format(memb_ref)
 
 
 def _image_member_format(member_ref):
-    """Format a member ref for consumption outside of this module"""
+    """Format a member ref for consumption outside of this module."""
     return {
         'id': member_ref['id'],
         'image_id': member_ref['image_id'],
@@ -953,7 +1000,7 @@ def _image_member_format(member_ref):
 
 
 def image_member_update(context, memb_id, values):
-    """Update an ImageMember object"""
+    """Update an ImageMember object."""
     session = _get_session()
     memb_ref = _image_member_get(context, memb_id, session)
     _image_member_update(context, memb_ref, values, session)
@@ -971,7 +1018,7 @@ def _image_member_update(context, memb_ref, values, session=None):
 
 
 def image_member_delete(context, memb_id, session=None):
-    """Delete an ImageMember object"""
+    """Delete an ImageMember object."""
     session = session or _get_session()
     member_ref = _image_member_get(context, memb_id, session)
     _image_member_delete(context, member_ref, session)
@@ -992,7 +1039,7 @@ def _image_member_delete_all(context, image_id, delete_time=None,
 
 
 def _image_member_get(context, memb_id, session):
-    """Fetch an ImageMember entity by id"""
+    """Fetch an ImageMember entity by id."""
     query = session.query(models.ImageMember)
     query = query.filter_by(id=memb_id)
     return query.one()
@@ -1030,6 +1077,24 @@ def _image_member_find(context, session, image_id=None,
         query = query.filter(models.ImageMember.status == status)
 
     return query.all()
+
+
+def image_member_count(context, image_id):
+    """Return the number of image members for this image
+
+    :param image_id: identifier of image entity
+    """
+    session = _get_session()
+
+    if not image_id:
+        msg = _("Image id is required.")
+        raise exception.Invalid(msg)
+
+    query = session.query(models.ImageMember)
+    query = query.filter_by(deleted=False)
+    query = query.filter(models.ImageMember.image_id == str(image_id))
+
+    return query.count()
 
 
 # pylint: disable-msg=C0111
@@ -1110,3 +1175,163 @@ def user_get_storage_usage(context, owner_id, image_id=None, session=None):
     total_size = _image_get_disk_usage_by_owner(
         owner_id, session, image_id=image_id)
     return total_size
+
+
+def task_create(context, values, session=None):
+    """Create a task object"""
+    task_ref = models.Task()
+    _task_update(context, task_ref, values, session=session)
+    return _task_format(task_ref)
+
+
+def task_update(context, task_id, values, session=None):
+    """Update a task object"""
+    session = session or _get_session()
+    task_ref = _task_get(context, task_id, session)
+    _task_update(context, task_ref, values, session)
+    return _task_format(task_ref)
+
+
+def task_get(context, task_id, session=None):
+    """Fetch a task entity by id"""
+    task_ref = _task_get(context, task_id, session=session)
+    return _task_format(task_ref)
+
+
+def task_delete(context, task_id, session=None):
+    """Delete a task"""
+    session = session or _get_session()
+    query = session.query(models.Task)\
+                   .filter_by(id=task_id)\
+                   .filter_by(deleted=False)
+    try:
+        task_ref = query.one()
+    except sa_orm.exc.NoResultFound:
+        msg = (_("No task found with ID %s") % task_id)
+        LOG.debug(msg)
+        raise exception.TaskNotFound(task_id=task_id)
+
+    task_ref.delete(session=session)
+    return _task_format(task_ref)
+
+
+def task_get_all(context, filters=None, marker=None, limit=None,
+                 sort_key='created_at', sort_dir='desc', admin_as_user=False):
+    """
+    Get all tasks that match zero or more filters.
+
+    :param filters: dict of filter keys and values.
+    :param marker: task id after which to start page
+    :param limit: maximum number of tasks to return
+    :param sort_key: task attribute by which results should be sorted
+    :param sort_dir: direction in which results should be sorted (asc, desc)
+    :param admin_as_user: For backwards compatibility. If true, then return to
+                      an admin the equivalent set of tasks which it would see
+                      if it were a regular user
+    :return: tasks set
+    """
+    filters = filters or {}
+
+    session = _get_session()
+    query = session.query(models.Task)
+
+    if not (context.is_admin or admin_as_user == True) and \
+            context.owner is not None:
+        query = query.filter(models.Task.owner == context.owner)
+
+    showing_deleted = False
+
+    if 'deleted' in filters:
+        deleted_filter = filters.pop('deleted')
+        query = query.filter_by(deleted=deleted_filter)
+        showing_deleted = deleted_filter
+
+    for (k, v) in filters.items():
+        if v is not None:
+            key = k
+            if hasattr(models.Task, key):
+                query = query.filter(getattr(models.Task, key) == v)
+
+    marker_task = None
+    if marker is not None:
+        marker_task = _task_get(context, marker,
+                                force_show_deleted=showing_deleted)
+
+    sort_keys = ['created_at', 'id']
+    if sort_key not in sort_keys:
+        sort_keys.insert(0, sort_key)
+
+    query = _paginate_query(query, models.Task, limit,
+                            sort_keys,
+                            marker=marker_task,
+                            sort_dir=sort_dir)
+
+    return [_task_format(task) for task in query.all()]
+
+
+def _is_task_visible(context, task):
+    """Return True if the task is visible in this context."""
+    # Is admin == task visible
+    if context.is_admin:
+        return True
+
+    # No owner == task visible
+    if task['owner'] is None:
+        return True
+
+    # Perform tests based on whether we have an owner
+    if context.owner is not None:
+        if context.owner == task['owner']:
+            return True
+
+    return False
+
+
+def _task_get(context, task_id, session=None, force_show_deleted=False):
+    """Fetch a task entity by id"""
+    session = session or _get_session()
+    query = session.query(models.Task)
+    query = query.filter_by(id=task_id)
+    if not force_show_deleted and not _can_show_deleted(context):
+        query = query.filter_by(deleted=False)
+    try:
+        task_ref = query.one()
+    except sa_orm.exc.NoResultFound:
+        msg = (_("No task found with ID %s") % task_id)
+        LOG.debug(msg)
+        raise exception.TaskNotFound(task_id=task_id)
+
+    # Make sure the task is visible
+    if not _is_task_visible(context, task_ref):
+        msg = (_("Forbidding request, task %s is not visible") % task_id)
+        LOG.debug(msg)
+        raise exception.Forbidden(msg)
+
+    return task_ref
+
+
+def _task_update(context, task_ref, values, session=None):
+    """Apply supplied dictionary of values to a task object."""
+    _drop_protected_attrs(models.Task, values)
+    values["deleted"] = False
+    task_ref.update(values)
+    task_ref.save(session=session)
+    return task_ref
+
+
+def _task_format(task_ref):
+    """Format a task ref for consumption outside of this module"""
+    return {
+        'id': task_ref['id'],
+        'type': task_ref['type'],
+        'status': task_ref['status'],
+        'input': task_ref['input'],
+        'result': task_ref['result'],
+        'owner': task_ref['owner'],
+        'message': task_ref['message'],
+        'expires_at': task_ref['expires_at'],
+        'created_at': task_ref['created_at'],
+        'updated_at': task_ref['updated_at'],
+        'deleted_at': task_ref['deleted_at'],
+        'deleted': task_ref['deleted']
+    }

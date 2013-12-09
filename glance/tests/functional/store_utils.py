@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2011 OpenStack, LLC
+# Copyright 2011 OpenStack Foundation
 # Copyright 2012 Red Hat, Inc
 # All Rights Reserved.
 #
@@ -20,6 +20,8 @@
 Utility methods to set testcases up for Swift and/or S3 tests.
 """
 
+from __future__ import print_function
+
 import BaseHTTPServer
 import ConfigParser
 import httplib
@@ -28,10 +30,11 @@ import random
 import swiftclient
 import thread
 
+from glance.openstack.common import units
 from glance.store.s3 import get_s3_location, get_calling_format
 
 
-FIVE_KB = 5 * 1024
+FIVE_KB = 5 * units.Ki
 
 
 class RemoteImageHandler(BaseHTTPServer.BaseHTTPRequestHandler):
@@ -105,7 +108,7 @@ def setup_swift(test):
 
     if not CONFIG_FILE_PATH:
         test.disabled_message = "GLANCE_TEST_SWIFT_CONF environ not set."
-        print "GLANCE_TEST_SWIFT_CONF environ not set."
+        print("GLANCE_TEST_SWIFT_CONF environ not set.")
         test.disabled = True
         return
 

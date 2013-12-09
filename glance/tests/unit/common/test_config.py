@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2011 OpenStack, LLC
+# Copyright 2011 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -70,7 +70,7 @@ class TestPasteApp(test_utils.BaseTestCase):
 
         app = config.load_paste_app('glance-registry')
 
-        self.assertEquals(expected_app_type, type(app))
+        self.assertEqual(expected_app_type, type(app))
 
     def test_load_paste_app(self):
         expected_middleware = context.UnauthenticatedContextMiddleware

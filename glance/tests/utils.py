@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2010-2011 OpenStack, LLC
+# Copyright 2010-2011 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -19,13 +19,13 @@
 
 import errno
 import functools
+import json
 import os
 import shlex
 import shutil
 import socket
 import StringIO
 import subprocess
-import sys
 
 import fixtures
 from oslo.config import cfg
@@ -36,6 +36,9 @@ import webob
 from glance.common import config
 from glance.common import exception
 from glance.common import wsgi
+from glance.db.sqlalchemy import api as db_api
+from glance.db.sqlalchemy import models as db_models
+from glance.openstack.common import timeutils
 from glance import context
 from glance.common import property_utils
 
@@ -61,10 +64,18 @@ class BaseTestCase(testtools.TestCase):
         self.stubs.SmartUnsetAll()
         super(BaseTestCase, self).tearDown()
 
-    def set_property_protections(self):
-        self.property_file = self._copy_data_file('property-protections.conf',
-                                                  self.test_dir)
+    def set_property_protections(self, use_policies=False):
+        self.unset_property_protections()
+        conf_file = "property-protections.conf"
+        if use_policies:
+            conf_file = "property-protections-policies.conf"
+            self.config(property_protection_rule_format="policies")
+        self.property_file = self._copy_data_file(conf_file, self.test_dir)
         self.config(property_protection_file=self.property_file)
+
+    def unset_property_protections(self):
+        for section in property_utils.CONFIG.sections():
+            property_utils.CONFIG.remove_section(section)
 
     def _copy_data_file(self, file_name, dst_dir):
         src_file_name = os.path.join('glance/tests/etc', file_name)
@@ -393,6 +404,71 @@ def minimal_add_command(port, name, suffix='', public=True):
     return ("bin/glance --port=%d add %s"
             " disk_format=raw container_format=ovf"
             " name=%s %s" % (port, visibility, name, suffix))
+
+
+class RegistryAPIMixIn(object):
+
+    def create_fixtures(self):
+        for fixture in self.FIXTURES:
+            db_api.image_create(self.context, fixture)
+            with open(os.path.join(self.test_dir, fixture['id']),
+                      'wb') as image:
+                image.write("chunk00000remainder")
+
+    def destroy_fixtures(self):
+        db_models.unregister_models(db_api._ENGINE)
+        db_models.register_models(db_api._ENGINE)
+
+    def get_fixture(self, **kwargs):
+        fixture = {'name': 'fake public image',
+                   'status': 'active',
+                   'disk_format': 'vhd',
+                   'container_format': 'ovf',
+                   'is_public': True,
+                   'size': 20,
+                   'checksum': None}
+        fixture.update(kwargs)
+        return fixture
+
+    def get_minimal_fixture(self, **kwargs):
+        fixture = {'name': 'fake public image',
+                   'is_public': True,
+                   'disk_format': 'vhd',
+                   'container_format': 'ovf'}
+        fixture.update(kwargs)
+        return fixture
+
+    def get_extra_fixture(self, id, name, **kwargs):
+        return self.get_fixture(
+            id=id, name=name, deleted=False, deleted_at=None,
+            created_at=timeutils.utcnow(), updated_at=timeutils.utcnow(),
+            **kwargs)
+
+    def get_api_response_ext(self, http_resp, url='/images', headers={},
+                             body=None, method=None, api=None,
+                             content_type=None):
+        if api is None:
+            api = self.api
+        req = webob.Request.blank(url)
+        for k, v in headers.iteritems():
+            req.headers[k] = v
+        if method:
+            req.method = method
+        if body:
+            req.body = body
+        if content_type == 'json':
+            req.content_type = 'application/json'
+        elif content_type == 'octet':
+            req.content_type = 'application/octet-stream'
+        res = req.get_response(api)
+        self.assertEqual(res.status_int, http_resp)
+        return res
+
+    def assertEqualImages(self, res, uuids, key='images', unjsonify=True):
+        images = json.loads(res.body)[key] if unjsonify else res
+        self.assertEqual(len(images), len(uuids))
+        for i, uuid in enumerate(uuids):
+            self.assertEqual(images[i]['id'], uuid)
 
 
 class FakeAuthMiddleware(wsgi.Middleware):

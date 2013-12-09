@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2010 OpenStack, LLC
+# Copyright 2010 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -177,7 +177,7 @@ class ScrubFileQueue(ScrubQueue):
                     return
             except exception.NotFound as e:
                 LOG.error(_("Failed to find image to delete: "
-                            "%(e)s") % locals())
+                            "%(e)s"), {'e': e})
                 return
 
             delete_time = time.time() + self.scrub_time
@@ -355,7 +355,8 @@ def get_scrub_queues():
 class Daemon(object):
     def __init__(self, wakeup_time=300, threads=1000):
         LOG.info(_("Starting Daemon: wakeup_time=%(wakeup_time)s "
-                   "threads=%(threads)s") % locals())
+                   "threads=%(threads)s"),
+                 {'wakeup_time': wakeup_time, 'threads': threads})
         self.wakeup_time = wakeup_time
         self.event = eventlet.event.Event()
         self.pool = eventlet.greenpool.GreenPool(threads)
@@ -409,7 +410,7 @@ class Scrubber(object):
 
         delete_jobs = {}
         for image_id, image_uri in image_id_uri_list:
-            if not image_id in delete_jobs:
+            if image_id not in delete_jobs:
                 delete_jobs[image_id] = []
             delete_jobs[image_id].append((image_id, image_uri))
         return delete_jobs

@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2011 OpenStack, LLC
+# Copyright 2011 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -43,6 +43,7 @@ import testtools
 
 from glance import tests as glance_tests
 from glance.common import utils
+from glance.openstack.common import units
 from glance.tests import utils as test_utils
 
 execute, get_unused_port = test_utils.execute, test_utils.get_unused_port
@@ -215,7 +216,7 @@ class Server(object):
                 os.system('cp %s %s/tests.sqlite'
                           % (db_location, self.test_dir))
             else:
-                cmd = ('%s -m glance.cmd.manage --config-file %s db_sync' %
+                cmd = ('%s -m glance.cmd.manage --config-file %s db sync' %
                        (sys.executable, conf_filepath))
                 execute(cmd, no_venv=self.no_venv, exec_env=self.exec_env,
                         expect_exit=True)
@@ -293,7 +294,7 @@ class ApiServer(Server):
         self.swift_store_container = kwargs.get("swift_store_container", "")
         self.swift_store_create_container_on_put = kwargs.get(
             "swift_store_create_container_on_put", "True")
-        self.swift_store_large_object_size = 5 * 1024
+        self.swift_store_large_object_size = 5 * units.Ki
         self.swift_store_large_object_chunk_size = 200
         self.swift_store_multi_tenant = False
         self.swift_store_admin_tenants = []
@@ -310,6 +311,10 @@ class ApiServer(Server):
         self.image_cache_driver = 'sqlite'
         self.policy_file = policy_file
         self.policy_default_rule = 'default'
+        self.property_protection_rule_format = 'roles'
+        self.image_member_quota = 10
+        self.image_property_quota = 10
+        self.image_tag_quota = 10
 
         self.needs_database = True
         default_sql_connection = 'sqlite:////%s/tests.sqlite' % self.test_dir
@@ -370,6 +375,10 @@ enable_v2_api = %(enable_v2_api)s
 lock_path = %(lock_path)s
 enable_v2_api= %(enable_v2_api)s
 property_protection_file = %(property_protection_file)s
+property_protection_rule_format = %(property_protection_rule_format)s
+image_member_quota=%(image_member_quota)s
+image_property_quota=%(image_property_quota)s
+image_tag_quota=%(image_tag_quota)s
 [paste_deploy]
 flavor = %(deployment_flavor)s
 """
@@ -575,8 +584,12 @@ class FunctionalTest(test_utils.BaseTestCase):
         self.copy_data_file('schema-image.json', conf_dir)
         self.copy_data_file('policy.json', conf_dir)
         self.copy_data_file('property-protections.conf', conf_dir)
-        self.property_file = os.path.join(conf_dir,
-                                          'property-protections.conf')
+        self.copy_data_file('property-protections-policies.conf', conf_dir)
+        self.property_file_roles = os.path.join(conf_dir,
+                                                'property-protections.conf')
+        property_policies = 'property-protections-policies.conf'
+        self.property_file_policies = os.path.join(conf_dir,
+                                                   property_policies)
         self.policy_file = os.path.join(conf_dir, 'policy.json')
 
         self.api_server = ApiServer(self.test_dir,
@@ -718,7 +731,7 @@ class FunctionalTest(test_utils.BaseTestCase):
                             to exit in a timely fashion
         """
         launch_msg = None
-        for i in range(0, max_retries):
+        for i in range(max_retries):
             exitcode, out, err = server.start(expect_exit=not expect_launch,
                                               **kwargs)
             name = server.server_name

@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2011 OpenStack LLC.
+# Copyright 2011 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -55,7 +55,6 @@ $image_cache_dir/
 
 from __future__ import absolute_import
 from contextlib import contextmanager
-import datetime
 import errno
 import os
 import stat
@@ -103,11 +102,12 @@ class Driver(base.Driver):
             set_xattr(fake_image_filepath, 'hits', '1')
         except IOError as e:
             if e.errno == errno.EOPNOTSUPP:
-                msg = _("The device housing the image cache directory "
-                        "%(image_cache_dir)s does not support xattr. It is "
-                        "likely you need to edit your fstab and add the "
-                        "user_xattr option to the appropriate line for the "
-                        "device housing the cache directory.") % locals()
+                msg = (_("The device housing the image cache directory "
+                         "%(image_cache_dir)s does not support xattr. It is "
+                         "likely you need to edit your fstab and add the "
+                         "user_xattr option to the appropriate line for the "
+                         "device housing the cache directory.") %
+                       {'image_cache_dir': image_cache_dir})
                 LOG.error(msg)
                 raise exception.BadDriverConfiguration(driver_name="xattr",
                                                        reason=msg)
@@ -288,7 +288,9 @@ class Driver(base.Driver):
             invalid_path = self.get_image_filepath(image_id, 'invalid')
             LOG.debug(_("Fetch of cache file failed (%(e)s), rolling back by "
                         "moving '%(incomplete_path)s' to "
-                        "'%(invalid_path)s'") % locals())
+                        "'%(invalid_path)s'"),
+                      {'e': e, 'incomplete_path': incomplete_path,
+                       'invalid_path': invalid_path})
             os.rename(incomplete_path, invalid_path)
 
         try:
@@ -379,17 +381,18 @@ class Driver(base.Driver):
             age = now - mtime
             if not grace:
                 LOG.debug(_("No grace period, reaping '%(path)s'"
-                            " immediately"), locals())
+                            " immediately"), {'path': path})
                 delete_cached_file(path)
                 reaped += 1
             elif age > grace:
                 LOG.debug(_("Cache entry '%(path)s' exceeds grace period, "
-                            "(%(age)i s > %(grace)i s)"), locals())
+                            "(%(age)i s > %(grace)i s)"),
+                          {'path': path, 'age': age, 'grace': grace})
                 delete_cached_file(path)
                 reaped += 1
 
         LOG.info(_("Reaped %(reaped)s %(entry_type)s cache entries"),
-                 locals())
+                 {'reaped': reaped, 'entry_type': entry_type})
         return reaped
 
     def reap_invalid(self, grace=None):

@@ -18,11 +18,12 @@ import tempfile
 import testtools
 
 from glance.openstack.common import timeutils
+from glance.openstack.common import units
 from glance.tests.integration.legacy_functional import base
 from glance.tests.utils import minimal_headers
 
-FIVE_KB = 5 * 1024
-FIVE_GB = 5 * 1024 * 1024 * 1024
+FIVE_KB = 5 * units.Ki
+FIVE_GB = 5 * units.Gi
 
 
 class TestApi(base.ApiTest):
@@ -1115,7 +1116,7 @@ class TestApi(base.ApiTest):
         images_dir = os.path.join(self.test_dir, 'images')
         image_count = len([name for name in os.listdir(images_dir)
                            if os.path.isfile(os.path.join(images_dir, name))])
-        self.assertEquals(image_count, 0)
+        self.assertEqual(image_count, 0)
 
     def test_mismatched_size(self):
         """
@@ -1273,57 +1274,57 @@ class TestApiWithFakeAuth(base.ApiTest):
 
         # 1. Known user sees public and their own images
         images = list_images('tenant1')
-        self.assertEquals(len(images), 5)
+        self.assertEqual(len(images), 5)
         for image in images:
             self.assertTrue(image['is_public'] or image['owner'] == 'tenant1')
 
         # 2. Unknown user sees only public images
         images = list_images('none')
-        self.assertEquals(len(images), 4)
+        self.assertEqual(len(images), 4)
         for image in images:
             self.assertTrue(image['is_public'])
 
         # 3. Unknown admin sees only public images
         images = list_images('none', role='admin')
-        self.assertEquals(len(images), 4)
+        self.assertEqual(len(images), 4)
         for image in images:
             self.assertTrue(image['is_public'])
 
         # 4. Unknown admin, is_public=none, shows all images
         images = list_images('none', role='admin', is_public='none')
-        self.assertEquals(len(images), 8)
+        self.assertEqual(len(images), 8)
 
         # 5. Unknown admin, is_public=true, shows only public images
         images = list_images('none', role='admin', is_public='true')
-        self.assertEquals(len(images), 4)
+        self.assertEqual(len(images), 4)
         for image in images:
             self.assertTrue(image['is_public'])
 
         # 6. Unknown admin, is_public=false, sees only private images
         images = list_images('none', role='admin', is_public='false')
-        self.assertEquals(len(images), 4)
+        self.assertEqual(len(images), 4)
         for image in images:
             self.assertFalse(image['is_public'])
 
         # 7. Known admin sees public and their own images
         images = list_images('admin', role='admin')
-        self.assertEquals(len(images), 5)
+        self.assertEqual(len(images), 5)
         for image in images:
             self.assertTrue(image['is_public'] or image['owner'] == 'admin')
 
         # 8. Known admin, is_public=none, shows all images
         images = list_images('admin', role='admin', is_public='none')
-        self.assertEquals(len(images), 8)
+        self.assertEqual(len(images), 8)
 
         # 9. Known admin, is_public=true, sees all public and their images
         images = list_images('admin', role='admin', is_public='true')
-        self.assertEquals(len(images), 5)
+        self.assertEqual(len(images), 5)
         for image in images:
             self.assertTrue(image['is_public'] or image['owner'] == 'admin')
 
         # 10. Known admin, is_public=false, sees all private images
         images = list_images('admin', role='admin', is_public='false')
-        self.assertEquals(len(images), 4)
+        self.assertEqual(len(images), 4)
         for image in images:
             self.assertFalse(image['is_public'])
 
@@ -1475,3 +1476,288 @@ class TestApiWithFakeAuth(base.ApiTest):
         response, content = self.http.request(path, 'HEAD',
                                               headers=auth_headers)
         self.assertEqual(response.status, 404)
+
+    def test_property_protections_special_chars(self):
+        # Enable property protection
+        self.config(property_protection_file=self.property_file)
+        self.setUp()
+
+        CREATE_HEADERS = {
+            'X-Image-Meta-Name': 'MyImage',
+            'X-Image-Meta-disk_format': 'raw',
+            'X-Image-Meta-container_format': 'ovf',
+            'X-Image-Meta-Is-Public': 'True',
+            'X-Image-Meta-Owner': 'tenant2',
+            'X-Image-Meta-Size': '0',
+        }
+
+        # Create an image
+        auth_headers = {
+            'X-Auth-Token': 'user1:tenant1:member',
+        }
+        auth_headers.update(CREATE_HEADERS)
+        path = "/v1/images"
+        response, content = self.http.request(path, 'POST',
+                                              headers=auth_headers)
+        self.assertEqual(response.status, 201)
+        data = json.loads(content)
+        image_id = data['image']['id']
+
+        # Verify both admin and unknown role can create properties marked with
+        # '@'
+        auth_headers = {
+            'X-Auth-Token': 'user1:tenant1:admin',
+        }
+        custom_props = {
+            'X-Image-Meta-Property-x_all_permitted_admin': '1'
+        }
+        auth_headers.update(custom_props)
+        path = "/v1/images/%s" % image_id
+        response, content = self.http.request(path, 'PUT',
+                                              headers=auth_headers)
+        self.assertEqual(response.status, 200)
+        image = json.loads(content)
+        self.assertEqual('1',
+                         image['image']['properties']['x_all_permitted_admin'])
+        auth_headers = {
+            'X-Auth-Token': 'user1:tenant1:joe_soap',
+        }
+        custom_props = {
+            'X-Image-Meta-Property-x_all_permitted_joe_soap': '1',
+            'X-Glance-Registry-Purge-Props': 'False'
+        }
+        auth_headers.update(custom_props)
+        path = "/v1/images/%s" % image_id
+        response, content = self.http.request(path, 'PUT',
+                                              headers=auth_headers)
+        self.assertEqual(response.status, 200)
+        image = json.loads(content)
+        self.assertEqual(
+                '1', image['image']['properties']['x_all_permitted_joe_soap'])
+
+        # Verify both admin and unknown role can read properties marked with
+        # '@'
+        auth_headers = {
+            'X-Auth-Token': 'user1:tenant1:admin',
+        }
+        path = "/v1/images/%s" % image_id
+        response, content = self.http.request(path, 'HEAD',
+                                              headers=auth_headers)
+        self.assertEqual(response.status, 200)
+        self.assertEqual('1', response.get(
+                'x-image-meta-property-x_all_permitted_admin'))
+        self.assertEqual('1', response.get(
+                'x-image-meta-property-x_all_permitted_joe_soap'))
+        auth_headers = {
+            'X-Auth-Token': 'user1:tenant1:joe_soap',
+        }
+        path = "/v1/images/%s" % image_id
+        response, content = self.http.request(path, 'HEAD',
+                                              headers=auth_headers)
+        self.assertEqual(response.status, 200)
+        self.assertEqual('1', response.get(
+                'x-image-meta-property-x_all_permitted_admin'))
+        self.assertEqual('1', response.get(
+                'x-image-meta-property-x_all_permitted_joe_soap'))
+
+        # Verify both admin and unknown role can update properties marked with
+        # '@'
+        auth_headers = {
+            'X-Auth-Token': 'user1:tenant1:admin',
+        }
+        custom_props = {
+            'X-Image-Meta-Property-x_all_permitted_admin': '2',
+            'X-Glance-Registry-Purge-Props': 'False'
+        }
+        auth_headers.update(custom_props)
+        path = "/v1/images/%s" % image_id
+        response, content = self.http.request(path, 'PUT',
+                                              headers=auth_headers)
+        self.assertEqual(response.status, 200)
+        image = json.loads(content)
+        self.assertEqual('2',
+                         image['image']['properties']['x_all_permitted_admin'])
+        auth_headers = {
+            'X-Auth-Token': 'user1:tenant1:joe_soap',
+        }
+        custom_props = {
+            'X-Image-Meta-Property-x_all_permitted_joe_soap': '2',
+            'X-Glance-Registry-Purge-Props': 'False'
+        }
+        auth_headers.update(custom_props)
+        path = "/v1/images/%s" % image_id
+        response, content = self.http.request(path, 'PUT',
+                                              headers=auth_headers)
+        self.assertEqual(response.status, 200)
+        image = json.loads(content)
+        self.assertEqual(
+                '2', image['image']['properties']['x_all_permitted_joe_soap'])
+
+        # Verify both admin and unknown role can delete properties marked with
+        # '@'
+        auth_headers = {
+            'X-Auth-Token': 'user1:tenant1:admin',
+        }
+        custom_props = {
+            'X-Image-Meta-Property-x_all_permitted_joe_soap': '2',
+            'X-Glance-Registry-Purge-Props': 'True'
+        }
+        auth_headers.update(custom_props)
+        path = "/v1/images/%s" % image_id
+        response, content = self.http.request(path, 'PUT',
+                                              headers=auth_headers)
+        self.assertEqual(response.status, 200)
+        image = json.loads(content)
+        self.assertNotIn('x_all_permitted_admin', image['image']['properties'])
+        auth_headers = {
+            'X-Auth-Token': 'user1:tenant1:joe_soap',
+        }
+        custom_props = {
+            'X-Glance-Registry-Purge-Props': 'True'
+        }
+        auth_headers.update(custom_props)
+        path = "/v1/images/%s" % image_id
+        response, content = self.http.request(path, 'PUT',
+                                              headers=auth_headers)
+        self.assertEqual(response.status, 200)
+        image = json.loads(content)
+        self.assertNotIn('x_all_permitted_joe_soap',
+                         image['image']['properties'])
+
+        # Verify neither admin nor unknown role can create a property protected
+        # with '!'
+        auth_headers = {
+            'X-Auth-Token': 'user1:tenant1:admin',
+        }
+        custom_props = {
+            'X-Image-Meta-Property-x_none_permitted_admin': '1'
+        }
+        auth_headers.update(custom_props)
+        path = "/v1/images/%s" % image_id
+        response, content = self.http.request(path, 'PUT',
+                                              headers=auth_headers)
+        self.assertEqual(response.status, 403)
+        auth_headers = {
+            'X-Auth-Token': 'user1:tenant1:joe_soap',
+        }
+        custom_props = {
+            'X-Image-Meta-Property-x_none_permitted_joe_soap': '1'
+        }
+        auth_headers.update(custom_props)
+        path = "/v1/images/%s" % image_id
+        response, content = self.http.request(path, 'PUT',
+                                              headers=auth_headers)
+        self.assertEqual(response.status, 403)
+
+        # Verify neither admin nor unknown role can read properties marked with
+        # '!'
+        auth_headers = {
+            'X-Auth-Token': 'user1:tenant1:admin',
+        }
+        custom_props = {
+            'X-Image-Meta-Property-x_none_read': '1'
+        }
+        auth_headers.update(custom_props)
+        auth_headers.update(CREATE_HEADERS)
+        path = "/v1/images"
+        response, content = self.http.request(path, 'POST',
+                                              headers=auth_headers)
+        self.assertEqual(response.status, 201)
+        data = json.loads(content)
+        image_id = data['image']['id']
+        auth_headers = {
+            'X-Auth-Token': 'user1:tenant1:admin',
+        }
+        path = "/v1/images/%s" % image_id
+        response, content = self.http.request(path, 'HEAD',
+                                              headers=auth_headers)
+        self.assertEqual(response.status, 200)
+        self.assertRaises(KeyError,
+                          response.get, 'X-Image-Meta-Property-x_none_read')
+        auth_headers = {
+            'X-Auth-Token': 'user1:tenant1:joe_soap',
+        }
+        path = "/v1/images/%s" % image_id
+        response, content = self.http.request(path, 'HEAD',
+                                              headers=auth_headers)
+        self.assertEqual(response.status, 200)
+        self.assertRaises(KeyError,
+                          response.get, 'X-Image-Meta-Property-x_none_read')
+
+        # Verify neither admin nor unknown role can update properties marked
+        # with '!'
+        auth_headers = {
+            'X-Auth-Token': 'user1:tenant1:admin',
+        }
+        custom_props = {
+            'X-Image-Meta-Property-x_none_update': '1'
+        }
+        auth_headers.update(custom_props)
+        auth_headers.update(CREATE_HEADERS)
+        path = "/v1/images"
+        response, content = self.http.request(path, 'POST',
+                                              headers=auth_headers)
+        self.assertEqual(response.status, 201)
+        data = json.loads(content)
+        image_id = data['image']['id']
+        auth_headers = {
+            'X-Auth-Token': 'user1:tenant1:admin',
+        }
+        custom_props = {
+            'X-Image-Meta-Property-x_none_update': '2'
+        }
+        auth_headers.update(custom_props)
+        path = "/v1/images/%s" % image_id
+        response, content = self.http.request(path, 'PUT',
+                                              headers=auth_headers)
+        self.assertEqual(response.status, 403)
+        auth_headers = {
+            'X-Auth-Token': 'user1:tenant1:joe_soap',
+        }
+        custom_props = {
+            'X-Image-Meta-Property-x_none_update': '2'
+        }
+        auth_headers.update(custom_props)
+        path = "/v1/images/%s" % image_id
+        response, content = self.http.request(path, 'PUT',
+                                              headers=auth_headers)
+        self.assertEqual(response.status, 403)
+
+        # Verify neither admin nor unknown role can delete properties marked
+        # with '!'
+        auth_headers = {
+            'X-Auth-Token': 'user1:tenant1:admin',
+        }
+        custom_props = {
+            'X-Image-Meta-Property-x_none_delete': '1'
+        }
+        auth_headers.update(custom_props)
+        auth_headers.update(CREATE_HEADERS)
+        path = "/v1/images"
+        response, content = self.http.request(path, 'POST',
+                                              headers=auth_headers)
+        self.assertEqual(response.status, 201)
+        data = json.loads(content)
+        image_id = data['image']['id']
+        auth_headers = {
+            'X-Auth-Token': 'user1:tenant1:admin',
+        }
+        custom_props = {
+            'X-Glance-Registry-Purge-Props': 'True'
+        }
+        auth_headers.update(custom_props)
+        path = "/v1/images/%s" % image_id
+        response, content = self.http.request(path, 'PUT',
+                                              headers=auth_headers)
+        self.assertEqual(response.status, 403)
+        auth_headers = {
+            'X-Auth-Token': 'user1:tenant1:joe_soap',
+        }
+        custom_props = {
+            'X-Glance-Registry-Purge-Props': 'True'
+        }
+        auth_headers.update(custom_props)
+        path = "/v1/images/%s" % image_id
+        response, content = self.http.request(path, 'PUT',
+                                              headers=auth_headers)
+        self.assertEqual(response.status, 403)

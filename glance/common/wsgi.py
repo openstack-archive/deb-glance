@@ -2,7 +2,7 @@
 
 # Copyright 2010 United States Government as represented by the
 # Administrator of the National Aeronautics and Space Administration.
-# Copyright 2010 OpenStack LLC.
+# Copyright 2010 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -20,11 +20,11 @@
 """
 Utility methods for working with WSGI servers
 """
+from __future__ import print_function
 
 import datetime
 import errno
 import json
-import logging
 import os
 import signal
 import sys
@@ -42,7 +42,7 @@ import webob.exc
 
 from glance.common import exception
 from glance.common import utils
-import glance.openstack.common.log as os_logging
+import glance.openstack.common.log as logging
 
 
 bind_opts = [
@@ -58,7 +58,7 @@ socket_opts = [
                help=_('The backlog value that will be used when creating the '
                       'TCP listener socket.')),
     cfg.IntOpt('tcp_keepidle', default=600,
-               help=_('The value for the socket option TCP_KEEPIDLE.  This is'
+               help=_('The value for the socket option TCP_KEEPIDLE.  This is '
                       'the time in seconds that the connection must be idle '
                       'before TCP starts sending keepalive probes.')),
     cfg.StrOpt('ca_file', help=_('CA certificate file to use to verify '
@@ -85,17 +85,6 @@ CONF = cfg.CONF
 CONF.register_opts(bind_opts)
 CONF.register_opts(socket_opts)
 CONF.register_opts(eventlet_opts)
-
-
-class WritableLogger(object):
-    """A thin wrapper that responds to `write` and logs."""
-
-    def __init__(self, logger, level=logging.DEBUG):
-        self.logger = logger
-        self.level = level
-
-    def write(self, msg):
-        self.logger.log(self.level, msg.strip("\n"))
 
 
 def get_bind_addr(default_port=None):
@@ -233,7 +222,7 @@ class Server(object):
         self.sock = get_socket(default_port)
 
         os.umask(0o27)  # ensure files are created with the correct privileges
-        self.logger = os_logging.getLogger('eventlet.wsgi.server')
+        self.logger = logging.getLogger('glance.wsgi.server')
 
         if CONF.workers == 0:
             # Useful for profiling, test, debug etc.
@@ -322,7 +311,7 @@ class Server(object):
         try:
             eventlet.wsgi.server(self.sock,
                                  self.application,
-                                 log=WritableLogger(self.logger),
+                                 log=logging.WritableLogger(self.logger),
                                  custom_pool=self.pool,
                                  debug=False)
         except socket.error as err:
@@ -334,7 +323,8 @@ class Server(object):
         """Start a WSGI server in a new green thread."""
         self.logger.info(_("Starting single process server"))
         eventlet.wsgi.server(sock, application, custom_pool=self.pool,
-                             log=WritableLogger(self.logger), debug=False)
+                             log=logging.WritableLogger(self.logger),
+                             debug=False)
 
 
 class Middleware(object):
@@ -390,16 +380,16 @@ class Debug(Middleware):
 
     @webob.dec.wsgify
     def __call__(self, req):
-        print ("*" * 40) + " REQUEST ENVIRON"
+        print(("*" * 40) + " REQUEST ENVIRON")
         for key, value in req.environ.items():
-            print key, "=", value
-        print
+            print(key, "=", value)
+        print('')
         resp = req.get_response(self.application)
 
-        print ("*" * 40) + " RESPONSE HEADERS"
+        print(("*" * 40) + " RESPONSE HEADERS")
         for (key, value) in resp.headers.iteritems():
-            print key, "=", value
-        print
+            print(key, "=", value)
+        print('')
 
         resp.app_iter = self.print_generator(resp.app_iter)
 
@@ -411,7 +401,7 @@ class Debug(Middleware):
         Iterator that prints the contents of a wrapper string iterator
         when iterated.
         """
-        print ("*" * 40) + " BODY"
+        print(("*" * 40) + " BODY")
         for part in app_iter:
             sys.stdout.write(part)
             sys.stdout.flush()

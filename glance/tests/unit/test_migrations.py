@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2010-2011 OpenStack, LLC
+# Copyright 2010-2011 OpenStack Foundation
 # All Rights Reserved.
 # Copyright 2013 IBM Corp.
 #
@@ -25,12 +25,14 @@ properly both upgrading and downgrading, and that no data loss occurs
 if possible.
 """
 
-import commands
+from __future__ import print_function
+
 import ConfigParser
 import datetime
 import json
 import os
 import pickle
+import subprocess
 import urlparse
 
 from migrate.versioning.repository import Repository
@@ -105,7 +107,8 @@ def get_table(engine, name):
     """Returns an sqlalchemy table dynamically from db.
 
     Needed because the models don't work for us in migrations
-    as models will be far out of sync with the current data."""
+    as models will be far out of sync with the current data.
+    """
     metadata = sqlalchemy.schema.MetaData()
     metadata.bind = engine
     return sqlalchemy.Table(name, metadata, autoload=True)
@@ -163,9 +166,12 @@ class TestMigrations(utils.BaseTestCase):
 
     def _reset_databases(self):
         def execute_cmd(cmd=None):
-            status, output = commands.getstatusoutput(cmd)
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, shell=True)
+            output = proc.communicate()[0]
             LOG.debug(output)
-            self.assertEqual(0, status)
+            self.assertEqual(0, proc.returncode)
+
         for key, engine in self.engines.items():
             conn_string = self.test_databases[key]
             conn_pieces = urlparse.urlparse(conn_string)
@@ -450,7 +456,8 @@ class TestMigrations(utils.BaseTestCase):
 
     def _pre_upgrade_004(self, engine):
         """Insert checksum data sample to check if migration goes fine with
-        data"""
+        data.
+        """
         now = timeutils.utcnow()
         images = get_table(engine, 'images')
         data = [
@@ -466,7 +473,7 @@ class TestMigrations(utils.BaseTestCase):
         """Assure that checksum data is present on table"""
         images = get_table(engine, 'images')
         self.assertIn('checksum', images.c)
-        self.assertEquals(images.c['checksum'].type.length, 32)
+        self.assertEqual(images.c['checksum'].type.length, 32)
 
     def _pre_upgrade_005(self, engine):
         now = timeutils.utcnow()
@@ -528,7 +535,8 @@ class TestMigrations(utils.BaseTestCase):
 
     def _pre_upgrade_010(self, engine):
         """Test rows in images with NULL updated_at get updated to equal
-        created_at"""
+        created_at.
+        """
 
         initial_values = [
             (datetime.datetime(1999, 1, 2, 4, 10, 20),
@@ -571,7 +579,8 @@ class TestMigrations(utils.BaseTestCase):
     def _pre_upgrade_012(self, engine):
         """Test rows in images have id changes from int to varchar(32) and
         value changed from int to UUID. Also test image_members and
-        image_properties gets updated to point to new UUID keys"""
+        image_properties gets updated to point to new UUID keys.
+        """
 
         images = get_table(engine, 'images')
         image_members = get_table(engine, 'image_members')
@@ -622,10 +631,9 @@ class TestMigrations(utils.BaseTestCase):
                          .where(images.c.name == image_name)\
                          .execute().fetchall()
 
-            self.assertEquals(len(rows), 1)
+            self.assertEqual(len(rows), 1)
 
             row = rows[0]
-            print repr(dict(row))
             self.assertTrue(uuidutils.is_uuid_like(row['id']))
 
             uuids[name] = row['id']
@@ -635,7 +643,7 @@ class TestMigrations(utils.BaseTestCase):
                                .where(image_members.c.image_id ==
                                       uuids['normal'])\
                                .execute().fetchall()
-        self.assertEquals(len(results), 1)
+        self.assertEqual(len(results), 1)
 
         # Find all image_properties to ensure image_id has been updated
         # as well as ensure kernel_id and ramdisk_id values have been
@@ -644,7 +652,7 @@ class TestMigrations(utils.BaseTestCase):
                                   .where(image_properties.c.image_id ==
                                          uuids['normal'])\
                                   .execute().fetchall()
-        self.assertEquals(len(results), 2)
+        self.assertEqual(len(results), 2)
         for row in results:
             self.assertIn(row['name'], ('kernel_id', 'ramdisk_id'))
 
@@ -666,7 +674,7 @@ class TestMigrations(utils.BaseTestCase):
             rows = images.select()\
                          .where(images.c.name == image_name)\
                          .execute().fetchall()
-            self.assertEquals(len(rows), 1)
+            self.assertEqual(len(rows), 1)
 
             row = rows[0]
             self.assertFalse(uuidutils.is_uuid_like(row['id']))
@@ -678,7 +686,7 @@ class TestMigrations(utils.BaseTestCase):
                                .where(image_members.c.image_id ==
                                       ids['normal'])\
                                .execute().fetchall()
-        self.assertEquals(len(results), 1)
+        self.assertEqual(len(results), 1)
 
         # Find all image_properties to ensure image_id has been updated
         # as well as ensure kernel_id and ramdisk_id values have been
@@ -687,7 +695,7 @@ class TestMigrations(utils.BaseTestCase):
                                   .where(image_properties.c.image_id ==
                                          ids['normal'])\
                                   .execute().fetchall()
-        self.assertEquals(len(results), 2)
+        self.assertEqual(len(results), 2)
         for row in results:
             self.assertIn(row['name'], ('kernel_id', 'ramdisk_id'))
 
@@ -823,7 +831,7 @@ class TestMigrations(utils.BaseTestCase):
                     'swift://acct3A%foobar:pass@example.com/container/obj-id2']
 
         for location in loc_list:
-            if not location in actual_location:
+            if location not in actual_location:
                 self.fail(_("location: %s data lost") % location)
 
     def _pre_upgrade_019(self, engine):
@@ -892,8 +900,8 @@ class TestMigrations(utils.BaseTestCase):
             .where(image_locations.c.image_id == data).execute()
 
         r = list(results)
-        self.assertEquals(len(r), 1)
-        self.assertEquals(r[0]['value'], 'file:///some/place/onthe/fs')
+        self.assertEqual(len(r), 1)
+        self.assertEqual(r[0]['value'], 'file:///some/place/onthe/fs')
         self.assertTrue('meta_data' in r[0])
         x = pickle.loads(r[0]['meta_data'])
         self.assertEqual(x, {})
@@ -993,3 +1001,95 @@ class TestMigrations(utils.BaseTestCase):
             md = r['meta_data']
             d = pickle.loads(md)
             self.assertEqual(type(d), dict)
+
+    def _check_030(self, engine, data):
+        table = "tasks"
+        index_type = ('ix_tasks_type', ['type'])
+        index_status = ('ix_tasks_status', ['status'])
+        index_owner = ('ix_tasks_owner', ['owner'])
+        index_deleted = ('ix_tasks_deleted', ['deleted'])
+        index_updated_at = ('ix_tasks_updated_at', ['updated_at'])
+
+        meta = sqlalchemy.MetaData()
+        meta.bind = engine
+
+        tasks_table = sqlalchemy.Table(table, meta, autoload=True)
+
+        index_data = [(idx.name, idx.columns.keys())
+                      for idx in tasks_table.indexes]
+
+        self.assertIn(index_type, index_data)
+        self.assertIn(index_status, index_data)
+        self.assertIn(index_owner, index_data)
+        self.assertIn(index_deleted, index_data)
+        self.assertIn(index_updated_at, index_data)
+
+        expected = [u'id',
+                    u'type',
+                    u'status',
+                    u'owner',
+                    u'input',
+                    u'result',
+                    u'message',
+                    u'expires_at',
+                    u'created_at',
+                    u'updated_at',
+                    u'deleted_at',
+                    u'deleted']
+
+        # NOTE(flwang): Skip the column type checking for now since Jenkins is
+        # using sqlalchemy.dialects.postgresql.base.TIMESTAMP instead of
+        # DATETIME which is using by mysql and sqlite.
+        col_data = [col.name for col in tasks_table.columns]
+        self.assertEqual(expected, col_data)
+
+    def _post_downgrade_030(self, engine):
+        self.assertRaises(sqlalchemy.exc.NoSuchTableError,
+                          get_table, engine, 'tasks')
+
+    def _pre_upgrade_031(self, engine):
+        images = get_table(engine, 'images')
+        now = datetime.datetime.now()
+        image_id = 'fake_031_id'
+        temp = dict(deleted=False,
+                    created_at=now,
+                    updated_at=now,
+                    status='active',
+                    is_public=True,
+                    min_disk=0,
+                    min_ram=0,
+                    id=image_id)
+        images.insert().values(temp).execute()
+
+        locations_table = get_table(engine, 'image_locations')
+        data = image_id
+        locations = [
+            ('file://ab', '{"a": "yo yo"}'),
+            ('file://ab', '{}'),
+            ('file://ab', '{}'),
+            ('file://ab1', '{"a": "that one, please"}'),
+            ('file://ab1', '{"a": "that one, please"}'),
+        ]
+        temp = dict(deleted=False,
+                    created_at=now,
+                    updated_at=now,
+                    image_id=image_id)
+
+        for location, metadata in locations:
+            temp.update(value=location, meta_data=metadata)
+            locations_table.insert().values(temp).execute()
+        return image_id
+
+    def _check_031(self, engine, image_id):
+        locations_table = get_table(engine, 'image_locations')
+        result = locations_table.select()\
+                                .where(locations_table.c.image_id == image_id)\
+                                .execute().fetchall()
+
+        locations = set([(x['value'], x['meta_data']) for x in result])
+        actual_locations = set([
+            ('file://ab', '{"a": "yo yo"}'),
+            ('file://ab', '{}'),
+            ('file://ab1', '{"a": "that one, please"}'),
+        ])
+        self.assertFalse(actual_locations.symmetric_difference(locations))

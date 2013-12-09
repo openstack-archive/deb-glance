@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2011-2013 OpenStack, LLC
+# Copyright 2011-2013 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -85,7 +85,7 @@ class TestStoreLocation(base.StoreClearingUnitTest):
         self.assertEqual(uri, loc.get_uri())
 
         bad_uri = 'fil://'
-        self.assertRaises(Exception, loc.parse_uri, bad_uri)
+        self.assertRaises(AssertionError, loc.parse_uri, bad_uri)
 
         bad_uri = 'file://'
         self.assertRaises(exception.BadStoreUri, loc.parse_uri, bad_uri)
@@ -132,7 +132,7 @@ class TestStoreLocation(base.StoreClearingUnitTest):
         self.assertEqual(uri, loc.get_uri())
 
         bad_uri = 'htt://'
-        self.assertRaises(Exception, loc.parse_uri, bad_uri)
+        self.assertRaises(AssertionError, loc.parse_uri, bad_uri)
 
         bad_uri = 'http://'
         self.assertRaises(exception.BadStoreUri, loc.parse_uri, bad_uri)
@@ -207,7 +207,7 @@ class TestStoreLocation(base.StoreClearingUnitTest):
         self.assertEqual(uri, loc.get_uri())
 
         bad_uri = 'swif://'
-        self.assertRaises(Exception, loc.parse_uri, bad_uri)
+        self.assertRaises(AssertionError, loc.parse_uri, bad_uri)
 
         bad_uri = 'swift://'
         self.assertRaises(exception.BadStoreUri, loc.parse_uri, bad_uri)
@@ -267,7 +267,7 @@ class TestStoreLocation(base.StoreClearingUnitTest):
         self.assertEqual(uri, loc.get_uri())
 
         bad_uri = 's://'
-        self.assertRaises(Exception, loc.parse_uri, bad_uri)
+        self.assertRaises(AssertionError, loc.parse_uri, bad_uri)
 
         bad_uri = 's3://'
         self.assertRaises(exception.BadStoreUri, loc.parse_uri, bad_uri)

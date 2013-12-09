@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2011 OpenStack, LLC
+# Copyright 2011 OpenStack Foundation
 # Copyright 2012 Red Hat, Inc
 # All Rights Reserved.
 #
@@ -84,7 +84,7 @@ class TestClientExceptions(functional.FunctionalTest):
             self.fail('expected %s' % exc_type)
         except exc_type as e:
             if 'retry' in path:
-                self.assertEquals(e.retry_after, 10)
+                self.assertEqual(e.retry_after, 10)
 
     def test_rate_limited(self):
         """

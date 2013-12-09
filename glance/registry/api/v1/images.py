@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2010-2011 OpenStack LLC.
+# Copyright 2010-2011 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -95,9 +95,7 @@ class Controller(object):
         self.db_api.setup_db_env()
 
     def _get_images(self, context, filters, **params):
-        """
-        Get images, wrapping in exception if necessary.
-        """
+        """Get images, wrapping in exception if necessary."""
         # NOTE(markwash): for backwards compatibility, is_public=True for
         # admins actually means "treat me as if I'm not an admin and show me
         # all my images"
@@ -112,8 +110,7 @@ class Controller(object):
             raise exc.HTTPBadRequest(explanation=msg)
 
     def index(self, req):
-        """
-        Return a basic filtered list of public, non-deleted images
+        """Return a basic filtered list of public, non-deleted images
 
         :param req: the Request object coming from the wsgi layer
         :retval a mapping of the following form::
@@ -145,8 +142,7 @@ class Controller(object):
         return dict(images=results)
 
     def detail(self, req):
-        """
-        Return a filtered list of public, non-deleted images in detail
+        """Return a filtered list of public, non-deleted images in detail
 
         :param req: the Request object coming from the wsgi layer
         :retval a mapping of the following form::
@@ -164,8 +160,7 @@ class Controller(object):
         return dict(images=image_dicts)
 
     def _get_query_params(self, req):
-        """
-        Extract necessary query parameters from http request.
+        """Extract necessary query parameters from http request.
 
         :param req: the Request object coming from the wsgi layer
         :retval dictionary of filters to apply to list of images
@@ -192,8 +187,7 @@ class Controller(object):
         return params
 
     def _get_filters(self, req):
-        """
-        Return a dictionary of query param filters from the request
+        """Return a dictionary of query param filters from the request
 
         :param req: the Request object coming from the wsgi layer
         :retval a dict of key/value filters
@@ -333,8 +327,7 @@ class Controller(object):
 
     @utils.mutating
     def delete(self, req, id):
-        """
-        Deletes an existing image with the registry.
+        """Deletes an existing image with the registry.
 
         :param req: wsgi Request object
         :param id:  The opaque internal identifier for the image
@@ -364,8 +357,7 @@ class Controller(object):
 
     @utils.mutating
     def create(self, req, body):
-        """
-        Registers a new image with the registry.
+        """Registers a new image with the registry.
 
         :param req: wsgi Request object
         :param body: Dictionary of information about the image
@@ -397,23 +389,22 @@ class Controller(object):
         try:
             image_data = _normalize_image_location_for_db(image_data)
             image_data = self.db_api.image_create(req.context, image_data)
-            msg = _("Successfully created image %(id)s")
-            LOG.info(msg % {'id': image_id})
+            msg = _("Successfully created image %(id)s") % {'id': image_id}
+            LOG.info(msg)
             return dict(image=make_image_dict(image_data))
         except exception.Duplicate:
-            msg = (_("Image with identifier %s already exists!") % image_id)
+            msg = _("Image with identifier %s already exists!") % image_id
             LOG.error(msg)
             return exc.HTTPConflict(msg)
         except exception.Invalid as e:
             msg = (_("Failed to add image metadata. "
-                     "Got error: %(e)s") % locals())
+                     "Got error: %(e)s") % {'e': e})
             LOG.error(msg)
             return exc.HTTPBadRequest(msg)
 
     @utils.mutating
     def update(self, req, id, body):
-        """
-        Updates an existing image with the registry.
+        """Updates an existing image with the registry.
 
         :param req: wsgi Request object
         :param body: Dictionary of information about the image
@@ -433,7 +424,8 @@ class Controller(object):
         purge_props = req.headers.get("X-Glance-Registry-Purge-Props", "false")
         try:
             LOG.debug(_("Updating image %(id)s with metadata: "
-                        "%(image_data)r") % locals())
+                        "%(image_data)r"), {'id': id,
+                                            'image_data': image_data})
             image_data = _normalize_image_location_for_db(image_data)
             if purge_props == "true":
                 updated_image = self.db_api.image_update(req.context, id,
@@ -446,7 +438,7 @@ class Controller(object):
             return dict(image=make_image_dict(updated_image))
         except exception.Invalid as e:
             msg = (_("Failed to update image metadata. "
-                     "Got error: %(e)s") % locals())
+                     "Got error: %(e)s") % {'e': e})
             LOG.error(msg)
             return exc.HTTPBadRequest(msg)
         except exception.NotFound:
@@ -479,8 +471,7 @@ def _limit_locations(image):
 
 
 def make_image_dict(image):
-    """
-    Create a dict representation of an image which we can use to
+    """Create a dict representation of an image which we can use to
     serialize the image.
     """
 

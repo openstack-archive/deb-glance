@@ -15,6 +15,8 @@
 #    under the License.
 
 
+from oslo.config import cfg
+
 import glance.api.common
 import glance.common.exception as exception
 from glance.common import utils
@@ -24,6 +26,23 @@ import glance.openstack.common.log as logging
 
 
 LOG = logging.getLogger(__name__)
+CONF = cfg.CONF
+CONF.import_opt('image_member_quota', 'glance.common.config')
+CONF.import_opt('image_property_quota', 'glance.common.config')
+CONF.import_opt('image_tag_quota', 'glance.common.config')
+
+
+def _enforce_image_tag_quota(tags):
+    if CONF.image_tag_quota < 0:
+        # If value is negative, allow unlimited number of tags
+        return
+
+    if not tags:
+        return
+
+    if len(tags) > CONF.image_tag_quota:
+        raise exception.ImageTagLimitExceeded(attempted=len(tags),
+                                              maximum=CONF.image_tag_quota)
 
 
 class ImageRepoProxy(glance.domain.proxy.Repo):
@@ -36,6 +55,25 @@ class ImageRepoProxy(glance.domain.proxy.Repo):
                                              item_proxy_class=ImageProxy,
                                              item_proxy_kwargs=proxy_kwargs)
 
+    def _enforce_image_property_quota(self, image):
+        if CONF.image_property_quota < 0:
+            # If value is negative, allow unlimited number of properties
+            return
+
+        attempted = len(image.extra_properties)
+        maximum = CONF.image_property_quota
+        if attempted > maximum:
+            raise exception.ImagePropertyLimitExceeded(attempted=attempted,
+                                                       maximum=maximum)
+
+    def save(self, image):
+        self._enforce_image_property_quota(image)
+        super(ImageRepoProxy, self).save(image)
+
+    def add(self, image):
+        self._enforce_image_property_quota(image)
+        super(ImageRepoProxy, self).add(image)
+
 
 class ImageFactoryProxy(glance.domain.proxy.ImageFactory):
     def __init__(self, factory, context, db_api):
@@ -43,6 +81,71 @@ class ImageFactoryProxy(glance.domain.proxy.ImageFactory):
         super(ImageFactoryProxy, self).__init__(factory,
                                                 proxy_class=ImageProxy,
                                                 proxy_kwargs=proxy_kwargs)
+
+    def new_image(self, **kwargs):
+        tags = kwargs.pop('tags', set([]))
+
+        _enforce_image_tag_quota(tags)
+        return super(ImageFactoryProxy, self).new_image(tags=tags, **kwargs)
+
+
+class QuotaImageTagsProxy(object):
+
+    def __init__(self, orig_set):
+        if orig_set is None:
+            orig_set = set([])
+        self.tags = orig_set
+
+    def add(self, item):
+        self.tags.add(item)
+        _enforce_image_tag_quota(self.tags)
+
+    def __cast__(self, *args, **kwargs):
+        return self.tags.__cast__(*args, **kwargs)
+
+    def __contains__(self, *args, **kwargs):
+        return self.tags.__contains__(*args, **kwargs)
+
+    def __eq__(self, other):
+        return self.tags == other
+
+    def __iter__(self, *args, **kwargs):
+        return self.tags.__iter__(*args, **kwargs)
+
+    def __len__(self, *args, **kwargs):
+        return self.tags.__len__(*args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self.tags, name)
+
+
+class ImageMemberFactoryProxy(glance.domain.proxy.ImageMembershipFactory):
+
+    def __init__(self, member_factory, context, db_api):
+        self.db_api = db_api
+        self.context = context
+        super(ImageMemberFactoryProxy, self).__init__(
+            member_factory,
+            image_proxy_class=ImageProxy,
+            image_proxy_kwargs={})
+
+    def _enforce_image_member_quota(self, image):
+        if CONF.image_member_quota < 0:
+            # If value is negative, allow unlimited number of members
+            return
+
+        current_member_count = self.db_api.image_member_count(self.context,
+                                                              image.image_id)
+        attempted = current_member_count + 1
+        maximum = CONF.image_member_quota
+        if attempted > maximum:
+            raise exception.ImageMemberLimitExceeded(attempted=attempted,
+                                                     maximum=maximum)
+
+    def new_image_member(self, image, member_id):
+        self._enforce_image_member_quota(image)
+        return super(ImageMemberFactoryProxy, self).new_image_member(image,
+                                                                     member_id)
 
 
 class QuotaImageLocationsProxy(object):
@@ -157,6 +260,15 @@ class ImageProxy(glance.domain.proxy.Image):
             glance.store.safe_delete_from_backend(
                 location, self.context, self.image.image_id)
             raise
+
+    @property
+    def tags(self):
+        return QuotaImageTagsProxy(self.image.tags)
+
+    @tags.setter
+    def tags(self, value):
+        _enforce_image_tag_quota(value)
+        self.image.tags = value
 
     @property
     def locations(self):

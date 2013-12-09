@@ -28,8 +28,8 @@ from oslo.config import cfg
 
 from glance.common import exception
 from glance.common import utils
-from glance.openstack.common import excutils
 import glance.openstack.common.log as logging
+from glance.openstack.common import units
 import glance.store
 import glance.store.base
 import glance.store.location
@@ -103,14 +103,18 @@ class StoreLocation(glance.store.location.StoreLocation):
         prefix = 'rbd://'
         if not uri.startswith(prefix):
             reason = _('URI must start with rbd://')
-            LOG.debug(_("Invalid URI: %(uri)s: %(reason)s") % locals())
+            msg = (_("Invalid URI: %(uri)s: %(reason)s") % {'uri': uri,
+                                                            'reason': reason})
+            LOG.debug(msg)
             raise exception.BadStoreUri(message=reason)
         # convert to ascii since librbd doesn't handle unicode
         try:
             ascii_uri = str(uri)
         except UnicodeError:
             reason = _('URI contains non-ascii characters')
-            LOG.debug(_("Invalid URI: %(uri)s: %(reason)s") % locals())
+            msg = (_("Invalid URI: %(uri)s: %(reason)s") % {'uri': uri,
+                                                            'reason': reason})
+            LOG.debug(msg)
             raise exception.BadStoreUri(message=reason)
         pieces = ascii_uri[len(prefix):].split('/')
         if len(pieces) == 1:
@@ -121,11 +125,15 @@ class StoreLocation(glance.store.location.StoreLocation):
                 map(urllib.unquote, pieces)
         else:
             reason = _('URI must have exactly 1 or 4 components')
-            LOG.debug(_("Invalid URI: %(uri)s: %(reason)s") % locals())
+            msg = (_("Invalid URI: %(uri)s: %(reason)s") % {'uri': uri,
+                                                            'reason': reason})
+            LOG.debug(msg)
             raise exception.BadStoreUri(message=reason)
         if any(map(lambda p: p == '', pieces)):
             reason = _('URI cannot contain empty components')
-            LOG.debug(_("Invalid URI: %(uri)s: %(reason)s") % locals())
+            msg = (_("Invalid URI: %(uri)s: %(reason)s") % {'uri': uri,
+                                                            'reason': reason})
+            LOG.debug(msg)
             raise exception.BadStoreUri(message=reason)
 
 
@@ -177,7 +185,7 @@ class Store(glance.store.base.Store):
         itself, it should raise `exception.BadStoreConfiguration`
         """
         try:
-            self.chunk_size = CONF.rbd_store_chunk_size * 1024 * 1024
+            self.chunk_size = CONF.rbd_store_chunk_size * units.Mi
 
             # these must not be unicode since they will be passed to a
             # non-unicode-aware C library
@@ -338,7 +346,7 @@ class Store(glance.store.base.Store):
                             if image_size == 0:
                                 length = offset + len(chunk)
                                 LOG.debug(_("resizing image to %s KiB") %
-                                          (length / 1024))
+                                          (length / units.Ki))
                                 image.resize(length)
                             LOG.debug(_("writing chunk at offset %s") %
                                       (offset))

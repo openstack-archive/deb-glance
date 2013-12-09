@@ -173,7 +173,7 @@ Optional. Default: ``1``
 * ``db_auto_create=False``
 
 Whether to automatically create the database tables.  Otherwise you can
-manually run `glance-manage db_sync`.
+manually run `glance-manage db sync`.
 
 Optional. Default: ``False``
 
@@ -1039,7 +1039,7 @@ the ``error`` and ``warn`` notification priorities. To receive all
 notifications, you would set up a receiver with a topic of
 ``notifications.*``.
 
-* ``qpid_host``
+* ``qpid_hostname``
 
 Optional. Default: ``localhost``
 
@@ -1050,7 +1050,7 @@ when Glance has been configured to use the ``qpid`` notification strategy.
 
 Optional. Default: ``5672``
 
-This is the port number to connect to on the Qpid broker, ``qpid_host``,
+This is the port number to connect to on the Qpid broker, ``qpid_hostname``,
 when using the ``qpid`` notification strategy.
 
 * ``qpid_username``
@@ -1164,11 +1164,19 @@ Configuring Glance Property Protections
 Access to image meta properties may be configured using a
 :doc:`Property Protections Configuration file <property-protections>`.  The
 location for this file can be specified in the ``glance-api.conf`` config file
-in the section ``[DEFAULT]``.
+in the section ``[DEFAULT]``. **If an incorrect value is specified, glance api
+service will not start.**
 
 * ``property_protection_file=PATH``
 
 Optional. Default: not enabled.
+
+If property_protection_file is set, the file may use either roles or policies
+to specify property protections.
+
+* ``property_protection_rule_format=<roles|policies>``
+
+Optional. Default: ``roles``.
 
 Configuring Glance APIs
 -----------------------

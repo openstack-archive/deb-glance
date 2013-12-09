@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2010-2011 OpenStack, LLC
+# Copyright 2010-2011 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -15,12 +15,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import socket
-import time
-
 import datetime
 import eventlet.patcher
-import httplib2
 import webob
 
 from glance.common import exception
@@ -34,18 +30,18 @@ class RequestTest(test_utils.BaseTestCase):
     def test_content_type_missing(self):
         request = wsgi.Request.blank('/tests/123')
         self.assertRaises(exception.InvalidContentType,
-                          request.get_content_type, ('application/xml'))
+                          request.get_content_type, ('application/xml',))
 
     def test_content_type_unsupported(self):
         request = wsgi.Request.blank('/tests/123')
         request.headers["Content-Type"] = "text/html"
         self.assertRaises(exception.InvalidContentType,
-                          request.get_content_type, ('application/xml'))
+                          request.get_content_type, ('application/xml',))
 
     def test_content_type_with_charset(self):
         request = wsgi.Request.blank('/tests/123')
         request.headers["Content-Type"] = "application/json; charset=UTF-8"
-        result = request.get_content_type(('application/json'))
+        result = request.get_content_type(('application/json',))
         self.assertEqual(result, "application/json")
 
     def test_content_type_from_accept_xml(self):
@@ -274,7 +270,7 @@ class JSONRequestDeserializerTest(test_utils.BaseTestCase):
 
 class ServerTest(test_utils.BaseTestCase):
     def test_create_pool(self):
-        """ Ensure the wsgi thread pool is an eventlet.greenpool.GreenPool. """
+        """Ensure the wsgi thread pool is an eventlet.greenpool.GreenPool."""
         actual = wsgi.Server(threads=1).create_pool()
         self.assertTrue(isinstance(actual, eventlet.greenpool.GreenPool))
 

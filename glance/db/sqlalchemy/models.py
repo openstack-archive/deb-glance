@@ -25,10 +25,11 @@ from sqlalchemy import Column, Integer, String, BigInteger
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import ForeignKey, DateTime, Boolean, Text
-from sqlalchemy.orm import relationship, backref, object_mapper
+from sqlalchemy.orm import relationship, backref
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy import Index, UniqueConstraint
 
+from glance.openstack.common.db.sqlalchemy import models
 from glance.openstack.common import timeutils
 from glance.openstack.common import uuidutils
 
@@ -56,8 +57,9 @@ class JSONEncodedDict(TypeDecorator):
         return value
 
 
-class ModelBase(object):
-    """Base class for Nova and Glance Models"""
+class GlanceBase(models.ModelBase, models.TimestampMixin):
+    """Base class for Glance Models."""
+
     __table_args__ = {'mysql_engine': 'InnoDB'}
     __table_initialized__ = False
     __protected_attributes__ = set([
@@ -65,13 +67,23 @@ class ModelBase(object):
 
     created_at = Column(DateTime, default=timeutils.utcnow,
                         nullable=False)
+    # TODO(vsergeyev): Column `updated_at` have no default value in
+    #                  openstack common code. We should decide, is this value
+    #                  required and make changes in oslo (if required) or
+    #                  in glance (if not).
     updated_at = Column(DateTime, default=timeutils.utcnow,
                         nullable=False, onupdate=timeutils.utcnow)
+    # TODO(boris-42): Use SoftDeleteMixin instead of deleted Column after
+    #                 migration that provides UniqueConstraints and change
+    #                 type of this column.
     deleted_at = Column(DateTime)
     deleted = Column(Boolean, nullable=False, default=False)
 
+    # TODO(vsergeyev): we should use save() method from
+    #                  models.ModelBase(), when we will use common
+    #                  oslo session
     def save(self, session=None):
-        """Save this object"""
+        """Save this object."""
         # import api here to prevent circular dependency problem
         import glance.db.sqlalchemy.api as db_api
         session = session or db_api._get_session()
@@ -79,29 +91,10 @@ class ModelBase(object):
         session.flush()
 
     def delete(self, session=None):
-        """Delete this object"""
+        """Delete this object."""
         self.deleted = True
         self.deleted_at = timeutils.utcnow()
         self.save(session=session)
-
-    def update(self, values):
-        """dict.update() behaviour."""
-        for k, v in values.iteritems():
-            self[k] = v
-
-    def __setitem__(self, key, value):
-        setattr(self, key, value)
-
-    def __getitem__(self, key):
-        return getattr(self, key)
-
-    def __iter__(self):
-        self._i = iter(object_mapper(self).columns)
-        return self
-
-    def next(self):
-        n = self._i.next().name
-        return n, getattr(self, n)
 
     def keys(self):
         return self.__dict__.keys()
@@ -122,8 +115,8 @@ class ModelBase(object):
         return d
 
 
-class Image(BASE, ModelBase):
-    """Represents an image in the datastore"""
+class Image(BASE, GlanceBase):
+    """Represents an image in the datastore."""
     __tablename__ = 'images'
     __table_args__ = (Index('checksum_image_idx', 'checksum'),
                       Index('ix_images_is_public', 'is_public'),
@@ -144,8 +137,8 @@ class Image(BASE, ModelBase):
     protected = Column(Boolean, nullable=False, default=False)
 
 
-class ImageProperty(BASE, ModelBase):
-    """Represents an image properties in the datastore"""
+class ImageProperty(BASE, GlanceBase):
+    """Represents an image properties in the datastore."""
     __tablename__ = 'image_properties'
     __table_args__ = (Index('ix_image_properties_image_id', 'image_id'),
                       Index('ix_image_properties_deleted', 'deleted'),
@@ -163,8 +156,8 @@ class ImageProperty(BASE, ModelBase):
     value = Column(Text)
 
 
-class ImageTag(BASE, ModelBase):
-    """Represents an image tag in the datastore"""
+class ImageTag(BASE, GlanceBase):
+    """Represents an image tag in the datastore."""
     __tablename__ = 'image_tags'
     __table_args__ = (Index('ix_image_tags_image_id', 'image_id'),
                       Index('ix_image_tags_image_id_tag_value',
@@ -177,8 +170,8 @@ class ImageTag(BASE, ModelBase):
     value = Column(String(255), nullable=False)
 
 
-class ImageLocation(BASE, ModelBase):
-    """Represents an image location in the datastore"""
+class ImageLocation(BASE, GlanceBase):
+    """Represents an image location in the datastore."""
     __tablename__ = 'image_locations'
     __table_args__ = (Index('ix_image_locations_image_id', 'image_id'),
                       Index('ix_image_locations_deleted', 'deleted'),)
@@ -190,8 +183,8 @@ class ImageLocation(BASE, ModelBase):
     meta_data = Column(JSONEncodedDict(), default={})
 
 
-class ImageMember(BASE, ModelBase):
-    """Represents an image members in the datastore"""
+class ImageMember(BASE, GlanceBase):
+    """Represents an image members in the datastore."""
     __tablename__ = 'image_members'
     unique_constraint_key_name = 'image_members_image_id_member_deleted_at_key'
     __table_args__ = (Index('ix_image_members_deleted', 'deleted'),
@@ -214,19 +207,34 @@ class ImageMember(BASE, ModelBase):
     status = Column(String(20), nullable=False, default="pending")
 
 
+class Task(BASE, GlanceBase):
+    """Represents an task in the datastore"""
+    __tablename__ = 'tasks'
+    __table_args__ = (Index('ix_tasks_type', 'type'),
+                      Index('ix_tasks_status', 'status'),
+                      Index('ix_tasks_owner', 'owner'),
+                      Index('ix_tasks_deleted', 'deleted'),
+                      Index('ix_tasks_updated_at', 'updated_at'))
+
+    id = Column(String(36), primary_key=True, default=uuidutils.generate_uuid)
+    type = Column(String(30))
+    status = Column(String(30))
+    input = Column(JSONEncodedDict())
+    result = Column(JSONEncodedDict())
+    owner = Column(String(255))
+    message = Column(Text)
+    expires_at = Column(DateTime, nullable=True)
+
+
 def register_models(engine):
-    """
-    Creates database tables for all models with the given engine
-    """
+    """Create database tables for all models with the given engine."""
     models = (Image, ImageProperty, ImageMember)
     for model in models:
         model.metadata.create_all(engine)
 
 
 def unregister_models(engine):
-    """
-    Drops database tables for all models with the given engine
-    """
+    """Drop database tables for all models with the given engine."""
     models = (Image, ImageProperty)
     for model in models:
         model.metadata.drop_all(engine)

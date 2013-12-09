@@ -136,6 +136,10 @@ class InvalidSortKey(Invalid):
     message = _("Sort key supplied was not valid.")
 
 
+class InvalidPropertyProtectionConfiguration(Invalid):
+    message = _("Invalid configuration in property protection file.")
+
+
 class InvalidFilterRangeValue(Invalid):
     message = _("Unable to filter using the specified range.")
 
@@ -237,10 +241,6 @@ class StoreAddDisabled(GlanceException):
                 "store is disabled.")
 
 
-class InvalidNotifierStrategy(GlanceException):
-    message = _("'%(strategy)s' is not an available notifier strategy.")
-
-
 class MaxRedirectsExceeded(GlanceException):
     message = _("Maximum redirects (%(redirects)s) was exceeded.")
 
@@ -285,5 +285,46 @@ class ImageSizeLimitExceeded(GlanceException):
     message = _("The provided image is too large.")
 
 
+class ImageMemberLimitExceeded(LimitExceeded):
+    message = _("The limit has been exceeded on the number of allowed image "
+                "members for this image. Attempted: %(attempted)s, "
+                "Maximum: %(maximum)s")
+
+
+class ImagePropertyLimitExceeded(LimitExceeded):
+    message = _("The limit has been exceeded on the number of allowed image "
+                "properties. Attempted: %(attempted)s, Maximum: %(maximum)s")
+
+
+class ImageTagLimitExceeded(LimitExceeded):
+    message = _("The limit has been exceeded on the number of allowed image "
+                "tags. Attempted: %(attempted)s, Maximum: %(maximum)s")
+
+
 class RPCError(GlanceException):
     message = _("%(cls)s exception was raised in the last rpc call: %(val)s")
+
+
+class TaskException(GlanceException):
+    message = _("An unknown task exception occurred")
+
+
+class TaskNotFound(TaskException, NotFound):
+    message = _("Task with the given id %(task_id)s was not found")
+
+
+class InvalidTaskStatus(TaskException, Invalid):
+    message = _("Provided status of task is unsupported: %(status)s")
+
+
+class InvalidTaskType(TaskException, Invalid):
+    message = _("Provided type of task is unsupported: %(type)s")
+
+
+class InvalidTaskStatusTransition(TaskException, Invalid):
+    message = _("Status transition from %(cur_status)s to"
+                " %(new_status)s is not allowed")
+
+
+class DuplicateLocation(Duplicate):
+    message = _("The location %(location)s already exists")

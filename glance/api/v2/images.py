@@ -13,7 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import copy
 import json
 import re
 import urllib
@@ -60,8 +59,14 @@ class ImagesController(object):
             image = image_factory.new_image(extra_properties=extra_properties,
                                             tags=tags, **image)
             image_repo.add(image)
+        except exception.DuplicateLocation as dup:
+            raise webob.exc.HTTPBadRequest(explanation=unicode(dup))
         except exception.Forbidden as e:
             raise webob.exc.HTTPForbidden(explanation=unicode(e))
+        except exception.LimitExceeded as e:
+            LOG.info(unicode(e))
+            raise webob.exc.HTTPRequestEntityTooLarge(
+                explanation=unicode(e), request=req, content_type='text/plain')
 
         return image
 
@@ -117,7 +122,8 @@ class ImagesController(object):
                     image_repo.save(image)
 
         except exception.NotFound:
-            msg = _("Failed to find image %(image_id)s to update") % locals()
+            msg = (_("Failed to find image %(image_id)s to update") %
+                   {'image_id': image_id})
             LOG.info(msg)
             raise webob.exc.HTTPNotFound(explanation=msg)
         except exception.Forbidden as e:
@@ -128,6 +134,10 @@ class ImagesController(object):
             LOG.info(msg)
             raise webob.exc.HTTPRequestEntityTooLarge(
                 explanation=msg, request=req, content_type='text/plain')
+        except exception.LimitExceeded as e:
+            LOG.info(unicode(e))
+            raise webob.exc.HTTPRequestEntityTooLarge(
+                explanation=unicode(e), request=req, content_type='text/plain')
 
         return image
 
@@ -184,7 +194,8 @@ class ImagesController(object):
         except exception.Forbidden as e:
             raise webob.exc.HTTPForbidden(explanation=unicode(e))
         except exception.NotFound as e:
-            msg = ("Failed to find image %(image_id)s to delete" % locals())
+            msg = ("Failed to find image %(image_id)s to delete" %
+                   {'image_id': image_id})
             LOG.info(msg)
             raise webob.exc.HTTPNotFound(explanation=msg)
 
@@ -217,7 +228,7 @@ class ImagesController(object):
                 image.locations = value
                 if image.status == 'queued':
                     image.status = 'active'
-            except exception.BadStoreUri as bse:
+            except (exception.BadStoreUri, exception.DuplicateLocation) as bse:
                 raise webob.exc.HTTPBadRequest(explanation=unicode(bse))
             except ValueError as ve:    # update image status failed.
                 raise webob.exc.HTTPBadRequest(explanation=unicode(ve))
@@ -232,7 +243,7 @@ class ImagesController(object):
             image.locations.insert(pos, value)
             if image.status == 'queued':
                 image.status = 'active'
-        except exception.BadStoreUri as bse:
+        except (exception.BadStoreUri, exception.DuplicateLocation) as bse:
             raise webob.exc.HTTPBadRequest(explanation=unicode(bse))
         except ValueError as ve:    # update image status failed.
             raise webob.exc.HTTPBadRequest(explanation=unicode(ve))
@@ -334,7 +345,7 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
         return raw_change[op]
 
     def _decode_json_pointer(self, pointer):
-        """ Parse a json pointer.
+        """Parse a json pointer.
 
         Json Pointers are defined in
         http://tools.ietf.org/html/draft-pbryan-zyp-json-pointer .
@@ -350,7 +361,7 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
         return ret
 
     def _validate_json_pointer(self, pointer):
-        """ Validate a json pointer.
+        """Validate a json pointer.
 
         We only accept a limited form of json pointers.
         """

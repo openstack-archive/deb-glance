@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2011 OpenStack LLC.
+# Copyright 2011 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -95,11 +95,11 @@ def from_migration_import(module_name, fromlist):
 
 def create_tables(tables):
     for table in tables:
-        LOG.info(_("creating table %(table)s") % locals())
+        LOG.info(_("creating table %(table)s") % {'table': table})
         table.create()
 
 
 def drop_tables(tables):
     for table in tables:
-        LOG.info(_("dropping table %(table)s") % locals())
+        LOG.info(_("dropping table %(table)s") % {'table': table})
         table.drop()

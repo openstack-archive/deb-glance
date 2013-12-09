@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2011 OpenStack, LLC
+# Copyright 2011 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -28,8 +28,9 @@ import stubout
 
 from glance.common import exception
 from glance import image_cache
+from glance.openstack.common import units
 #NOTE(bcwaldon): This is imported to load the registry config options
-import glance.registry
+import glance.registry  # noqa
 import glance.store.filesystem as fs_store
 import glance.store.s3 as s3_store
 from glance.tests import utils as test_utils
@@ -52,16 +53,14 @@ class ImageCacheTestCase(object):
 
     @skip_if_disabled
     def test_is_cached(self):
-        """
-        Verify is_cached(1) returns 0, then add something to the cache
+        """Verify is_cached(1) returns 0, then add something to the cache
         and verify is_cached(1) returns 1.
         """
         self._setup_fixture_file()
 
     @skip_if_disabled
     def test_read(self):
-        """
-        Verify is_cached(1) returns 0, then add something to the cache
+        """Verify is_cached(1) returns 0, then add something to the cache
         and verify after a subsequent read from the cache that
         is_cached(1) returns 1.
         """
@@ -76,8 +75,7 @@ class ImageCacheTestCase(object):
 
     @skip_if_disabled
     def test_open_for_read(self):
-        """
-        Test convenience wrapper for opening a cache file via
+        """Test convenience wrapper for opening a cache file via
         its image identifier.
         """
         self._setup_fixture_file()
@@ -91,8 +89,7 @@ class ImageCacheTestCase(object):
 
     @skip_if_disabled
     def test_get_image_size(self):
-        """
-        Test convenience wrapper for querying cache file size via
+        """Test convenience wrapper for querying cache file size via
         its image identifier.
         """
         self._setup_fixture_file()
@@ -103,9 +100,7 @@ class ImageCacheTestCase(object):
 
     @skip_if_disabled
     def test_delete(self):
-        """
-        Test delete method that removes an image from the cache
-        """
+        """Test delete method that removes an image from the cache."""
         self._setup_fixture_file()
 
         self.cache.delete_cached_image(1)
@@ -114,9 +109,7 @@ class ImageCacheTestCase(object):
 
     @skip_if_disabled
     def test_delete_all(self):
-        """
-        Test delete method that removes an image from the cache
-        """
+        """Test delete method that removes an image from the cache."""
         for image_id in (1, 2):
             self.assertFalse(self.cache.is_cached(image_id))
 
@@ -135,9 +128,7 @@ class ImageCacheTestCase(object):
 
     @skip_if_disabled
     def test_clean_stalled(self):
-        """
-        Test the clean method removes expected images
-        """
+        """Test the clean method removes expected images."""
         incomplete_file_path = os.path.join(self.cache_dir, 'incomplete', '1')
         incomplete_file = open(incomplete_file_path, 'w')
         incomplete_file.write(FIXTURE_DATA)
@@ -191,15 +182,15 @@ class ImageCacheTestCase(object):
         # prune it. We should see only 5 images left after
         # pruning, and the images that are least recently accessed
         # should be the ones pruned...
-        for x in xrange(0, 10):
+        for x in xrange(10):
             FIXTURE_FILE = StringIO.StringIO(FIXTURE_DATA)
             self.assertTrue(self.cache.cache_image_file(x,
                                                         FIXTURE_FILE))
 
-        self.assertEqual(10 * 1024, self.cache.get_cache_size())
+        self.assertEqual(10 * units.Ki, self.cache.get_cache_size())
 
         # OK, hit the images that are now cached...
-        for x in xrange(0, 10):
+        for x in xrange(10):
             buff = StringIO.StringIO()
             with self.cache.open_for_read(x) as cache_file:
                 for chunk in cache_file:
@@ -207,7 +198,7 @@ class ImageCacheTestCase(object):
 
         self.cache.prune()
 
-        self.assertEqual(5 * 1024, self.cache.get_cache_size())
+        self.assertEqual(5 * units.Ki, self.cache.get_cache_size())
 
         for x in xrange(0, 5):
             self.assertFalse(self.cache.is_cached(x),
@@ -276,7 +267,7 @@ class ImageCacheTestCase(object):
 
         self.cache.delete_cached_image(1)
 
-        for x in xrange(0, 3):
+        for x in xrange(3):
             self.assertTrue(self.cache.queue_image(x))
 
         self.assertEqual(self.cache.get_queued_images(),
@@ -492,7 +483,7 @@ class TestImageCacheXattr(test_utils.BaseTestCase,
 
         if not getattr(self, 'inited', False):
             try:
-                import xattr
+                import xattr  # noqa
             except ImportError:
                 self.inited = True
                 self.disabled = True
@@ -503,7 +494,7 @@ class TestImageCacheXattr(test_utils.BaseTestCase,
         self.disabled = False
         self.config(image_cache_dir=self.cache_dir,
                     image_cache_driver='xattr',
-                    image_cache_max_size=1024 * 5)
+                    image_cache_max_size=5 * units.Ki)
         self.cache = image_cache.ImageCache()
 
         if not xattr_writes_supported(self.cache_dir):
@@ -530,7 +521,7 @@ class TestImageCacheSqlite(test_utils.BaseTestCase,
 
         if not getattr(self, 'inited', False):
             try:
-                import sqlite3
+                import sqlite3  # noqa
             except ImportError:
                 self.inited = True
                 self.disabled = True
@@ -542,7 +533,7 @@ class TestImageCacheSqlite(test_utils.BaseTestCase,
         self.cache_dir = self.useFixture(fixtures.TempDir()).path
         self.config(image_cache_dir=self.cache_dir,
                     image_cache_driver='sqlite',
-                    image_cache_max_size=1024 * 5)
+                    image_cache_max_size=5 * units.Ki)
         self.cache = image_cache.ImageCache()
 
 

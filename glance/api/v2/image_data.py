@@ -56,9 +56,16 @@ class ImageDataController(object):
                 image_repo.save(image)
             except exception.NotFound as e:
                 msg = (_("Image %s could not be found after upload."
-                       "The image may have been deleted during the upload: %s")
+                       "The image may have been deleted during the upload: %s "
+                       "Cleaning up the chunks uploaded")
                        % (image_id, e))
                 LOG.warn(msg)
+                # NOTE(sridevi): Cleaning up the uploaded chunks.
+                try:
+                    image.delete()
+                except exception.NotFound:
+                    # NOTE(sridevi): Ignore this exception
+                    pass
                 raise webob.exc.HTTPGone(explanation=msg,
                                          request=req,
                                          content_type='text/plain')
@@ -80,12 +87,6 @@ class ImageDataController(object):
 
         except exception.NotFound as e:
             raise webob.exc.HTTPNotFound(explanation=unicode(e))
-
-        except exception.StorageFull as e:
-            msg = _("Image storage media is full: %s") % e
-            LOG.error(msg)
-            raise webob.exc.HTTPRequestEntityTooLarge(explanation=msg,
-                                                      request=req)
 
         except exception.StorageFull as e:
             msg = _("Image storage media is full: %s") % e
@@ -138,7 +139,7 @@ class ImageDataController(object):
 class RequestDeserializer(wsgi.JSONRequestDeserializer):
     def upload(self, request):
         try:
-            request.get_content_type('application/octet-stream')
+            request.get_content_type(('application/octet-stream',))
         except exception.InvalidContentType:
             raise webob.exc.HTTPUnsupportedMediaType()
 

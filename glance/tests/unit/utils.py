@@ -86,6 +86,7 @@ class FakeDB(object):
             'members': [],
             'tags': {},
             'locations': [],
+            'tasks': {}
         }
 
     def __getattr__(self, key):
@@ -181,26 +182,70 @@ class FakeNotifier(object):
     def __init__(self, *_args, **kwargs):
         self.log = []
 
-    def warn(self, event_type, payload):
+    def _notify(self, event_type, payload, level):
         log = {}
-        log['notification_type'] = "WARN"
+        log['notification_type'] = level
         log['event_type'] = event_type
         log['payload'] = payload
         self.log.append(log)
+
+    def warn(self, event_type, payload):
+        self._notify(event_type, payload, 'WARN')
 
     def info(self, event_type, payload):
-        log = {}
-        log['notification_type'] = "INFO"
-        log['event_type'] = event_type
-        log['payload'] = payload
-        self.log.append(log)
+        self._notify(event_type, payload, 'INFO')
 
     def error(self, event_type, payload):
-        log = {}
-        log['notification_type'] = "ERROR"
-        log['event_type'] = event_type
-        log['payload'] = payload
-        self.log.append(log)
+        self._notify(event_type, payload, 'ERROR')
+
+    def debug(self, event_type, payload):
+        self._notify(event_type, payload, 'DEBUG')
+
+    def critical(self, event_type, payload):
+        self._notify(event_type, payload, 'CRITICAL')
 
     def get_logs(self):
         return self.log
+
+
+class FakeGateway(object):
+    def __init__(self, image_factory=None, image_member_factory=None,
+                 image_repo=None, task_factory=None, task_repo=None):
+        self.image_factory = image_factory
+        self.image_member_factory = image_member_factory
+        self.image_repo = image_repo
+        self.task_factory = task_factory
+        self.task_repo = task_repo
+
+    def get_image_factory(self, context):
+        return self.image_factory
+
+    def get_image_member_factory(self, context):
+        return self.image_member_factory
+
+    def get_repo(self, context):
+        return self.image_repo
+
+    def get_task_factory(self, context):
+        return self.task_factory
+
+    def get_task_repo(self, context):
+        return self.task_repo
+
+
+class FakeTask(object):
+    def __init__(self, task_id, type=None, status=None):
+        self.task_id = task_id
+        self.type = type
+        self.message = None
+        self.input = None
+        self._status = status
+        self._executor = None
+
+    def success(self, result):
+        self.result = result
+        self._status = 'success'
+
+    def fail(self, message):
+        self.message = message
+        self._status = 'failure'

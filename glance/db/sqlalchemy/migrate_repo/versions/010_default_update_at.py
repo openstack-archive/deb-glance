@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2011 OpenStack LLC.
+# Copyright 2011 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -15,8 +15,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from migrate.changeset import *
-from sqlalchemy import *
+from migrate.changeset import *  # noqa
+from sqlalchemy import *  # noqa
 
 from glance.db.sqlalchemy.migrate_repo.schema import from_migration_import
 

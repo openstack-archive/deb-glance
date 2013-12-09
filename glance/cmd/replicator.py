@@ -16,6 +16,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from __future__ import print_function
+
 import httplib
 import json
 import logging
@@ -76,7 +78,7 @@ class UploadException(Exception):
 
 class ImageService(object):
     def __init__(self, conn, auth_token):
-        """ Initialize the ImageService.
+        """Initialize the ImageService.
 
         conn: a httplib.HTTPConnection to the glance server
         auth_token: authentication token to pass in the x-auth-token header
@@ -297,7 +299,7 @@ def replication_size(options, args):
             total_size += int(image['size'])
             count += 1
 
-    print _('Total size is %d bytes across %d images') % (total_size, count)
+    print(_('Total size is %d bytes across %d images') % (total_size, count))
 
 
 def replication_dump(options, args):
@@ -370,7 +372,7 @@ def _dict_diff(a, b):
                           '%(key)s: master "%(master_value)s" vs '
                           'slave "%(slave_value)s"') %
                           {'key': key, 'master_value': a[key],
-                          'slave_value': b[key]})
+                           'slave_value': b[key]})
             return True
 
     return False
@@ -675,14 +677,14 @@ def print_help(options, args):
     args: the command line
     """
     if len(args) != 1:
-        print COMMANDS
+        print(COMMANDS)
         sys.exit(1)
 
     parser = options.__parser
     command_name = args.pop()
     command = lookup_command(parser, command_name)
 
-    print command.__doc__ % {'prog': os.path.basename(sys.argv[0])}
+    print(command.__doc__ % {'prog': os.path.basename(sys.argv[0])})
 
 
 def lookup_command(parser, command_name):
@@ -721,6 +723,8 @@ def logging_excepthook(type, value, tb):
 
 
 def main():
+    """The main function."""
+
     usage = """
 %%prog <command> [options] [args]
 

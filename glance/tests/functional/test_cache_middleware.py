@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2011 OpenStack, LLC
+# Copyright 2011 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -31,6 +31,7 @@ import time
 
 import httplib2
 
+from glance.openstack.common import units
 from glance.tests import functional
 from glance.tests.utils import (skip_if_disabled,
                                 execute,
@@ -40,7 +41,7 @@ from glance.tests.utils import (skip_if_disabled,
 from glance.tests.functional.store_utils import (setup_http,
                                                  get_http_uri)
 
-FIVE_KB = 5 * 1024
+FIVE_KB = 5 * units.Ki
 
 
 class BaseCacheMiddlewareTest(object):
@@ -529,7 +530,7 @@ class BaseCacheManageMiddlewareTest(object):
         ids = {}
 
         # Add a bunch of images...
-        for x in xrange(0, 4):
+        for x in xrange(4):
             ids[x] = self.add_image("Image%s" % str(x))
 
         # Verify no images in cached_images because no image has been hit
@@ -537,7 +538,7 @@ class BaseCacheManageMiddlewareTest(object):
         self.verify_no_cached_images()
 
         # Grab the images, essentially caching them...
-        for x in xrange(0, 4):
+        for x in xrange(4):
             path = "http://%s:%d/v1/images/%s" % ("127.0.0.1", self.api_port,
                                                   ids[x])
             http = httplib2.Http()
@@ -613,7 +614,7 @@ class BaseCacheManageMiddlewareTest(object):
         NUM_IMAGES = 4
 
         # Add and then queue some images
-        for x in xrange(0, NUM_IMAGES):
+        for x in xrange(NUM_IMAGES):
             ids[x] = self.add_image("Image%s" % str(x))
             path = "http://%s:%d/v1/queued_images/%s" % ("127.0.0.1",
                                                          self.api_port, ids[x])
@@ -677,7 +678,7 @@ log_file = %(log_file)s
         ids = {}
 
         # Add a bunch of images...
-        for x in xrange(0, 4):
+        for x in xrange(4):
             ids[x] = self.add_image("Image%s" % str(x))
 
         # Queue the first image, verify no images still in cache after queueing
@@ -732,7 +733,7 @@ class TestImageCacheXattr(functional.FunctionalTest,
 
         if not getattr(self, 'inited', False):
             try:
-                import xattr
+                import xattr  # noqa
             except ImportError:
                 self.inited = True
                 self.disabled = True
@@ -778,7 +779,7 @@ class TestImageCacheManageXattr(functional.FunctionalTest,
 
         if not getattr(self, 'inited', False):
             try:
-                import xattr
+                import xattr  # noqa
             except ImportError:
                 self.inited = True
                 self.disabled = True
@@ -824,7 +825,7 @@ class TestImageCacheSqlite(functional.FunctionalTest,
 
         if not getattr(self, 'inited', False):
             try:
-                import sqlite3
+                import sqlite3  # noqa
             except ImportError:
                 self.inited = True
                 self.disabled = True
@@ -863,7 +864,7 @@ class TestImageCacheManageSqlite(functional.FunctionalTest,
 
         if not getattr(self, 'inited', False):
             try:
-                import sqlite3
+                import sqlite3  # noqa
             except ImportError:
                 self.inited = True
                 self.disabled = True

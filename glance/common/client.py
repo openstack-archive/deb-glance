@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2010-2011 OpenStack, LLC
+# Copyright 2010-2011 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -36,7 +36,7 @@ except ImportError:
     import ssl
 
 try:
-    import sendfile
+    import sendfile  # noqa
     SENDFILE_SUPPORTED = True
 except ImportError:
     SENDFILE_SUPPORTED = False
@@ -316,8 +316,9 @@ class BaseClient(object):
             if self.DEFAULT_DOC_ROOT:
                 doc_root = self.DEFAULT_DOC_ROOT.lstrip('/')
                 self.doc_root += '/' + doc_root
-                msg = _("Appending doc_root %(doc_root)s to URL %(url)s")
-                LOG.debug(msg % locals())
+                msg = (_("Appending doc_root %(doc_root)s to URL %(url)s") %
+                       {'doc_root': doc_root, 'url': url})
+                LOG.debug(msg)
 
         # ensure connection kwargs are re-evaluated after the service catalog
         # publicURL is parsed for potential SSL usage

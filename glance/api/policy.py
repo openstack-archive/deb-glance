@@ -1,6 +1,7 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright (c) 2011 OpenStack, LLC.
+# Copyright (c) 2011 OpenStack Foundation
+# Copyright 2013 IBM Corp.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -55,11 +56,20 @@ class Enforcer(object):
         self.policy_path = self._find_policy_file()
         self.policy_file_mtime = None
         self.policy_file_contents = None
+        self.load_rules()
 
     def set_rules(self, rules):
         """Create a new Rules object based on the provided dict of rules"""
         rules_obj = policy.Rules(rules, self.default_rule)
         policy.set_rules(rules_obj)
+
+    def add_rules(self, rules):
+        """Add new rules to the Rules object"""
+        if policy._rules:
+            rules_obj = policy.Rules(rules)
+            policy._rules.update(rules_obj)
+        else:
+            self.set_rules(rules)
 
     def load_rules(self):
         """Set the rules found in the json file on disk"""
@@ -71,8 +81,9 @@ class Enforcer(object):
             rule_type = "default "
 
         text_rules = dict((k, str(v)) for k, v in rules.items())
-        LOG.debug(_('Loaded %(rule_type)spolicy rules: %(text_rules)s') %
-                  locals())
+        msg = (_('Loaded %(rule_type)spolicy rules: %(text_rules)s') %
+               {'rule_type': rule_type, 'text_rules': text_rules})
+        LOG.debug(msg)
 
         self.set_rules(rules)
 
@@ -112,8 +123,6 @@ class Enforcer(object):
            :raises: `glance.common.exception.Forbidden`
            :returns: A non-False value if access is allowed.
         """
-        self.load_rules()
-
         credentials = {
             'roles': context.roles,
             'user': context.user,
@@ -224,6 +233,10 @@ class ImageProxy(glance.domain.proxy.Image):
     def get_data(self, *args, **kwargs):
         self.policy.enforce(self.context, 'download_image', {})
         return self.image.get_data(*args, **kwargs)
+
+    def set_data(self, *args, **kwargs):
+        self.policy.enforce(self.context, 'upload_image', {})
+        return self.image.set_data(*args, **kwargs)
 
     def get_member_repo(self, **kwargs):
         member_repo = self.image.get_member_repo(**kwargs)
@@ -341,3 +354,59 @@ class ImageLocationsProxy(object):
     __delslice__ = _get_checker('delete_image_location', '__delslice__')
 
     del _get_checker
+
+
+class TaskProxy(glance.domain.proxy.Task):
+
+    def __init__(self, task, context, policy):
+        self.task = task
+        self.context = context
+        self.policy = policy
+        super(TaskProxy, self).__init__(task)
+
+    def run(self, executor):
+        self.base.run(executor)
+
+
+class TaskRepoProxy(glance.domain.proxy.Repo):
+
+    def __init__(self, task_repo, context, policy):
+        self.context = context
+        self.policy = policy
+        self.task_repo = task_repo
+        proxy_kwargs = {'context': self.context, 'policy': self.policy}
+        super(TaskRepoProxy, self).__init__(
+            task_repo,
+            item_proxy_class=TaskProxy,
+            item_proxy_kwargs=proxy_kwargs
+        )
+
+    def get(self, task_id):
+        self.policy.enforce(self.context, 'get_task', {})
+        return super(TaskRepoProxy, self).get(task_id)
+
+    def list(self, *args, **kwargs):
+        self.policy.enforce(self.context, 'get_tasks', {})
+        return super(TaskRepoProxy, self).list(*args, **kwargs)
+
+    def add(self, task):
+        self.policy.enforce(self.context, 'add_task', {})
+        return super(TaskRepoProxy, self).add(task)
+
+    def save(self, task):
+        self.policy.enforce(self.context, 'modify_task', {})
+        return super(TaskRepoProxy, self).save(task)
+
+
+class TaskFactoryProxy(glance.domain.proxy.TaskFactory):
+
+    def __init__(self, task_factory, context, policy):
+        self.task_factory = task_factory
+        self.context = context
+        self.policy = policy
+        proxy_kwargs = {'context': self.context, 'policy': self.policy}
+        super(TaskFactoryProxy, self).__init__(
+            task_factory,
+            proxy_class=TaskProxy,
+            proxy_kwargs=proxy_kwargs
+        )

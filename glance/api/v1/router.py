@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright 2011 OpenStack LLC.
+# Copyright 2011 OpenStack Foundation
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -66,10 +66,6 @@ class API(wsgi.Router):
                        controller=members_resource,
                        action="index",
                        conditions={'method': ['GET']})
-        mapper.connect("/images/{image_id}/members",
-                       controller=members_resource,
-                       action="create",
-                       conditions={'method': ['POST']})
         mapper.connect("/images/{image_id}/members",
                        controller=members_resource,
                        action="update_all",

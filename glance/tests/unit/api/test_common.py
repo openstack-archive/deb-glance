@@ -20,9 +20,7 @@ import webob
 import glance.api.common
 from glance.common import config
 from glance.common import exception
-from glance.common import wsgi
 from glance.tests import utils as test_utils
-from glance.tests.unit import base
 
 
 class SimpleIterator(object):
@@ -144,5 +142,5 @@ class TestMalformedRequest(test_utils.BaseTestCase):
         """Test Glance redirects /v# to /v#/ with correct Location header"""
         req = webob.Request.blank('/v1.1')
         res = req.get_response(self.api)
-        self.assertEquals(res.status_int, webob.exc.HTTPFound.code)
+        self.assertEqual(res.status_int, webob.exc.HTTPFound.code)
         self.assertEqual('http://localhost/v1/', res.location)
