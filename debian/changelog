@@ -1,3 +1,9 @@
+glance (2014.1~b1-1) experimental; urgency=low
+
+  * New upstream release (beta1 of Icehouse).
+
+ -- Thomas Goirand <zigo@debian.org>  Mon, 09 Dec 2013 16:26:11 +0800
+
 glance (2013.2-2) unstable; urgency=medium
 
   * Adding new debconf template translations and updates, with thanks:
