@@ -4,9 +4,9 @@ Forwarded: no
 
 Index: glance/etc/glance-registry.conf
 ===================================================================
---- glance.orig/etc/glance-registry.conf	2013-07-25 12:56:58.000000000 +0800
-+++ glance/etc/glance-registry.conf	2013-07-25 12:57:15.000000000 +0800
-@@ -29,7 +29,7 @@
+--- glance.orig/etc/glance-registry.conf	2013-12-10 00:27:17.000000000 +0800
++++ glance/etc/glance-registry.conf	2013-12-10 00:27:22.000000000 +0800
+@@ -32,7 +32,7 @@
  # SQLAlchemy connection string for the reference implementation
  # registry server. Any valid SQLAlchemy connection string is fine.
  # See: http://www.sqlalchemy.org/docs/05/reference/sqlalchemy/connections.html#sqlalchemy.create_engine

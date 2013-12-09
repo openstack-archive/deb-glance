@@ -1,6 +1,7 @@
 glance (2014.1~b1-1) experimental; urgency=low
 
   * New upstream release (beta1 of Icehouse).
+  * Refresh patches.
 
  -- Thomas Goirand <zigo@debian.org>  Mon, 09 Dec 2013 16:26:11 +0800
 
