@@ -20,6 +20,7 @@ from oslo.config import cfg
 import qpid.messaging
 
 from glance.notifier import strategy
+from glance.openstack.common import jsonutils
 import glance.openstack.common.log as logging
 
 LOG = logging.getLogger(__name__)
@@ -103,7 +104,7 @@ class QpidStrategy(strategy.Strategy):
         if CONF.qpid_reconnect_interval:
             connection.reconnect_interval = CONF.qpid_reconnect_interval
         connection.heartbeat = CONF.qpid_heartbeat
-        connection.protocol = CONF.qpid_protocol
+        connection.transport = CONF.qpid_protocol
         connection.tcp_nodelay = CONF.qpid_tcp_nodelay
         connection.open()
         LOG.info(_('Connected to AMQP server on %s') % broker)
@@ -130,7 +131,8 @@ class QpidStrategy(strategy.Strategy):
             connection = self._open_connection()
             session = connection.session()
             sender = session.sender(address)
-            qpid_msg = qpid.messaging.Message(content=msg)
+            primitive_msg = jsonutils.to_primitive(msg)
+            qpid_msg = qpid.messaging.Message(content=primitive_msg)
             sender.send(qpid_msg)
         except Exception:
             details = dict(priority=priority, msg=msg)
