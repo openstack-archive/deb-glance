@@ -1,3 +1,9 @@
+glance (2013.2.1-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Thomas Goirand <zigo@debian.org>  Mon, 16 Dec 2013 16:12:36 +0800
+
 glance (2013.2-2) unstable; urgency=medium
 
   * Adding new debconf template translations and updates, with thanks:
