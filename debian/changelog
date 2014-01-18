@@ -1,3 +1,9 @@
+glance (2013.2.1-2) unstable; urgency=medium
+
+  * Fixed sphinx doc building with sphinx 1.2 (Closes: #735802).
+
+ -- Thomas Goirand <zigo@debian.org>  Sat, 18 Jan 2014 03:51:40 +0000
+
 glance (2013.2.1-1) unstable; urgency=medium
 
   * New upstream release.
