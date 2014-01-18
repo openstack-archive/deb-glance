@@ -136,7 +136,7 @@ Package: python-glance-doc
 Architecture: all
 Section: doc
 Pre-Depends: dpkg (>= 1.15.6~)
-Depends: libjs-jquery, libjs-underscore, ${misc:Depends}
+Depends: ${sphinxdoc:Depends}, ${misc:Depends}
 Description: OpenStack Image Service - Python library documentation
  The Glance project provides services for discovering, registering, and
  retrieving virtual machine images over the cloud. They may be stand-alone
