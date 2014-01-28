@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2011 OpenStack Foundation
 # All Rights Reserved.
 #
@@ -43,7 +41,7 @@ class BaseController(object):
             msg = _("Image with identifier %s not found") % image_id
             LOG.debug(msg)
             raise webob.exc.HTTPNotFound(
-                    msg, request=request, content_type='text/plain')
+                msg, request=request, content_type='text/plain')
         except exception.Forbidden:
             msg = _("Forbidden image access")
             LOG.debug(msg)
@@ -61,7 +59,7 @@ class BaseController(object):
             msg = _("Image %s is not active") % image_id
             LOG.debug(msg)
             raise webob.exc.HTTPNotFound(
-                    msg, request=request, content_type='text/plain')
+                msg, request=request, content_type='text/plain')
         return image
 
     def update_store_acls(self, req, image_id, location_uri, public=False):

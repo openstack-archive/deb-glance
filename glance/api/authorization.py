@@ -101,8 +101,8 @@ class ImageMemberRepoProxy(glance.domain.proxy.Repo):
 
     def get(self, member_id):
         if (self.context.is_admin or
-            self.context.owner == self.image.owner or
-            self.context.owner == member_id):
+                self.context.owner == self.image.owner or
+                self.context.owner == member_id):
             member = self.member_repo.get(member_id)
             return proxy_member(self.context, member)
         else:
@@ -112,7 +112,7 @@ class ImageMemberRepoProxy(glance.domain.proxy.Repo):
     def list(self, *args, **kwargs):
         members = self.member_repo.list(*args, **kwargs)
         if (self.context.is_admin or
-            self.context.owner == self.image.owner):
+                self.context.owner == self.image.owner):
             return [proxy_member(self.context, m) for m in members]
         for member in members:
             if member.member_id == self.context.owner:
@@ -122,7 +122,7 @@ class ImageMemberRepoProxy(glance.domain.proxy.Repo):
 
     def remove(self, image_member):
         if (self.image.owner == self.context.owner or
-            self.context.is_admin):
+                self.context.is_admin):
             self.member_repo.remove(image_member)
         else:
             message = _("You cannot delete image member for %s")
@@ -131,8 +131,8 @@ class ImageMemberRepoProxy(glance.domain.proxy.Repo):
 
     def add(self, image_member):
         if (self.image.owner == self.context.owner or
-            self.context.is_admin):
-            return self.member_repo.add(image_member)
+                self.context.is_admin):
+            self.member_repo.add(image_member)
         else:
             message = _("You cannot add image member for %s")
             raise exception.Forbidden(message
@@ -140,9 +140,8 @@ class ImageMemberRepoProxy(glance.domain.proxy.Repo):
 
     def save(self, image_member):
         if (self.context.is_admin or
-            self.context.owner == image_member.member_id):
-            updated_member = self.member_repo.save(image_member)
-            return proxy_member(self.context, updated_member)
+                self.context.owner == image_member.member_id):
+            self.member_repo.save(image_member)
         else:
             message = _("You cannot update image member %s")
             raise exception.Forbidden(message % image_member.member_id)
@@ -201,8 +200,9 @@ def _immutable_attr(target, attr, proxy=None):
         return value
 
     def forbidden(self, *args, **kwargs):
-        message = _("You are not permitted to modify '%s' on this image.")
-        raise exception.Forbidden(message % attr)
+        resource = getattr(self, 'resource_name', 'resource')
+        message = _("You are not permitted to modify '%s' on this %s.")
+        raise exception.Forbidden(message % (attr, resource))
 
     return property(get_attr, forbidden, forbidden)
 
@@ -264,6 +264,7 @@ class ImmutableImageProxy(object):
     def __init__(self, base, context):
         self.base = base
         self.context = context
+        self.resource_name = 'image'
 
     name = _immutable_attr('base', 'name')
     image_id = _immutable_attr('base', 'image_id')
@@ -304,6 +305,7 @@ class ImmutableImageProxy(object):
 class ImmutableMemberProxy(object):
     def __init__(self, base):
         self.base = base
+        self.resource_name = 'image member'
 
     id = _immutable_attr('base', 'id')
     image_id = _immutable_attr('base', 'image_id')
@@ -316,6 +318,7 @@ class ImmutableMemberProxy(object):
 class ImmutableTaskProxy(object):
     def __init__(self, base):
         self.base = base
+        self.resource_name = 'task'
 
     task_id = _immutable_attr('base', 'task_id')
     type = _immutable_attr('base', 'type')
@@ -328,7 +331,7 @@ class ImmutableTaskProxy(object):
     updated_at = _immutable_attr('base', 'updated_at')
 
     def run(self, executor):
-        raise NotImplementedError()
+        self.base.run(executor)
 
     def begin_processing(self):
         message = _("You are not permitted to set status on this task.")
@@ -377,16 +380,14 @@ class TaskFactoryProxy(glance.domain.proxy.TaskFactory):
             proxy_kwargs=None
         )
 
-    def new_task(self, task_type, task_input, owner):
+    def new_task(self, **kwargs):
+        owner = kwargs.get('owner', self.context.owner)
+
         #NOTE(nikhil): Unlike Images, Tasks are expected to have owner.
         # We currently do not allow even admins to set the owner to None.
         if owner is not None and (owner == self.context.owner
                                   or self.context.is_admin):
-            return super(TaskFactoryProxy, self).new_task(
-                task_type,
-                task_input,
-                owner
-            )
+            return super(TaskFactoryProxy, self).new_task(**kwargs)
         else:
             message = _("You are not permitted to create this task with "
                         "owner as: %s")

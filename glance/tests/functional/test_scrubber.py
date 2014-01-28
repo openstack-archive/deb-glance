@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2011-2012 OpenStack Foundation
 # All Rights Reserved.
 #
@@ -15,7 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import json
 import os
 import sys
 import time
@@ -24,6 +21,7 @@ import httplib2
 import swiftclient
 
 from glance.common import crypt
+from glance.openstack.common import jsonutils
 from glance.openstack.common import units
 from glance.store.swift import StoreLocation
 from glance.tests import functional
@@ -48,7 +46,7 @@ class TestScrubber(functional.FunctionalTest):
 
     def test_delayed_delete(self):
         """
-        test that images don't get deleted immediatly and that the scrubber
+        test that images don't get deleted immediately and that the scrubber
         scrubs them
         """
         self.cleanup()
@@ -66,7 +64,7 @@ class TestScrubber(functional.FunctionalTest):
         response, content = http.request(path, 'POST', body='XXX',
                                          headers=headers)
         self.assertEqual(response.status, 201)
-        image = json.loads(content)['image']
+        image = jsonutils.loads(content)['image']
         self.assertEqual('active', image['status'])
         image_id = image['id']
 
@@ -104,7 +102,7 @@ class TestScrubber(functional.FunctionalTest):
         response, content = http.request(path, 'POST', body='XXX',
                                          headers=headers)
         self.assertEqual(response.status, 201)
-        image = json.loads(content)['image']
+        image = jsonutils.loads(content)['image']
         self.assertEqual('active', image['status'])
         image_id = image['id']
 
@@ -163,7 +161,7 @@ class TestScrubber(functional.FunctionalTest):
                                          headers=headers)
         # ensure the request was successful and the image is active
         self.assertEqual(response.status, 201)
-        image = json.loads(content)['image']
+        image = jsonutils.loads(content)['image']
         self.assertEqual('active', image['status'])
         image_id = image['id']
 
@@ -224,7 +222,7 @@ class TestScrubber(functional.FunctionalTest):
         response, content = http.request(path, 'POST', body='XXX',
                                          headers=headers)
         self.assertEqual(response.status, 201)
-        image = json.loads(content)['image']
+        image = jsonutils.loads(content)['image']
         self.assertEqual('active', image['status'])
         image_id = image['id']
 
@@ -249,7 +247,7 @@ class TestScrubber(functional.FunctionalTest):
         self.assertTrue(marker_uri is not None)
 
         decrypted_uri = crypt.urlsafe_decrypt(
-                self.api_server.metadata_encryption_key, marker_uri)
+            self.api_server.metadata_encryption_key, marker_uri)
         loc = StoreLocation({})
         loc.parse_uri(decrypted_uri)
 
@@ -290,7 +288,7 @@ class TestScrubber(functional.FunctionalTest):
         response, content = http.request(path, 'POST', body='XXX',
                                          headers=headers)
         self.assertEqual(response.status, 201)
-        image = json.loads(content)['image']
+        image = jsonutils.loads(content)['image']
         self.assertEqual('active', image['status'])
         image_id = image['id']
 
@@ -360,7 +358,7 @@ class TestScrubber(functional.FunctionalTest):
         response, content = http.request(path, 'POST', body='XXX',
                                          headers=headers)
         self.assertEqual(response.status, 201)
-        image = json.loads(content)['image']
+        image = jsonutils.loads(content)['image']
         self.assertEqual('active', image['status'])
         image_id = image['id']
 
@@ -404,7 +402,7 @@ class TestScrubber(functional.FunctionalTest):
         """
         NOTE(jkoelker) The build servers sometimes take longer than 15 seconds
         to scrub. Give it up to 5 min, checking checking every 15 seconds.
-        When/if it flips to deleted, bail immediatly.
+        When/if it flips to deleted, bail immediately.
         """
         http = httplib2.Http()
         wait_for = 300    # seconds

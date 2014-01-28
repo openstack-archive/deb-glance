@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
 
 # Copyright 2010 United States Government as represented by the
 # Administrator of the National Aeronautics and Space Administration.
@@ -39,8 +38,8 @@ if os.path.exists(os.path.join(possible_topdir, 'glance', '__init__.py')):
     sys.path.insert(0, possible_topdir)
 
 from glance.common import config
-from glance.common import wsgi
 from glance.common import exception
+from glance.common import wsgi
 from glance.openstack.common import log
 import glance.store
 

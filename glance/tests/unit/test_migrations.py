@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2010-2011 OpenStack Foundation
 # All Rights Reserved.
 # Copyright 2013 IBM Corp.
@@ -29,25 +27,27 @@ from __future__ import print_function
 
 import ConfigParser
 import datetime
-import json
 import os
 import pickle
 import subprocess
 import urlparse
+import uuid
 
 from migrate.versioning.repository import Repository
 from oslo.config import cfg
 import sqlalchemy
 
 from glance.common import crypt
+from glance.common import utils
 import glance.db.migration as migration
 import glance.db.sqlalchemy.migrate_repo
 from glance.db.sqlalchemy.migration import versioning_api as migration_api
 from glance.db.sqlalchemy import models
+from glance.openstack.common import jsonutils
 from glance.openstack.common import log as logging
 from glance.openstack.common import timeutils
-from glance.openstack.common import uuidutils
-from glance.tests import utils
+
+from glance.tests import utils as test_utils
 
 
 CONF = cfg.CONF
@@ -70,7 +70,8 @@ def _get_connect_string(backend,
         backend = "postgresql+psycopg2"
 
     return ("%(backend)s://%(user)s:%(passwd)s@localhost/%(database)s"
-            % locals())
+            % {'backend': backend, 'user': user, 'passwd': passwd,
+               'database': database})
 
 
 def _is_backend_avail(backend,
@@ -114,7 +115,7 @@ def get_table(engine, name):
     return sqlalchemy.Table(name, metadata, autoload=True)
 
 
-class TestMigrations(utils.BaseTestCase):
+class TestMigrations(test_utils.BaseTestCase):
     """Test sqlalchemy-migrate migrations."""
 
     DEFAULT_CONFIG_FILE = os.path.join(os.path.dirname(__file__),
@@ -179,7 +180,7 @@ class TestMigrations(utils.BaseTestCase):
             if conn_string.startswith('sqlite'):
                 # We can just delete the SQLite database, which is
                 # the easiest and cleanest solution
-                db_path = conn_pieces.path.strip('/')
+                db_path = conn_pieces.path[1:]
                 if os.path.exists(db_path):
                     os.unlink(db_path)
                 # No need to recreate the SQLite DB. SQLite will
@@ -197,10 +198,11 @@ class TestMigrations(utils.BaseTestCase):
                 if len(auth_pieces) > 1:
                     if auth_pieces[1].strip():
                         password = "-p\"%s\"" % auth_pieces[1]
-                sql = ("drop database if exists %(database)s; "
-                       "create database %(database)s;") % locals()
+                sql = ("drop database if exists %(database)s; create "
+                       "database %(database)s;") % {'database': database}
                 cmd = ("mysql -u \"%(user)s\" %(password)s -h %(host)s "
-                       "-e \"%(sql)s\"") % locals()
+                       "-e \"%(sql)s\"") % {'user': user, 'password': password,
+                                            'host': host, 'sql': sql}
                 execute_cmd(cmd)
             elif conn_string.startswith('postgresql'):
                 database = conn_pieces.path.strip('/')
@@ -215,18 +217,23 @@ class TestMigrations(utils.BaseTestCase):
                 # note(boris-42): This file is used for authentication
                 # without password prompt.
                 createpgpass = ("echo '*:*:*:%(user)s:%(password)s' > "
-                                "~/.pgpass && chmod 0600 ~/.pgpass" % locals())
+                                "~/.pgpass && chmod 0600 ~/.pgpass" %
+                                {'user': user, 'password': password})
                 execute_cmd(createpgpass)
                 # note(boris-42): We must create and drop database, we can't
                 # drop database which we have connected to, so for such
                 # operations there is a special database template1.
                 sqlcmd = ("psql -w -U %(user)s -h %(host)s -c"
                           " '%(sql)s' -d template1")
-                sql = ("drop database if exists %(database)s;") % locals()
-                droptable = sqlcmd % locals()
+                sql = ("drop database if exists %(database)s;")
+                sql = sql % {'database': database}
+                droptable = sqlcmd % {'user': user, 'host': host,
+                                      'sql': sql}
                 execute_cmd(droptable)
-                sql = ("create database %(database)s;") % locals()
-                createtable = sqlcmd % locals()
+                sql = ("create database %(database)s;")
+                sql = sql % {'database': database}
+                createtable = sqlcmd % {'user': user, 'host': host,
+                                        'sql': sql}
                 execute_cmd(createtable)
 
     def test_walk_versions(self):
@@ -634,7 +641,7 @@ class TestMigrations(utils.BaseTestCase):
             self.assertEqual(len(rows), 1)
 
             row = rows[0]
-            self.assertTrue(uuidutils.is_uuid_like(row['id']))
+            self.assertTrue(utils.is_uuid_like(row['id']))
 
             uuids[name] = row['id']
 
@@ -677,7 +684,7 @@ class TestMigrations(utils.BaseTestCase):
             self.assertEqual(len(rows), 1)
 
             row = rows[0]
-            self.assertFalse(uuidutils.is_uuid_like(row['id']))
+            self.assertFalse(utils.is_uuid_like(row['id']))
 
             ids[name] = row['id']
 
@@ -720,7 +727,7 @@ class TestMigrations(utils.BaseTestCase):
                     min_ram=0)
         data = []
         for i, location in enumerate(unquoted_locations):
-            temp.update(location=location, id=uuidutils.generate_uuid())
+            temp.update(location=location, id=str(uuid.uuid4()))
             data.append(temp)
             images.insert().values(temp).execute()
         return data
@@ -772,8 +779,8 @@ class TestMigrations(utils.BaseTestCase):
         images = get_table(engine, 'images')
         unquoted = 'swift://acct:usr:pass@example.com/container/obj-id'
         encrypted_unquoted = crypt.urlsafe_encrypt(
-                                    metadata_encryption_key,
-                                    unquoted, 64)
+            metadata_encryption_key,
+            unquoted, 64)
         data = []
         now = datetime.datetime.now()
         temp = dict(deleted=False,
@@ -802,7 +809,7 @@ class TestMigrations(utils.BaseTestCase):
                     min_disk=0,
                     min_ram=0)
         for i, location in enumerate(locations):
-            temp.update(location=location, id=uuidutils.generate_uuid())
+            temp.update(location=location, id=str(uuid.uuid4()))
             data.append(temp)
             images.insert().values(temp).execute()
         return data
@@ -838,13 +845,13 @@ class TestMigrations(utils.BaseTestCase):
         images = get_table(engine, 'images')
         now = datetime.datetime.now()
         base_values = {
-                'deleted': False,
-                'created_at': now,
-                'updated_at': now,
-                'status': 'active',
-                'is_public': True,
-                'min_disk': 0,
-                'min_ram': 0,
+            'deleted': False,
+            'created_at': now,
+            'updated_at': now,
+            'status': 'active',
+            'is_public': True,
+            'min_disk': 0,
+            'min_ram': 0,
         }
         data = [
             {'id': 'fake-19-1', 'location': 'http://glance.example.com'},
@@ -986,7 +993,7 @@ class TestMigrations(utils.BaseTestCase):
             where(image_locations.c.image_id == image_id).execute().fetchall()
 
         for r in records:
-            d = json.loads(r['meta_data'])
+            d = jsonutils.loads(r['meta_data'])
             self.assertEqual(d, meta_data)
 
     def _post_downgrade_029(self, engine):
@@ -1000,7 +1007,7 @@ class TestMigrations(utils.BaseTestCase):
         for r in records:
             md = r['meta_data']
             d = pickle.loads(md)
-            self.assertEqual(type(d), dict)
+            self.assertIsInstance(d, dict)
 
     def _check_030(self, engine, data):
         table = "tasks"
@@ -1093,3 +1100,74 @@ class TestMigrations(utils.BaseTestCase):
             ('file://ab1', '{"a": "that one, please"}'),
         ])
         self.assertFalse(actual_locations.symmetric_difference(locations))
+
+    def _pre_upgrade_032(self, engine):
+        self.assertRaises(sqlalchemy.exc.NoSuchTableError,
+                          get_table, engine, 'task_info')
+
+        tasks = get_table(engine, 'tasks')
+        now = datetime.datetime.now()
+        base_values = {
+            'deleted': False,
+            'created_at': now,
+            'updated_at': now,
+            'status': 'active',
+            'owner': 'TENANT',
+            'type': 'import',
+        }
+        data = [
+            {
+                'id': 'task-1',
+                'input': 'some input',
+                'message': None,
+                'result': 'successful'
+            },
+            {
+                'id': 'task-2',
+                'input': None,
+                'message': None,
+                'result': None
+            },
+        ]
+        map(lambda task: task.update(base_values), data)
+        for task in data:
+            tasks.insert().values(task).execute()
+        return data
+
+    def _check_032(self, engine, data):
+        task_info_table = get_table(engine, 'task_info')
+
+        task_info_refs = task_info_table.select().execute().fetchall()
+
+        self.assertEqual(len(task_info_refs), 2)
+
+        for x in range(len(task_info_refs)):
+            self.assertEqual(task_info_refs[x].task_id, data[x]['id'])
+            self.assertEqual(task_info_refs[x].input, data[x]['input'])
+            self.assertEqual(task_info_refs[x].result, data[x]['result'])
+            self.assertIsNone(task_info_refs[x].message)
+
+        tasks_table = get_table(engine, 'tasks')
+        self.assertNotIn('input', tasks_table.c)
+        self.assertNotIn('result', tasks_table.c)
+        self.assertNotIn('message', tasks_table.c)
+
+    def _post_downgrade_032(self, engine):
+        self.assertRaises(sqlalchemy.exc.NoSuchTableError,
+                          get_table, engine, 'task_info')
+
+        tasks_table = get_table(engine, 'tasks')
+        records = tasks_table.select().execute().fetchall()
+        self.assertEqual(len(records), 2)
+
+        tasks = dict([(t.id, t) for t in records])
+
+        task_1 = tasks.get('task-1')
+        self.assertEqual(task_1.input, 'some input')
+        self.assertEqual(task_1.result, 'successful')
+        self.assertIsNone(task_1.message)
+
+        task_2 = tasks.get('task-2')
+        self.assertIsNone(task_2.input)
+        self.assertIsNone(task_2.result)
+        self.assertIsNone(task_2.message)

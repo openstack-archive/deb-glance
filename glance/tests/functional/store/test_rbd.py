@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2013 OpenStack Foundation
 # All Rights Reserved.
 #
@@ -25,12 +23,13 @@ RBD backend. This backend must be running Ceph Bobtail (0.56) or later.
 import ConfigParser
 import os
 import StringIO
+import uuid
 
 import oslo.config.cfg
 import testtools
 
 from glance.common import exception
-from glance.openstack.common import uuidutils
+
 import glance.store.rbd
 import glance.tests.functional.store as store_tests
 
@@ -134,7 +133,7 @@ class TestRBDStore(store_tests.BaseTestCase, testtools.TestCase):
         # and uri to ascii before passing it to librbd.
         store = self.get_store()
 
-        image_id = unicode(uuidutils.generate_uuid())
+        image_id = unicode(str(uuid.uuid4()))
         image_size = 300
         image_data = StringIO.StringIO('X' * image_size)
         image_checksum = '41757066eaff7c4c6c965556b4d3c6c5'
@@ -148,10 +147,10 @@ class TestRBDStore(store_tests.BaseTestCase, testtools.TestCase):
         self.assertEqual(image_checksum, add_checksum)
 
         location = glance.store.location.Location(
-                self.store_name,
-                store.get_store_location_class(),
-                uri=uri,
-                image_id=image_id)
+            self.store_name,
+            store.get_store_location_class(),
+            uri=uri,
+            image_id=image_id)
 
         self.assertEqual(image_size, store.get_size(location))
 

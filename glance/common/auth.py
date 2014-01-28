@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2011 OpenStack Foundation
 # All Rights Reserved.
 #
@@ -30,12 +28,12 @@ Keystone (an identity management system).
     > auth_plugin.management_url
     http://service_endpoint/
 """
-import json
 import urlparse
 
 import httplib2
 
 from glance.common import exception
+from glance.openstack.common import jsonutils
 import glance.openstack.common.log as logging
 
 
@@ -138,7 +136,7 @@ class KeystoneStrategy(BaseStrategy):
                 if 'v2.0' not in auth_url:
                     auth_url = urlparse.urljoin(auth_url, 'v2.0/')
             else:
-                # If we sucessfully auth'd, then memorize the correct auth_url
+                # If we successfully auth'd, then memorize the correct auth_url
                 # for future use.
                 self.creds['auth_url'] = auth_url
                 break
@@ -203,13 +201,13 @@ class KeystoneStrategy(BaseStrategy):
 
         headers = {}
         headers['Content-Type'] = 'application/json'
-        req_body = json.dumps(creds)
+        req_body = jsonutils.dumps(creds)
 
         resp, resp_body = self._do_request(
-                token_url, 'POST', headers=headers, body=req_body)
+            token_url, 'POST', headers=headers, body=req_body)
 
         if resp.status == 200:
-            resp_auth = json.loads(resp_body)['access']
+            resp_auth = jsonutils.loads(resp_body)['access']
             creds_region = self.creds.get('region')
             if self.configure_via_auth:
                 endpoint = get_endpoint(resp_auth['serviceCatalog'],

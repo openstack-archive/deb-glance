@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2010 United States Government as represented by the
 # Administrator of the National Aeronautics and Space Administration.
 # All Rights Reserved.
@@ -254,11 +252,26 @@ def get_image_meta_from_headers(response):
                 raise exc.HTTPBadRequest(msg, content_type="text/plain")
             result[field_name] = value or None
     result['properties'] = properties
-    if 'size' in result:
-        try:
-            result['size'] = int(result['size'])
-        except ValueError:
-            raise exception.Invalid
+
+    for key in ('size', 'min_disk', 'min_ram'):
+        if key in result:
+            try:
+                result[key] = int(result[key])
+            except ValueError:
+                extra = (_("Cannot convert image %(key)s '%(value)s' "
+                           "to an integer.")
+                         % {'key': key, 'value': result[key]})
+                raise exception.InvalidParameterValue(value=result[key],
+                                                      param=key,
+                                                      extra_msg=extra)
+            if result[key] < 0:
+                extra = (_("Image %(key)s must be >= 0 "
+                           "('%(value)s' specified).")
+                         % {'key': key, 'value': result[key]})
+                raise exception.InvalidParameterValue(value=result[key],
+                                                      param=key,
+                                                      extra_msg=extra)
+
     for key in ('is_public', 'deleted', 'protected'):
         if key in result:
             result[key] = strutils.bool_from_string(result[key])
@@ -356,7 +369,7 @@ def get_terminal_size():
             height_width = struct.unpack('hh', fcntl.ioctl(sys.stderr.fileno(),
                                          termios.TIOCGWINSZ,
                                          struct.pack('HH', 0, 0)))
-        except:
+        except Exception:
             pass
 
         if not height_width:
@@ -368,7 +381,7 @@ def get_terminal_size():
                 result = p.communicate()
                 if p.returncode == 0:
                     return tuple(int(x) for x in result[0].split())
-            except:
+            except Exception:
                 pass
 
         return height_width
@@ -379,7 +392,7 @@ def get_terminal_size():
             handle = windll.kernel32.GetStdHandle(-12)
             csbi = create_string_buffer(22)
             res = windll.kernel32.GetConsoleScreenBufferInfo(handle, csbi)
-        except:
+        except Exception:
             return None
         if res:
             import struct
@@ -440,7 +453,7 @@ def setup_remote_pydev_debug(host, port):
                         stdoutToServer=True,
                         stderrToServer=True)
         return True
-    except:
+    except Exception:
         LOG.exception(error_msg)
         raise
 
@@ -524,3 +537,15 @@ def get_test_suite_socket():
         os.close(fd)
         return sock
     return None
+
+
+def is_uuid_like(val):
+    """Returns validation of a value as a UUID.
+
+    For our purposes, a UUID is a canonical form string:
+    aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
+    """
+    try:
+        return str(uuid.UUID(val)) == val
+    except (TypeError, ValueError, AttributeError):
+        return False

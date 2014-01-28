@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2013 Taobao Inc.
 # All Rights Reserved.
 #
@@ -34,7 +32,7 @@ import glance.store.location
 LOG = logging.getLogger(__name__)
 
 DEFAULT_ADDR = 'localhost'
-DEFAULT_PORT = '7000'
+DEFAULT_PORT = 7000
 DEFAULT_CHUNKSIZE = 64  # in MiB
 
 LOG = logging.getLogger(__name__)
@@ -44,7 +42,7 @@ sheepdog_opts = [
                help=_('Images will be chunked into objects of this size '
                       '(in megabytes). For best performance, this should be '
                       'a power of two.')),
-    cfg.StrOpt('sheepdog_store_port', default=DEFAULT_PORT,
+    cfg.IntOpt('sheepdog_store_port', default=DEFAULT_PORT,
                help=_('Port of sheep daemon.')),
     cfg.StrOpt('sheepdog_store_address', default=DEFAULT_ADDR,
                help=_('IP address of sheep daemon.'))
@@ -64,7 +62,7 @@ class SheepdogImage:
         self.chunk_size = chunk_size
 
     def _run_command(self, command, data, *params):
-        cmd = ("collie vdi %(command)s -a %(addr)s -p %(port)s %(name)s "
+        cmd = ("collie vdi %(command)s -a %(addr)s -p %(port)d %(name)s "
                "%(params)s" %
                {"command": command,
                 "addr": self.addr,
@@ -281,7 +279,7 @@ class Store(glance.store.base.Store):
                 image.write(data, total - left, length)
                 left -= length
                 checksum.update(data)
-        except:
+        except Exception:
             # Note(zhiyan): clean up already received data when
             # error occurs such as ImageSizeLimitExceeded exception.
             with excutils.save_and_reraise_exception():

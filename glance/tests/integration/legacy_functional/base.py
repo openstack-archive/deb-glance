@@ -17,13 +17,13 @@ import tempfile
 import fixtures
 from oslo.config import cfg
 
-from glance import tests as glance_tests
 import glance.common.client
 from glance.common import config
 import glance.db.sqlalchemy.api
 import glance.db.sqlalchemy.migration
 import glance.registry.client.v1.client
 import glance.store
+from glance import tests as glance_tests
 from glance.tests import utils as test_utils
 
 
@@ -143,17 +143,17 @@ class ApiTest(test_utils.BaseTestCase):
 
     def _configure_logging(self):
         self.config(default_log_levels=[
-                'amqplib=WARN',
-                'sqlalchemy=WARN',
-                'boto=WARN',
-                'suds=INFO',
-                'keystone=INFO',
-                'eventlet.wsgi.server=DEBUG'
+            'amqplib=WARN',
+            'sqlalchemy=WARN',
+            'boto=WARN',
+            'suds=INFO',
+            'keystone=INFO',
+            'eventlet.wsgi.server=DEBUG'
         ])
 
     def _setup_database(self):
         sql_connection = 'sqlite:////%s/tests.sqlite' % self.test_dir
-        self.config(sql_connection=sql_connection)
+        self.config(connection=sql_connection, group='database')
         glance.db.sqlalchemy.api.clear_db_env()
         glance_db_env = 'GLANCE_DB_TEST_SQLITE_FILE'
         if glance_db_env in os.environ:

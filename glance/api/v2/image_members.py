@@ -14,7 +14,6 @@
 #    under the License.
 
 import copy
-import json
 import webob
 
 from glance.api import policy
@@ -22,9 +21,9 @@ from glance.common import exception
 from glance.common import utils
 from glance.common import wsgi
 import glance.db
-import glance.domain
 import glance.gateway
 import glance.notifier
+from glance.openstack.common import jsonutils
 from glance.openstack.common import timeutils
 import glance.schema
 import glance.store
@@ -34,7 +33,6 @@ class ImageMembersController(object):
     def __init__(self, db_api=None, policy_enforcer=None, notifier=None,
                  store_api=None):
         self.db_api = db_api or glance.db.get_api()
-        self.db_api.setup_db_env()
         self.policy = policy_enforcer or policy.Enforcer()
         self.notifier = notifier or glance.notifier.Notifier()
         self.store_api = store_api or glance.store
@@ -65,9 +63,9 @@ class ImageMembersController(object):
             member_repo = image.get_member_repo()
             new_member = image_member_factory.new_image_member(image,
                                                                member_id)
-            member = member_repo.add(new_member)
+            member_repo.add(new_member)
 
-            return member
+            return new_member
         except exception.NotFound as e:
             raise webob.exc.HTTPNotFound(explanation=unicode(e))
         except exception.Forbidden as e:
@@ -99,7 +97,7 @@ class ImageMembersController(object):
             member_repo = image.get_member_repo()
             member = member_repo.get(member_id)
             member.status = status
-            member = member_repo.save(member)
+            member_repo.save(member)
             return member
         except exception.NotFound as e:
             raise webob.exc.HTTPNotFound(explanation=unicode(e))
@@ -234,13 +232,13 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
 
     def create(self, response, image_member):
         image_member_view = self._format_image_member(image_member)
-        body = json.dumps(image_member_view, ensure_ascii=False)
+        body = jsonutils.dumps(image_member_view, ensure_ascii=False)
         response.unicode_body = unicode(body)
         response.content_type = 'application/json'
 
     def update(self, response, image_member):
         image_member_view = self._format_image_member(image_member)
-        body = json.dumps(image_member_view, ensure_ascii=False)
+        body = jsonutils.dumps(image_member_view, ensure_ascii=False)
         response.unicode_body = unicode(body)
         response.content_type = 'application/json'
 
@@ -252,13 +250,13 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
             image_members_view.append(image_member_view)
         totalview = dict(members=image_members_view)
         totalview['schema'] = '/v2/schemas/members'
-        body = json.dumps(totalview, ensure_ascii=False)
+        body = jsonutils.dumps(totalview, ensure_ascii=False)
         response.unicode_body = unicode(body)
         response.content_type = 'application/json'
 
     def show(self, response, image_member):
         image_member_view = self._format_image_member(image_member)
-        body = json.dumps(image_member_view, ensure_ascii=False)
+        body = jsonutils.dumps(image_member_view, ensure_ascii=False)
         response.unicode_body = unicode(body)
         response.content_type = 'application/json'
 

@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2010 United States Government as represented by the
 # Administrator of the National Aeronautics and Space Administration.
 # All Rights Reserved.
@@ -53,10 +51,6 @@ class GlanceException(Exception):
         super(GlanceException, self).__init__(message)
 
 
-class MissingArgumentError(GlanceException):
-    message = _("Missing required argument.")
-
-
 class MissingCredentialError(GlanceException):
     message = _("Missing required credential: %(required)s")
 
@@ -80,6 +74,11 @@ class BadStoreUri(GlanceException):
 
 class Duplicate(GlanceException):
     message = _("An object with the same identifier already exists.")
+
+
+class Conflict(GlanceException):
+    message = _("An object with the same identifier is currently being "
+                "operated on.")
 
 
 class StorageFull(GlanceException):
@@ -121,11 +120,6 @@ class ForbiddenPublicImage(Forbidden):
 
 class ProtectedImageDelete(Forbidden):
     message = _("Image %(image_id)s is protected and cannot be deleted.")
-
-
-#NOTE(bcwaldon): here for backwards-compatability, need to deprecate.
-class NotAuthorized(Forbidden):
-    message = _("You are not authorized to complete this action.")
 
 
 class Invalid(GlanceException):
@@ -301,6 +295,11 @@ class ImageTagLimitExceeded(LimitExceeded):
                 "tags. Attempted: %(attempted)s, Maximum: %(maximum)s")
 
 
+class ImageLocationLimitExceeded(LimitExceeded):
+    message = _("The limit has been exceeded on the number of allowed image "
+                "locations. Attempted: %(attempted)s, Maximum: %(maximum)s")
+
+
 class RPCError(GlanceException):
     message = _("%(cls)s exception was raised in the last rpc call: %(val)s")
 
@@ -328,3 +327,12 @@ class InvalidTaskStatusTransition(TaskException, Invalid):
 
 class DuplicateLocation(Duplicate):
     message = _("The location %(location)s already exists")
+
+
+class ImageDataNotFound(NotFound):
+    message = _("No image data could be found")
+
+
+class InvalidParameterValue(Invalid):
+    message = _("Invalid value '%(value)s' for parameter '%(param)s': "
+                "%(extra_msg)s")

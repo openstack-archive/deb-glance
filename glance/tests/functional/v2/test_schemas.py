@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2012 OpenStack Foundation
 # All Rights Reserved.
 #
@@ -15,10 +13,9 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import json
-
 import requests
 
+from glance.openstack.common import jsonutils
 from glance.tests import functional
 
 
@@ -34,7 +31,7 @@ class TestSchemas(functional.FunctionalTest):
         path = 'http://%s:%d/v2/schemas/image' % ('127.0.0.1', self.api_port)
         response = requests.get(path)
         self.assertEqual(response.status_code, 200)
-        image_schema = json.loads(response.text)
+        image_schema = jsonutils.loads(response.text)
         expected = set([
             'id',
             'name',
@@ -62,7 +59,7 @@ class TestSchemas(functional.FunctionalTest):
         path = 'http://%s:%d/v2/schemas/images' % ('127.0.0.1', self.api_port)
         response = requests.get(path)
         self.assertEqual(response.status_code, 200)
-        images_schema = json.loads(response.text)
+        images_schema = jsonutils.loads(response.text)
         item_schema = images_schema['properties']['images']['items']
         self.assertEqual(item_schema, image_schema)
 

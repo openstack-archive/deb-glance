@@ -16,37 +16,14 @@
 
 import collections
 import datetime
-
-from oslo.config import cfg
+import uuid
 
 from glance.common import exception
 import glance.openstack.common.log as logging
 from glance.openstack.common import timeutils
-from glance.openstack.common import uuidutils
 
 
 LOG = logging.getLogger(__name__)
-
-
-image_format_opts = [
-    cfg.ListOpt('container_formats',
-                default=['ami', 'ari', 'aki', 'bare', 'ovf'],
-                help=_("Supported values for the 'container_format' "
-                       "image attribute")),
-    cfg.ListOpt('disk_formats',
-                default=['ami', 'ari', 'aki', 'vhd', 'vmdk', 'raw', 'qcow2',
-                         'vdi', 'iso'],
-                help=_("Supported values for the 'disk_format' "
-                       "image attribute")),
-    cfg.IntOpt('task_time_to_live',
-               default=48,
-               help=_("Time in hours for which a task lives after, either "
-                      "succeeding or failing")),
-]
-
-
-CONF = cfg.CONF
-CONF.register_opts(image_format_opts)
 
 
 class ImageFactory(object):
@@ -81,7 +58,7 @@ class ImageFactory(object):
         self._check_reserved(extra_properties)
 
         if image_id is None:
-            image_id = uuidutils.generate_uuid()
+            image_id = str(uuid.uuid4())
         created_at = timeutils.utcnow()
         updated_at = created_at
         status = 'queued'
@@ -110,8 +87,8 @@ class Image(object):
         self.locations = kwargs.pop('locations', [])
         self.checksum = kwargs.pop('checksum', None)
         self.owner = kwargs.pop('owner', None)
-        self.disk_format = kwargs.pop('disk_format', None)
-        self.container_format = kwargs.pop('container_format', None)
+        self._disk_format = kwargs.pop('disk_format', None)
+        self._container_format = kwargs.pop('container_format', None)
         self.size = kwargs.pop('size', None)
         extra_properties = kwargs.pop('extra_properties', None) or {}
         self.extra_properties = ExtraProperties(extra_properties)
@@ -136,7 +113,10 @@ class Image(object):
                 else:
                     msg = _('Properties %s must be set prior to saving data.')
                 raise ValueError(msg % ', '.join(missing))
-
+        # NOTE(flwang): Image size should be cleared as long as the image
+        # status is updated to 'queued'
+        if status == 'queued':
+            self.size = None
         self._status = status
 
     @property
@@ -156,6 +136,56 @@ class Image(object):
     @tags.setter
     def tags(self, value):
         self._tags = set(value)
+
+    @property
+    def container_format(self):
+        return self._container_format
+
+    @container_format.setter
+    def container_format(self, value):
+        if hasattr(self, '_container_format') and self.status != 'queued':
+            msg = _("Attribute container_format can be only replaced "
+                    "for a queued image.")
+            raise exception.Forbidden(message=msg)
+        self._container_format = value
+
+    @property
+    def disk_format(self):
+        return self._disk_format
+
+    @disk_format.setter
+    def disk_format(self, value):
+        if hasattr(self, '_disk_format') and self.status != 'queued':
+            msg = _("Attribute disk_format can be only replaced "
+                    "for a queued image.")
+            raise exception.Forbidden(message=msg)
+        self._disk_format = value
+
+    @property
+    def min_disk(self):
+        return self._min_disk
+
+    @min_disk.setter
+    def min_disk(self, value):
+        if value and value < 0:
+            extra_msg = 'Cannot be a negative value'
+            raise exception.InvalidParameterValue(value=value,
+                                                  param='min_disk',
+                                                  extra_msg=extra_msg)
+        self._min_disk = value
+
+    @property
+    def min_ram(self):
+        return self._min_ram
+
+    @min_ram.setter
+    def min_ram(self, value):
+        if value and value < 0:
+            extra_msg = 'Cannot be a negative value'
+            raise exception.InvalidParameterValue(value=value,
+                                                  param='min_ram',
+                                                  extra_msg=extra_msg)
+        self._min_ram = value
 
     def delete(self):
         if self.protected:
@@ -235,7 +265,7 @@ class Task(object):
     _supported_task_status = ('pending', 'processing', 'success', 'failure')
 
     def __init__(self, task_id, type, status, input, result, owner, message,
-                 expires_at, created_at, updated_at):
+                 expires_at, created_at, updated_at, task_time_to_live=48):
 
         if type not in self._supported_task_type:
             raise exception.InvalidTaskType(type)
@@ -253,7 +283,7 @@ class Task(object):
         self.expires_at = expires_at
         # NOTE(nikhil): We use '_time_to_live' to determine how long a
         # task should live from the time it succeeds or fails.
-        self._time_to_live = datetime.timedelta(hours=CONF.task_time_to_live)
+        self._time_to_live = datetime.timedelta(hours=task_time_to_live)
         self.created_at = created_at
         self.updated_at = updated_at
 
@@ -262,14 +292,7 @@ class Task(object):
         return self._status
 
     def run(self, executor):
-        # NOTE(flwang): The task status won't be set here but handled by the
-        # executor.
-        # NOTE(nikhil): Ideally, a task should always be instantiated with an
-        # executor. However, we need to make that a part of the framework
-        # and we are planning to add such logic when Controller would
-        # be introduced.
-        if executor:
-            executor.run(self.task_id)
+        pass
 
     def _validate_task_status_transition(self, cur_status, new_status):
             valid_transitions = {
@@ -319,8 +342,9 @@ class Task(object):
 
 
 class TaskFactory(object):
-    def new_task(self, task_type, task_input, owner):
-        task_id = uuidutils.generate_uuid()
+
+    def new_task(self, task_type, task_input, owner, task_time_to_live=48):
+        task_id = str(uuid.uuid4())
         status = 'pending'
         result = None
         message = None
@@ -339,5 +363,6 @@ class TaskFactory(object):
             message,
             expires_at,
             created_at,
-            updated_at
+            updated_at,
+            task_time_to_live
         )

@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2010-2011 OpenStack Foundation
 # All Rights Reserved.
 #
@@ -172,7 +170,7 @@ def stub_out_registry_and_store_server(stubs, base_dir, **kwargs):
         DEFAULT_API_PORT = 9292
 
         if (client.port == DEFAULT_API_PORT and
-            client.host == '0.0.0.0'):
+                client.host == '0.0.0.0'):
             return FakeGlanceConnection
         elif (client.port == DEFAULT_REGISTRY_PORT and
               client.host == '0.0.0.0'):
@@ -213,7 +211,7 @@ def stub_out_registry_server(stubs, **kwargs):
         DEFAULT_REGISTRY_PORT = 9191
 
         if (client.port == DEFAULT_REGISTRY_PORT and
-            client.host == '0.0.0.0'):
+                client.host == '0.0.0.0'):
             rserver = kwargs.pop("registry", None)
             return FakeRegistryConnection(registry=rserver)
 

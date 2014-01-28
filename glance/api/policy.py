@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright (c) 2011 OpenStack Foundation
 # Copyright 2013 IBM Corp.
 # All Rights Reserved.
@@ -18,13 +16,13 @@
 
 """Policy Engine For Glance"""
 
-import json
 import os.path
 
 from oslo.config import cfg
 
 from glance.common import exception
 import glance.domain.proxy
+from glance.openstack.common import jsonutils
 import glance.openstack.common.log as logging
 from glance.openstack.common import policy
 
@@ -107,7 +105,7 @@ class Enforcer(object):
             LOG.debug(_("Loading policy from %s") % self.policy_path)
             with open(self.policy_path) as fap:
                 raw_contents = fap.read()
-                rules_dict = json.loads(raw_contents)
+                rules_dict = jsonutils.loads(raw_contents)
                 self.policy_file_contents = dict(
                     (k, policy.parse_rule(v))
                     for k, v in rules_dict.items())
@@ -278,7 +276,7 @@ class ImageMemberRepoProxy(glance.domain.proxy.Repo):
 
     def add(self, member):
         self.policy.enforce(self.context, 'add_member', {})
-        return self.member_repo.add(member)
+        self.member_repo.add(member)
 
     def get(self, member_id):
         self.policy.enforce(self.context, 'get_member', {})
@@ -286,7 +284,7 @@ class ImageMemberRepoProxy(glance.domain.proxy.Repo):
 
     def save(self, member):
         self.policy.enforce(self.context, 'modify_member', {})
-        return self.member_repo.save(member)
+        self.member_repo.save(member)
 
     def list(self, *args, **kwargs):
         self.policy.enforce(self.context, 'get_members', {})
@@ -294,7 +292,7 @@ class ImageMemberRepoProxy(glance.domain.proxy.Repo):
 
     def remove(self, member):
         self.policy.enforce(self.context, 'delete_member', {})
-        return self.member_repo.remove(member)
+        self.member_repo.remove(member)
 
 
 class ImageLocationsProxy(object):
@@ -305,24 +303,6 @@ class ImageLocationsProxy(object):
         self.locations = locations
         self.context = context
         self.policy = policy
-
-    def __contains__(self, uri):
-        return uri in self.locations
-
-    def __len__(self):
-        return len(self.locations)
-
-    def __cast(self, other):
-        if isinstance(other, ImageLocationsProxy):
-            return other.locations
-        else:
-            return other
-
-    def __cmp__(self, other):
-        return cmp(self.locations, self.__cast(other))
-
-    def __iter__(self):
-        return iter(self.locations)
 
     def _get_checker(action, func_name):
         def _checker(self, *args, **kwargs):

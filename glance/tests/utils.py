@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2010-2011 OpenStack Foundation
 # All Rights Reserved.
 #
@@ -19,13 +17,13 @@
 
 import errno
 import functools
-import json
 import os
 import shlex
 import shutil
 import socket
 import StringIO
 import subprocess
+import uuid
 
 import fixtures
 from oslo.config import cfg
@@ -35,12 +33,14 @@ import webob
 
 from glance.common import config
 from glance.common import exception
+from glance.common import property_utils
+from glance.common import utils
 from glance.common import wsgi
+from glance import context
 from glance.db.sqlalchemy import api as db_api
 from glance.db.sqlalchemy import models as db_models
+from glance.openstack.common import jsonutils
 from glance.openstack.common import timeutils
-from glance import context
-from glance.common import property_utils
 
 CONF = cfg.CONF
 
@@ -300,7 +300,8 @@ def execute(cmd,
         msg = "Command %(cmd)s did not succeed. Returned an exit "\
               "code of %(exitcode)d."\
               "\n\nSTDOUT: %(out)s"\
-              "\n\nSTDERR: %(err)s" % locals()
+              "\n\nSTDERR: %(err)s" % {'cmd': cmd, 'exitcode': exitcode,
+                                       'out': out, 'err': err}
         if context:
             msg += "\n\nCONTEXT: %s" % context
         raise RuntimeError(msg)
@@ -416,8 +417,8 @@ class RegistryAPIMixIn(object):
                 image.write("chunk00000remainder")
 
     def destroy_fixtures(self):
-        db_models.unregister_models(db_api._ENGINE)
-        db_models.register_models(db_api._ENGINE)
+        db_models.unregister_models(db_api.get_engine())
+        db_models.register_models(db_api.get_engine())
 
     def get_fixture(self, **kwargs):
         fixture = {'name': 'fake public image',
@@ -465,10 +466,10 @@ class RegistryAPIMixIn(object):
         return res
 
     def assertEqualImages(self, res, uuids, key='images', unjsonify=True):
-        images = json.loads(res.body)[key] if unjsonify else res
+        images = jsonutils.loads(res.body)[key] if unjsonify else res
         self.assertEqual(len(images), len(uuids))
-        for i, uuid in enumerate(uuids):
-            self.assertEqual(images[i]['id'], uuid)
+        for i, value in enumerate(uuids):
+            self.assertEqual(images[i]['id'], value)
 
 
 class FakeAuthMiddleware(wsgi.Middleware):
@@ -559,3 +560,22 @@ class HttplibWsgiAdapter(object):
         response = self.req.get_response(self.app)
         return FakeHTTPResponse(response.status_code, response.headers,
                                 response.body)
+
+
+class UUIDTestCase(testtools.TestCase):
+
+    def test_generate_uuid(self):
+        uuid_string = utils.generate_uuid()
+        self.assertIsInstance(uuid_string, str)
+        self.assertEqual(len(uuid_string), 36)
+        # make sure there are 4 dashes
+        self.assertEqual(len(uuid_string.replace('-', '')), 32)
+
+    def test_is_uuid_like(self):
+        self.assertTrue(utils.is_uuid_like(str(uuid.uuid4())))
+
+    def test_id_is_uuid_like(self):
+        self.assertFalse(utils.is_uuid_like(1234567))
+
+    def test_name_is_uuid_like(self):
+        self.assertFalse(utils.is_uuid_like('zhongyueluo'))

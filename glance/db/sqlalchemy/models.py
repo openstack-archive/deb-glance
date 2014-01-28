@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2010 United States Government as represented by the
 # Administrator of the National Aeronautics and Space Administration.
 # All Rights Reserved.
@@ -19,19 +17,28 @@
 """
 SQLAlchemy models for glance data
 """
-import json
 
-from sqlalchemy import Column, Integer, String, BigInteger
+import uuid
+
+from sqlalchemy import BigInteger
+from sqlalchemy import Boolean
+from sqlalchemy import Column
+from sqlalchemy import DateTime
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import ForeignKey, DateTime, Boolean, Text
-from sqlalchemy.orm import relationship, backref
+from sqlalchemy import ForeignKey
+from sqlalchemy import Index
+from sqlalchemy import Integer
+from sqlalchemy.orm import backref, relationship
+from sqlalchemy import String
+from sqlalchemy import Text
 from sqlalchemy.types import TypeDecorator
-from sqlalchemy import Index, UniqueConstraint
+from sqlalchemy import UniqueConstraint
 
 from glance.openstack.common.db.sqlalchemy import models
+from glance.openstack.common import jsonutils
 from glance.openstack.common import timeutils
-from glance.openstack.common import uuidutils
+
 
 BASE = declarative_base()
 
@@ -48,12 +55,12 @@ class JSONEncodedDict(TypeDecorator):
 
     def process_bind_param(self, value, dialect):
         if value is not None:
-            value = json.dumps(value)
+            value = jsonutils.dumps(value)
         return value
 
     def process_result_value(self, value, dialect):
         if value is not None:
-            value = json.loads(value)
+            value = jsonutils.loads(value)
         return value
 
 
@@ -78,17 +85,6 @@ class GlanceBase(models.ModelBase, models.TimestampMixin):
     #                 type of this column.
     deleted_at = Column(DateTime)
     deleted = Column(Boolean, nullable=False, default=False)
-
-    # TODO(vsergeyev): we should use save() method from
-    #                  models.ModelBase(), when we will use common
-    #                  oslo session
-    def save(self, session=None):
-        """Save this object."""
-        # import api here to prevent circular dependency problem
-        import glance.db.sqlalchemy.api as db_api
-        session = session or db_api._get_session()
-        session.add(self)
-        session.flush()
 
     def delete(self, session=None):
         """Delete this object."""
@@ -123,7 +119,8 @@ class Image(BASE, GlanceBase):
                       Index('ix_images_deleted', 'deleted'),
                       Index('owner_image_idx', 'owner'),)
 
-    id = Column(String(36), primary_key=True, default=uuidutils.generate_uuid)
+    id = Column(String(36), primary_key=True,
+                default=lambda: str(uuid.uuid4()))
     name = Column(String(255))
     disk_format = Column(String(20))
     container_format = Column(String(20))
@@ -216,14 +213,31 @@ class Task(BASE, GlanceBase):
                       Index('ix_tasks_deleted', 'deleted'),
                       Index('ix_tasks_updated_at', 'updated_at'))
 
-    id = Column(String(36), primary_key=True, default=uuidutils.generate_uuid)
+    id = Column(String(36), primary_key=True,
+                default=lambda: str(uuid.uuid4()))
     type = Column(String(30))
     status = Column(String(30))
+    owner = Column(String(255), nullable=False)
+    expires_at = Column(DateTime, nullable=True)
+
+
+class TaskInfo(BASE, models.ModelBase):
+    """Represents task info in the datastore"""
+    __tablename__ = 'task_info'
+
+    task_id = Column(String(36),
+                     ForeignKey('tasks.id'),
+                     primary_key=True,
+                     nullable=False)
+
+    task = relationship(Task, backref=backref('info', uselist=False))
+
+    #NOTE(nikhil): input and result are stored as text in the DB.
+    # SQLAlchemy marshals the data to/from JSON using custom type
+    # JSONEncodedDict. It uses simplejson underneath.
     input = Column(JSONEncodedDict())
     result = Column(JSONEncodedDict())
-    owner = Column(String(255))
     message = Column(Text)
-    expires_at = Column(DateTime, nullable=True)
 
 
 def register_models(engine):

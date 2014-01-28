@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
 
 # Copyright 2012 Michael Still and Canonical Inc
 # All Rights Reserved.
@@ -19,7 +18,6 @@
 from __future__ import print_function
 
 import httplib
-import json
 import logging
 import logging.config
 import logging.handlers
@@ -29,6 +27,8 @@ import re
 import sys
 import urllib
 import uuid
+
+from glance.openstack.common import jsonutils
 
 # If ../glance/__init__.py exists, add ../ to Python search path, so that
 # it will override what happens to be installed in /usr/(local/)lib/python...
@@ -150,7 +150,7 @@ class ImageService(object):
                 url += '?%s' % query
 
             response = self._http_request('GET', url, {}, '')
-            result = json.loads(response.read())
+            result = jsonutils.loads(response.read())
 
             if not result or not 'images' in result or not result['images']:
                 return
@@ -335,7 +335,7 @@ def replication_dump(options, args):
 
             # Dump glance information
             with open(data_path, 'w') as f:
-                f.write(json.dumps(image))
+                f.write(jsonutils.dumps(image))
 
             if image['status'] == 'active' and not options.metaonly:
                 # Now fetch the image. The metadata returned in headers here
@@ -421,7 +421,7 @@ def replication_load(options, args):
 
             meta_file_name = os.path.join(path, image_uuid)
             with open(meta_file_name) as meta_file:
-                meta = json.loads(meta_file.read())
+                meta = jsonutils.loads(meta_file.read())
 
             # Remove keys which don't make sense for replication
             for key in options.dontreplicate.split(' '):
@@ -620,11 +620,11 @@ def _check_upload_response_headers(headers, body):
 
     if 'status' not in headers:
         try:
-            d = json.loads(body)
+            d = jsonutils.loads(body)
             if 'image' in d and 'status' in d['image']:
                 return
 
-        except:
+        except Exception:
             raise UploadException('Image upload problem: %s' % body)
 
 

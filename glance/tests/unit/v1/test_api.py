@@ -1,4 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
 # -*- coding: utf-8 -*-
 
 # Copyright 2010-2011 OpenStack Foundation
@@ -19,8 +18,9 @@
 import copy
 import datetime
 import hashlib
-import json
+import mock
 import StringIO
+import uuid
 
 from oslo.config import cfg
 import routes
@@ -28,23 +28,24 @@ import webob
 
 import glance.api
 import glance.api.common
-from glance.api.v1 import images
 from glance.api.v1 import router
+from glance.api.v1 import upload_utils
 import glance.common.config
 import glance.context
 from glance.db.sqlalchemy import api as db_api
 from glance.db.sqlalchemy import models as db_models
+from glance.openstack.common import jsonutils
 from glance.openstack.common import timeutils
-from glance.openstack.common import uuidutils
+
 import glance.registry.client.v1.api as registry
 import glance.store.filesystem
 from glance.tests.unit import base
-from glance.tests import utils as test_utils
 import glance.tests.unit.utils as unit_test_utils
+from glance.tests import utils as test_utils
 
 CONF = cfg.CONF
 
-_gen_uuid = uuidutils.generate_uuid
+_gen_uuid = lambda: str(uuid.uuid4())
 
 UUID1 = _gen_uuid()
 UUID2 = _gen_uuid()
@@ -88,7 +89,6 @@ class TestGlanceAPI(base.IsolatedUnitTest):
                             'metadata': {}}],
              'properties': {}}]
         self.context = glance.context.RequestContext(is_admin=True)
-        db_api.setup_db_env()
         db_api.get_engine()
         self.destroy_fixtures()
         self.create_fixtures()
@@ -108,8 +108,8 @@ class TestGlanceAPI(base.IsolatedUnitTest):
 
     def destroy_fixtures(self):
         # Easiest to just drop the models and re-create them...
-        db_models.unregister_models(db_api._ENGINE)
-        db_models.register_models(db_api._ENGINE)
+        db_models.unregister_models(db_api.get_engine())
+        db_models.register_models(db_api.get_engine())
 
     def _do_test_defaulted_format(self, format_key, format_value):
         fixture_headers = {'x-image-meta-name': 'defaulted',
@@ -123,7 +123,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
 
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 201)
-        res_body = json.loads(res.body)['image']
+        res_body = jsonutils.loads(res.body)['image']
         self.assertEqual(format_value, res_body['disk_format'])
         self.assertEqual(format_value, res_body['container_format'])
 
@@ -132,6 +132,80 @@ class TestGlanceAPI(base.IsolatedUnitTest):
                     'x-image-meta-container-format'):
             for value in ('aki', 'ari', 'ami'):
                 self._do_test_defaulted_format(key, value)
+
+    def test_bad_min_disk_size_create(self):
+        fixture_headers = {'x-image-meta-store': 'file',
+                           'x-image-meta-disk-format': 'vhd',
+                           'x-image-meta-container-format': 'ovf',
+                           'x-image-meta-min-disk': '-42',
+                           'x-image-meta-name': 'fake image #3'}
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 400)
+        self.assertTrue('Invalid value' in res.body, res.body)
+
+    def test_bad_min_disk_size_update(self):
+        fixture_headers = {'x-image-meta-disk-format': 'vhd',
+                           'x-image-meta-container-format': 'ovf',
+                           'x-image-meta-name': 'fake image #3'}
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 201)
+
+        res_body = jsonutils.loads(res.body)['image']
+        self.assertEqual('queued', res_body['status'])
+        image_id = res_body['id']
+        req = webob.Request.blank("/images/%s" % image_id)
+        req.method = 'PUT'
+        req.headers['x-image-meta-min-disk'] = '-42'
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 400)
+        self.assertTrue('Invalid value' in res.body, res.body)
+
+    def test_bad_min_ram_size_create(self):
+        fixture_headers = {'x-image-meta-store': 'file',
+                           'x-image-meta-disk-format': 'vhd',
+                           'x-image-meta-container-format': 'ovf',
+                           'x-image-meta-min-ram': '-42',
+                           'x-image-meta-name': 'fake image #3'}
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 400)
+        self.assertTrue('Invalid value' in res.body, res.body)
+
+    def test_bad_min_ram_size_update(self):
+        fixture_headers = {'x-image-meta-disk-format': 'vhd',
+                           'x-image-meta-container-format': 'ovf',
+                           'x-image-meta-name': 'fake image #3'}
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 201)
+
+        res_body = jsonutils.loads(res.body)['image']
+        self.assertEqual('queued', res_body['status'])
+        image_id = res_body['id']
+        req = webob.Request.blank("/images/%s" % image_id)
+        req.method = 'PUT'
+        req.headers['x-image-meta-min-ram'] = '-42'
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 400)
+        self.assertTrue('Invalid value' in res.body, res.body)
 
     def test_bad_disk_format(self):
         fixture_headers = {
@@ -152,7 +226,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         self.assertTrue('Invalid disk format' in res.body, res.body)
 
     def test_configured_disk_format_good(self):
-        self.config(disk_formats=['foo'])
+        self.config(disk_formats=['foo'], group="image_format")
         fixture_headers = {
             'x-image-meta-store': 'bad',
             'x-image-meta-name': 'bogus',
@@ -170,7 +244,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         self.assertEqual(res.status_int, 201)
 
     def test_configured_disk_format_bad(self):
-        self.config(disk_formats=['foo'])
+        self.config(disk_formats=['foo'], group="image_format")
         fixture_headers = {
             'x-image-meta-store': 'bad',
             'x-image-meta-name': 'bogus',
@@ -189,7 +263,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         self.assertTrue('Invalid disk format' in res.body, res.body)
 
     def test_configured_container_format_good(self):
-        self.config(container_formats=['foo'])
+        self.config(container_formats=['foo'], group="image_format")
         fixture_headers = {
             'x-image-meta-store': 'bad',
             'x-image-meta-name': 'bogus',
@@ -207,7 +281,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         self.assertEqual(res.status_int, 201)
 
     def test_configured_container_format_bad(self):
-        self.config(container_formats=['foo'])
+        self.config(container_formats=['foo'], group="image_format")
         fixture_headers = {
             'x-image-meta-store': 'bad',
             'x-image-meta-name': 'bogus',
@@ -263,10 +337,46 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         self.assertEqual(res.status_int, 400)
         self.assertTrue('Invalid container format' in res.body)
 
+    def test_create_with_location_unknown_scheme(self):
+        fixture_headers = {
+            'x-image-meta-store': 'bad',
+            'x-image-meta-name': 'bogus',
+            'x-image-meta-location': 'bad+scheme://localhost:0/image.qcow2',
+            'x-image-meta-disk-format': 'qcow2',
+            'x-image-meta-container-format': 'bare',
+        }
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 400)
+        self.assertTrue('External sourcing not supported' in res.body)
+
+    def test_create_with_location_bad_store_uri(self):
+        fixture_headers = {
+            'x-image-meta-store': 'bad',
+            'x-image-meta-name': 'bogus',
+            'x-image-meta-location': 'swift+http://bah',
+            'x-image-meta-disk-format': 'qcow2',
+            'x-image-meta-container-format': 'bare',
+        }
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 400)
+        self.assertTrue('Invalid location' in res.body)
+
     def test_create_image_with_too_many_properties(self):
         self.config(image_property_quota=1)
         another_request = unit_test_utils.get_fake_request(
-                path='/images', method='POST')
+            path='/images', method='POST')
         headers = {'x-auth-token': 'user:tenant:joe_soap',
                    'x-image-meta-property-x_all_permitted': '1',
                    'x-image-meta-property-x_all_permitted_foo': '2'}
@@ -299,18 +409,22 @@ class TestGlanceAPI(base.IsolatedUnitTest):
             'x-image-meta-name': 'bogus',
             'x-image-meta-location': 'http://example.com/image.tar.gz',
             'x-image-meta-disk-format': 'vhd',
-            'x-image-meta-size': 'invalid',
             'x-image-meta-container-format': 'bare',
         }
 
-        req = webob.Request.blank("/images")
-        req.method = 'POST'
-        for k, v in fixture_headers.iteritems():
-            req.headers[k] = v
+        def exec_bad_size_test(bad_size, expected_substr):
+            fixture_headers['x-image-meta-size'] = bad_size
+            req = webob.Request.blank("/images",
+                                      method='POST',
+                                      headers=fixture_headers)
+            res = req.get_response(self.api)
+            self.assertEqual(res.status_int, 400)
+            self.assertTrue(expected_substr in res.body)
 
-        res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 400)
-        self.assertTrue('Incoming image size' in res.body)
+        expected = "Cannot convert image size 'invalid' to an integer."
+        exec_bad_size_test('invalid', expected)
+        expected = "Image size must be >= 0 ('-10' specified)."
+        exec_bad_size_test(-10, expected)
 
     def test_bad_image_name(self):
         fixture_headers = {
@@ -343,7 +457,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 201)
 
-        res_body = json.loads(res.body)['image']
+        res_body = jsonutils.loads(res.body)['image']
         self.assertEqual('queued', res_body['status'])
         image_id = res_body['id']
 
@@ -356,7 +470,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 200)
 
-        res_body = json.loads(res.body)['image']
+        res_body = jsonutils.loads(res.body)['image']
         # Once the location is set, the image should be activated
         # see LP Bug #939484
         self.assertEqual('active', res_body['status'])
@@ -509,7 +623,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         for k, v in fixture_headers.iteritems():
             req.headers[k] = v
         res = req.get_response(self.api)
-        res_body = json.loads(res.body)['image']
+        res_body = jsonutils.loads(res.body)['image']
         self.assertFalse('locations' in res_body)
         self.assertFalse('direct_url' in res_body)
         image_id = res_body['id']
@@ -552,7 +666,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 201)
 
-        res_body = json.loads(res.body)['image']
+        res_body = jsonutils.loads(res.body)['image']
         self.assertEqual('active', res_body['status'])
         image_id = res_body['id']
 
@@ -635,7 +749,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         self.assertTrue('location' in res.headers,
                         "'location' not in response headers.\n"
                         "res.headerlist = %r" % res.headerlist)
-        res_body = json.loads(res.body)['image']
+        res_body = jsonutils.loads(res.body)['image']
         self.assertTrue('/images/%s' % res_body['id']
                         in res.headers['location'])
         self.assertEqual('active', res_body['status'])
@@ -690,7 +804,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
 
     def test_add_publicize_image_authorized(self):
         rules = {"add_image": '@', "modify_image": '@',
-                 "publicize_image": '@'}
+                 "publicize_image": '@', "upload_image": '@'}
         self.set_policy_rules(rules)
         fixture_headers = {'x-image-meta-store': 'file',
                            'x-image-meta-is-public': 'true',
@@ -727,8 +841,26 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 403)
 
-    def test_add_copy_from_image_authorized(self):
-        rules = {"add_image": '@', "copy_from": '@'}
+    def test_add_copy_from_upload_image_unauthorized(self):
+        rules = {"add_image": '@', "copy_from": '@', "upload_image": '!'}
+        self.set_policy_rules(rules)
+        fixture_headers = {'x-image-meta-store': 'file',
+                           'x-image-meta-disk-format': 'vhd',
+                           'x-glance-api-copy-from': 'http://glance.com/i.ovf',
+                           'x-image-meta-container-format': 'ovf',
+                           'x-image-meta-name': 'fake image #F'}
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+
+        req.headers['Content-Type'] = 'application/octet-stream'
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 403)
+
+    def test_add_copy_from_image_authorized_upload_image_authorized(self):
+        rules = {"add_image": '@', "copy_from": '@', "upload_image": '@'}
         self.set_policy_rules(rules)
         fixture_headers = {'x-image-meta-store': 'file',
                            'x-image-meta-disk-format': 'vhd',
@@ -816,6 +948,133 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 400)
 
+    def test_add_copy_from_upload_image_unauthorized_with_body(self):
+        rules = {"upload_image": '!', "modify_image": '@',
+                 "add_image": '@'}
+        self.set_policy_rules(rules)
+        self.config(image_size_cap=512)
+        fixture_headers = {
+            'x-image-meta-name': 'fake image #3',
+            'x-image-meta-container_format': 'ami',
+            'x-image-meta-disk_format': 'ami',
+            'transfer-encoding': 'chunked',
+            'content-type': 'application/octet-stream',
+        }
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+
+        req.body_file = StringIO.StringIO('X' * (CONF.image_size_cap))
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 403)
+
+    def test_update_data_upload_bad_store_uri(self):
+        fixture_headers = {'x-image-meta-name': 'fake image #3'}
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 201)
+
+        res_body = jsonutils.loads(res.body)['image']
+        self.assertEqual('queued', res_body['status'])
+        image_id = res_body['id']
+        req = webob.Request.blank("/images/%s" % image_id)
+        req.method = 'PUT'
+        req.headers['Content-Type'] = 'application/octet-stream'
+        req.headers['x-image-disk-format'] = 'vhd'
+        req.headers['x-image-container-format'] = 'ovf'
+        req.headers['x-image-meta-location'] = 'swift+http://bla'
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 400)
+        self.assertTrue('Invalid location' in res.body)
+
+    def test_update_data_upload_image_unauthorized(self):
+        rules = {"upload_image": '!', "modify_image": '@',
+                 "add_image": '@'}
+        self.set_policy_rules(rules)
+        """Tests creates a queued image for no body and no loc header"""
+        self.config(image_size_cap=512)
+        fixture_headers = {'x-image-meta-store': 'file',
+                           'x-image-meta-name': 'fake image #3'}
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 201)
+
+        res_body = jsonutils.loads(res.body)['image']
+        self.assertEqual('queued', res_body['status'])
+        image_id = res_body['id']
+        req = webob.Request.blank("/images/%s" % image_id)
+        req.method = 'PUT'
+        req.headers['Content-Type'] = 'application/octet-stream'
+        req.headers['transfer-encoding'] = 'chunked'
+        req.headers['x-image-disk-format'] = 'vhd'
+        req.headers['x-image-container-format'] = 'ovf'
+        req.body_file = StringIO.StringIO('X' * (CONF.image_size_cap))
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 403)
+
+    def test_update_copy_from_upload_image_unauthorized(self):
+        rules = {"upload_image": '!', "modify_image": '@',
+                 "add_image": '@', "copy_from": '@'}
+        self.set_policy_rules(rules)
+
+        fixture_headers = {'x-image-meta-disk-format': 'vhd',
+                           'x-image-meta-container-format': 'ovf',
+                           'x-image-meta-name': 'fake image #3'}
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 201)
+
+        res_body = jsonutils.loads(res.body)['image']
+        self.assertEqual('queued', res_body['status'])
+        image_id = res_body['id']
+        req = webob.Request.blank("/images/%s" % image_id)
+        req.method = 'PUT'
+        req.headers['Content-Type'] = 'application/octet-stream'
+        req.headers['x-glance-api-copy-from'] = 'http://glance.com/i.ovf'
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 403)
+
+    def test_update_copy_from_unauthorized(self):
+        rules = {"upload_image": '@', "modify_image": '@',
+                 "add_image": '@', "copy_from": '!'}
+        self.set_policy_rules(rules)
+
+        fixture_headers = {'x-image-meta-disk-format': 'vhd',
+                           'x-image-meta-container-format': 'ovf',
+                           'x-image-meta-name': 'fake image #3'}
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 201)
+
+        res_body = jsonutils.loads(res.body)['image']
+        self.assertEqual('queued', res_body['status'])
+        image_id = res_body['id']
+        req = webob.Request.blank("/images/%s" % image_id)
+        req.method = 'PUT'
+        req.headers['Content-Type'] = 'application/octet-stream'
+        req.headers['x-glance-api-copy-from'] = 'http://glance.com/i.ovf'
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 403)
+
     def _do_test_post_image_content_missing_format(self, missing):
         """Tests creation of an image with missing format"""
         fixture_headers = {'x-image-meta-store': 'file',
@@ -863,7 +1122,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 201)
 
-        res_body = json.loads(res.body)['image']
+        res_body = jsonutils.loads(res.body)['image']
         self.assertEqual('queued', res_body['status'])
         image_id = res_body['id']
 
@@ -895,7 +1154,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req = webob.Request.blank('/images/%s' % UUID2)
         req.method = 'PUT'
         req.content_type = 'application/json'
-        req.body = json.dumps(dict(image=fixture))
+        req.body = jsonutils.dumps(dict(image=fixture))
 
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 403)
@@ -963,6 +1222,110 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         self.assertEqual(res.status_int, 200)
         self.assertEqual("pending_delete", res.headers['x-image-meta-status'])
 
+    def test_upload_to_image_status_saving(self):
+        """Test image upload conflict.
+
+        If an image is uploaded before an existing upload operation completes
+        to the same image, the original image should succeed and the
+        conflicting should fail and any data deleted.
+        """
+        fixture_headers = {'x-image-meta-store': 'file',
+                           'x-image-meta-disk-format': 'vhd',
+                           'x-image-meta-container-format': 'ovf',
+                           'x-image-meta-name': 'some-foo-image'}
+
+        # create an image but don't upload yet.
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 201)
+        res_body = jsonutils.loads(res.body)['image']
+
+        image_id = res_body['id']
+        self.assertTrue('/images/%s' % image_id in res.headers['location'])
+
+        # verify the status is 'queued'
+        self.assertEqual('queued', res_body['status'])
+
+        orig_get_image_metadata = registry.get_image_metadata
+        orig_image_get = db_api._image_get
+        orig_image_update = db_api._image_update
+
+        # this will be used to track what is called and their order.
+        called = []
+        # use this to determine if we are within a db session i.e. atomic
+        # operation, that is setting our active state.
+        test_status = {'activate_session_started': False}
+        # We want first status check to be 'queued' so we get past the first
+        # guard.
+        test_status['queued_guard_passed'] = False
+
+        def mock_image_update(context, values, image_id, purge_props=False,
+                              from_state=None):
+            if values.get('status', None) == 'active':
+                # We only expect this state to be entered once.
+                if test_status['activate_session_started']:
+                    raise Exception("target session already started")
+
+                test_status['activate_session_started'] = True
+                called.append('update_active')
+
+            return orig_image_update(context, values, image_id,
+                                     purge_props=purge_props,
+                                     from_state=from_state)
+
+        def mock_image_get(*args, **kwargs):
+            """Force status to 'saving' if not within activate db session.
+
+            If we are in the activate db session we return 'active' which we
+            then expect to cause exception.Conflict to be raised since this
+            indicates that another upload has succeeded.
+            """
+            image = orig_image_get(*args, **kwargs)
+            if test_status['activate_session_started']:
+                called.append('image_get_active')
+                setattr(image, 'status', 'active')
+            else:
+                setattr(image, 'status', 'saving')
+
+            return image
+
+        def mock_get_image_metadata(*args, **kwargs):
+            """Force image status sequence.
+            """
+            called.append('get_image_meta')
+            meta = orig_get_image_metadata(*args, **kwargs)
+            if not test_status['queued_guard_passed']:
+                meta['status'] = 'queued'
+                test_status['queued_guard_passed'] = True
+
+            return meta
+
+        req = webob.Request.blank("/images/%s" % image_id)
+        req.method = 'PUT'
+        req.headers['Content-Type'] = \
+            'application/octet-stream'
+        req.body = "chunk00000remainder"
+
+        mpo = mock.patch.object
+        with mpo(upload_utils, 'initiate_deletion') as mock_initiate_deletion:
+            with mpo(registry, 'get_image_metadata', mock_get_image_metadata):
+                with mpo(db_api, '_image_get', mock_image_get):
+                    with mpo(db_api, '_image_update', mock_image_update):
+                        res = req.get_response(self.api)
+                        self.assertEqual(res.status_int, 409)
+
+                        # Check expected call sequence
+                        self.assertEqual(['get_image_meta', 'get_image_meta',
+                                          'update_active', 'image_get_active'],
+                                         called)
+
+                        # Ensure cleanup occurred.
+                        self.assertTrue(mock_initiate_deletion.called)
+
     def test_register_and_upload(self):
         """
         Test that the process of registering an image with
@@ -983,7 +1346,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
 
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 201)
-        res_body = json.loads(res.body)['image']
+        res_body = jsonutils.loads(res.body)['image']
 
         self.assertTrue('id' in res_body)
 
@@ -1037,7 +1400,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
 
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 201)
-        res_body = json.loads(res.body)['image']
+        res_body = jsonutils.loads(res.body)['image']
 
         self.assertTrue('id' in res_body)
 
@@ -1124,7 +1487,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req.body = "chunk00000remainder"
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 201)
-        res_body = json.loads(res.body)['image']
+        res_body = jsonutils.loads(res.body)['image']
 
         self.assertTrue('id' in res_body)
 
@@ -1204,7 +1567,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 201)
 
-        res_body = json.loads(res.body)['image']
+        res_body = jsonutils.loads(res.body)['image']
         req = webob.Request.blank("/images/%s" % res_body['id'])
         req.method = 'PUT'
         req.headers['x-image-meta-is-public'] = 'true'
@@ -1247,7 +1610,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req.headers['x-image-meta-container_format'] = 'ami'
         req.headers['x-image-meta-disk_format'] = 'ami'
         res = req.get_response(self.api)
-        image_id = json.loads(res.body)['image']['id']
+        image_id = jsonutils.loads(res.body)['image']['id']
 
         fixture_headers = {
             'content-type': 'application/octet-stream',
@@ -1290,7 +1653,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 201)
 
-        res_body = json.loads(res.body)['image']
+        res_body = jsonutils.loads(res.body)['image']
         req = webob.Request.blank("/images/%s" % res_body['id'])
         req.method = 'PUT'
         req.headers['x-image-meta-name'] = 'updated public image'
@@ -1347,7 +1710,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req = webob.Request.blank('/images?sort_key=name&sort_dir=asc')
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 200)
-        res_dict = json.loads(res.body)
+        res_dict = jsonutils.loads(res.body)
 
         images = res_dict['images']
         self.assertEqual(len(images), 3)
@@ -1408,7 +1771,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req = webob.Request.blank('/images/detail')
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 200)
-        res_dict = json.loads(res.body)
+        res_dict = jsonutils.loads(res.body)
         images = res_dict['images']
         self.assertEqual(len(images), 2)
         self.assertEqual(images[0]['id'], UUID4)
@@ -1418,7 +1781,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req = webob.Request.blank('/images/detail?changes-since=%s' % iso1)
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 200)
-        res_dict = json.loads(res.body)
+        res_dict = jsonutils.loads(res.body)
         images = res_dict['images']
         self.assertEqual(len(images), 3)
         self.assertEqual(images[0]['id'], UUID4)
@@ -1429,7 +1792,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req = webob.Request.blank('/images/detail?changes-since=%s' % iso2)
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 200)
-        res_dict = json.loads(res.body)
+        res_dict = jsonutils.loads(res.body)
         images = res_dict['images']
         self.assertEqual(len(images), 1)
         self.assertEqual(images[0]['id'], UUID4)
@@ -1439,7 +1802,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
                                   hour_before)
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 200)
-        res_dict = json.loads(res.body)
+        res_dict = jsonutils.loads(res.body)
         images = res_dict['images']
         self.assertEqual(len(images), 1)
         self.assertEqual(images[0]['id'], UUID4)
@@ -1449,7 +1812,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
                                   hour_after)
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 200)
-        res_dict = json.loads(res.body)
+        res_dict = jsonutils.loads(res.body)
         images = res_dict['images']
         self.assertEqual(len(images), 0)
 
@@ -1457,7 +1820,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req = webob.Request.blank('/images/detail?changes-since=%s' % iso4)
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 200)
-        res_dict = json.loads(res.body)
+        res_dict = jsonutils.loads(res.body)
         images = res_dict['images']
         self.assertEqual(len(images), 0)
 
@@ -1467,7 +1830,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
                                       param)
             res = req.get_response(self.api)
             self.assertEqual(res.status_int, 200)
-            res_dict = json.loads(res.body)
+            res_dict = jsonutils.loads(res.body)
             images = res_dict['images']
             self.assertEqual(len(images), 3)
             self.assertEqual(images[0]['id'], UUID4)
@@ -1501,6 +1864,154 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 404)
 
+    def test_get_index_filter_on_user_defined_properties(self):
+        """Check that image filtering works on user-defined properties"""
+
+        image1_id = _gen_uuid()
+        properties = {'distro': 'ubuntu', 'arch': 'i386'}
+        extra_fixture = {'id': image1_id,
+                         'status': 'active',
+                         'is_public': True,
+                         'disk_format': 'vhd',
+                         'container_format': 'ovf',
+                         'name': 'image-extra-1',
+                         'size': 18, 'properties': properties,
+                         'checksum': None}
+        db_api.image_create(self.context, extra_fixture)
+
+        image2_id = _gen_uuid()
+        properties = {'distro': 'ubuntu', 'arch': 'x86_64', 'foo': 'bar'}
+        extra_fixture = {'id': image2_id,
+                         'status': 'active',
+                         'is_public': True,
+                         'disk_format': 'ami',
+                         'container_format': 'ami',
+                         'name': 'image-extra-2',
+                         'size': 20, 'properties': properties,
+                         'checksum': None}
+        db_api.image_create(self.context, extra_fixture)
+
+        # Test index with filter containing one user-defined property.
+        # Filter is 'property-distro=ubuntu'.
+        # Verify both image1 and image2 are returned
+        req = webob.Request.blank('/images?property-distro=ubuntu')
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 200)
+        images = jsonutils.loads(res.body)['images']
+        self.assertEqual(len(images), 2)
+        self.assertEqual(images[0]['id'], image2_id)
+        self.assertEqual(images[1]['id'], image1_id)
+
+        # Test index with filter containing one user-defined property but
+        # non-existent value. Filter is 'property-distro=fedora'.
+        # Verify neither images are returned
+        req = webob.Request.blank('/images?property-distro=fedora')
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 200)
+        images = jsonutils.loads(res.body)['images']
+        self.assertEqual(len(images), 0)
+
+        # Test index with filter containing one user-defined property but
+        # unique value. Filter is 'property-arch=i386'.
+        # Verify only image1 is returned.
+        req = webob.Request.blank('/images?property-arch=i386')
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 200)
+        images = jsonutils.loads(res.body)['images']
+        self.assertEqual(len(images), 1)
+        self.assertEqual(images[0]['id'], image1_id)
+
+        # Test index with filter containing one user-defined property but
+        # unique value. Filter is 'property-arch=x86_64'.
+        # Verify only image1 is returned.
+        req = webob.Request.blank('/images?property-arch=x86_64')
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 200)
+        images = jsonutils.loads(res.body)['images']
+        self.assertEqual(len(images), 1)
+        self.assertEqual(images[0]['id'], image2_id)
+
+        # Test index with filter containing unique user-defined property.
+        # Filter is 'property-foo=bar'.
+        # Verify only image2 is returned.
+        req = webob.Request.blank('/images?property-foo=bar')
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 200)
+        images = jsonutils.loads(res.body)['images']
+        self.assertEqual(len(images), 1)
+        self.assertEqual(images[0]['id'], image2_id)
+
+        # Test index with filter containing unique user-defined property but
+        # .value is non-existent. Filter is 'property-foo=baz'.
+        # Verify neither images are returned.
+        req = webob.Request.blank('/images?property-foo=baz')
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 200)
+        images = jsonutils.loads(res.body)['images']
+        self.assertEqual(len(images), 0)
+
+        # Test index with filter containing multiple user-defined properties
+        # Filter is 'property-arch=x86_64&property-distro=ubuntu'.
+        # Verify only image2 is returned.
+        req = webob.Request.blank('/images?property-arch=x86_64&'
+                                  'property-distro=ubuntu')
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 200)
+        images = jsonutils.loads(res.body)['images']
+        self.assertEqual(len(images), 1)
+        self.assertEqual(images[0]['id'], image2_id)
+
+        # Test index with filter containing multiple user-defined properties
+        # Filter is 'property-arch=i386&property-distro=ubuntu'.
+        # Verify only image1 is returned.
+        req = webob.Request.blank('/images?property-arch=i386&'
+                                  'property-distro=ubuntu')
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 200)
+        images = jsonutils.loads(res.body)['images']
+        self.assertEqual(len(images), 1)
+        self.assertEqual(images[0]['id'], image1_id)
+
+        # Test index with filter containing multiple user-defined properties.
+        # Filter is 'property-arch=random&property-distro=ubuntu'.
+        # Verify neither images are returned.
+        req = webob.Request.blank('/images?property-arch=random&'
+                                  'property-distro=ubuntu')
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 200)
+        images = jsonutils.loads(res.body)['images']
+        self.assertEqual(len(images), 0)
+
+        # Test index with filter containing multiple user-defined properties.
+        # Filter is 'property-arch=random&property-distro=random'.
+        # Verify neither images are returned.
+        req = webob.Request.blank('/images?property-arch=random&'
+                                  'property-distro=random')
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 200)
+        images = jsonutils.loads(res.body)['images']
+        self.assertEqual(len(images), 0)
+
+        # Test index with filter containing multiple user-defined properties.
+        # Filter is 'property-boo=far&property-poo=far'.
+        # Verify neither images are returned.
+        req = webob.Request.blank('/images?property-boo=far&'
+                                  'property-poo=far')
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 200)
+        images = jsonutils.loads(res.body)['images']
+        self.assertEqual(len(images), 0)
+
+        # Test index with filter containing multiple user-defined properties.
+        # Filter is 'property-foo=bar&property-poo=far'.
+        # Verify neither images are returned.
+        req = webob.Request.blank('/images?property-foo=bar&'
+                                  'property-poo=far')
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 200)
+        images = jsonutils.loads(res.body)['images']
+        self.assertEqual(len(images), 0)
+
     def test_get_images_detailed_unauthorized(self):
         rules = {"get_images": '!'}
         self.set_policy_rules(rules)
@@ -1511,7 +2022,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
     def test_get_images_unauthorized(self):
         rules = {"get_images": '!'}
         self.set_policy_rules(rules)
-        req = webob.Request.blank('/images/detail')
+        req = webob.Request.blank('/images')
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 403)
 
@@ -1525,7 +2036,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
             req = webob.Request.blank(url)
             res = req.get_response(self.api)
             self.assertEqual(res.status_int, 200)
-            res_dict = json.loads(res.body)
+            res_dict = jsonutils.loads(res.body)
 
             images = res_dict['images']
             num_locations = sum([1 for record in images
@@ -1551,7 +2062,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req.method = 'PUT'
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 200)
-        res_body = json.loads(res.body)
+        res_body = jsonutils.loads(res.body)
         self.assertFalse('location' in res_body['image'])
 
         # Check POST
@@ -1565,7 +2076,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req.method = 'POST'
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 201)
-        res_body = json.loads(res.body)
+        res_body = jsonutils.loads(res.body)
         self.assertFalse('location' in res_body['image'])
 
     def test_image_is_checksummed(self):
@@ -1587,7 +2098,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 201)
 
-        res_body = json.loads(res.body)['image']
+        res_body = jsonutils.loads(res.body)['image']
         self.assertEqual(image_checksum, res_body['checksum'],
                          "Mismatched checksum. Expected %s, got %s" %
                          (image_checksum, res_body['checksum']))
@@ -1611,7 +2122,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 201)
 
-        image = json.loads(res.body)['image']
+        image = jsonutils.loads(res.body)['image']
 
         # HEAD the image and check the ETag equals the checksum header...
         expected_headers = {'x-image-meta-checksum': image_checksum,
@@ -1654,7 +2165,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req.method = 'GET'
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 200)
-        images = json.loads(res.body)['images']
+        images = jsonutils.loads(res.body)['images']
         self.assertEqual(len(images), 1)
 
     def test_image_meta(self):
@@ -1770,7 +2281,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 201)
 
-        res_body = json.loads(res.body)['image']
+        res_body = jsonutils.loads(res.body)['image']
         self.assertEqual('queued', res_body['status'])
 
         # Now try to delete the image...
@@ -1805,7 +2316,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 201)
 
-        res_body = json.loads(res.body)['image']
+        res_body = jsonutils.loads(res.body)['image']
         self.assertEqual('queued', res_body['status'])
 
         # Now try to delete the image...
@@ -1835,7 +2346,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 201)
 
-        res_body = json.loads(res.body)['image']
+        res_body = jsonutils.loads(res.body)['image']
         self.assertEqual('queued', res_body['status'])
 
         # Now try to delete the image...
@@ -1871,7 +2382,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 200)
 
-        memb_list = json.loads(res.body)
+        memb_list = jsonutils.loads(res.body)
         num_members = len(memb_list['members'])
         self.assertEqual(num_members, 0)
 
@@ -1885,7 +2396,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 200)
 
-        memb_list = json.loads(res.body)
+        memb_list = jsonutils.loads(res.body)
         num_members = len(memb_list['members'])
         self.assertEqual(num_members, 0)
 
@@ -1933,7 +2444,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 200)
 
-        memb_list = json.loads(res.body)
+        memb_list = jsonutils.loads(res.body)
         num_members = len(memb_list['shared_images'])
         self.assertEqual(num_members, 0)
 
@@ -1949,7 +2460,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req = webob.Request.blank('/images/%s/members' % UUID2)
         req.method = 'PUT'
         req.content_type = 'application/json'
-        req.body = json.dumps(dict(image_memberships=fixture))
+        req.body = jsonutils.dumps(dict(image_memberships=fixture))
 
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 401)
@@ -2031,7 +2542,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req = webob.Request.blank('/images/%s/members' % _gen_uuid())
         req.method = 'PUT'
         req.content_type = 'application/json'
-        req.body = json.dumps(dict(image_memberships=fixture))
+        req.body = jsonutils.dumps(dict(image_memberships=fixture))
 
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 404)
@@ -2048,7 +2559,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req = webob.Request.blank('/images/%s/members' % UUID2)
         req.method = 'PUT'
         req.content_type = 'application/json'
-        req.body = json.dumps(dict(image_memberships=fixture))
+        req.body = jsonutils.dumps(dict(image_memberships=fixture))
 
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 400)
@@ -2066,7 +2577,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req = webob.Request.blank('/images/%s/members' % UUID2)
         req.method = 'PUT'
         req.content_type = 'application/json'
-        req.body = json.dumps(dict(memberships=fixture))
+        req.body = jsonutils.dumps(dict(memberships=fixture))
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 204)
 
@@ -2080,7 +2591,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req = webob.Request.blank('/images/%s/members' % UUID1)
         req.method = 'PUT'
         req.content_type = 'application/json'
-        req.body = json.dumps(dict(memberships=fixture))
+        req.body = jsonutils.dumps(dict(memberships=fixture))
 
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, webob.exc.HTTPForbidden.code)
@@ -2095,7 +2606,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req = webob.Request.blank('/images/%s/members' % UUID1)
         req.method = 'PUT'
         req.content_type = 'application/json'
-        req.body = json.dumps(dict(memberships=fixture))
+        req.body = jsonutils.dumps(dict(memberships=fixture))
 
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, webob.exc.HTTPNoContent.code)
@@ -2137,7 +2648,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
             test_router, is_admin=True)
         req = webob.Request.blank('/images/%s/members/pattieblack' % UUID2)
         req.method = 'PUT'
-        req.body = json.dumps(dict(member=fixture))
+        req.body = jsonutils.dumps(dict(member=fixture))
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 204)
 
@@ -2242,7 +2753,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req = webob.Request.blank('/images/%s/members' % UUID2)
         req.method = 'PUT'
         req.content_type = 'application/json'
-        req.body = json.dumps(dict(memberships=fixture))
+        req.body = jsonutils.dumps(dict(memberships=fixture))
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, webob.exc.HTTPNotFound.code)
         self.assertTrue(
@@ -2255,7 +2766,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         fixture = [{'member_id': 'pattieblack', 'can_share': 'false'}]
         req = webob.Request.blank('/images/%s/members' % UUID2)
         req.method = 'PUT'
-        req.body = json.dumps(dict(memberships=fixture))
+        req.body = jsonutils.dumps(dict(memberships=fixture))
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 204)
 
@@ -2264,7 +2775,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 200)
 
-        memb_list = json.loads(res.body)
+        memb_list = jsonutils.loads(res.body)
         self.assertEqual(len(memb_list), 1)
 
     def test_replace_members_of_image_overlimit(self):
@@ -2277,7 +2788,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         fixture = [{'member_id': 'baz', 'can_share': False}]
         req = webob.Request.blank('/images/%s/members' % UUID2)
         req.method = 'PUT'
-        req.body = json.dumps(dict(memberships=fixture))
+        req.body = jsonutils.dumps(dict(memberships=fixture))
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 204)
 
@@ -2286,7 +2797,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req.method = 'GET'
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 200)
-        original_members = json.loads(res.body)['members']
+        original_members = jsonutils.loads(res.body)['members']
         self.assertEqual(len(original_members), 1)
 
         # PUT 2 image members to replace existing (overlimit)
@@ -2294,7 +2805,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
                    {'member_id': 'foo2', 'can_share': False}]
         req = webob.Request.blank('/images/%s/members' % UUID2)
         req.method = 'PUT'
-        req.body = json.dumps(dict(memberships=fixture))
+        req.body = jsonutils.dumps(dict(memberships=fixture))
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 413)
 
@@ -2305,7 +2816,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         self.assertEqual(res.status_int, 200)
 
         # Assert the member list was not changed
-        memb_list = json.loads(res.body)['members']
+        memb_list = jsonutils.loads(res.body)['members']
         self.assertEqual(memb_list, original_members)
 
     def test_replace_members_of_image_unlimited(self):
@@ -2317,7 +2828,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
                    {'member_id': 'foo2', 'can_share': False}]
         req = webob.Request.blank('/images/%s/members' % UUID2)
         req.method = 'PUT'
-        req.body = json.dumps(dict(memberships=fixture))
+        req.body = jsonutils.dumps(dict(memberships=fixture))
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 204)
 
@@ -2326,7 +2837,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 200)
 
-        memb_list = json.loads(res.body)['members']
+        memb_list = jsonutils.loads(res.body)['members']
         self.assertEqual(memb_list, fixture)
 
     def test_create_member_to_deleted_image_raises_404(self):
@@ -2397,7 +2908,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req = webob.Request.blank(test_uri % UUID2)
         req.method = 'PUT'
         req.content_type = 'application/json'
-        req.body = json.dumps(dict(member=fixture))
+        req.body = jsonutils.dumps(dict(member=fixture))
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 204)
 
@@ -2445,10 +2956,10 @@ class TestImageSerializer(base.IsolatedUnitTest):
         self.receiving_user = 'fake_user'
         self.receiving_tenant = 2
         self.context = glance.context.RequestContext(
-                is_admin=True,
-                user=self.receiving_user,
-                tenant=self.receiving_tenant)
-        self.serializer = images.ImageSerializer()
+            is_admin=True,
+            user=self.receiving_user,
+            tenant=self.receiving_tenant)
+        self.serializer = glance.api.v1.images.ImageSerializer()
 
         def image_iter():
             for x in ['chunk', '678911234', '56789']:
@@ -2667,10 +3178,9 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         # turn on property protections
         self.set_property_protections()
         self.api = test_utils.FakeAuthMiddleware(router.API(self.mapper))
-        db_api.setup_db_env()
         db_api.get_engine()
-        db_models.unregister_models(db_api._ENGINE)
-        db_models.register_models(db_api._ENGINE)
+        db_models.unregister_models(db_api.get_engine())
+        db_models.register_models(db_api.get_engine())
 
     def tearDown(self):
         """Clear the test environment"""
@@ -2679,8 +3189,8 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
 
     def destroy_fixtures(self):
         # Easiest to just drop the models and re-create them...
-        db_models.unregister_models(db_api._ENGINE)
-        db_models.register_models(db_api._ENGINE)
+        db_models.unregister_models(db_api.get_engine())
+        db_models.register_models(db_api.get_engine())
 
     def _create_admin_image(self, props={}):
         request = unit_test_utils.get_fake_request(path='/images')
@@ -2693,7 +3203,7 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         for k, v in headers.iteritems():
             request.headers[k] = v
         created_image = request.get_response(self.api)
-        res_body = json.loads(created_image.body)['image']
+        res_body = jsonutils.loads(created_image.body)['image']
         image_id = res_body['id']
         return image_id
 
@@ -2704,13 +3214,13 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         """
         image_id = self._create_admin_image()
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:member',
                    'x-image-meta-property-x_owner_foo': 'bar'}
         for k, v in headers.iteritems():
             another_request.headers[k] = v
         output = another_request.get_response(self.api)
-        res_body = json.loads(output.body)['image']
+        res_body = jsonutils.loads(output.body)['image']
         self.assertEqual(res_body['properties']['x_owner_foo'], 'bar')
 
     def test_prop_protection_with_permitted_policy_config(self):
@@ -2721,14 +3231,14 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         self.set_property_protections(use_policies=True)
         image_id = self._create_admin_image()
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:admin',
                    'x-image-meta-property-spl_create_prop_policy': 'bar'}
         for k, v in headers.iteritems():
             another_request.headers[k] = v
         output = another_request.get_response(self.api)
         self.assertEqual(output.status_int, 200)
-        res_body = json.loads(output.body)['image']
+        res_body = jsonutils.loads(output.body)['image']
         self.assertEqual(res_body['properties']['spl_create_prop_policy'],
                          'bar')
 
@@ -2739,7 +3249,7 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         """
         image_id = self._create_admin_image()
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:fake_member',
                    'x-image-meta-property-x_owner_foo': 'bar'}
         for k, v in headers.iteritems():
@@ -2756,9 +3266,9 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         permitted role 'member' can read that protected property via HEAD
         """
         image_id = self._create_admin_image(
-                {'x-image-meta-property-x_owner_foo': 'bar'})
+            {'x-image-meta-property-x_owner_foo': 'bar'})
         another_request = unit_test_utils.get_fake_request(
-                method='HEAD', path='/images/%s' % image_id)
+            method='HEAD', path='/images/%s' % image_id)
         headers = {'x-auth-token': 'user:tenant:member'}
         for k, v in headers.iteritems():
             another_request.headers[k] = v
@@ -2773,9 +3283,9 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         HEAD
         """
         image_id = self._create_admin_image(
-                {'x-image-meta-property-x_owner_foo': 'bar'})
+            {'x-image-meta-property-x_owner_foo': 'bar'})
         another_request = unit_test_utils.get_fake_request(
-                method='HEAD', path='/images/%s' % image_id)
+            method='HEAD', path='/images/%s' % image_id)
         headers = {'x-auth-token': 'user:tenant:fake_role'}
         for k, v in headers.iteritems():
             another_request.headers[k] = v
@@ -2790,9 +3300,9 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         permitted role 'member' can read that protected property via GET
         """
         image_id = self._create_admin_image(
-                {'x-image-meta-property-x_owner_foo': 'bar'})
+            {'x-image-meta-property-x_owner_foo': 'bar'})
         another_request = unit_test_utils.get_fake_request(
-                method='GET', path='/images/%s' % image_id)
+            method='GET', path='/images/%s' % image_id)
         headers = {'x-auth-token': 'user:tenant:member'}
         for k, v in headers.iteritems():
             another_request.headers[k] = v
@@ -2807,9 +3317,9 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         GET
         """
         image_id = self._create_admin_image(
-                {'x-image-meta-property-x_owner_foo': 'bar'})
+            {'x-image-meta-property-x_owner_foo': 'bar'})
         another_request = unit_test_utils.get_fake_request(
-                method='GET', path='/images/%s' % image_id)
+            method='GET', path='/images/%s' % image_id)
         headers = {'x-auth-token': 'user:tenant:fake_role'}
         for k, v in headers.iteritems():
             another_request.headers[k] = v
@@ -2825,15 +3335,15 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         /images/detail
         """
         image_id = self._create_admin_image(
-                {'x-image-meta-property-x_owner_foo': 'bar'})
+            {'x-image-meta-property-x_owner_foo': 'bar'})
         another_request = unit_test_utils.get_fake_request(
-                method='GET', path='/images/detail')
+            method='GET', path='/images/detail')
         headers = {'x-auth-token': 'user:tenant:member'}
         for k, v in headers.iteritems():
             another_request.headers[k] = v
         output = another_request.get_response(self.api)
         self.assertEqual(output.status_int, 200)
-        res_body = json.loads(output.body)['images'][0]
+        res_body = jsonutils.loads(output.body)['images'][0]
         self.assertEqual(res_body['properties']['x_owner_foo'], 'bar')
 
     def test_prop_protection_with_detail_and_permitted_policy(self):
@@ -2844,15 +3354,15 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         """
         self.set_property_protections(use_policies=True)
         image_id = self._create_admin_image(
-                {'x-image-meta-property-x_owner_foo': 'bar'})
+            {'x-image-meta-property-x_owner_foo': 'bar'})
         another_request = unit_test_utils.get_fake_request(
-                method='GET', path='/images/detail')
+            method='GET', path='/images/detail')
         headers = {'x-auth-token': 'user:tenant:member'}
         for k, v in headers.iteritems():
             another_request.headers[k] = v
         output = another_request.get_response(self.api)
         self.assertEqual(output.status_int, 200)
-        res_body = json.loads(output.body)['images'][0]
+        res_body = jsonutils.loads(output.body)['images'][0]
         self.assertEqual(res_body['properties']['x_owner_foo'], 'bar')
 
     def test_prop_protection_with_detail_and_unpermitted_role(self):
@@ -2862,15 +3372,15 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         /images/detail
         """
         image_id = self._create_admin_image(
-                {'x-image-meta-property-x_owner_foo': 'bar'})
+            {'x-image-meta-property-x_owner_foo': 'bar'})
         another_request = unit_test_utils.get_fake_request(
-                method='GET', path='/images/detail')
+            method='GET', path='/images/detail')
         headers = {'x-auth-token': 'user:tenant:fake_role'}
         for k, v in headers.iteritems():
             another_request.headers[k] = v
         output = another_request.get_response(self.api)
         self.assertEqual(output.status_int, 200)
-        res_body = json.loads(output.body)['images'][0]
+        res_body = jsonutils.loads(output.body)['images'][0]
         self.assertNotIn('x-image-meta-property-x_owner_foo',
                          res_body['properties'])
 
@@ -2882,15 +3392,15 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         """
         self.set_property_protections(use_policies=True)
         image_id = self._create_admin_image(
-                {'x-image-meta-property-x_owner_foo': 'bar'})
+            {'x-image-meta-property-x_owner_foo': 'bar'})
         another_request = unit_test_utils.get_fake_request(
-                method='GET', path='/images/detail')
+            method='GET', path='/images/detail')
         headers = {'x-auth-token': 'user:tenant:fake_role'}
         for k, v in headers.iteritems():
             another_request.headers[k] = v
         output = another_request.get_response(self.api)
         self.assertEqual(output.status_int, 200)
-        res_body = json.loads(output.body)['images'][0]
+        res_body = jsonutils.loads(output.body)['images'][0]
         self.assertNotIn('x-image-meta-property-x_owner_foo',
                          res_body['properties'])
 
@@ -2900,15 +3410,15 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         permitted role 'member' can update that protected property
         """
         image_id = self._create_admin_image(
-                {'x-image-meta-property-x_owner_foo': 'bar'})
+            {'x-image-meta-property-x_owner_foo': 'bar'})
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:member',
                    'x-image-meta-property-x_owner_foo': 'baz'}
         for k, v in headers.iteritems():
             another_request.headers[k] = v
         output = another_request.get_response(self.api)
-        res_body = json.loads(output.body)['image']
+        res_body = jsonutils.loads(output.body)['image']
         self.assertEqual(res_body['properties']['x_owner_foo'], 'baz')
 
     def test_prop_protection_with_update_and_permitted_policy(self):
@@ -2918,15 +3428,15 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         """
         self.set_property_protections(use_policies=True)
         image_id = self._create_admin_image(
-                {'x-image-meta-property-spl_default_policy': 'bar'})
+            {'x-image-meta-property-spl_default_policy': 'bar'})
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:admin',
                    'x-image-meta-property-spl_default_policy': 'baz'}
         for k, v in headers.iteritems():
             another_request.headers[k] = v
         output = another_request.get_response(self.api)
-        res_body = json.loads(output.body)['image']
+        res_body = jsonutils.loads(output.body)['image']
         self.assertEqual(res_body['properties']['spl_default_policy'], 'baz')
 
     def test_prop_protection_with_update_and_unpermitted_role(self):
@@ -2935,9 +3445,9 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         unpermitted role 'fake_role' can *not* update that protected property
         """
         image_id = self._create_admin_image(
-                {'x-image-meta-property-x_owner_foo': 'bar'})
+            {'x-image-meta-property-x_owner_foo': 'bar'})
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:fake_role',
                    'x-image-meta-property-x_owner_foo': 'baz'}
         for k, v in headers.iteritems():
@@ -2954,9 +3464,9 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         """
         self.set_property_protections(use_policies=True)
         image_id = self._create_admin_image(
-                {'x-image-meta-property-x_owner_foo': 'bar'})
+            {'x-image-meta-property-x_owner_foo': 'bar'})
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:fake_role',
                    'x-image-meta-property-x_owner_foo': 'baz'}
         for k, v in headers.iteritems():
@@ -2971,9 +3481,9 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         Test protected property cannot be updated without read permission
         """
         image_id = self._create_admin_image(
-                {'x-image-meta-property-spl_update_only_prop': 'foo'})
+            {'x-image-meta-property-spl_update_only_prop': 'foo'})
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:spl_role',
                    'x-image-meta-property-spl_update_only_prop': 'bar'}
         for k, v in headers.iteritems():
@@ -2989,15 +3499,15 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         access and the value is unchanged
         """
         image_id = self._create_admin_image(
-                {'x-image-meta-property-spl_read_prop': 'foo'})
+            {'x-image-meta-property-spl_read_prop': 'foo'})
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:spl_role',
                    'x-image-meta-property-spl_read_prop': 'foo'}
         for k, v in headers.iteritems():
             another_request.headers[k] = v
         output = another_request.get_response(self.api)
-        res_body = json.loads(output.body)['image']
+        res_body = jsonutils.loads(output.body)['image']
         self.assertEqual(res_body['properties']['spl_read_prop'], 'foo')
         self.assertEqual(output.status_int, 200)
 
@@ -3007,15 +3517,15 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         permitted role 'member' can can delete that protected property
         """
         image_id = self._create_admin_image(
-                {'x-image-meta-property-x_owner_foo': 'bar'})
+            {'x-image-meta-property-x_owner_foo': 'bar'})
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:member',
                    'X-Glance-Registry-Purge-Props': 'True'}
         for k, v in headers.iteritems():
             another_request.headers[k] = v
         output = another_request.get_response(self.api)
-        res_body = json.loads(output.body)['image']
+        res_body = jsonutils.loads(output.body)['image']
         self.assertEqual(res_body['properties'], {})
 
     def test_prop_protection_with_delete_and_permitted_policy(self):
@@ -3025,15 +3535,15 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         """
         self.set_property_protections(use_policies=True)
         image_id = self._create_admin_image(
-                {'x-image-meta-property-x_owner_foo': 'bar'})
+            {'x-image-meta-property-x_owner_foo': 'bar'})
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:member',
                    'X-Glance-Registry-Purge-Props': 'True'}
         for k, v in headers.iteritems():
             another_request.headers[k] = v
         output = another_request.get_response(self.api)
-        res_body = json.loads(output.body)['image']
+        res_body = jsonutils.loads(output.body)['image']
         self.assertEqual(res_body['properties'], {})
 
     def test_prop_protection_with_delete_and_unpermitted_read(self):
@@ -3041,10 +3551,10 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         Test protected property cannot be deleted without read permission
         """
         image_id = self._create_admin_image(
-                {'x-image-meta-property-x_owner_foo': 'bar'})
+            {'x-image-meta-property-x_owner_foo': 'bar'})
 
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:fake_role',
                    'X-Glance-Registry-Purge-Props': 'True'}
         for k, v in headers.iteritems():
@@ -3054,7 +3564,7 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         self.assertNotIn('x-image-meta-property-x_owner_foo', output.headers)
 
         another_request = unit_test_utils.get_fake_request(
-                method='HEAD', path='/images/%s' % image_id)
+            method='HEAD', path='/images/%s' % image_id)
         headers = {'x-auth-token': 'user:tenant:admin'}
         for k, v in headers.iteritems():
             another_request.headers[k] = v
@@ -3069,10 +3579,10 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         Test protected property cannot be deleted without delete permission
         """
         image_id = self._create_admin_image(
-                {'x-image-meta-property-spl_update_prop': 'foo'})
+            {'x-image-meta-property-spl_update_prop': 'foo'})
 
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:spl_role',
                    'X-Glance-Registry-Purge-Props': 'True'}
         for k, v in headers.iteritems():
@@ -3083,7 +3593,7 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
                       "spl_update_prop", output.body)
 
         another_request = unit_test_utils.get_fake_request(
-                method='HEAD', path='/images/%s' % image_id)
+            method='HEAD', path='/images/%s' % image_id)
         headers = {'x-auth-token': 'user:tenant:admin'}
         for k, v in headers.iteritems():
             another_request.headers[k] = v
@@ -3091,7 +3601,7 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         self.assertEqual(output.status_int, 200)
         self.assertEqual('', output.body)
         self.assertEqual(
-                output.headers['x-image-meta-property-spl_update_prop'], 'foo')
+            output.headers['x-image-meta-property-spl_update_prop'], 'foo')
 
     def test_read_protected_props_leak_with_update(self):
         """
@@ -3099,37 +3609,37 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         are not disclosed
         """
         image_id = self._create_admin_image(
-                {'x-image-meta-property-spl_update_prop': '0',
-                 'x-image-meta-property-foo': 'bar'})
+            {'x-image-meta-property-spl_update_prop': '0',
+             'x-image-meta-property-foo': 'bar'})
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:spl_role',
                    'x-image-meta-property-spl_update_prop': '1',
                    'X-Glance-Registry-Purge-Props': 'False'}
         for k, v in headers.iteritems():
             another_request.headers[k] = v
         output = another_request.get_response(self.api)
-        res_body = json.loads(output.body)['image']
+        res_body = jsonutils.loads(output.body)['image']
         self.assertEqual(res_body['properties']['spl_update_prop'], '1')
         self.assertNotIn('foo', res_body['properties'])
 
     def test_update_protected_props_mix_no_read(self):
         """
         Create an image with two props - one only readable by admin, and one
-        readable/updatable by member.  Verify member can sucessfully update
+        readable/updatable by member.  Verify member can successfully update
         their property while the admin owned one is ignored transparently
         """
         image_id = self._create_admin_image(
-                {'x-image-meta-property-admin_foo': 'bar',
-                 'x-image-meta-property-x_owner_foo': 'bar'})
+            {'x-image-meta-property-admin_foo': 'bar',
+             'x-image-meta-property-x_owner_foo': 'bar'})
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:member',
                    'x-image-meta-property-x_owner_foo': 'baz'}
         for k, v in headers.iteritems():
             another_request.headers[k] = v
         output = another_request.get_response(self.api)
-        res_body = json.loads(output.body)['image']
+        res_body = jsonutils.loads(output.body)['image']
         self.assertEqual(res_body['properties']['x_owner_foo'], 'baz')
         self.assertNotIn('admin_foo', res_body['properties'])
 
@@ -3146,7 +3656,7 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         }
         image_id = self._create_admin_image(custom_props)
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
 
         # verify spl_role can update it's prop
         headers = {'x-auth-token': 'user:tenant:spl_role',
@@ -3155,7 +3665,7 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         for k, v in headers.iteritems():
             another_request.headers[k] = v
         output = another_request.get_response(self.api)
-        res_body = json.loads(output.body)['image']
+        res_body = jsonutils.loads(output.body)['image']
         self.assertEqual(output.status_int, 200)
         self.assertEqual(res_body['properties']['spl_read_only_prop'], '1')
         self.assertEqual(res_body['properties']['spl_update_prop'], '1')
@@ -3172,20 +3682,20 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
     def test_delete_protected_props_mix_no_read(self):
         """
         Create an image with two props - one only readable by admin, and one
-        readable/deletable by member.  Verify member can sucessfully delete
+        readable/deletable by member.  Verify member can successfully delete
         their property while the admin owned one is ignored transparently
         """
         image_id = self._create_admin_image(
-                {'x-image-meta-property-admin_foo': 'bar',
-                 'x-image-meta-property-x_owner_foo': 'bar'})
+            {'x-image-meta-property-admin_foo': 'bar',
+                'x-image-meta-property-x_owner_foo': 'bar'})
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:member',
                    'X-Glance-Registry-Purge-Props': 'True'}
         for k, v in headers.iteritems():
             another_request.headers[k] = v
         output = another_request.get_response(self.api)
-        res_body = json.loads(output.body)['image']
+        res_body = jsonutils.loads(output.body)['image']
         self.assertNotIn('x_owner_foo', res_body['properties'])
         self.assertNotIn('admin_foo', res_body['properties'])
 
@@ -3202,7 +3712,7 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         }
         image_id = self._create_admin_image(custom_props)
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:spl_role',
                    'X-Glance-Registry-Purge-Props': 'True'}
         for k, v in headers.iteritems():
@@ -3217,13 +3727,13 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         """
         image_id = self._create_admin_image()
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:joe_soap',
                    'x-image-meta-property-x_all_permitted': '1'}
         for k, v in headers.iteritems():
             another_request.headers[k] = v
         output = another_request.get_response(self.api)
-        res_body = json.loads(output.body)['image']
+        res_body = jsonutils.loads(output.body)['image']
         self.assertEqual(res_body['properties']['x_all_permitted'], '1')
 
     def test_read_non_protected_prop(self):
@@ -3236,7 +3746,7 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         }
         image_id = self._create_admin_image(custom_props)
         another_request = unit_test_utils.get_fake_request(
-                method='HEAD', path='/images/%s' % image_id)
+            method='HEAD', path='/images/%s' % image_id)
         headers = {'x-auth-token': 'user:tenant:joe_soap'}
         for k, v in headers.iteritems():
             another_request.headers[k] = v
@@ -3244,7 +3754,7 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         self.assertEqual(output.status_int, 200)
         self.assertEqual('', output.body)
         self.assertEqual(
-                output.headers['x-image-meta-property-x_all_permitted'], '1')
+            output.headers['x-image-meta-property-x_all_permitted'], '1')
 
     def test_update_non_protected_prop(self):
         """
@@ -3252,15 +3762,15 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         role
         """
         image_id = self._create_admin_image(
-                {'x-image-meta-property-x_all_permitted': '1'})
+            {'x-image-meta-property-x_all_permitted': '1'})
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:joe_soap',
                    'x-image-meta-property-x_all_permitted': '2'}
         for k, v in headers.iteritems():
             another_request.headers[k] = v
         output = another_request.get_response(self.api)
-        res_body = json.loads(output.body)['image']
+        res_body = jsonutils.loads(output.body)['image']
         self.assertEqual(res_body['properties']['x_all_permitted'], '2')
 
     def test_delete_non_protected_prop(self):
@@ -3269,24 +3779,24 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         role
         """
         image_id = self._create_admin_image(
-                {'x-image-meta-property-x_all_permitted': '1'})
+            {'x-image-meta-property-x_all_permitted': '1'})
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:joe_soap',
                    'X-Glance-Registry-Purge-Props': 'True'}
         for k, v in headers.iteritems():
             another_request.headers[k] = v
         output = another_request.get_response(self.api)
-        res_body = json.loads(output.body)['image']
+        res_body = jsonutils.loads(output.body)['image']
         self.assertEqual(res_body['properties'], {})
 
     def test_create_locked_down_protected_prop(self):
         """
-        Verify a property protected by special char '!' is creatable by noone
+        Verify a property protected by special char '!' is creatable by no one
         """
         image_id = self._create_admin_image()
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:member',
                    'x-image-meta-property-x_none_permitted': '1'}
         for k, v in headers.iteritems():
@@ -3295,7 +3805,7 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         self.assertEqual(output.status_int, 403)
         # also check admin can not create
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:admin',
                    'x-image-meta-property-x_none_permitted_admin': '1'}
         for k, v in headers.iteritems():
@@ -3305,14 +3815,14 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
 
     def test_read_locked_down_protected_prop(self):
         """
-        Verify a property protected by special char '!' is readable by noone
+        Verify a property protected by special char '!' is readable by no one
         """
         custom_props = {
             'x-image-meta-property-x_none_read': '1'
         }
         image_id = self._create_admin_image(custom_props)
         another_request = unit_test_utils.get_fake_request(
-                method='HEAD', path='/images/%s' % image_id)
+            method='HEAD', path='/images/%s' % image_id)
         headers = {'x-auth-token': 'user:tenant:member'}
         for k, v in headers.iteritems():
             another_request.headers[k] = v
@@ -3321,7 +3831,7 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         self.assertNotIn('x_none_read', output.headers)
         # also check admin can not read
         another_request = unit_test_utils.get_fake_request(
-                method='HEAD', path='/images/%s' % image_id)
+            method='HEAD', path='/images/%s' % image_id)
         headers = {'x-auth-token': 'user:tenant:admin'}
         for k, v in headers.iteritems():
             another_request.headers[k] = v
@@ -3331,12 +3841,12 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
 
     def test_update_locked_down_protected_prop(self):
         """
-        Verify a property protected by special char '!' is updatable by noone
+        Verify a property protected by special char '!' is updatable by no one
         """
         image_id = self._create_admin_image(
-                {'x-image-meta-property-x_none_update': '1'})
+            {'x-image-meta-property-x_none_update': '1'})
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:member',
                    'x-image-meta-property-x_none_update': '2'}
         for k, v in headers.iteritems():
@@ -3345,7 +3855,7 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         self.assertEqual(output.status_int, 403)
         # also check admin can't update property
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:admin',
                    'x-image-meta-property-x_none_update': '2'}
         for k, v in headers.iteritems():
@@ -3355,12 +3865,12 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
 
     def test_delete_locked_down_protected_prop(self):
         """
-        Verify a property protected by special char '!' is deletable by noone
+        Verify a property protected by special char '!' is deletable by no one
         """
         image_id = self._create_admin_image(
-                {'x-image-meta-property-x_none_delete': '1'})
+            {'x-image-meta-property-x_none_delete': '1'})
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:member',
                    'X-Glance-Registry-Purge-Props': 'True'}
         for k, v in headers.iteritems():
@@ -3369,7 +3879,7 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         self.assertEqual(output.status_int, 403)
         # also check admin can't delete
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:admin',
                    'X-Glance-Registry-Purge-Props': 'True'}
         for k, v in headers.iteritems():
@@ -3384,10 +3894,9 @@ class TestAPIPropertyQuotas(base.IsolatedUnitTest):
         super(TestAPIPropertyQuotas, self).setUp()
         self.mapper = routes.Mapper()
         self.api = test_utils.FakeAuthMiddleware(router.API(self.mapper))
-        db_api.setup_db_env()
         db_api.get_engine()
-        db_models.unregister_models(db_api._ENGINE)
-        db_models.register_models(db_api._ENGINE)
+        db_models.unregister_models(db_api.get_engine())
+        db_models.register_models(db_api.get_engine())
 
     def _create_admin_image(self, props={}):
         request = unit_test_utils.get_fake_request(path='/images')
@@ -3400,7 +3909,7 @@ class TestAPIPropertyQuotas(base.IsolatedUnitTest):
         for k, v in headers.iteritems():
             request.headers[k] = v
         created_image = request.get_response(self.api)
-        res_body = json.loads(created_image.body)['image']
+        res_body = jsonutils.loads(created_image.body)['image']
         image_id = res_body['id']
         return image_id
 
@@ -3411,7 +3920,7 @@ class TestAPIPropertyQuotas(base.IsolatedUnitTest):
         self.config(image_property_quota=1)
         image_id = self._create_admin_image()
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:joe_soap',
                    'x-image-meta-property-x_all_permitted': '1',
                    'x-image-meta-property-x_all_permitted_foo': '2'}
@@ -3439,11 +3948,11 @@ class TestAPIPropertyQuotas(base.IsolatedUnitTest):
         for k, v in headers.iteritems():
             request.headers[k] = v
         created_image = request.get_response(self.api)
-        res_body = json.loads(created_image.body)['image']
+        res_body = jsonutils.loads(created_image.body)['image']
         image_id = res_body['id']
 
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:joe_soap',
                    'x-glance-registry-purge-props': 'False',
                    'x-image-meta-property-x_all_permitted': '1'}
@@ -3471,11 +3980,11 @@ class TestAPIPropertyQuotas(base.IsolatedUnitTest):
         for k, v in headers.iteritems():
             request.headers[k] = v
         created_image = request.get_response(self.api)
-        res_body = json.loads(created_image.body)['image']
+        res_body = jsonutils.loads(created_image.body)['image']
         image_id = res_body['id']
 
         another_request = unit_test_utils.get_fake_request(
-                path='/images/%s' % image_id, method='PUT')
+            path='/images/%s' % image_id, method='PUT')
         headers = {'x-auth-token': 'user:tenant:joe_soap',
                    'x-glance-registry-purge-props': 'False',
                    'x-image-meta-property-x_all_permitted_create': '3',
@@ -3486,6 +3995,6 @@ class TestAPIPropertyQuotas(base.IsolatedUnitTest):
         output = another_request.get_response(self.api)
 
         self.assertEqual(output.status_int, 200)
-        res_body = json.loads(output.body)['image']
+        res_body = jsonutils.loads(output.body)['image']
         self.assertEqual(res_body['properties']['x_all_permitted'], '1')
         self.assertEqual(res_body['properties']['x_all_permitted_create'], '3')

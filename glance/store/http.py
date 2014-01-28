@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2010 OpenStack Foundation
 # All Rights Reserved.
 #
@@ -152,6 +150,9 @@ class Store(glance.store.base.Store):
 
     def _query(self, location, verb, depth=0):
         if depth > MAX_REDIRECTS:
+            reason = (_("The HTTP URL exceeded %s maximum "
+                        "redirects.") % MAX_REDIRECTS)
+            LOG.debug(reason)
             raise exception.MaxRedirectsExceeded(redirects=MAX_REDIRECTS)
         loc = location.store_location
         conn_class = self._get_conn_class(loc)
@@ -162,13 +163,15 @@ class Store(glance.store.base.Store):
         # Check for bad status codes
         if resp.status >= 400:
             reason = _("HTTP URL returned a %s status code.") % resp.status
+            LOG.debug(reason)
             raise exception.BadStoreUri(loc.path, reason)
 
         location_header = resp.getheader("location")
         if location_header:
             if resp.status not in (301, 302):
-                reason = _("The HTTP URL attempted to redirect with an "
-                           "invalid status code.")
+                reason = (_("The HTTP URL attempted to redirect with an "
+                            "invalid %s status code.") % resp.status)
+                LOG.debug(reason)
                 raise exception.BadStoreUri(loc.path, reason)
             location_class = glance.store.location.Location
             new_loc = location_class(location.store_name,

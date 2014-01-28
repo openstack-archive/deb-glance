@@ -63,20 +63,25 @@ class ImageFactoryStub(object):
 
 
 class MemberRepoStub(object):
-    def add(self, *args, **kwargs):
-        return 'member_repo_add'
+    def add(self, image_member):
+        image_member.output = 'member_repo_add'
 
     def get(self, *args, **kwargs):
         return 'member_repo_get'
 
-    def save(self, *args, **kwargs):
-        return 'member_repo_save'
+    def save(self, image_member):
+        image_member.output = 'member_repo_save'
 
     def list(self, *args, **kwargs):
         return 'member_repo_list'
 
-    def remove(self, *args, **kwargs):
-        return 'member_repo_remove'
+    def remove(self, image_member):
+        image_member.output = 'member_repo_remove'
+
+
+class ImageMembershipStub(object):
+    def __init__(self, output=None):
+        self.output = output
 
 
 class TaskRepoStub(object):
@@ -95,7 +100,7 @@ class TaskStub(object):
         self.task_id = task_id
         self.status = 'pending'
 
-    def run(self):
+    def run(self, executor):
         self.status = 'processing'
 
 
@@ -225,7 +230,7 @@ class TestImagePolicy(test_utils.BaseTestCase):
         image_repo = glance.api.policy.ImageRepoProxy(self.image_repo_stub,
                                                       {}, self.policy)
         output = image_repo.get(UUID1)
-        self.assertTrue(isinstance(output, glance.api.policy.ImageProxy))
+        self.assertIsInstance(output, glance.api.policy.ImageProxy)
         self.assertEqual(output.image, 'image_from_get')
         self.policy.enforce.assert_called_once_with({}, "get_image", {})
 
@@ -241,7 +246,7 @@ class TestImagePolicy(test_utils.BaseTestCase):
                                                       {}, self.policy)
         images = image_repo.list()
         for i, image in enumerate(images):
-            self.assertTrue(isinstance(image, glance.api.policy.ImageProxy))
+            self.assertIsInstance(image, glance.api.policy.ImageProxy)
             self.assertEqual(image.image, 'image_from_list_%d' % i)
             self.policy.enforce.assert_called_once_with({}, "get_images", {})
 
@@ -278,14 +283,14 @@ class TestImagePolicy(test_utils.BaseTestCase):
     def test_new_image_visibility(self):
         self.policy.enforce.side_effect = exception.Forbidden
         image_factory = glance.api.policy.ImageFactoryProxy(
-                self.image_factory_stub, {}, self.policy)
+            self.image_factory_stub, {}, self.policy)
         self.assertRaises(exception.Forbidden, image_factory.new_image,
                           visibility='public')
         self.policy.enforce.assert_called_once_with({}, "publicize_image", {})
 
     def test_new_image_visibility_public_allowed(self):
         image_factory = glance.api.policy.ImageFactoryProxy(
-                self.image_factory_stub, {}, self.policy)
+            self.image_factory_stub, {}, self.policy)
         image_factory.new_image(visibility='public')
         self.policy.enforce.assert_called_once_with({}, "publicize_image", {})
 
@@ -316,8 +321,9 @@ class TestMemberPolicy(test_utils.BaseTestCase):
         self.policy.enforce.assert_called_once_with({}, "add_member", {})
 
     def test_add_member_allowed(self):
-        output = self.member_repo.add('')
-        self.assertEqual(output, 'member_repo_add')
+        image_member = ImageMembershipStub()
+        self.member_repo.add(image_member)
+        self.assertEqual(image_member.output, 'member_repo_add')
         self.policy.enforce.assert_called_once_with({}, "add_member", {})
 
     def test_get_member_not_allowed(self):
@@ -336,8 +342,9 @@ class TestMemberPolicy(test_utils.BaseTestCase):
         self.policy.enforce.assert_called_once_with({}, "modify_member", {})
 
     def test_modify_member_allowed(self):
-        output = self.member_repo.save('')
-        self.assertEqual(output, 'member_repo_save')
+        image_member = ImageMembershipStub()
+        self.member_repo.save(image_member)
+        self.assertEqual(image_member.output, 'member_repo_save')
         self.policy.enforce.assert_called_once_with({}, "modify_member", {})
 
     def test_get_members_not_allowed(self):
@@ -356,8 +363,9 @@ class TestMemberPolicy(test_utils.BaseTestCase):
         self.policy.enforce.assert_called_once_with({}, "delete_member", {})
 
     def test_delete_member_allowed(self):
-        output = self.member_repo.remove('')
-        self.assertEqual(output, 'member_repo_remove')
+        image_member = ImageMembershipStub()
+        self.member_repo.remove(image_member)
+        self.assertEqual(image_member.output, 'member_repo_remove')
         self.policy.enforce.assert_called_once_with({}, "delete_member", {})
 
 
@@ -388,7 +396,7 @@ class TestTaskPolicy(test_utils.BaseTestCase):
             self.policy
         )
         output = task_repo.get(UUID1)
-        self.assertTrue(isinstance(output, glance.api.policy.TaskProxy))
+        self.assertIsInstance(output, glance.api.policy.TaskProxy)
         self.assertEqual(output.task, 'task_from_get')
 
     def test_get_tasks_not_allowed(self):
@@ -411,7 +419,7 @@ class TestTaskPolicy(test_utils.BaseTestCase):
         )
         tasks = task_repo.list()
         for i, task in enumerate(tasks):
-            self.assertTrue(isinstance(task, glance.api.policy.TaskProxy))
+            self.assertIsInstance(task, glance.api.policy.TaskProxy)
             self.assertEqual(task.task, 'task_from_list_%d' % i)
 
     def test_add_task_not_allowed(self):

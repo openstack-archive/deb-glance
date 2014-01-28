@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2013, Red Hat, Inc.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -43,6 +41,37 @@ def _enforce_image_tag_quota(tags):
     if len(tags) > CONF.image_tag_quota:
         raise exception.ImageTagLimitExceeded(attempted=len(tags),
                                               maximum=CONF.image_tag_quota)
+
+
+def _calc_required_size(context, image, locations):
+    required_size = None
+    if image.size:
+        required_size = image.size * len(locations)
+    else:
+        for location in locations:
+            size_from_backend = None
+            try:
+                size_from_backend = glance.store.get_size_from_backend(
+                    context, location['url'])
+            except (exception.UnknownScheme, exception.NotFound):
+                pass
+            if size_from_backend:
+                required_size = size_from_backend * len(locations)
+                break
+    return required_size
+
+
+def _enforce_image_location_quota(image, locations, is_setter=False):
+    if CONF.image_location_quota < 0:
+        # If value is negative, allow unlimited number of locations
+        return
+
+    attempted = len(image.locations) + len(locations)
+    attempted = attempted if not is_setter else len(locations)
+    maximum = CONF.image_location_quota
+    if attempted > maximum:
+        raise exception.ImageLocationLimitExceeded(attempted=attempted,
+                                                   maximum=maximum)
 
 
 class ImageRepoProxy(glance.domain.proxy.Repo):
@@ -177,7 +206,7 @@ class QuotaImageLocationsProxy(object):
     def __iadd__(self, other):
         if not hasattr(other, '__iter__'):
             raise TypeError()
-        self._check_quota(len(list(other)))
+        self._check_user_storage_quota(other)
         return self.locations.__iadd__(other)
 
     def __iter__(self, *args, **kwargs):
@@ -204,23 +233,25 @@ class QuotaImageLocationsProxy(object):
     def reverse(self, *args, **kwargs):
         return self.locations.reverse(*args, **kwargs)
 
-    def __getitem__(self, *args, **kwargs):
-        return self.locations.__getitem__(*args, **kwargs)
-
-    def _check_quota(self, count):
-        glance.api.common.check_quota(
-            self.context, self.image.size * count, self.db_api)
+    def _check_user_storage_quota(self, locations):
+        required_size = _calc_required_size(self.context,
+                                            self.image,
+                                            locations)
+        glance.api.common.check_quota(self.context,
+                                      required_size,
+                                      self.db_api)
+        _enforce_image_location_quota(self.image, locations)
 
     def append(self, object):
-        self._check_quota(1)
+        self._check_user_storage_quota([object])
         return self.locations.append(object)
 
     def insert(self, index, object):
-        self._check_quota(1)
+        self._check_user_storage_quota([object])
         return self.locations.insert(index, object)
 
     def extend(self, iter):
-        self._check_quota(len(list(iter)))
+        self._check_user_storage_quota(iter)
         return self.locations.extend(iter)
 
 
@@ -246,9 +277,28 @@ class ImageProxy(glance.domain.proxy.Image):
                                              remaining=remaining)
 
         # NOTE(jbresnah) If two uploads happen at the same time and neither
-        # properly sets the size attribute than there is a race condition
-        # that will allow for the quota to be broken.  Thus we must recheck
-        # the quota after the upload and thus after we know the size
+        # properly sets the size attribute[1] then there is a race condition
+        # that will allow for the quota to be broken[2].  Thus we must recheck
+        # the quota after the upload and thus after we know the size.
+        #
+        # Also, when an upload doesn't set the size properly then the call to
+        # check_quota above returns None and so utils.LimitingReader is not
+        # used above. Hence the store (e.g.  filesystem store) may have to
+        # download the entire file before knowing the actual file size.  Here
+        # also we need to check for the quota again after the image has been
+        # downloaded to the store.
+        #
+        # [1] For e.g. when using chunked transfers the 'Content-Length'
+        #     header is not set.
+        # [2] For e.g.:
+        #       - Upload 1 does not exceed quota but upload 2 exceeds quota.
+        #         Both uploads are to different locations
+        #       - Upload 2 completes before upload 1 and writes image.size.
+        #       - Immediately, upload 1 completes and (over)writes image.size
+        #         with the smaller size.
+        #       - Now, to glance, image has not exceeded quota but, in
+        #         reality, the quota has been exceeded.
+
         try:
             glance.api.common.check_quota(
                 self.context, self.image.size, self.db_api,
@@ -258,7 +308,7 @@ class ImageProxy(glance.domain.proxy.Image):
                      % self.image.image_id)
             location = self.image.locations[0]['url']
             glance.store.safe_delete_from_backend(
-                location, self.context, self.image.image_id)
+                self.context, location, self.image.image_id)
             raise
 
     @property
@@ -278,9 +328,16 @@ class ImageProxy(glance.domain.proxy.Image):
 
     @locations.setter
     def locations(self, value):
+        _enforce_image_location_quota(self.image, value, is_setter=True)
+
         if not isinstance(value, (list, QuotaImageLocationsProxy)):
             raise exception.Invalid(_('Invalid locations: %s') % value)
+
+        required_size = _calc_required_size(self.context,
+                                            self.image,
+                                            value)
+
         glance.api.common.check_quota(
-            self.context, self.image.size * len(value), self.db_api,
+            self.context, required_size, self.db_api,
             image_id=self.image.image_id)
         self.image.locations = value

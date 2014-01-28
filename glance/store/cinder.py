@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-#
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
 #    a copy of the License at
@@ -21,10 +19,9 @@ from cinderclient.v2 import client as cinderclient
 from oslo.config import cfg
 
 from glance.common import exception
+from glance.common import utils
 import glance.openstack.common.log as logging
 from glance.openstack.common import units
-import glance.openstack.common.uuidutils as uuidutils
-import glance.store
 import glance.store.base
 import glance.store.location
 
@@ -125,7 +122,7 @@ class StoreLocation(glance.store.location.StoreLocation):
         self.scheme = 'cinder'
         self.volume_id = uri[9:]
 
-        if not uuidutils.is_uuid_like(self.volume_id):
+        if not utils.is_uuid_like(self.volume_id):
             reason = _("URI contains invalid volume ID: %s") % self.volume_id
             LOG.error(reason)
             raise exception.BadStoreUri(uri, reason)

@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2011 OpenStack Foundation
 # All Rights Reserved.
 #
@@ -17,9 +15,9 @@
 
 import hashlib
 import httplib2
-import json
 import os
 
+from glance.openstack.common import jsonutils
 from glance.openstack.common import units
 from glance.tests import functional
 from glance.tests.utils import execute, minimal_headers
@@ -60,7 +58,7 @@ class TestMiscellaneous(functional.FunctionalTest):
         response, content = http.request(path, 'POST', headers=headers,
                                          body=image_data)
         self.assertEqual(response.status, 201)
-        data = json.loads(content)
+        data = jsonutils.loads(content)
         self.assertEqual(data['image']['checksum'],
                          hashlib.md5(image_data).hexdigest())
         self.assertEqual(data['image']['size'], FIVE_KB)
@@ -81,7 +79,7 @@ class TestMiscellaneous(functional.FunctionalTest):
         self.assertEqual(response['x-image-meta-name'], "Image1")
 
         # 4. GET /images/1
-        # Verify the api throws the apropriate 404 error
+        # Verify the api throws the appropriate 404 error
         path = "http://%s:%d/v1/images/1" % ("127.0.0.1", self.api_port)
         http = httplib2.Http()
         response, content = http.request(path, 'GET')

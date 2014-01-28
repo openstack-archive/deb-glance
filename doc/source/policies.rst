@@ -52,7 +52,14 @@ The actions that may have a rule enforced on them are:
 
 * ``upload_image`` - Upload binary image data
 
+  * ``POST /v1/images``
+  * ``PUT /v1/images/<IMAGE_ID>``
   * ``PUT /v2/images/<IMAGE_ID>/file``
+
+* ``copy_from`` - Copy binary image data from URL
+
+  * ``POST /v1/images``
+  * ``PUT /v1/images/<IMAGE_ID>``
 
 * ``add_image`` - Create an image entity
 

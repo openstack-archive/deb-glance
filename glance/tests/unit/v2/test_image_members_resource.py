@@ -14,12 +14,12 @@
 #    under the License.
 
 import datetime
-import json
 
 from oslo.config import cfg
 import webob
 
 import glance.api.v2.image_members
+from glance.openstack.common import jsonutils
 import glance.tests.unit.utils as unit_test_utils
 import glance.tests.utils as test_utils
 
@@ -342,7 +342,7 @@ class TestImageMembersController(test_utils.BaseTestCase):
         self.assertEqual(res.body, '')
         self.assertEqual(res.status_code, 204)
         found_member = self.db.image_member_find(
-                request.context, image_id=image_id, member=member_id)
+            request.context, image_id=image_id, member=member_id)
         self.assertEqual(found_member, [])
 
     def test_delete_by_member(self):
@@ -403,7 +403,7 @@ class TestImageMembersController(test_utils.BaseTestCase):
         member_id = 'fake-member-id'
         image_id = UUID2
         found_member = self.db.image_member_find(
-                request.context, image_id=image_id, member=member_id)
+            request.context, image_id=image_id, member=member_id)
         self.assertEqual(found_member, [])
         self.assertRaises(webob.exc.HTTPNotFound, self.controller.delete,
                           request, image_id, member_id)
@@ -449,7 +449,7 @@ class TestImageMembersSerializer(test_utils.BaseTestCase):
         response = webob.Response(request=request)
         result = {'members': self.fixtures}
         self.serializer.index(response, result)
-        actual = json.loads(response.body)
+        actual = jsonutils.loads(response.body)
         self.assertEqual(expected, actual)
         self.assertEqual('application/json', response.content_type)
 
@@ -467,7 +467,7 @@ class TestImageMembersSerializer(test_utils.BaseTestCase):
         response = webob.Response(request=request)
         result = self.fixtures[0]
         self.serializer.show(response, result)
-        actual = json.loads(response.body)
+        actual = jsonutils.loads(response.body)
         self.assertEqual(expected, actual)
         self.assertEqual('application/json', response.content_type)
 
@@ -483,7 +483,7 @@ class TestImageMembersSerializer(test_utils.BaseTestCase):
         response = webob.Response(request=request)
         result = self.fixtures[0]
         self.serializer.create(response, result)
-        actual = json.loads(response.body)
+        actual = jsonutils.loads(response.body)
         self.assertEqual(expected, actual)
         self.assertEqual('application/json', response.content_type)
 
@@ -499,7 +499,7 @@ class TestImageMembersSerializer(test_utils.BaseTestCase):
         response = webob.Response(request=request)
         result = self.fixtures[0]
         self.serializer.update(response, result)
-        actual = json.loads(response.body)
+        actual = jsonutils.loads(response.body)
         self.assertEqual(expected, actual)
         self.assertEqual('application/json', response.content_type)
 
@@ -512,7 +512,7 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
 
     def test_create(self):
         request = unit_test_utils.get_fake_request()
-        request.body = json.dumps({'member': TENANT1})
+        request.body = jsonutils.dumps({'member': TENANT1})
         image_id = UUID1
         output = self.deserializer.create(request)
         expected = {'member_id': TENANT1}
@@ -521,7 +521,7 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
     def test_create_invalid(self):
         request = unit_test_utils.get_fake_request()
         image_id = UUID1
-        request.body = json.dumps({'mem': TENANT1})
+        request.body = jsonutils.dumps({'mem': TENANT1})
         self.assertRaises(webob.exc.HTTPBadRequest, self.deserializer.create,
                           request)
 
@@ -532,13 +532,13 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
 
     def test_create_member_empty(self):
         request = unit_test_utils.get_fake_request()
-        request.body = json.dumps({'member': ''})
+        request.body = jsonutils.dumps({'member': ''})
         self.assertRaises(webob.exc.HTTPBadRequest, self.deserializer.create,
                           request)
 
     def test_update(self):
         request = unit_test_utils.get_fake_request()
-        request.body = json.dumps({'status': 'accepted'})
+        request.body = jsonutils.dumps({'status': 'accepted'})
         image_id = UUID1
         member_id = TENANT1
         output = self.deserializer.update(request)
@@ -549,7 +549,7 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
         request = unit_test_utils.get_fake_request()
         image_id = UUID1
         member_id = TENANT1
-        request.body = json.dumps({'mem': TENANT1})
+        request.body = jsonutils.dumps({'mem': TENANT1})
         self.assertRaises(webob.exc.HTTPBadRequest, self.deserializer.update,
                           request)
 

@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2013 OpenStack Foundation
 # All Rights Reserved.
 #
@@ -20,6 +18,7 @@
 """
 
 import copy
+import urlparse
 
 import eventlet
 from oslo.config import cfg
@@ -45,6 +44,7 @@ import glance.openstack.common.log as logging
 from glance.openstack.common import strutils
 import glance.registry.client.v1.api as registry
 from glance.store import (get_from_backend,
+                          get_known_schemes,
                           get_size_from_backend,
                           get_store_from_location,
                           get_store_from_scheme)
@@ -55,8 +55,9 @@ SUPPORTED_FILTERS = glance.api.v1.SUPPORTED_FILTERS
 ACTIVE_IMMUTABLE = glance.api.v1.ACTIVE_IMMUTABLE
 
 CONF = cfg.CONF
-CONF.import_opt('disk_formats', 'glance.domain')
-CONF.import_opt('container_formats', 'glance.domain')
+CONF.import_opt('disk_formats', 'glance.common.config', group='image_format')
+CONF.import_opt('container_formats', 'glance.common.config',
+                group='image_format')
 CONF.import_opt('image_property_quota', 'glance.common.config')
 
 
@@ -67,12 +68,12 @@ def validate_image_meta(req, values):
     container_format = values.get('container_format')
 
     if 'disk_format' in values:
-        if disk_format not in CONF.disk_formats:
+        if disk_format not in CONF.image_format.disk_formats:
             msg = "Invalid disk format '%s' for image." % disk_format
             raise HTTPBadRequest(explanation=msg, request=req)
 
     if 'container_format' in values:
-        if container_format not in CONF.container_formats:
+        if container_format not in CONF.image_format.container_formats:
             msg = "Invalid container format '%s' for image." % container_format
             raise HTTPBadRequest(explanation=msg, request=req)
 
@@ -226,7 +227,7 @@ class Controller(controller.BaseController):
         if property_utils.is_property_protection_enabled():
             for key in update_props:
                 has_read = self.prop_enforcer.check_property_rules(
-                        key, 'read', req.context)
+                    key, 'read', req.context)
                 if ((self.prop_enforcer.check_property_rules(
                         key, 'update', req.context) is False and
                         image_meta['properties'][key] !=
@@ -406,8 +407,11 @@ class Controller(controller.BaseController):
         If the above constraint is violated, we reject with 400 "Bad Request".
         """
         if source:
-            for scheme in ['s3', 'swift', 'http', 'rbd', 'sheepdog', 'cinder']:
-                if source.lower().startswith(scheme):
+            pieces = urlparse.urlparse(source)
+            schemes = [scheme for scheme in get_known_schemes()
+                       if scheme != 'file']
+            for scheme in schemes:
+                if pieces.scheme == scheme:
                     return source
             msg = _("External sourcing not supported for store %s") % source
             LOG.debug(msg)
@@ -485,7 +489,14 @@ class Controller(controller.BaseController):
                                 else 'queued')
 
         if location:
-            store = get_store_from_location(location)
+            try:
+                store = get_store_from_location(location)
+            except exception.BadStoreUri:
+                msg = _("Invalid location %s") % location
+                LOG.debug(msg)
+                raise HTTPBadRequest(explanation=msg,
+                                     request=req,
+                                     content_type="text/plain")
             # check the store exists before we hit the registry, but we
             # don't actually care what it is at this point
             self.get_store_or_400(req, store)
@@ -582,7 +593,8 @@ class Controller(controller.BaseController):
 
         return location, loc_meta
 
-    def _activate(self, req, image_id, location, location_metadata=None):
+    def _activate(self, req, image_id, location, location_metadata=None,
+                  from_state=None):
         """
         Sets the image status to `active` and the image's location
         attribute.
@@ -590,7 +602,7 @@ class Controller(controller.BaseController):
         :param req: The WSGI/Webob Request object
         :param image_id: Opaque image identifier
         :param location: Location of where Glance stored this image
-        :param location_metadata: a dictionary of storage specfic information
+        :param location_metadata: a dictionary of storage specific information
         """
         image_meta = {}
         image_meta['location'] = location
@@ -600,12 +612,24 @@ class Controller(controller.BaseController):
                                             'metadata': location_metadata}]
 
         try:
+            s = from_state
             image_meta_data = registry.update_image_metadata(req.context,
                                                              image_id,
-                                                             image_meta)
+                                                             image_meta,
+                                                             from_state=s)
             self.notifier.info("image.activate", redact_loc(image_meta_data))
             self.notifier.info("image.update", redact_loc(image_meta_data))
             return image_meta_data
+        except exception.Duplicate:
+            # Delete image data since it has been supersceded by another
+            # upload.
+            LOG.debug("duplicate operation - deleting image data for %s "
+                      "(location:%s)" %
+                      (image_id, image_meta['location']))
+            upload_utils.initiate_deletion(req, image_meta['location'],
+                                           image_id, CONF.delayed_delete)
+            # Then propagate the exception.
+            raise
         except exception.Invalid as e:
             msg = _("Failed to activate image. Got error: %(e)s") % {'e': e}
             LOG.debug(msg)
@@ -633,7 +657,8 @@ class Controller(controller.BaseController):
         return self._activate(req,
                               image_id,
                               location,
-                              location_metadata) if location else None
+                              location_metadata,
+                              from_state='saving') if location else None
 
     def _get_size(self, context, image_meta, location):
         # retrieve the image size from remote store (if not provided)
@@ -673,9 +698,9 @@ class Controller(controller.BaseController):
                             image_size_store != image_size_meta):
                         msg = _("Provided image size must match the stored "
                                 "image size. (provided size: %(ps)d, "
-                                "stored size: %(ss)d)" %
-                                {"ps": image_size_meta,
-                                 "ss": image_size_store})
+                                "stored size: %(ss)d)") % {
+                                    "ps": image_size_meta,
+                                    "ss": image_size_store}
                         LOG.debug(msg)
                         raise HTTPConflict(explanation=msg,
                                            request=req,
@@ -745,6 +770,8 @@ class Controller(controller.BaseController):
             self._enforce(req, 'publicize_image')
         if Controller._copy_from(req):
             self._enforce(req, 'copy_from')
+        if image_data or Controller._copy_from(req):
+            self._enforce(req, 'upload_image')
 
         self._enforce_create_protected_props(image_meta['properties'].keys(),
                                              req)
@@ -780,6 +807,10 @@ class Controller(controller.BaseController):
         is_public = image_meta.get('is_public')
         if is_public:
             self._enforce(req, 'publicize_image')
+        if Controller._copy_from(req):
+            self._enforce(req, 'copy_from')
+        if image_data or Controller._copy_from(req):
+            self._enforce(req, 'upload_image')
 
         orig_image_meta = self.get_image_meta_or_404(req, id)
         orig_status = orig_image_meta['status']
@@ -797,7 +828,7 @@ class Controller(controller.BaseController):
             # modify certain core metadata keys
             for key in ACTIVE_IMMUTABLE:
                 if (orig_status == 'active' and image_meta.get(key) is not None
-                    and image_meta.get(key) != orig_image_meta.get(key)):
+                        and image_meta.get(key) != orig_image_meta.get(key)):
                     msg = _("Forbidden to modify '%s' of active image.") % key
                     raise HTTPForbidden(explanation=msg,
                                         request=req,
@@ -829,8 +860,15 @@ class Controller(controller.BaseController):
         # Make image public in the backend store (if implemented)
         orig_or_updated_loc = location or orig_image_meta.get('location', None)
         if orig_or_updated_loc:
-            self.update_store_acls(req, id, orig_or_updated_loc,
-                                   public=is_public)
+            try:
+                self.update_store_acls(req, id, orig_or_updated_loc,
+                                       public=is_public)
+            except exception.BadStoreUri:
+                msg = _("Invalid location %s") % location
+                LOG.debug(msg)
+                raise HTTPBadRequest(explanation=msg,
+                                     request=req,
+                                     content_type="text/plain")
 
         if reactivating:
             msg = _("Attempted to update Location field for an image "
@@ -844,14 +882,14 @@ class Controller(controller.BaseController):
         orig_keys = set(orig_image_meta['properties'])
         new_keys = set(image_meta['properties'])
         self._enforce_update_protected_props(
-                orig_keys.intersection(new_keys), image_meta,
-                orig_image_meta, req)
+            orig_keys.intersection(new_keys), image_meta,
+            orig_image_meta, req)
         self._enforce_create_protected_props(
-                new_keys.difference(orig_keys), req)
+            new_keys.difference(orig_keys), req)
         if purge_props:
             self._enforce_delete_protected_props(
-                    orig_keys.difference(new_keys), image_meta,
-                    orig_image_meta, req)
+                orig_keys.difference(new_keys), image_meta,
+                orig_image_meta, req)
 
         self._enforce_image_property_quota(image_meta,
                                            orig_image_meta=orig_image_meta,
@@ -893,6 +931,11 @@ class Controller(controller.BaseController):
             raise HTTPForbidden(explanation=msg,
                                 request=req,
                                 content_type="text/plain")
+        except (exception.Conflict, exception.Duplicate) as e:
+            LOG.info(unicode(e))
+            raise HTTPConflict(body='Image operation conflicts',
+                               request=req,
+                               content_type='text/plain')
         else:
             self.notifier.info('image.update', redact_loc(image_meta))
 
@@ -1003,10 +1046,9 @@ class ImageDeserializer(wsgi.JSONRequestDeserializer):
         result = {}
         try:
             result['image_meta'] = utils.get_image_meta_from_headers(request)
-        except exception.Invalid:
-            image_size_str = request.headers['x-image-meta-size']
-            msg = _("Incoming image size of %s was not convertible to "
-                    "an integer.") % image_size_str
+        except exception.InvalidParameterValue as e:
+            msg = unicode(e)
+            LOG.warn(msg, exc_info=True)
             raise HTTPBadRequest(explanation=msg, request=request)
 
         image_meta = result['image_meta']
@@ -1093,7 +1135,7 @@ class ImageSerializer(wsgi.JSONResponseSerializer):
         # image_meta['size'] should be an int, but could possibly be a str
         expected_size = int(image_meta['size'])
         response.app_iter = common.size_checked_iter(
-                response, image_meta, expected_size, image_iter, self.notifier)
+            response, image_meta, expected_size, image_iter, self.notifier)
         # Using app_iter blanks content-length, so we set it here...
         response.headers['Content-Length'] = str(image_meta['size'])
         response.headers['Content-Type'] = 'application/octet-stream'

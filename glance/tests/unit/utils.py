@@ -55,6 +55,10 @@ def get_fake_request(path='', method='POST', is_admin=False, user=USER1,
     return req
 
 
+def fake_get_size_from_backend(context, uri):
+    return 1
+
+
 class FakeDB(object):
 
     def __init__(self):
@@ -81,13 +85,7 @@ class FakeDB(object):
 
     @staticmethod
     def reset():
-        simple_db.DATA = {
-            'images': {},
-            'members': [],
-            'tags': {},
-            'locations': [],
-            'tasks': {}
-        }
+        simple_db.reset()
 
     def __getattr__(self, key):
         return getattr(simple_db, key)

@@ -14,13 +14,14 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import uuid
+
 from oslo.config import cfg
 
 from glance.common import crypt
 from glance.common import exception
 import glance.context
 import glance.db
-from glance.openstack.common import uuidutils
 import glance.tests.unit.utils as unit_test_utils
 import glance.tests.utils as test_utils
 
@@ -102,7 +103,7 @@ class TestImageRepo(test_utils.BaseTestCase):
         self.db = unit_test_utils.FakeDB()
         self.db.reset()
         self.context = glance.context.RequestContext(
-                user=USER1, tenant=TENANT1)
+            user=USER1, tenant=TENANT1)
         self.image_repo = glance.db.ImageRepo(self.context, self.db)
         self.image_factory = glance.domain.ImageFactory()
         self._create_images()
@@ -161,7 +162,7 @@ class TestImageRepo(test_utils.BaseTestCase):
         self.assertEqual(image.locations, [])
 
     def test_get_not_found(self):
-        fake_uuid = uuidutils.generate_uuid()
+        fake_uuid = str(uuid.uuid4())
         exc = self.assertRaises(exception.NotFound, self.image_repo.get,
                                 fake_uuid)
         self.assertTrue(fake_uuid in unicode(exc))
@@ -176,7 +177,7 @@ class TestImageRepo(test_utils.BaseTestCase):
 
     def _do_test_list_status(self, status, expected):
         self.context = glance.context.RequestContext(
-                        user=USER1, tenant=TENANT3)
+            user=USER1, tenant=TENANT3)
         self.image_repo = glance.db.ImageRepo(self.context, self.db)
         images = self.image_repo.list(member_status=status)
         self.assertEqual(expected, len(images))
@@ -300,7 +301,7 @@ class TestImageRepo(test_utils.BaseTestCase):
         self.assertEqual(image.updated_at, current_update_time)
 
     def test_save_image_not_found(self):
-        fake_uuid = uuidutils.generate_uuid()
+        fake_uuid = str(uuid.uuid4())
         image = self.image_repo.get(UUID1)
         image.image_id = fake_uuid
         exc = self.assertRaises(exception.NotFound, self.image_repo.save,
@@ -315,7 +316,7 @@ class TestImageRepo(test_utils.BaseTestCase):
         self.assertRaises(exception.NotFound, self.image_repo.get, UUID1)
 
     def test_remove_image_not_found(self):
-        fake_uuid = uuidutils.generate_uuid()
+        fake_uuid = str(uuid.uuid4())
         image = self.image_repo.get(UUID1)
         image.image_id = fake_uuid
         exc = self.assertRaises(exception.NotFound, self.image_repo.remove,
@@ -329,7 +330,7 @@ class TestEncryptedLocations(test_utils.BaseTestCase):
         self.db = unit_test_utils.FakeDB()
         self.db.reset()
         self.context = glance.context.RequestContext(
-                user=USER1, tenant=TENANT1)
+            user=USER1, tenant=TENANT1)
         self.image_repo = glance.db.ImageRepo(self.context, self.db)
         self.image_factory = glance.domain.ImageFactory()
         self.crypt_key = '0123456789abcdef'
@@ -396,7 +397,7 @@ class TestImageMemberRepo(test_utils.BaseTestCase):
         self.db = unit_test_utils.FakeDB()
         self.db.reset()
         self.context = glance.context.RequestContext(
-                user=USER1, tenant=TENANT1)
+            user=USER1, tenant=TENANT1)
         self.image_repo = glance.db.ImageRepo(self.context, self.db)
         self.image_member_factory = glance.domain.ImageMemberFactory()
         self._create_images()
@@ -432,7 +433,7 @@ class TestImageMemberRepo(test_utils.BaseTestCase):
     def test_list_no_members(self):
         image = self.image_repo.get(UUID2)
         self.image_member_repo_uuid2 = glance.db.ImageMemberRepo(
-                                                self.context, self.db, image)
+            self.context, self.db, image)
         image_members = self.image_member_repo_uuid2.list()
         image_member_ids = set([i.member_id for i in image_members])
         self.assertEqual(set([]), image_member_ids)
@@ -440,7 +441,8 @@ class TestImageMemberRepo(test_utils.BaseTestCase):
     def test_save_image_member(self):
         image_member = self.image_member_repo.get(TENANT2)
         image_member.status = 'accepted'
-        image_member_updated = self.image_member_repo.save(image_member)
+        self.image_member_repo.save(image_member)
+        image_member_updated = self.image_member_repo.get(TENANT2)
         self.assertEqual(image_member.id, image_member_updated.id)
         self.assertEqual(image_member_updated.status, 'accepted')
 
@@ -449,8 +451,9 @@ class TestImageMemberRepo(test_utils.BaseTestCase):
         image_member = self.image_member_factory.new_image_member(image,
                                                                   TENANT4)
         self.assertTrue(image_member.id is None)
-        retreived_image_member = self.image_member_repo.add(image_member)
-        self.assertEqual(retreived_image_member.id, image_member.id)
+        self.image_member_repo.add(image_member)
+        retreived_image_member = self.image_member_repo.get(TENANT4)
+        self.assertIsNotNone(retreived_image_member.id)
         self.assertEqual(retreived_image_member.image_id,
                          image_member.image_id)
         self.assertEqual(retreived_image_member.member_id,
@@ -463,8 +466,9 @@ class TestImageMemberRepo(test_utils.BaseTestCase):
         image_member = self.image_member_factory.new_image_member(image,
                                                                   TENANT4)
         self.assertTrue(image_member.id is None)
-        retreived_image_member = self.image_member_repo.add(image_member)
-        self.assertEqual(retreived_image_member.id, image_member.id)
+        self.image_member_repo.add(image_member)
+        retreived_image_member = self.image_member_repo.get(TENANT4)
+        self.assertIsNotNone(retreived_image_member.id)
         self.assertEqual(retreived_image_member.image_id,
                          image_member.image_id)
         self.assertEqual(retreived_image_member.member_id,
@@ -501,7 +505,7 @@ class TestImageMemberRepo(test_utils.BaseTestCase):
                           TENANT2)
 
     def test_remove_image_member_does_not_exist(self):
-        fake_uuid = uuidutils.generate_uuid()
+        fake_uuid = str(uuid.uuid4())
         image = self.image_repo.get(UUID2)
         fake_member = glance.domain.ImageMemberFactory()\
                                    .new_image_member(image, TENANT4)
@@ -568,7 +572,7 @@ class TestTaskRepo(test_utils.BaseTestCase):
 
     def test_get_not_found(self):
         self.assertRaises(exception.NotFound, self.task_repo.get,
-                          uuidutils.generate_uuid())
+                          str(uuid.uuid4()))
 
     def test_get_forbidden(self):
         self.assertRaises(exception.NotFound, self.task_repo.get, UUID4)

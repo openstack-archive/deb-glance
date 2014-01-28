@@ -15,14 +15,15 @@
 #    under the License.
 
 import datetime
+import uuid
 
 from oslo.config import cfg
 
 from glance.common import exception
 from glance import domain
-from glance.openstack.common import uuidutils, timeutils
-import glance.tests.utils as test_utils
+from glance.openstack.common import timeutils
 import glance.tests.unit.utils as unittest_utils
+import glance.tests.utils as test_utils
 
 
 CONF = cfg.CONF
@@ -58,8 +59,8 @@ class TestImageFactory(test_utils.BaseTestCase):
 
     def test_new_image(self):
         image = self.image_factory.new_image(
-                image_id=UUID1, name='image-1', min_disk=256,
-                owner=TENANT1)
+            image_id=UUID1, name='image-1', min_disk=256,
+            owner=TENANT1)
         self.assertEqual(image.image_id, UUID1)
         self.assertTrue(image.created_at is not None)
         self.assertEqual(image.created_at, image.updated_at)
@@ -80,8 +81,8 @@ class TestImageFactory(test_utils.BaseTestCase):
         extra_properties = {'foo': 'bar'}
         tags = ['one', 'two']
         image = self.image_factory.new_image(
-                image_id=UUID1, name='image-1',
-                extra_properties=extra_properties, tags=tags)
+            image_id=UUID1, name='image-1',
+            extra_properties=extra_properties, tags=tags)
 
         self.assertEqual(image.image_id, UUID1)
         self.assertTrue(image.created_at is not None)
@@ -122,7 +123,7 @@ class TestImage(test_utils.BaseTestCase):
         super(TestImage, self).setUp()
         self.image_factory = domain.ImageFactory()
         self.image = self.image_factory.new_image(
-                container_format='bear', disk_format='rawr')
+            container_format='bear', disk_format='rawr')
 
     def test_extra_properties(self):
         self.image.extra_properties = {'foo': 'bar'}
@@ -206,8 +207,8 @@ class TestImageMemberFactory(test_utils.BaseTestCase):
     def test_minimal_new_image_member(self):
         member_id = 'fake-member-id'
         image = self.image_factory.new_image(
-                image_id=UUID1, name='image-1', min_disk=256,
-                owner=TENANT1)
+            image_id=UUID1, name='image-1', min_disk=256,
+            owner=TENANT1)
         image_member = self.image_member_factory.new_image_member(image,
                                                                   member_id)
         self.assertEqual(image_member.image_id, image.image_id)
@@ -327,11 +328,15 @@ class TestTask(test_utils.BaseTestCase):
         task_input = ('{"import_from": "file:///home/a.img",'
                       ' "import_from_format": "qcow2"}')
         owner = TENANT1
+        task_ttl = CONF.task.task_time_to_live
         self.gateway = unittest_utils.FakeGateway()
-        self.task = self.task_factory.new_task(task_type, task_input, owner)
+        self.task = self.task_factory.new_task(task_type,
+                                               task_input,
+                                               owner,
+                                               task_time_to_live=task_ttl)
 
     def test_task_invalid_status(self):
-        task_id = uuidutils.generate_uuid()
+        task_id = str(uuid.uuid4())
         status = 'blah'
         self.assertRaises(
             exception.InvalidTaskStatus,
@@ -410,7 +415,7 @@ class TestTask(test_utils.BaseTestCase):
         self.task.succeed('{"location": "file://home"}')
         self.assertEqual(self.task.status, 'success')
         expected = (timeutils.utcnow() +
-                    datetime.timedelta(hours=CONF.task_time_to_live))
+                    datetime.timedelta(hours=CONF.task.task_time_to_live))
         self.assertEqual(
             self.task.expires_at,
             expected
@@ -423,7 +428,7 @@ class TestTask(test_utils.BaseTestCase):
         self.task.fail('{"message": "connection failed"}')
         self.assertEqual(self.task.status, 'failure')
         expected = (timeutils.utcnow() +
-                    datetime.timedelta(hours=CONF.task_time_to_live))
+                    datetime.timedelta(hours=CONF.task.task_time_to_live))
         self.assertEqual(
             self.task.expires_at,
             expected

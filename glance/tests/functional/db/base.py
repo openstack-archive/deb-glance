@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2010-2012 OpenStack Foundation
 # Copyright 2012 Justin Santa Barbara
 # Copyright 2013 IBM Corp.
@@ -24,7 +22,6 @@ import uuid
 from glance.common import exception
 from glance import context
 from glance.openstack.common import timeutils
-from glance.openstack.common import uuidutils
 import glance.tests.functional.db as db_tests
 from glance.tests import utils as test_utils
 
@@ -34,13 +31,13 @@ from glance.tests import utils as test_utils
 # we get the default (created_at). Some tests below expect the fixtures to be
 # returned in array-order, so if if the created_at timestamps are the same,
 # these tests rely on the UUID* values being in order
-UUID1, UUID2, UUID3 = sorted([uuidutils.generate_uuid() for x in range(3)])
+UUID1, UUID2, UUID3 = sorted([str(uuid.uuid4()) for x in range(3)])
 
 
 def build_image_fixture(**kwargs):
     default_datetime = timeutils.utcnow()
     image = {
-        'id': uuidutils.generate_uuid(),
+        'id': str(uuid.uuid4()),
         'name': 'fake image #2',
         'status': 'active',
         'disk_format': 'vhd',
@@ -64,11 +61,11 @@ def build_image_fixture(**kwargs):
 def build_task_fixture(**kwargs):
     default_datetime = timeutils.utcnow()
     task = {
-        'id': uuidutils.generate_uuid(),
+        'id': str(uuid.uuid4()),
         'type': 'import',
         'status': 'pending',
         'input': {'ping': 'pong'},
-        'owner': uuidutils.generate_uuid(),
+        'owner': str(uuid.uuid4()),
         'message': None,
         'expires_at': None,
         'created_at': default_datetime,
@@ -101,7 +98,7 @@ class TestDriver(test_utils.BaseTestCase):
                 'id': UUID1,
                 'created_at': dt1,
                 'updated_at': dt1,
-                'properties': {'foo': 'bar'},
+                'properties': {'foo': 'bar', 'far': 'boo'},
                 'size': 13,
             },
             {
@@ -235,7 +232,7 @@ class DriverTests(object):
     def test_image_update_properties(self):
         fixture = {'properties': {'ping': 'pong'}}
         image = self.db_api.image_update(self.adm_context, UUID1, fixture)
-        expected = {'ping': 'pong', 'foo': 'bar'}
+        expected = {'ping': 'pong', 'foo': 'bar', 'far': 'boo'}
         actual = dict((p['name'], p['value']) for p in image['properties'])
         self.assertEqual(expected, actual)
         self.assertNotEqual(image['created_at'], image['updated_at'])
@@ -287,19 +284,19 @@ class DriverTests(object):
         self.assertEqual(image['id'], self.fixtures[0]['id'])
 
     def test_image_get_not_owned(self):
-        TENANT1 = uuidutils.generate_uuid()
-        TENANT2 = uuidutils.generate_uuid()
+        TENANT1 = str(uuid.uuid4())
+        TENANT2 = str(uuid.uuid4())
         ctxt1 = context.RequestContext(is_admin=False, tenant=TENANT1,
                                        auth_tok='user:%s:user' % TENANT1)
         ctxt2 = context.RequestContext(is_admin=False, tenant=TENANT2,
                                        auth_tok='user:%s:user' % TENANT2)
         image = self.db_api.image_create(
-                ctxt1, {'status': 'queued', 'owner': TENANT1})
+            ctxt1, {'status': 'queued', 'owner': TENANT1})
         self.assertRaises(exception.Forbidden,
                           self.db_api.image_get, ctxt2, image['id'])
 
     def test_image_get_not_found(self):
-        UUID = uuidutils.generate_uuid()
+        UUID = str(uuid.uuid4())
         self.assertRaises(exception.NotFound,
                           self.db_api.image_get, self.context, UUID)
 
@@ -320,6 +317,29 @@ class DriverTests(object):
                                            filters={'foo': 'bar'})
         self.assertEqual(len(images), 1)
         self.assertEqual(images[0]['id'], self.fixtures[0]['id'])
+
+    def test_image_get_all_with_filter_nonexistent_userdef_property(self):
+        images = self.db_api.image_get_all(self.context,
+                                           filters={'faz': 'boo'})
+        self.assertEqual(len(images), 0)
+
+    def test_image_get_all_with_filter_userdef_prop_nonexistent_value(self):
+        images = self.db_api.image_get_all(self.context,
+                                           filters={'foo': 'baz'})
+        self.assertEqual(len(images), 0)
+
+    def test_image_get_all_with_filter_multiple_user_defined_properties(self):
+        images = self.db_api.image_get_all(self.context,
+                                           filters={'foo': 'bar',
+                                                    'far': 'boo'})
+        self.assertEqual(len(images), 1)
+        self.assertEqual(images[0]['id'], self.fixtures[0]['id'])
+
+    def test_image_get_all_with_filter_nonexistent_user_defined_property(self):
+        images = self.db_api.image_get_all(self.context,
+                                           filters={'foo': 'bar',
+                                                    'faz': 'boo'})
+        self.assertEqual(len(images), 0)
 
     def test_image_get_all_with_filter_user_deleted_property(self):
         fixture = {'name': 'poo', 'value': 'bear', 'image_id': UUID1}
@@ -419,10 +439,10 @@ class DriverTests(object):
         Check an image with name null is handled
         marker is specified and order is descending
         """
-        TENANT1 = uuidutils.generate_uuid()
+        TENANT1 = str(uuid.uuid4())
         ctxt1 = context.RequestContext(is_admin=False, tenant=TENANT1,
                                        auth_tok='user:%s:user' % TENANT1)
-        UUIDX = uuidutils.generate_uuid()
+        UUIDX = str(uuid.uuid4())
         self.db_api.image_create(ctxt1, {'id': UUIDX,
                                          'status': 'queued',
                                          'name': None,
@@ -441,10 +461,10 @@ class DriverTests(object):
         Check an image with disk_format null is handled when
         marker is specified and order is descending
         """
-        TENANT1 = uuidutils.generate_uuid()
+        TENANT1 = str(uuid.uuid4())
         ctxt1 = context.RequestContext(is_admin=False, tenant=TENANT1,
                                        auth_tok='user:%s:user' % TENANT1)
-        UUIDX = uuidutils.generate_uuid()
+        UUIDX = str(uuid.uuid4())
         self.db_api.image_create(ctxt1, {'id': UUIDX,
                                          'status': 'queued',
                                          'disk_format': None,
@@ -463,10 +483,10 @@ class DriverTests(object):
         Check an image with container_format null is handled when
         marker is specified and order is descending
         """
-        TENANT1 = uuidutils.generate_uuid()
+        TENANT1 = str(uuid.uuid4())
         ctxt1 = context.RequestContext(is_admin=False, tenant=TENANT1,
                                        auth_tok='user:%s:user' % TENANT1)
-        UUIDX = uuidutils.generate_uuid()
+        UUIDX = str(uuid.uuid4())
         self.db_api.image_create(ctxt1, {'id': UUIDX,
                                          'status': 'queued',
                                          'container_format': None,
@@ -485,10 +505,10 @@ class DriverTests(object):
         Check an image with name null is handled when
         marker is specified and order is ascending
         """
-        TENANT1 = uuidutils.generate_uuid()
+        TENANT1 = str(uuid.uuid4())
         ctxt1 = context.RequestContext(is_admin=False, tenant=TENANT1,
                                        auth_tok='user:%s:user' % TENANT1)
-        UUIDX = uuidutils.generate_uuid()
+        UUIDX = str(uuid.uuid4())
         self.db_api.image_create(ctxt1, {'id': UUIDX,
                                          'status': 'queued',
                                          'name': None,
@@ -507,10 +527,10 @@ class DriverTests(object):
         Check an image with disk_format null is handled when
         marker is specified and order is ascending
         """
-        TENANT1 = uuidutils.generate_uuid()
+        TENANT1 = str(uuid.uuid4())
         ctxt1 = context.RequestContext(is_admin=False, tenant=TENANT1,
                                        auth_tok='user:%s:user' % TENANT1)
-        UUIDX = uuidutils.generate_uuid()
+        UUIDX = str(uuid.uuid4())
         self.db_api.image_create(ctxt1, {'id': UUIDX,
                                          'status': 'queued',
                                          'disk_format': None,
@@ -529,10 +549,10 @@ class DriverTests(object):
         Check an image with container_format null is handled when
         marker is specified and order is ascending
         """
-        TENANT1 = uuidutils.generate_uuid()
+        TENANT1 = str(uuid.uuid4())
         ctxt1 = context.RequestContext(is_admin=False, tenant=TENANT1,
                                        auth_tok='user:%s:user' % TENANT1)
-        UUIDX = uuidutils.generate_uuid()
+        UUIDX = str(uuid.uuid4())
         self.db_api.image_create(ctxt1, {'id': UUIDX,
                                          'status': 'queued',
                                          'container_format': None,
@@ -558,19 +578,19 @@ class DriverTests(object):
         self.assertEqual(0, len(images))
 
     def test_image_get_all_owned(self):
-        TENANT1 = uuidutils.generate_uuid()
+        TENANT1 = str(uuid.uuid4())
         ctxt1 = context.RequestContext(is_admin=False,
                                        tenant=TENANT1,
                                        auth_tok='user:%s:user' % TENANT1)
-        UUIDX = uuidutils.generate_uuid()
+        UUIDX = str(uuid.uuid4())
         image_meta_data = {'id': UUIDX, 'status': 'queued', 'owner': TENANT1}
         self.db_api.image_create(ctxt1, image_meta_data)
 
-        TENANT2 = uuidutils.generate_uuid()
+        TENANT2 = str(uuid.uuid4())
         ctxt2 = context.RequestContext(is_admin=False,
                                        tenant=TENANT2,
                                        auth_tok='user:%s:user' % TENANT2)
-        UUIDY = uuidutils.generate_uuid()
+        UUIDY = str(uuid.uuid4())
         image_meta_data = {'id': UUIDY, 'status': 'queued', 'owner': TENANT2}
         self.db_api.image_create(ctxt2, image_meta_data)
 
@@ -581,11 +601,11 @@ class DriverTests(object):
         self.assertEqual(sorted(expected), sorted(image_ids))
 
     def test_image_get_all_owned_checksum(self):
-        TENANT1 = uuidutils.generate_uuid()
+        TENANT1 = str(uuid.uuid4())
         ctxt1 = context.RequestContext(is_admin=False,
                                        tenant=TENANT1,
                                        auth_tok='user:%s:user' % TENANT1)
-        UUIDX = uuidutils.generate_uuid()
+        UUIDX = str(uuid.uuid4())
         CHECKSUM1 = '91264c3edf5972c9f1cb309543d38a5c'
         image_meta_data = {
             'id': UUIDX,
@@ -602,11 +622,11 @@ class DriverTests(object):
         }
         self.db_api.image_member_create(ctxt1, image_member_data)
 
-        TENANT2 = uuidutils.generate_uuid()
+        TENANT2 = str(uuid.uuid4())
         ctxt2 = context.RequestContext(is_admin=False,
                                        tenant=TENANT2,
                                        auth_tok='user:%s:user' % TENANT2)
-        UUIDY = uuidutils.generate_uuid()
+        UUIDY = str(uuid.uuid4())
         CHECKSUM2 = '92264c3edf5972c9f1cb309543d38a5c'
         image_meta_data = {
             'id': UUIDY,
@@ -680,7 +700,7 @@ class DriverTests(object):
 
     def test_image_paginate(self):
         """Paginate through a list of images using limit and marker"""
-        extra_uuids = [uuidutils.generate_uuid() for i in range(2)]
+        extra_uuids = [str(uuid.uuid4()) for i in range(2)]
         extra_images = [build_image_fixture(id=_id) for _id in extra_uuids]
         self.create_images(extra_images)
 
@@ -714,7 +734,7 @@ class DriverTests(object):
 
         fixture = {'name': 'ping', 'value': 'pong', 'image_id': IMG_ID}
         prop = self.db_api.image_property_create(self.context, fixture)
-        TENANT2 = uuidutils.generate_uuid()
+        TENANT2 = str(uuid.uuid4())
         fixture = {'image_id': IMG_ID, 'member': TENANT2, 'can_share': False}
         member = self.db_api.image_member_create(self.context, fixture)
         self.db_api.image_tag_create(self.context, IMG_ID, 'snarf')
@@ -751,7 +771,7 @@ class DriverTests(object):
         checks if all the image_delete_all methods deletes only the child
         elements of the image to be deleted.
         """
-        TENANT2 = uuidutils.generate_uuid()
+        TENANT2 = str(uuid.uuid4())
         location_data = [{'url': 'a', 'metadata': {'key': 'value'}},
                          {'url': 'b', 'metadata': {}}]
 
@@ -800,15 +820,15 @@ class DriverTests(object):
         self.assertEqual(['snarf'], tags)
 
     def test_image_get_multiple_members(self):
-        TENANT1 = uuidutils.generate_uuid()
-        TENANT2 = uuidutils.generate_uuid()
+        TENANT1 = str(uuid.uuid4())
+        TENANT2 = str(uuid.uuid4())
         ctxt1 = context.RequestContext(is_admin=False, tenant=TENANT1,
                                        auth_tok='user:%s:user' % TENANT1,
                                        owner_is_tenant=True)
         ctxt2 = context.RequestContext(is_admin=False, user=TENANT2,
                                        auth_tok='user:%s:user' % TENANT2,
                                        owner_is_tenant=False)
-        UUIDX = uuidutils.generate_uuid()
+        UUIDX = str(uuid.uuid4())
         #we need private image and context.owner should not match image owner
         self.db_api.image_create(ctxt1, {'id': UUIDX,
                                          'status': 'queued',
@@ -852,15 +872,15 @@ class DriverTests(object):
         self.assertEqual(4, len(images))
 
     def test_is_image_visible(self):
-        TENANT1 = uuidutils.generate_uuid()
-        TENANT2 = uuidutils.generate_uuid()
+        TENANT1 = str(uuid.uuid4())
+        TENANT2 = str(uuid.uuid4())
         ctxt1 = context.RequestContext(is_admin=False, tenant=TENANT1,
                                        auth_tok='user:%s:user' % TENANT1,
                                        owner_is_tenant=True)
         ctxt2 = context.RequestContext(is_admin=False, user=TENANT2,
                                        auth_tok='user:%s:user' % TENANT2,
                                        owner_is_tenant=False)
-        UUIDX = uuidutils.generate_uuid()
+        UUIDX = str(uuid.uuid4())
         #we need private image and context.owner should not match image owner
         image = self.db_api.image_create(ctxt1, {'id': UUIDX,
                                                  'status': 'queued',
@@ -873,7 +893,7 @@ class DriverTests(object):
         result = self.db_api.is_image_visible(ctxt2, image)
         self.assertTrue(result)
 
-        # image should not be visible for a deleted memeber
+        # image should not be visible for a deleted member
         members = self.db_api.image_member_find(ctxt1, image_id=UUIDX)
         self.db_api.image_member_delete(ctxt1, members[0]['id'])
 
@@ -914,7 +934,7 @@ class DriverTests(object):
         self.assertEqual([], actual)
 
     def test_image_tag_get_all_non_existant_image(self):
-        bad_image_id = uuidutils.generate_uuid()
+        bad_image_id = str(uuid.uuid4())
         actual = self.db_api.image_tag_get_all(self.context, bad_image_id)
         self.assertEqual([], actual)
 
@@ -929,7 +949,7 @@ class DriverTests(object):
         memberships = self.db_api.image_member_find(self.context)
         self.assertEqual([], memberships)
 
-        TENANT1 = uuidutils.generate_uuid()
+        TENANT1 = str(uuid.uuid4())
         # NOTE(flaper87): Update auth token, otherwise
         # non visible members won't be returned.
         self.context.auth_tok = 'user:%s:user' % TENANT1
@@ -953,7 +973,7 @@ class DriverTests(object):
         self.assertEqual(expected, actual)
 
     def test_image_member_update(self):
-        TENANT1 = uuidutils.generate_uuid()
+        TENANT1 = str(uuid.uuid4())
 
         # NOTE(flaper87): Update auth token, otherwise
         # non visible members won't be returned.
@@ -995,7 +1015,7 @@ class DriverTests(object):
         self.assertEqual(expected, member)
 
     def test_image_member_update_status(self):
-        TENANT1 = uuidutils.generate_uuid()
+        TENANT1 = str(uuid.uuid4())
         # NOTE(flaper87): Update auth token, otherwise
         # non visible members won't be returned.
         self.context.auth_tok = 'user:%s:user' % TENANT1
@@ -1036,8 +1056,8 @@ class DriverTests(object):
         self.assertEqual(expected, member)
 
     def test_image_member_find(self):
-        TENANT1 = uuidutils.generate_uuid()
-        TENANT2 = uuidutils.generate_uuid()
+        TENANT1 = str(uuid.uuid4())
+        TENANT2 = str(uuid.uuid4())
         fixtures = [
             {'member': TENANT1, 'image_id': UUID1},
             {'member': TENANT1, 'image_id': UUID2, 'status': 'rejected'},
@@ -1091,14 +1111,14 @@ class DriverTests(object):
                                                image_id=UUID2)
         _assertMemberListMatch([], output)
 
-        image_id = uuidutils.generate_uuid()
+        image_id = str(uuid.uuid4())
         output = self.db_api.image_member_find(self.context,
                                                member=TENANT2,
                                                image_id=image_id)
         _assertMemberListMatch([], output)
 
     def test_image_member_count(self):
-        TENANT1 = uuidutils.generate_uuid()
+        TENANT1 = str(uuid.uuid4())
         self.db_api.image_member_create(self.context,
                                         {'member': TENANT1,
                                          'image_id': UUID1})
@@ -1108,7 +1128,7 @@ class DriverTests(object):
         self.assertEqual(actual, 1)
 
     def test_image_member_count_invalid_image_id(self):
-        TENANT1 = uuidutils.generate_uuid()
+        TENANT1 = str(uuid.uuid4())
         self.db_api.image_member_create(self.context,
                                         {'member': TENANT1,
                                          'image_id': UUID1})
@@ -1117,7 +1137,7 @@ class DriverTests(object):
                           self.context, None)
 
     def test_image_member_count_empty_image_id(self):
-        TENANT1 = uuidutils.generate_uuid()
+        TENANT1 = str(uuid.uuid4())
         self.db_api.image_member_create(self.context,
                                         {'member': TENANT1,
                                          'image_id': UUID1})
@@ -1126,7 +1146,7 @@ class DriverTests(object):
                           self.context, "")
 
     def test_image_member_delete(self):
-        TENANT1 = uuidutils.generate_uuid()
+        TENANT1 = str(uuid.uuid4())
         # NOTE(flaper87): Update auth token, otherwise
         # non visible members won't be returned.
         self.context.auth_tok = 'user:%s:user' % TENANT1
@@ -1141,9 +1161,10 @@ class DriverQuotaTests(test_utils.BaseTestCase):
 
     def setUp(self):
         super(DriverQuotaTests, self).setUp()
-        self.owner_id1 = uuidutils.generate_uuid()
+        self.owner_id1 = str(uuid.uuid4())
         self.context1 = context.RequestContext(
-            is_admin=False, auth_tok='user:user:user', user=self.owner_id1)
+            is_admin=False, user=self.owner_id1, tenant=self.owner_id1,
+            auth_tok='%s:%s:user' % (self.owner_id1, self.owner_id1))
         self.db_api = db_tests.get_db(self.config)
         db_tests.reset_db(self.db_api)
         self.addCleanup(timeutils.clear_time_override)
@@ -1209,12 +1230,35 @@ class DriverQuotaTests(test_utils.BaseTestCase):
         x = self.db_api.user_get_storage_usage(self.context1, self.owner_id1)
         self.assertEqual(total, x)
 
+    def test_storage_quota_deleted_image(self):
+        # NOTE(flaper87): This needs to be tested for
+        # soft deleted images as well. Currently there's no
+        # good way to delete locations.
+        dt1 = timeutils.utcnow()
+        sz = 53
+        new_fixture_dict = {'id': 'SOMEID', 'created_at': dt1,
+                            'updated_at': dt1, 'size': sz,
+                            'owner': self.owner_id1}
+        new_fixture = build_image_fixture(**new_fixture_dict)
+        new_fixture['locations'].append({'url': 'file:///some/path/file',
+                                         'metadata': {}})
+        self.db_api.image_create(self.context1, new_fixture)
 
-class DriverTaskTests(test_utils.BaseTestCase):
+        total = reduce(lambda x, y: x + y,
+                       [f['size'] for f in self.owner1_fixtures])
+        x = self.db_api.user_get_storage_usage(self.context1, self.owner_id1)
+        self.assertEqual(total + (sz * 2), x)
+
+        self.db_api.image_destroy(self.context1, 'SOMEID')
+        x = self.db_api.user_get_storage_usage(self.context1, self.owner_id1)
+        self.assertEqual(total, x)
+
+
+class TaskTests(test_utils.BaseTestCase):
 
     def setUp(self):
-        super(DriverTaskTests, self).setUp()
-        self.owner_id1 = uuidutils.generate_uuid()
+        super(TaskTests, self).setUp()
+        self.owner_id1 = str(uuid.uuid4())
         self.adm_context = context.RequestContext(is_admin=True,
                                                   auth_tok='user:user:admin')
         self.context = context.RequestContext(
@@ -1225,7 +1269,7 @@ class DriverTaskTests(test_utils.BaseTestCase):
         self.addCleanup(timeutils.clear_time_override)
 
     def build_task_fixtures(self):
-        self.context.tenant = uuidutils.generate_uuid()
+        self.context.tenant = str(uuid.uuid4())
         fixtures = [
             {
                 'owner': self.context.owner,
@@ -1261,8 +1305,8 @@ class DriverTaskTests(test_utils.BaseTestCase):
 
     def test_task_get_all_with_filter(self):
         for fixture in self.fixtures:
-            task = self.db_api.task_create(self.context,
-                                           build_task_fixture(**fixture))
+            self.db_api.task_create(self.context,
+                                    build_task_fixture(**fixture))
 
         import_tasks = self.db_api.task_get_all(self.context,
                                                 filters={'type': 'import'})
@@ -1295,8 +1339,8 @@ class DriverTaskTests(test_utils.BaseTestCase):
 
     def test_task_get_all_limit(self):
         for fixture in self.fixtures:
-            task = self.db_api.task_create(self.context,
-                                           build_task_fixture(**fixture))
+            self.db_api.task_create(self.context,
+                                    build_task_fixture(**fixture))
 
         tasks = self.db_api.task_get_all(self.context, limit=2)
         self.assertEqual(2, len(tasks))
@@ -1310,7 +1354,7 @@ class DriverTaskTests(test_utils.BaseTestCase):
         self.assertEqual(0, len(tasks))
 
     def test_task_get_all_owned(self):
-        TENANT1 = uuidutils.generate_uuid()
+        TENANT1 = str(uuid.uuid4())
         ctxt1 = context.RequestContext(is_admin=False,
                                        tenant=TENANT1,
                                        auth_tok='user:%s:user' % TENANT1)
@@ -1319,7 +1363,7 @@ class DriverTaskTests(test_utils.BaseTestCase):
                        'input': '{"loc": "fake"}', 'owner': TENANT1}
         self.db_api.task_create(ctxt1, task_values)
 
-        TENANT2 = uuidutils.generate_uuid()
+        TENANT2 = str(uuid.uuid4())
         ctxt2 = context.RequestContext(is_admin=False,
                                        tenant=TENANT2,
                                        auth_tok='user:%s:user' % TENANT2)
@@ -1336,11 +1380,14 @@ class DriverTaskTests(test_utils.BaseTestCase):
 
     def test_task_get(self):
         expires_at = timeutils.utcnow()
+        image_id = str(uuid.uuid4())
         fixture = {
             'owner': self.context.owner,
             'type': 'import',
             'status': 'pending',
             'input': '{"loc": "fake"}',
+            'result': "{'image_id': %s}" % image_id,
+            'message': 'blah',
             'expires_at': expires_at
         }
 
@@ -1357,11 +1404,70 @@ class DriverTaskTests(test_utils.BaseTestCase):
         self.assertEqual(task['owner'], self.context.owner)
         self.assertEqual(task['type'], 'import')
         self.assertEqual(task['status'], 'pending')
+        self.assertEqual(task['input'], fixture['input'])
+        self.assertEqual(task['result'], fixture['result'])
+        self.assertEqual(task['message'], fixture['message'])
         self.assertEqual(task['expires_at'], expires_at)
 
+    def test_task_get_all(self):
+        now = timeutils.utcnow()
+        image_id = str(uuid.uuid4())
+        fixture1 = {
+            'owner': self.context.owner,
+            'type': 'import',
+            'status': 'pending',
+            'input': '{"loc": "fake_1"}',
+            'result': "{'image_id': %s}" % image_id,
+            'message': 'blah_1',
+            'expires_at': now,
+            'created_at': now,
+            'updated_at': now
+        }
+
+        fixture2 = {
+            'owner': self.context.owner,
+            'type': 'import',
+            'status': 'pending',
+            'input': '{"loc": "fake_2"}',
+            'result': "{'image_id': %s}" % image_id,
+            'message': 'blah_2',
+            'expires_at': now,
+            'created_at': now,
+            'updated_at': now
+        }
+
+        task1 = self.db_api.task_create(self.context, fixture1)
+        task2 = self.db_api.task_create(self.context, fixture2)
+
+        self.assertIsNotNone(task1)
+        self.assertIsNotNone(task2)
+
+        task1_id = task1['id']
+        task2_id = task2['id']
+        task_fixtures = {task1_id: fixture1, task2_id: fixture2}
+        tasks = self.db_api.task_get_all(self.context)
+
+        self.assertEqual(len(tasks), 2)
+        self.assertEqual(set((tasks[0]['id'], tasks[1]['id'])),
+                         set((task1_id, task2_id)))
+        for task in tasks:
+            fixture = task_fixtures[task['id']]
+
+            self.assertEqual(task['owner'], self.context.owner)
+            self.assertEqual(task['type'], fixture['type'])
+            self.assertEqual(task['status'], fixture['status'])
+            self.assertEqual(task['expires_at'], fixture['expires_at'])
+            self.assertFalse(task['deleted'])
+            self.assertIsNone(task['deleted_at'])
+            self.assertEqual(task['created_at'], fixture['created_at'])
+            self.assertEqual(task['updated_at'], fixture['updated_at'])
+            self.assertEqual(task['input'], fixture['input'])
+            self.assertEqual(task['result'], fixture['result'])
+            self.assertEqual(task['message'], fixture['message'])
+
     def test_task_create(self):
-        task_id = uuidutils.generate_uuid()
-        self.context.tenant = uuidutils.generate_uuid()
+        task_id = str(uuid.uuid4())
+        self.context.tenant = str(uuid.uuid4())
         values = {
             'id': task_id,
             'owner': self.context.owner,
@@ -1375,10 +1481,64 @@ class DriverTaskTests(test_utils.BaseTestCase):
         self.assertEqual(task['owner'], self.context.owner)
         self.assertEqual(task['type'], 'export')
         self.assertEqual(task['status'], 'pending')
+        self.assertEqual(task['input'], {'ping': 'pong'})
+
+    def test_task_create_with_all_task_info_null(self):
+        task_id = str(uuid.uuid4())
+        self.context.tenant = str(uuid.uuid4())
+        values = {
+            'id': task_id,
+            'owner': self.context.owner,
+            'type': 'export',
+            'status': 'pending',
+            'input': None,
+            'result': None,
+            'message': None,
+        }
+        task_values = build_task_fixture(**values)
+        task = self.db_api.task_create(self.context, task_values)
+        self.assertIsNotNone(task)
+        self.assertEqual(task['id'], task_id)
+        self.assertEqual(task['owner'], self.context.owner)
+        self.assertEqual(task['type'], 'export')
+        self.assertEqual(task['status'], 'pending')
+        self.assertEqual(task['input'], None)
+        self.assertEqual(task['result'], None)
+        self.assertEqual(task['message'], None)
 
     def test_task_update(self):
-        self.context.tenant = uuidutils.generate_uuid()
-        task_values = build_task_fixture(owner=self.context.owner)
+        self.context.tenant = str(uuid.uuid4())
+        result = {'foo': 'bar'}
+        task_values = build_task_fixture(owner=self.context.owner,
+                                         result=result)
+        task = self.db_api.task_create(self.context, task_values)
+
+        task_id = task['id']
+        fixture = {
+            'status': 'processing',
+            'message': 'This is a error string',
+        }
+        task = self.db_api.task_update(self.context, task_id, fixture)
+
+        self.assertEqual(task['id'], task_id)
+        self.assertEqual(task['owner'], self.context.owner)
+        self.assertEqual(task['type'], 'import')
+        self.assertEqual(task['status'], 'processing')
+        self.assertEqual(task['input'], {'ping': 'pong'})
+        self.assertEqual(task['result'], result)
+        self.assertEqual(task['message'], 'This is a error string')
+        self.assertEqual(task['deleted'], False)
+        self.assertIsNone(task['deleted_at'])
+        self.assertIsNone(task['expires_at'])
+        self.assertEqual(task['created_at'], task_values['created_at'])
+        self.assertTrue(task['updated_at'] > task['created_at'])
+
+    def test_task_update_with_all_task_info_null(self):
+        self.context.tenant = str(uuid.uuid4())
+        task_values = build_task_fixture(owner=self.context.owner,
+                                         input=None,
+                                         result=None,
+                                         message=None)
         task = self.db_api.task_create(self.context, task_values)
 
         task_id = task['id']
@@ -1389,9 +1549,17 @@ class DriverTaskTests(test_utils.BaseTestCase):
         self.assertEqual(task['owner'], self.context.owner)
         self.assertEqual(task['type'], 'import')
         self.assertEqual(task['status'], 'processing')
+        self.assertEqual(task['input'], None)
+        self.assertEqual(task['result'], None)
+        self.assertEqual(task['message'], None)
+        self.assertEqual(task['deleted'], False)
+        self.assertIsNone(task['deleted_at'])
+        self.assertIsNone(task['expires_at'])
+        self.assertEqual(task['created_at'], task_values['created_at'])
+        self.assertTrue(task['updated_at'] > task['created_at'])
 
     def test_task_delete(self):
-        task_values = build_task_fixture()
+        task_values = build_task_fixture(owner=self.context.owner)
         task = self.db_api.task_create(self.context, task_values)
 
         self.assertIsNotNone(task)
@@ -1402,6 +1570,24 @@ class DriverTaskTests(test_utils.BaseTestCase):
         self.db_api.task_delete(self.context, task_id)
         self.assertRaises(exception.TaskNotFound, self.db_api.task_get,
                           self.context, task_id)
+
+    def test_task_delete_as_admin(self):
+        task_values = build_task_fixture(owner=self.context.owner)
+        task = self.db_api.task_create(self.context, task_values)
+
+        self.assertIsNotNone(task)
+        self.assertEqual(task['deleted'], False)
+        self.assertIsNone(task['deleted_at'])
+
+        task_id = task['id']
+        self.db_api.task_delete(self.context, task_id)
+        del_task = self.db_api.task_get(self.adm_context,
+                                        task_id,
+                                        force_show_deleted=True)
+        self.assertIsNotNone(del_task)
+        self.assertEqual(task_id, del_task['id'])
+        self.assertEqual(True, del_task['deleted'])
+        self.assertIsNotNone(del_task['deleted_at'])
 
 
 class TestVisibility(test_utils.BaseTestCase):
@@ -1415,15 +1601,15 @@ class TestVisibility(test_utils.BaseTestCase):
         self.create_images(self.fixtures)
 
     def setup_tenants(self):
-        self.admin_tenant = uuidutils.generate_uuid()
-        self.tenant1 = uuidutils.generate_uuid()
-        self.tenant2 = uuidutils.generate_uuid()
+        self.admin_tenant = str(uuid.uuid4())
+        self.tenant1 = str(uuid.uuid4())
+        self.tenant2 = str(uuid.uuid4())
 
     def setup_contexts(self):
         self.admin_context = context.RequestContext(
-                is_admin=True, tenant=self.admin_tenant)
+            is_admin=True, tenant=self.admin_tenant)
         self.admin_none_context = context.RequestContext(
-                is_admin=True, tenant=None)
+            is_admin=True, tenant=None)
         self.tenant1_context = context.RequestContext(tenant=self.tenant1)
         self.tenant2_context = context.RequestContext(tenant=self.tenant2)
         self.none_context = context.RequestContext(tenant=None)
@@ -1699,7 +1885,7 @@ class TestMembershipVisibility(test_utils.BaseTestCase):
         self.admin_tenant, self.admin_ctx = self._user_fixture(admin=True)
 
     def _user_fixture(self, admin=False):
-        tenant_id = uuidutils.generate_uuid()
+        tenant_id = str(uuid.uuid4())
         ctx = context.RequestContext(tenant=tenant_id, is_admin=admin)
         return tenant_id, ctx
 

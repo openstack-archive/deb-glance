@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
 
 # Copyright 2011 OpenStack Foundation
 # All Rights Reserved.
@@ -40,6 +39,29 @@ paste_deploy_opts = [
     cfg.StrOpt('config_file',
                help=_('Name of the paste configuration file.')),
 ]
+image_format_opts = [
+    cfg.ListOpt('container_formats',
+                default=['ami', 'ari', 'aki', 'bare', 'ovf'],
+                help=_("Supported values for the 'container_format' "
+                       "image attribute"),
+                deprecated_opts=[cfg.DeprecatedOpt('container_formats',
+                                                   group='DEFAULT')]),
+    cfg.ListOpt('disk_formats',
+                default=['ami', 'ari', 'aki', 'vhd', 'vmdk', 'raw', 'qcow2',
+                         'vdi', 'iso'],
+                help=_("Supported values for the 'disk_format' "
+                       "image attribute"),
+                deprecated_opts=[cfg.DeprecatedOpt('disk_formats',
+                                                   group='DEFAULT')]),
+]
+task_opts = [
+    cfg.IntOpt('task_time_to_live',
+               default=48,
+               help=_("Time in hours for which a task lives after, either "
+                      "succeeding or failing"),
+               deprecated_opts=[cfg.DeprecatedOpt('task_time_to_live',
+                                                  group='DEFAULT')]),
+]
 common_opts = [
     cfg.BoolOpt('allow_additional_image_properties', default=True,
                 help=_('Whether to allow users to specify image properties '
@@ -53,6 +75,9 @@ common_opts = [
     cfg.IntOpt('image_tag_quota', default=128,
                help=_('Maximum number of tags allowed on an image. '
                       'Negative values evaluate to unlimited.')),
+    cfg.IntOpt('image_location_quota', default=10,
+               help=_('Maximum number of locations allowed on an image. '
+                      'Negative values evaluate to unlimited.')),
     cfg.StrOpt('data_api', default='glance.db.sqlalchemy.api',
                help=_('Python module path of data access API')),
     cfg.IntOpt('limit_param_default', default=25,
@@ -63,8 +88,9 @@ common_opts = [
                       'returned by a request')),
     cfg.BoolOpt('show_image_direct_url', default=False,
                 help=_('Whether to include the backend image storage location '
-                       'in image properties. Revealing storage location can be'
-                       'a security risk, so use this setting with caution!')),
+                       'in image properties. Revealing storage location can '
+                       'be a security risk, so use this setting with '
+                       'caution!')),
     cfg.BoolOpt('show_multiple_locations', default=False,
                 help=_('Whether to include the backend image locations '
                        'in image properties. Revealing storage location can '
@@ -94,6 +120,8 @@ common_opts = [
 
 CONF = cfg.CONF
 CONF.register_opts(paste_deploy_opts, group='paste_deploy')
+CONF.register_opts(image_format_opts, group='image_format')
+CONF.register_opts(task_opts, group='task')
 CONF.register_opts(common_opts)
 
 

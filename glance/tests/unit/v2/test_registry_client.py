@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2013 Red Hat, Inc.
 # All Rights Reserved.
 #
@@ -24,6 +22,7 @@ the registry's driver tests will be added.
 import copy
 import datetime
 import os
+import uuid
 
 import mox
 
@@ -32,18 +31,18 @@ from glance.common import exception
 from glance import context
 from glance.db.sqlalchemy import api as db_api
 from glance.openstack.common import timeutils
-from glance.openstack.common import uuidutils
+
+from glance.registry.api import v2 as rserver
 import glance.registry.client.v2.api as rapi
 from glance.registry.client.v2.api import client as rclient
-from glance.registry.api import v2 as rserver
 from glance.tests.unit import base
 from glance.tests import utils as test_utils
 
 
-_gen_uuid = uuidutils.generate_uuid
+_gen_uuid = lambda: str(uuid.uuid4())
 
-UUID1 = _gen_uuid()
-UUID2 = _gen_uuid()
+UUID1 = str(uuid.uuid4())
+UUID2 = str(uuid.uuid4())
 
 #NOTE(bcwaldon): needed to init config_dir cli opt
 config.parse_args(args=[])
@@ -63,7 +62,6 @@ class TestRegistryV2Client(base.IsolatedUnitTest,
     def setUp(self):
         """Establish a clean test environment"""
         super(TestRegistryV2Client, self).setUp()
-        db_api.setup_db_env()
         db_api.get_engine()
         self.context = context.RequestContext(is_admin=True)
 
@@ -289,12 +287,14 @@ class TestRegistryV2Client(base.IsolatedUnitTest,
 
     def test_image_get_index_limit(self):
         """Test correct number of images returned with limit param."""
-        extra_fixture = self.get_fixture(id=_gen_uuid(), name='new name! #123',
+        extra_fixture = self.get_fixture(id=_gen_uuid(),
+                                         name='new name! #123',
                                          status='saving')
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = self.get_fixture(id=_gen_uuid(), name='new name! #125',
+        extra_fixture = self.get_fixture(id=_gen_uuid(),
+                                         name='new name! #125',
                                          status='saving')
 
         db_api.image_create(self.context, extra_fixture)
@@ -322,12 +322,14 @@ class TestRegistryV2Client(base.IsolatedUnitTest,
 
     def test_image_get_index_limit_None(self):
         """Test correct set of images returned with limit param == None."""
-        extra_fixture = self.get_fixture(id=_gen_uuid(), name='new name! #123',
+        extra_fixture = self.get_fixture(id=_gen_uuid(),
+                                         name='new name! #123',
                                          status='saving')
 
         db_api.image_create(self.context, extra_fixture)
 
-        extra_fixture = self.get_fixture(id=_gen_uuid(), name='new name! #125',
+        extra_fixture = self.get_fixture(id=_gen_uuid(),
+                                         name='new name! #125',
                                          status='saving')
 
         db_api.image_create(self.context, extra_fixture)
@@ -340,7 +342,8 @@ class TestRegistryV2Client(base.IsolatedUnitTest,
         Test correct set of public, name-filtered image returned. This
         is just a sanity check, we test the details call more in-depth.
         """
-        extra_fixture = self.get_fixture(id=_gen_uuid(), name='new name! #123')
+        extra_fixture = self.get_fixture(id=_gen_uuid(),
+                                         name='new name! #123')
 
         db_api.image_create(self.context, extra_fixture)
 
@@ -444,7 +447,8 @@ class TestRegistryV2Client(base.IsolatedUnitTest,
     def test_image_update(self):
         """Tests that the registry API updates the image"""
         fixture = {'name': 'fake public image #2',
-                   'disk_format': 'vmdk'}
+                   'disk_format': 'vmdk',
+                   'status': 'saving'}
 
         self.assertTrue(self.client.image_update(image_id=UUID2,
                                                  values=fixture))
@@ -455,7 +459,36 @@ class TestRegistryV2Client(base.IsolatedUnitTest,
         for k, v in fixture.items():
             self.assertEqual(v, data[k])
 
-    def test_image_update_not_existing(self):
+    def test_image_update_conflict(self):
+        """Tests that the registry API updates the image"""
+        next_state = 'saving'
+        fixture = {'name': 'fake public image #2',
+                   'disk_format': 'vmdk',
+                   'status': next_state}
+
+        image = self.client.image_get(image_id=UUID2)
+        current = image['status']
+        self.assertEqual(current, 'active')
+
+        # image is in 'active' state so this should cause a failure.
+        from_state = 'saving'
+
+        self.assertRaises(exception.Conflict, self.client.image_update,
+                          image_id=UUID2, values=fixture,
+                          from_state=from_state)
+
+        try:
+            self.client.image_update(image_id=UUID2, values=fixture,
+                                     from_state=from_state)
+        except exception.Conflict as exc:
+            msg = (_('cannot transition from %(current)s to '
+                     '%(next)s in update (wanted '
+                     'from_state=%(from)s)') %
+                   {'current': current, 'next': next_state,
+                    'from': from_state})
+            self.assertEqual(str(exc), msg)
+
+    def _test_image_update_not_existing(self):
         """Tests non existing image update doesn't work"""
         fixture = self.get_fixture(status='bad status')
 

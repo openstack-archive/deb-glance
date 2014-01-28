@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2010-2011 OpenStack Foundation
 # All Rights Reserved.
 #
@@ -161,7 +159,11 @@ def create_stores():
         if not store_entry:
             continue
         store_cls = _get_store_class(store_entry)
-        store_instance = store_cls()
+        try:
+            store_instance = store_cls()
+        except exception.BadStoreConfiguration as e:
+            LOG.warn(_("%s Skipping store driver.") % unicode(e))
+            continue
         schemes = store_instance.get_schemes()
         if not schemes:
             raise BackendException('Unable to register store %s. '
@@ -194,6 +196,11 @@ def verify_default_store():
     except exception.UnknownScheme:
         msg = _("Store for scheme %s not found") % scheme
         raise RuntimeError(msg)
+
+
+def get_known_schemes():
+    """Returns list of known schemes"""
+    return location.SCHEME_TO_CLS_MAP.keys()
 
 
 def get_store_from_scheme(context, scheme, loc=None):
@@ -298,19 +305,18 @@ def delete_image_from_backend(context, store_api, image_id, uri):
 
 
 def check_location_metadata(val, key=''):
-    t = type(val)
-    if t == dict:
+    if isinstance(val, dict):
         for key in val:
             check_location_metadata(val[key], key=key)
-    elif t == list:
+    elif isinstance(val, list):
         ndx = 0
         for v in val:
             check_location_metadata(v, key='%s[%d]' % (key, ndx))
             ndx = ndx + 1
-    elif t != unicode:
+    elif not isinstance(val, unicode):
         raise BackendException(_("The image metadata key %s has an invalid "
                                  "type of %s.  Only dict, list, and unicode "
-                                 "are supported.") % (key, str(t)))
+                                 "are supported.") % (key, type(val)))
 
 
 def store_add_to_backend(image_id, data, size, store):
@@ -329,7 +335,7 @@ def store_add_to_backend(image_id, data, size, store):
     """
     (location, size, checksum, metadata) = store.add(image_id, data, size)
     if metadata is not None:
-        if type(metadata) != dict:
+        if not isinstance(metadata, dict):
             msg = (_("The storage driver %s returned invalid metadata %s"
                      "This must be a dictionary type") %
                    (str(store), str(metadata)))
@@ -421,6 +427,17 @@ def _check_image_location(context, store_api, location):
     store_api.check_location_metadata(location['metadata'])
 
 
+def _set_image_size(context, image, locations):
+    if not image.size:
+        for location in locations:
+            size_from_backend = glance.store.get_size_from_backend(
+                context, location['url'])
+            if size_from_backend:
+                # NOTE(flwang): This assumes all locations have the same size
+                image.size = size_from_backend
+                break
+
+
 class ImageFactoryProxy(glance.domain.proxy.ImageFactory):
     def __init__(self, factory, context, store_api):
         self.context = context
@@ -478,6 +495,9 @@ class StoreLocations(collections.MutableSequence):
             raise exception.DuplicateLocation(location=location['url'])
 
         self.value.insert(i, location)
+        _set_image_size(self.image_proxy.context,
+                        self.image_proxy,
+                        [location])
 
     def pop(self, i=-1):
         location = self.value.pop(i)
@@ -516,6 +536,9 @@ class StoreLocations(collections.MutableSequence):
         _check_image_location(self.image_proxy.context,
                               self.image_proxy.store_api, location)
         self.value.__setitem__(i, location)
+        _set_image_size(self.image_proxy.context,
+                        self.image_proxy,
+                        [location])
 
     def __delitem__(self, i):
         location = None
@@ -594,7 +617,7 @@ def _locations_proxy(target, attr):
 
                 if value.count(location) > 1:
                     raise exception.DuplicateLocation(location=location['url'])
-
+            _set_image_size(self.context, getattr(self, target), value)
             return setattr(getattr(self, target), attr, list(value))
 
     def del_attr(self):
@@ -623,8 +646,8 @@ class ImageProxy(glance.domain.proxy.Image):
             'store_api': store_api,
         }
         super(ImageProxy, self).__init__(
-                image, member_repo_proxy_class=ImageMemberRepoProxy,
-                member_repo_proxy_kwargs=proxy_kwargs)
+            image, member_repo_proxy_class=ImageMemberRepoProxy,
+            member_repo_proxy_kwargs=proxy_kwargs)
 
     def delete(self):
         self.image.delete()
@@ -641,8 +664,8 @@ class ImageProxy(glance.domain.proxy.Image):
         if size is None:
             size = 0  # NOTE(markwash): zero -> unknown size
         location, size, checksum, loc_meta = self.store_api.add_to_backend(
-                self.context, CONF.default_store,
-                self.image.image_id, utils.CooperativeReader(data), size)
+            self.context, CONF.default_store,
+            self.image.image_id, utils.CooperativeReader(data), size)
         self.image.locations = [{'url': location, 'metadata': loc_meta}]
         self.image.size = size
         self.image.checksum = checksum
@@ -686,11 +709,9 @@ class ImageMemberRepoProxy(glance.domain.proxy.Repo):
                                         read_tenants=member_ids)
 
     def add(self, member):
-        result = super(ImageMemberRepoProxy, self).add(member)
+        super(ImageMemberRepoProxy, self).add(member)
         self._set_acls()
-        return result
 
     def remove(self, member):
-        result = super(ImageMemberRepoProxy, self).remove(member)
+        super(ImageMemberRepoProxy, self).remove(member)
         self._set_acls()
-        return result

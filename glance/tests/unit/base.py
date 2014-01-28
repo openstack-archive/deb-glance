@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2012 OpenStack Foundation.
 # All Rights Reserved.
 #
@@ -15,13 +13,13 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import json
 import os
 import shutil
 
 import fixtures
 from oslo.config import cfg
 
+from glance.openstack.common import jsonutils
 from glance import store
 from glance.store import location
 from glance.store import sheepdog
@@ -30,7 +28,8 @@ from glance.tests import utils as test_utils
 
 CONF = cfg.CONF
 CONF.import_opt('filesystem_store_datadir', 'glance.store.filesystem')
-CONF.import_opt('sql_connection', 'glance.db.sqlalchemy.api')
+CONF.import_opt('connection', 'glance.openstack.common.db.sqlalchemy.session',
+                group='database')
 
 
 class StoreClearingUnitTest(test_utils.BaseTestCase):
@@ -63,8 +62,9 @@ class IsolatedUnitTest(StoreClearingUnitTest):
         super(IsolatedUnitTest, self).setUp()
         self.test_dir = self.useFixture(fixtures.TempDir()).path
         policy_file = self._copy_data_file('policy.json', self.test_dir)
-        self.config(sql_connection='sqlite://',
-                    verbose=False,
+        self.config(connection='sqlite://',
+                    group='database')
+        self.config(verbose=False,
                     debug=False,
                     default_store='filesystem',
                     filesystem_store_datadir=os.path.join(self.test_dir),
@@ -82,5 +82,5 @@ class IsolatedUnitTest(StoreClearingUnitTest):
 
     def set_policy_rules(self, rules):
         fap = open(CONF.policy_file, 'w')
-        fap.write(json.dumps(rules))
+        fap.write(jsonutils.dumps(rules))
         fap.close()

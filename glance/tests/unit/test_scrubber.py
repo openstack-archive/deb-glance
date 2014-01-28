@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2013 Red Hat, Inc.
 # All Rights Reserved.
 #
@@ -17,14 +15,15 @@
 
 import os
 import shutil
-import time
 import tempfile
+import time
+import uuid
 
 import eventlet
 import mox
 
 from glance.common import exception
-from glance.openstack.common import uuidutils
+
 import glance.store
 import glance.store.scrubber
 from glance.tests import utils as test_utils
@@ -46,7 +45,7 @@ class TestScrubber(test_utils.BaseTestCase):
         super(TestScrubber, self).tearDown()
 
     def _scrubber_cleanup_with_store_delete_exception(self, ex):
-        fname = uuidutils.generate_uuid
+        fname = lambda: str(uuid.uuid4())
 
         uri = 'file://some/path/%s' % (fname)
         id = 'helloworldid'

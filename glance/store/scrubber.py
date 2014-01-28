@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2010 OpenStack Foundation
 # All Rights Reserved.
 #
@@ -29,7 +27,6 @@ from glance.common import utils
 from glance import context
 from glance.openstack.common import lockutils
 import glance.openstack.common.log as logging
-import glance.openstack.common.uuidutils as uuidutils
 import glance.registry.client.v1.api as registry
 
 LOG = logging.getLogger(__name__)
@@ -214,7 +211,7 @@ class ScrubFileQueue(ScrubQueue):
         ret = []
         for root, dirs, files in os.walk(self.scrubber_datadir):
             for image_id in files:
-                if not uuidutils.is_uuid_like(image_id):
+                if not utils.is_uuid_like(image_id):
                     continue
                 with lockutils.lock("scrubber-%s" % image_id,
                                     lock_file_prefix='glance-', external=True):
@@ -403,7 +400,7 @@ class Scrubber(object):
                 image_id_uri_list = queue.pop_all_locations()
             else:
                 image_id_uri_list = queue.get_all_locations()
-        except:
+        except Exception:
             LOG.error(_("Can not %s scrub jobs from queue.") %
                       'pop' if pop else 'get')
             return None

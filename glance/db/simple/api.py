@@ -16,11 +16,11 @@
 
 import copy
 import functools
+import uuid
 
 from glance.common import exception
 import glance.openstack.common.log as logging
 from glance.openstack.common import timeutils
-from glance.openstack.common import uuidutils
 
 
 LOG = logging.getLogger(__name__)
@@ -31,6 +31,7 @@ DATA = {
     'tags': {},
     'locations': [],
     'tasks': {},
+    'task_info': {}
 }
 
 
@@ -57,16 +58,8 @@ def reset():
         'tags': {},
         'locations': [],
         'tasks': {},
+        'task_info': {}
     }
-
-
-def setup_db_env(*args, **kwargs):
-    """
-    Setup global environment configuration variables.
-
-    We have no connection-oriented environment variables, so this is a NOOP.
-    """
-    pass
 
 
 def clear_db_env(*args, **kwargs):
@@ -85,7 +78,7 @@ def _get_session():
 def _image_locations_format(image_id, value, meta_data):
     dt = timeutils.utcnow()
     return {
-        'id': uuidutils.generate_uuid(),
+        'id': str(uuid.uuid4()),
         'image_id': image_id,
         'created_at': dt,
         'updated_at': dt,
@@ -109,7 +102,7 @@ def _image_property_format(image_id, name, value):
 def _image_member_format(image_id, tenant_id, can_share, status='pending'):
     dt = timeutils.utcnow()
     return {
-        'id': uuidutils.generate_uuid(),
+        'id': str(uuid.uuid4()),
         'image_id': image_id,
         'member': tenant_id,
         'can_share': can_share,
@@ -119,16 +112,32 @@ def _image_member_format(image_id, tenant_id, can_share, status='pending'):
     }
 
 
+def _pop_task_info_values(values):
+    task_info_values = {}
+    for k, v in values.items():
+        if k in ['input', 'result', 'message']:
+            values.pop(k)
+            task_info_values[k] = v
+
+    return task_info_values
+
+
+def _format_task_from_db(task_ref, task_info_ref):
+    task = copy.deepcopy(task_ref)
+    if task_info_ref:
+        task_info = copy.deepcopy(task_info_ref)
+        task_info_values = _pop_task_info_values(task_info)
+        task.update(task_info_values)
+    return task
+
+
 def _task_format(task_id, **values):
     dt = timeutils.utcnow()
     task = {
         'id': task_id,
         'type': 'import',
         'status': 'pending',
-        'input': None,
-        'result': None,
         'owner': None,
-        'message': None,
         'expires_at': None,
         'created_at': dt,
         'updated_at': dt,
@@ -137,6 +146,17 @@ def _task_format(task_id, **values):
     }
     task.update(values)
     return task
+
+
+def _task_info_format(task_id, **values):
+    task_info = {
+        'task_id': task_id,
+        'input': None,
+        'result': None,
+        'message': None,
+    }
+    task_info.update(values)
+    return task_info
 
 
 def _image_format(image_id, **values):
@@ -224,7 +244,7 @@ def _filter_images(images, filters, context,
             if not image['is_public'] == is_public:
                 continue
 
-        add = True
+        to_add = True
         for k, value in filters.iteritems():
             key = k
             if k.endswith('_min') or k.endswith('_max'):
@@ -236,29 +256,30 @@ def _filter_images(images, filters, context,
                             "with a non-numeric value.")
                     raise exception.InvalidFilterRangeValue(msg)
             if k.endswith('_min'):
-                add = image.get(key) >= value
+                to_add = image.get(key) >= value
             elif k.endswith('_max'):
-                add = image.get(key) <= value
+                to_add = image.get(key) <= value
             elif k != 'is_public' and image.get(k) is not None:
-                add = image.get(key) == value
+                to_add = image.get(key) == value
             elif k == 'tags':
                 filter_tags = value
                 image_tags = image_tag_get_all(context, image['id'])
                 for tag in filter_tags:
                     if tag not in image_tags:
-                        add = False
+                        to_add = False
                         break
             else:
-                properties = {}
+                to_add = False
                 for p in image['properties']:
                     properties = {p['name']: p['value'],
                                   'deleted': p['deleted']}
-                add = (properties.get(key) == value and
-                       properties.get('deleted') is False)
-            if not add:
+                    to_add |= (properties.get(key) == value and
+                               properties.get('deleted') is False)
+
+            if not to_add:
                 break
 
-        if add:
+        if to_add:
             filtered_images.append(image)
 
     return filtered_images
@@ -480,7 +501,7 @@ def _image_location_get_all(image_id):
 @log_call
 def image_create(context, image_values):
     global DATA
-    image_id = image_values.get('id', uuidutils.generate_uuid())
+    image_id = image_values.get('id', str(uuid.uuid4()))
 
     if image_id in DATA['images']:
         raise exception.Duplicate()
@@ -512,7 +533,8 @@ def image_create(context, image_values):
 
 
 @log_call
-def image_update(context, image_id, image_values, purge_props=False):
+def image_update(context, image_id, image_values, purge_props=False,
+                 from_state=None):
     global DATA
     try:
         image = DATA['images'][image_id]
@@ -549,6 +571,12 @@ def image_destroy(context, image_id):
     try:
         DATA['images'][image_id]['deleted'] = True
         DATA['images'][image_id]['deleted_at'] = timeutils.utcnow()
+
+        # NOTE(flaper87): Move the image to one of the deleted statuses
+        # if it hasn't been done yet.
+        if (DATA['images'][image_id]['status'] not in
+                ['deleted', 'pending_delete']):
+            DATA['images'][image_id]['status'] = 'deleted'
 
         _image_locations_set(image_id, [])
 
@@ -620,40 +648,6 @@ def is_image_mutable(context, image):
     return image['owner'] == context.owner
 
 
-def is_image_sharable(context, image, **kwargs):
-    """Return True if the image can be shared to others in this context."""
-    # Is admin == image sharable
-    if context.is_admin:
-        return True
-
-    # Only allow sharing if we have an owner
-    if context.owner is None:
-        return False
-
-    # If we own the image, we can share it
-    if context.owner == image['owner']:
-        return True
-
-    # Let's get the membership association
-    if 'membership' in kwargs:
-        member = kwargs['membership']
-        if member is None:
-            # Not shared with us anyway
-            return False
-    else:
-        members = image_member_find(context,
-                                    image_id=image['id'],
-                                    member=context.owner)
-        if members:
-            member = members[0]
-        else:
-            # Not shared with us anyway
-            return False
-
-    # It's the can_share attribute we're now interested in
-    return member['can_share']
-
-
 def is_image_visible(context, image, status=None):
     """Return True if the image is visible in this context."""
     # Is admin == image visible
@@ -691,16 +685,23 @@ def user_get_storage_usage(context, owner_id, image_id=None, session=None):
     images = image_get_all(context, filters={'owner': owner_id})
     total = 0
     for image in images:
+        if image['status'] in ['killed', 'pending_delete', 'deleted']:
+            continue
+
         if image['id'] != image_id:
-            total = total + (image['size'] * len(image['locations']))
+            locations = [l for l in image['locations']
+                         if not l.get('deleted', False)]
+            total += (image['size'] * len(locations))
     return total
 
 
 @log_call
-def task_create(context, task_values):
+def task_create(context, values):
     """Create a task object"""
     global DATA
-    task_id = task_values.get('id', uuidutils.generate_uuid())
+
+    task_values = copy.deepcopy(values)
+    task_id = task_values.get('id', str(uuid.uuid4()))
     required_attributes = ['type', 'status', 'input']
     allowed_attributes = ['id', 'type', 'status', 'input', 'result', 'owner',
                           'message', 'expires_at', 'created_at',
@@ -718,16 +719,20 @@ def task_create(context, task_values):
         raise exception.Invalid(
             'The keys %s are not valid' % str(incorrect_keys))
 
+    task_info_values = _pop_task_info_values(task_values)
     task = _task_format(task_id, **task_values)
     DATA['tasks'][task_id] = task
+    task_info = _task_info_create(task['id'], task_info_values)
 
-    return copy.deepcopy(task)
+    return _format_task_from_db(task, task_info)
 
 
 @log_call
-def task_update(context, task_id, values, purge_props=False):
+def task_update(context, task_id, values):
     """Update a task object"""
     global DATA
+    task_values = copy.deepcopy(values)
+    task_info_values = _pop_task_info_values(task_values)
     try:
         task = DATA['tasks'][task_id]
     except KeyError:
@@ -735,16 +740,18 @@ def task_update(context, task_id, values, purge_props=False):
         LOG.debug(msg)
         raise exception.TaskNotFound(task_id=task_id)
 
-    task.update(values)
+    task.update(task_values)
     task['updated_at'] = timeutils.utcnow()
     DATA['tasks'][task_id] = task
-    return task
+    task_info = _task_info_update(task['id'], task_info_values)
+
+    return _format_task_from_db(task, task_info)
 
 
 @log_call
 def task_get(context, task_id, force_show_deleted=False):
-    task = _task_get(context, task_id, force_show_deleted)
-    return copy.deepcopy(task)
+    task, task_info = _task_get(context, task_id, force_show_deleted)
+    return _format_task_from_db(task, task_info)
 
 
 def _task_get(context, task_id, force_show_deleted=False):
@@ -765,7 +772,9 @@ def _task_get(context, task_id, force_show_deleted=False):
         LOG.debug(msg)
         raise exception.Forbidden(msg)
 
-    return task
+    task_info = _task_info_get(task_id)
+
+    return task, task_info
 
 
 @log_call
@@ -802,7 +811,12 @@ def task_get_all(context, filters=None, marker=None, limit=None,
     tasks = _paginate_tasks(context, tasks, marker, limit,
                             filters.get('deleted'))
 
-    return tasks
+    filtered_tasks = []
+    for task in tasks:
+        task_info = DATA['task_info'][task['id']]
+        filtered_tasks.append(_format_task_from_db(task, task_info))
+
+    return filtered_tasks
 
 
 def _is_task_visible(context, task):
@@ -878,3 +892,41 @@ def _paginate_tasks(context, tasks, marker, limit, show_deleted):
 
     end = start + limit if limit is not None else None
     return tasks[start:end]
+
+
+def _task_info_create(task_id, values):
+    """Create a Task Info for Task with given task ID"""
+    global DATA
+    task_info = _task_info_format(task_id, **values)
+    DATA['task_info'][task_id] = task_info
+
+    return task_info
+
+
+def _task_info_update(task_id, values):
+    """Update Task Info for Task with given task ID and updated values"""
+    global DATA
+    try:
+        task_info = DATA['task_info'][task_id]
+    except KeyError:
+        msg = (_("No task info found with task id %s") % task_id)
+        LOG.debug(msg)
+        raise exception.TaskNotFound(task_id=task_id)
+
+    task_info.update(values)
+    DATA['task_info'][task_id] = task_info
+
+    return task_info
+
+
+def _task_info_get(task_id):
+    """Get Task Info for Task with given task ID"""
+    global DATA
+    try:
+        task_info = DATA['task_info'][task_id]
+    except KeyError:
+        msg = _('Could not find task info %s') % task_id
+        LOG.info(msg)
+        raise exception.TaskNotFound(task_id=task_id)
+
+    return task_info

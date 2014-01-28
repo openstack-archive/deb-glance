@@ -14,7 +14,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from glance.api import CONF
 import glance.db.sqlalchemy.api
 from glance.db.sqlalchemy import models as db_models
 import glance.tests.functional.db as db_tests
@@ -22,17 +21,15 @@ from glance.tests.functional.db import base
 
 
 def get_db(config):
-    config(sql_connection='sqlite://', verbose=False, debug=False)
-    CONF.set_override('data_api', 'glance.db.sqlalchemy.api')
-    db_api = glance.db.get_api()
-    db_api.setup_db_env()
-    db_api.get_engine()
+    config(connection='sqlite://', group='database')
+    config(verbose=False, debug=False)
+    db_api = glance.db.sqlalchemy.api
     return db_api
 
 
 def reset_db(db_api):
-    db_models.unregister_models(db_api._ENGINE)
-    db_models.register_models(db_api._ENGINE)
+    db_models.unregister_models(db_api.get_engine())
+    db_models.register_models(db_api.get_engine())
 
 
 class TestSqlAlchemyDriver(base.TestDriver, base.DriverTests):
@@ -100,9 +97,17 @@ class TestSqlAlchemyDBDataIntegrity(base.TestDriver):
                                            sort_key='name')
 
 
-class TestSqlAlchemyTask(base.DriverTaskTests):
+class TestSqlAlchemyTask(base.TaskTests):
 
     def setUp(self):
         db_tests.load(get_db, reset_db)
         super(TestSqlAlchemyTask, self).setUp()
+        self.addCleanup(db_tests.reset)
+
+
+class TestSqlAlchemyQuota(base.DriverQuotaTests):
+
+    def setUp(self):
+        db_tests.load(get_db, reset_db)
+        super(TestSqlAlchemyQuota, self).setUp()
         self.addCleanup(db_tests.reset)

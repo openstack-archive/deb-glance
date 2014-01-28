@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2013 Red Hat, Inc.
 # All Rights Reserved.
 #
@@ -31,7 +29,7 @@ def upgrade(migrate_engine):
     image_members = _get_image_members_table(migrate_engine)
 
     if (migrate_engine.name == 'mysql' or
-        migrate_engine.name == 'postgresql'):
+            migrate_engine.name == 'postgresql'):
         try:
             UniqueConstraint('image_id',
                              name=_get_original_keyname(migrate_engine.name),
@@ -51,7 +49,7 @@ def downgrade(migrate_engine):
     image_members = _get_image_members_table(migrate_engine)
 
     if (migrate_engine.name == 'mysql' or
-        migrate_engine.name == 'postgresql'):
+            migrate_engine.name == 'postgresql'):
         _sanitize(migrate_engine, image_members)
         UniqueConstraint('image_id',
                          name=NEW_KEYNAME,

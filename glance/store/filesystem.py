@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2010 OpenStack Foundation
 # All Rights Reserved.
 #
@@ -21,7 +19,6 @@ A simple filesystem-backed store
 
 import errno
 import hashlib
-import json
 import os
 import urlparse
 
@@ -29,6 +26,7 @@ from oslo.config import cfg
 
 from glance.common import exception
 from glance.common import utils
+from glance.openstack.common import jsonutils
 import glance.openstack.common.log as logging
 import glance.store
 import glance.store.base
@@ -164,7 +162,7 @@ class Store(glance.store.base.Store):
 
         try:
             with open(CONF.filesystem_store_metadata_file, 'r') as fptr:
-                metadata = json.load(fptr)
+                metadata = jsonutils.load(fptr)
             glance.store.check_location_metadata(metadata)
             return metadata
         except glance.store.BackendException as bee:
@@ -180,7 +178,7 @@ class Store(glance.store.base.Store):
                       % (CONF.filesystem_store_metadata_file, ioe))
             return {}
         except Exception as ex:
-            LOG.exception(_('An error occured processing the storage systems '
+            LOG.exception(_('An error occurred processing the storage systems '
                             'meta data file: %s.  An empty dictionary will be '
                             'returned to the client.') % str(ex))
             return {}
@@ -280,7 +278,7 @@ class Store(glance.store.base.Store):
                           errno.ENOSPC: exception.StorageFull(),
                           errno.EACCES: exception.StorageWriteDenied()}
             raise exceptions.get(e.errno, e)
-        except:
+        except Exception:
             self._delete_partial(filepath, image_id)
             raise
 

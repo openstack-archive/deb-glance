@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2010-2011 Josh Durgin
 # All Rights Reserved.
 #
@@ -30,7 +28,6 @@ from glance.common import exception
 from glance.common import utils
 import glance.openstack.common.log as logging
 from glance.openstack.common import units
-import glance.store
 import glance.store.base
 import glance.store.location
 
@@ -41,26 +38,31 @@ except ImportError:
     rados = None
     rbd = None
 
-DEFAULT_POOL = 'rbd'
-DEFAULT_CONFFILE = ''  # librados will locate the default conf file
+DEFAULT_POOL = 'images'
+DEFAULT_CONFFILE = '/etc/ceph/ceph.conf'
 DEFAULT_USER = None    # let librados decide based on the Ceph conf file
-DEFAULT_CHUNKSIZE = 4  # in MiB
+DEFAULT_CHUNKSIZE = 8  # in MiB
 DEFAULT_SNAPNAME = 'snap'
 
 LOG = logging.getLogger(__name__)
 
 rbd_opts = [
     cfg.IntOpt('rbd_store_chunk_size', default=DEFAULT_CHUNKSIZE,
-               help=_('Images will be chunked into objects of this size '
+               help=_('RADOS images will be chunked into objects of this size '
                       '(in megabytes). For best performance, this should be '
                       'a power of two.')),
     cfg.StrOpt('rbd_store_pool', default=DEFAULT_POOL,
                help=_('RADOS pool in which images are stored.')),
     cfg.StrOpt('rbd_store_user', default=DEFAULT_USER,
                help=_('RADOS user to authenticate as (only applicable if '
-                      'using cephx.)')),
+                      'using Cephx. If <None>, a default will be chosen based '
+                      'on the client. section in rbd_store_ceph_conf)')),
     cfg.StrOpt('rbd_store_ceph_conf', default=DEFAULT_CONFFILE,
-               help=_('Ceph configuration file path.')),
+               help=_('Ceph configuration file path. '
+                      'If <None>, librados will locate the default config. '
+                      'If using cephx authentication, this file should '
+                      'include a reference to the right keyring '
+                      'in a client.<USER> section')),
 ]
 
 CONF = cfg.CONF
@@ -335,6 +337,7 @@ class Store(glance.store.base.Store):
                         _('RBD image %s already exists') % image_id)
                 try:
                     with rbd.Image(ioctx, image_name) as image:
+                        bytes_written = 0
                         offset = 0
                         chunks = utils.chunkreadable(image_file,
                                                      self.chunk_size)
@@ -344,7 +347,9 @@ class Store(glance.store.base.Store):
                             # be slower so setting a higher chunk size may
                             # speed things up a bit.
                             if image_size == 0:
-                                length = offset + len(chunk)
+                                chunk_length = len(chunk)
+                                length = offset + chunk_length
+                                bytes_written += chunk_length
                                 LOG.debug(_("resizing image to %s KiB") %
                                           (length / units.Ki))
                                 image.resize(length)
@@ -363,6 +368,10 @@ class Store(glance.store.base.Store):
                         pass
 
                     raise exc
+
+        # Make sure we send back the image size whether provided or inferred.
+        if image_size == 0:
+            image_size = bytes_written
 
         return (loc.get_uri(), image_size, checksum.hexdigest(), {})
 

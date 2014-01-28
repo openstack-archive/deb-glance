@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 #    Copyright 2013 Rackspace
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -27,9 +25,9 @@ class ProtectedImageFactoryProxy(glance.domain.proxy.ImageFactory):
         kwargs = {'context': self.context,
                   'property_rules': self.property_rules}
         super(ProtectedImageFactoryProxy, self).__init__(
-                                        image_factory,
-                                        proxy_class=ProtectedImageProxy,
-                                        proxy_kwargs=kwargs)
+            image_factory,
+            proxy_class=ProtectedImageProxy,
+            proxy_kwargs=kwargs)
 
     def new_image(self, **kwargs):
         extra_props = kwargs.pop('extra_properties', {})
@@ -53,8 +51,8 @@ class ProtectedImageRepoProxy(glance.domain.proxy.Repo):
         self.property_rules = property_rules
         proxy_kwargs = {'context': self.context}
         super(ProtectedImageRepoProxy, self).__init__(
-                image_repo, item_proxy_class=ProtectedImageProxy,
-                item_proxy_kwargs=proxy_kwargs)
+            image_repo, item_proxy_class=ProtectedImageProxy,
+            item_proxy_kwargs=proxy_kwargs)
 
     def get(self, image_id):
         return ProtectedImageProxy(self.image_repo.get(image_id),
@@ -74,9 +72,9 @@ class ProtectedImageProxy(glance.domain.proxy.Image):
         self.property_rules = property_rules
 
         self.image.extra_properties = ExtraPropertiesProxy(
-                                            self.context,
-                                            self.image.extra_properties,
-                                            self.property_rules)
+            self.context,
+            self.image.extra_properties,
+            self.property_rules)
         super(ProtectedImageProxy, self).__init__(self.image)
 
 

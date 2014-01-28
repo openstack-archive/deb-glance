@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2011 OpenStack Foundation
 # All Rights Reserved.
 #
@@ -36,8 +34,8 @@ from glance.common import utils
 from glance.common import wsgi
 import glance.db
 from glance import image_cache
-import glance.openstack.common.log as logging
 from glance import notifier
+import glance.openstack.common.log as logging
 import glance.registry.client.v1.api as registry
 
 LOG = logging.getLogger(__name__)
@@ -210,12 +208,19 @@ class CacheFilter(wsgi.Middleware):
         images Resource, removing image file from the cache
         if necessary
         """
-        if not 200 <= self.get_status_code(resp) < 300:
+        status_code = self.get_status_code(resp)
+        if not 200 <= status_code < 300:
             return resp
 
         try:
             (image_id, method) = self._fetch_request_info(resp.request)
         except TypeError:
+            return resp
+
+        if method == 'GET' and status_code == 204:
+            # Bugfix:1251055 - Don't cache non-existent image files.
+            # NOTE: Both GET for an image without locations and DELETE return
+            # 204 but DELETE should be processed.
             return resp
 
         method_str = '_process_%s_response' % method

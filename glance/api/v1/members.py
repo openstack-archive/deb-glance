@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2012 OpenStack Foundation.
 # Copyright 2013 NTT corp.
 # All Rights Reserved.
@@ -119,7 +117,8 @@ class Controller(controller.BaseController):
         if attempted > maximum:
             msg = _("The limit has been exceeded on the number of allowed "
                     "image members for this image. Attempted: %(attempted)s, "
-                    "Maximum: %(maximum)s") % locals()
+                    "Maximum: %(maximum)s") % {'attempted': attempted,
+                                               'maximum': maximum}
             raise webob.exc.HTTPRequestEntityTooLarge(explanation=msg,
                                                       request=req)
 

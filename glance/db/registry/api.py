@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2013 Red Hat, Inc.
 # All Rights Reserved.
 #
@@ -39,13 +37,6 @@ from glance.registry.client.v2 import api
 LOG = logging.getLogger(__name__)
 
 
-def setup_db_env():
-    """
-    Setup configuration for database
-    """
-    api.configure_registry_client()
-
-
 def _get_client(func):
     """Injects a client instance to the each function
 
@@ -67,7 +58,7 @@ def image_create(client, values):
 
 
 @_get_client
-def image_update(client, image_id, values, purge_props=False):
+def image_update(client, image_id, values, purge_props=False, from_state=None):
     """
     Set the given properties on an image and update it.
 
@@ -75,7 +66,7 @@ def image_update(client, image_id, values, purge_props=False):
     """
     return client.image_update(values=values,
                                image_id=image_id,
-                               purge_props=purge_props)
+                               purge_props=purge_props, from_state=from_state)
 
 
 @_get_client

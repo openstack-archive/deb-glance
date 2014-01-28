@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2013 Red Hat, Inc
 # All Rights Reserved.
 #
@@ -24,7 +22,6 @@ import urlparse
 from glance.common import exception
 from glance.openstack.common import excutils
 import glance.openstack.common.log as logging
-import glance.store
 import glance.store.base
 import glance.store.location
 
@@ -97,7 +94,7 @@ class Store(glance.store.base.Store):
         itself, it should raise `exception.BadStoreConfiguration`
         """
         if pymongo is None:
-            msg = _("Missing dependecies: pymongo")
+            msg = _("Missing dependencies: pymongo")
             raise exception.BadStoreConfiguration(store_name="gridfs",
                                                   reason=msg)
 
@@ -189,7 +186,7 @@ class Store(glance.store.base.Store):
         try:
             self.fs.put(image_file, _id=image_id)
             image = self._get_file(loc)
-        except:
+        except Exception:
             # Note(zhiyan): clean up already received data when
             # error occurs such as ImageSizeLimitExceeded exception.
             with excutils.save_and_reraise_exception():

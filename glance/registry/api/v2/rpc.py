@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2013 Red Hat, Inc.
 # All Rights Reserved.
 #
@@ -47,7 +45,6 @@ class Controller(rpc.Controller):
         # NOTE(flaper87): Register the
         # db_api as a resource to expose.
         db_api = glance.db.get_api()
-        db_api.setup_db_env()
         self.register(glance.db.unwrap(db_api))
 
 

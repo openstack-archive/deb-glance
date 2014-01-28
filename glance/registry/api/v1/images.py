@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2010-2011 OpenStack Foundation
 # All Rights Reserved.
 #
@@ -29,7 +27,6 @@ import glance.db
 import glance.openstack.common.log as logging
 from glance.openstack.common import strutils
 from glance.openstack.common import timeutils
-from glance.openstack.common import uuidutils
 
 
 LOG = logging.getLogger(__name__)
@@ -92,7 +89,6 @@ class Controller(object):
 
     def __init__(self):
         self.db_api = glance.db.get_api()
-        self.db_api.setup_db_env()
 
     def _get_images(self, context, filters, **params):
         """Get images, wrapping in exception if necessary."""
@@ -105,7 +101,14 @@ class Controller(object):
         try:
             return self.db_api.image_get_all(context, filters=filters,
                                              **params)
-        except (exception.NotFound, exception.Forbidden) as e:
+        except exception.NotFound:
+            LOG.info(_("Invalid marker. Image %(id)s could not be "
+                       "found.") % {'id': params.get('marker')})
+            msg = _("Invalid marker. Image could not be found.")
+            raise exc.HTTPBadRequest(explanation=msg)
+        except exception.Forbidden:
+            LOG.info(_("Access denied to image %(id)s but returning "
+                       "'not found'") % {'id': params.get('marker')})
             msg = _("Invalid marker. Image could not be found.")
             raise exc.HTTPBadRequest(explanation=msg)
 
@@ -248,7 +251,7 @@ class Controller(object):
         """Parse a marker query param into something usable."""
         marker = req.params.get('marker', None)
 
-        if marker and not uuidutils.is_uuid_like(marker):
+        if marker and not utils.is_uuid_like(marker):
             msg = _('Invalid marker format')
             raise exc.HTTPBadRequest(explanation=msg)
 
@@ -376,7 +379,7 @@ class Controller(object):
             image_data['owner'] = req.context.owner
 
         image_id = image_data.get('id')
-        if image_id and not uuidutils.is_uuid_like(image_id):
+        if image_id and not utils.is_uuid_like(image_id):
             msg = _("Rejecting image creation request for invalid image "
                     "id '%(bad_id)s'")
             LOG.info(msg % {'bad_id': image_id})
@@ -389,9 +392,10 @@ class Controller(object):
         try:
             image_data = _normalize_image_location_for_db(image_data)
             image_data = self.db_api.image_create(req.context, image_data)
-            msg = _("Successfully created image %(id)s") % {'id': image_id}
+            image_data = dict(image=make_image_dict(image_data))
+            msg = _("Successfully created image %(id)s") % image_data['image']
             LOG.info(msg)
-            return dict(image=make_image_dict(image_data))
+            return image_data
         except exception.Duplicate:
             msg = _("Image with identifier %s already exists!") % image_id
             LOG.error(msg)
@@ -413,6 +417,7 @@ class Controller(object):
         :retval Returns the updated image information as a mapping,
         """
         image_data = body['image']
+        from_state = body.get('from_state', None)
 
         # Prohibit modification of 'owner'
         if not req.context.is_admin and 'owner' in image_data:
@@ -428,11 +433,15 @@ class Controller(object):
                                             'image_data': image_data})
             image_data = _normalize_image_location_for_db(image_data)
             if purge_props == "true":
-                updated_image = self.db_api.image_update(req.context, id,
-                                                         image_data, True)
+                purge_props = True
             else:
-                updated_image = self.db_api.image_update(req.context, id,
-                                                         image_data)
+                purge_props = False
+
+            updated_image = self.db_api.image_update(req.context, id,
+                                                     image_data,
+                                                     purge_props=purge_props,
+                                                     from_state=from_state)
+
             msg = _("Updating metadata for image %(id)s")
             LOG.info(msg % {'id': id})
             return dict(image=make_image_dict(updated_image))
@@ -457,6 +466,11 @@ class Controller(object):
             msg = _("Access denied to image %(id)s but returning 'not found'")
             LOG.info(msg % {'id': id})
             raise exc.HTTPNotFound(body='Image not found',
+                                   request=req,
+                                   content_type='text/plain')
+        except exception.Conflict as e:
+            LOG.info(unicode(e))
+            raise exc.HTTPConflict(body='Image operation conflicts',
                                    request=req,
                                    content_type='text/plain')
 

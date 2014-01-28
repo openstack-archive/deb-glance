@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2010 United States Government as represented by the
 # Administrator of the National Aeronautics and Space Administration.
 # Copyright 2010-2011 OpenStack Foundation
@@ -22,25 +20,19 @@
 
 """Defines interface for DB access."""
 
-import logging
-import time
-
 from oslo.config import cfg
 import sqlalchemy
 import sqlalchemy.orm as sa_orm
 import sqlalchemy.sql as sa_sql
 
 from glance.common import exception
-from glance.db.sqlalchemy import migration
 from glance.db.sqlalchemy import models
+from glance.openstack.common.db import exception as db_exception
+from glance.openstack.common.db.sqlalchemy import session
 import glance.openstack.common.log as os_logging
 from glance.openstack.common import timeutils
 
 
-_ENGINE = None
-_MAKER = None
-_MAX_RETRIES = None
-_RETRY_INTERVAL = None
 BASE = models.BASE
 sa_logger = None
 LOG = os_logging.getLogger(__name__)
@@ -49,87 +41,15 @@ LOG = os_logging.getLogger(__name__)
 STATUSES = ['active', 'saving', 'queued', 'killed', 'pending_delete',
             'deleted']
 
-sql_connection_opt = cfg.StrOpt('sql_connection',
-                                default='sqlite:///glance.sqlite',
-                                secret=True,
-                                metavar='CONNECTION',
-                                help=_('A valid SQLAlchemy connection '
-                                       'string for the registry database. '
-                                       'Default: %(default)s'))
-
-db_opts = [
-    cfg.IntOpt('sql_idle_timeout', default=3600,
-               help=_('Period in seconds after which SQLAlchemy should '
-                      'reestablish its connection to the database.')),
-    cfg.IntOpt('sql_max_retries', default=60,
-               help=_('The number of times to retry a connection to the SQL'
-                      'server.')),
-    cfg.IntOpt('sql_retry_interval', default=1,
-               help=_('The amount of time to wait (in seconds) before '
-                      'attempting to retry the SQL connection.')),
-    cfg.BoolOpt('db_auto_create', default=False,
-                help=_('A boolean that determines if the database will be '
-                       'automatically created.')),
-    cfg.BoolOpt('sqlalchemy_debug', default=False,
-                help=_('Enable debug logging in sqlalchemy which prints '
-                       'every query and result'))
-]
-
 CONF = cfg.CONF
-CONF.register_opt(sql_connection_opt)
-CONF.register_opts(db_opts)
 CONF.import_opt('debug', 'glance.openstack.common.log')
-
-
-def add_cli_options():
-    """Allows passing sql_connection as a CLI argument."""
-
-    # NOTE(flaper87): Find a better place / way for this.
-    CONF.unregister_opt(sql_connection_opt)
-    CONF.register_cli_opt(sql_connection_opt)
-
-
-def _ping_listener(dbapi_conn, connection_rec, connection_proxy):
-    """Ensures that MySQL connections checked out of the
-    pool are alive.
-
-    Borrowed from:
-    http://groups.google.com/group/sqlalchemy/msg/a4ce563d802c929f
-    """
-
-    try:
-        dbapi_conn.cursor().execute('select 1')
-    except dbapi_conn.OperationalError as ex:
-        if ex.args[0] in (2006, 2013, 2014, 2045, 2055):
-            msg = 'Got mysql server has gone away: %s' % ex
-            LOG.warn(msg)
-            raise sqlalchemy.exc.DisconnectionError(msg)
-        else:
-            raise
-
-
-def setup_db_env():
-    """Setup global configuration for database."""
-    global sa_logger, _IDLE_TIMEOUT, _MAX_RETRIES, _RETRY_INTERVAL, _CONNECTION
-
-    _IDLE_TIMEOUT = CONF.sql_idle_timeout
-    _MAX_RETRIES = CONF.sql_max_retries
-    _RETRY_INTERVAL = CONF.sql_retry_interval
-    _CONNECTION = CONF.sql_connection
-    sa_logger = logging.getLogger('sqlalchemy.engine')
-    if CONF.sqlalchemy_debug:
-        sa_logger.setLevel(logging.DEBUG)
 
 
 def clear_db_env():
     """
     Unset global configuration variables for database.
     """
-    global _ENGINE, _MAKER, _MAX_RETRIES, _RETRY_INTERVAL, _CONNECTION
-    _ENGINE = None
-    _MAKER = None
-    _MAX_RETRIES = None
-    _RETRY_INTERVAL = None
+    session.cleanup()
 
 
 def _check_mutate_authorization(context, image_ref):
@@ -144,130 +64,24 @@ def _check_mutate_authorization(context, image_ref):
         raise exc_class(msg)
 
 
-def _get_session(autocommit=True, expire_on_commit=False):
-    """Helper method to grab session."""
-    global _MAKER
-    if not _MAKER:
-        get_engine()
-        _get_maker(autocommit, expire_on_commit)
-        assert(_MAKER)
-    session = _MAKER()
-    return session
-
-
-def get_engine():
-    """Return a SQLAlchemy engine."""
-    """May assign _ENGINE if not already assigned"""
-    global _ENGINE, sa_logger, _CONNECTION, _IDLE_TIMEOUT, _MAX_RETRIES,\
-        _RETRY_INTERVAL
-
-    if not _ENGINE:
-        tries = _MAX_RETRIES
-        retry_interval = _RETRY_INTERVAL
-
-        connection_dict = sqlalchemy.engine.url.make_url(_CONNECTION)
-
-        engine_args = {
-            'pool_recycle': _IDLE_TIMEOUT,
-            'echo': False,
-            'convert_unicode': True}
-
-        try:
-            _ENGINE = sqlalchemy.create_engine(_CONNECTION, **engine_args)
-
-            if 'mysql' in connection_dict.drivername:
-                sqlalchemy.event.listen(_ENGINE, 'checkout', _ping_listener)
-
-            _ENGINE.connect = _wrap_db_error(_ENGINE.connect)
-            _ENGINE.connect()
-        except Exception as err:
-            msg = _("Error configuring registry database with supplied "
-                    "sql_connection. Got error: %s") % err
-            LOG.error(msg)
-            raise
-
-        sa_logger = logging.getLogger('sqlalchemy.engine')
-        if CONF.sqlalchemy_debug:
-            sa_logger.setLevel(logging.DEBUG)
-
-        if CONF.db_auto_create:
-            LOG.info(_('auto-creating glance registry DB'))
-            models.register_models(_ENGINE)
-            try:
-                migration.version_control()
-            except exception.DatabaseMigrationError:
-                # only arises when the DB exists and is under version control
-                pass
-        else:
-            LOG.info(_('not auto-creating glance registry DB'))
-
-    return _ENGINE
-
-
-def _get_maker(autocommit=True, expire_on_commit=False):
-    """Return a SQLAlchemy sessionmaker."""
-    """May assign __MAKER if not already assigned"""
-    global _MAKER, _ENGINE
-    assert _ENGINE
-    if not _MAKER:
-        _MAKER = sa_orm.sessionmaker(bind=_ENGINE,
-                                     autocommit=autocommit,
-                                     expire_on_commit=expire_on_commit)
-    return _MAKER
-
-
-def _is_db_connection_error(args):
-    """Return True if error in connecting to db."""
-    # NOTE(adam_g): This is currently MySQL specific and needs to be extended
-    #               to support Postgres and others.
-    conn_err_codes = ('2002', '2003', '2006')
-    for err_code in conn_err_codes:
-        if args.find(err_code) != -1:
-            return True
-    return False
-
-
-def _wrap_db_error(f):
-    """Retry DB connection. Copied from nova and modified."""
-    def _wrap(*args, **kwargs):
-        try:
-            return f(*args, **kwargs)
-        except sqlalchemy.exc.OperationalError as e:
-            if not _is_db_connection_error(e.args[0]):
-                raise
-
-            remaining_attempts = _MAX_RETRIES
-            while True:
-                LOG.warning(_('SQL connection failed. %d attempts left.'),
-                            remaining_attempts)
-                remaining_attempts -= 1
-                time.sleep(_RETRY_INTERVAL)
-                try:
-                    return f(*args, **kwargs)
-                except sqlalchemy.exc.OperationalError as e:
-                    if (remaining_attempts == 0 or
-                            not _is_db_connection_error(e.args[0])):
-                        raise
-                except sqlalchemy.exc.DBAPIError:
-                    raise
-        except sqlalchemy.exc.DBAPIError:
-            raise
-    _wrap.func_name = f.func_name
-    return _wrap
+_get_session = session.get_session
+get_engine = session.get_engine
 
 
 def image_create(context, values):
     """Create an image from the values dictionary."""
-    return _image_update(context, values, None, False)
+    return _image_update(context, values, None, purge_props=False)
 
 
-def image_update(context, image_id, values, purge_props=False):
+def image_update(context, image_id, values, purge_props=False,
+                 from_state=None):
     """
     Set the given properties on an image and update it.
 
     :raises NotFound if image does not exist.
     """
-    return _image_update(context, values, image_id, purge_props)
+    return _image_update(context, values, image_id, purge_props,
+                         from_state=from_state)
 
 
 def image_destroy(context, image_id):
@@ -351,40 +165,6 @@ def is_image_mutable(context, image):
 
     # Image only mutable by its owner
     return image['owner'] == context.owner
-
-
-def is_image_sharable(context, image, **kwargs):
-    """Return True if the image can be shared to others in this context."""
-    # Is admin == image sharable
-    if context.is_admin:
-        return True
-
-    # Only allow sharing if we have an owner
-    if context.owner is None:
-        return False
-
-    # If we own the image, we can share it
-    if context.owner == image['owner']:
-        return True
-
-    # Let's get the membership association
-    if 'membership' in kwargs:
-        membership = kwargs['membership']
-        if membership is None:
-            # Not shared with us anyway
-            return False
-    else:
-        members = image_member_find(context,
-                                    image_id=image['id'],
-                                    member=context.owner)
-        if members:
-            member = members[0]
-        else:
-            # Not shared with us anyway
-            return False
-
-    # It's the can_share attribute we're now interested in
-    return member['can_share']
 
 
 def is_image_visible(context, image, status=None):
@@ -497,12 +277,17 @@ def _paginate_query(query, model, limit, sort_keys, marker=None,
             crit_attrs = []
             for j in xrange(i):
                 model_attr = getattr(model, sort_keys[j])
+                default = None if isinstance(
+                    model_attr.property.columns[0].type,
+                    sqlalchemy.DateTime) else ''
                 attr = sa_sql.expression.case([(model_attr != None,
                                               model_attr), ],
                                               else_=default)
                 crit_attrs.append((attr == marker_values[j]))
 
             model_attr = getattr(model, sort_keys[i])
+            default = None if isinstance(model_attr.property.columns[0].type,
+                                         sqlalchemy.DateTime) else ''
             attr = sa_sql.expression.case([(model_attr != None,
                                           model_attr), ],
                                           else_=default)
@@ -741,8 +526,15 @@ def _image_get_disk_usage_by_owner(owner, session, image_id=None):
     if image_id is not None:
         query = query.filter(models.Image.id != image_id)
     query = query.filter(models.Image.size > 0)
+    query = query.filter(~models.Image.status.in_(['killed',
+                                                   'pending_delete',
+                                                   'deleted']))
     images = query.all()
-    total = sum([i.size * len(i.locations) for i in images])
+
+    total = 0
+    for i in images:
+        locations = [l for l in i.locations if not l['deleted']]
+        total += (i.size * len(locations))
     return total
 
 
@@ -772,7 +564,8 @@ def _update_values(image_ref, values):
             setattr(image_ref, k, values[k])
 
 
-def _image_update(context, values, image_id, purge_props=False):
+def _image_update(context, values, image_id, purge_props=False,
+                  from_state=None):
     """
     Used internally by image_create and image_update
 
@@ -797,9 +590,10 @@ def _image_update(context, values, image_id, purge_props=False):
 
         location_data = values.pop('locations', None)
 
+        new_status = values.get('status', None)
         if image_id:
             image_ref = _image_get(context, image_id, session=session)
-
+            current = image_ref.status
             # Perform authorization check
             _check_mutate_authorization(context, image_ref)
         else:
@@ -826,20 +620,49 @@ def _image_update(context, values, image_id, purge_props=False):
             #NOTE(iccha-sethi): updated_at must be explicitly set in case
             #                   only ImageProperty table was modifited
             values['updated_at'] = timeutils.utcnow()
-        image_ref.update(values)
 
-        # Validate the attributes before we go any further. From my
-        # investigation, the @validates decorator does not validate
-        # on new records, only on existing records, which is, well,
-        # idiotic.
-        values = _validate_image(image_ref.to_dict())
-        _update_values(image_ref, values)
+        if image_id:
+            query = session.query(models.Image).filter_by(id=image_id)
+            if from_state:
+                query = query.filter_by(status=from_state)
 
-        try:
-            image_ref.save(session=session)
-        except sqlalchemy.exc.IntegrityError:
-            raise exception.Duplicate("Image ID %s already exists!"
-                                      % values['id'])
+            if new_status:
+                _validate_image(values)
+
+            # Validate fields for Images table. This is similar to what is done
+            # for the query result update except that we need to do it prior
+            # in this case.
+            # TODO(dosaboy): replace this with a dict comprehension once py26
+            #                support is deprecated.
+            keys = values.keys()
+            for k in keys:
+                if k not in image_ref.to_dict():
+                    del values[k]
+            updated = query.update(values, synchronize_session='fetch')
+
+            if not updated:
+                msg = (_('cannot transition from %(current)s to '
+                         '%(next)s in update (wanted '
+                         'from_state=%(from)s)') %
+                       {'current': current, 'next': new_status,
+                        'from': from_state})
+                raise exception.Conflict(msg)
+
+            image_ref = _image_get(context, image_id, session=session)
+        else:
+            image_ref.update(values)
+            # Validate the attributes before we go any further. From my
+            # investigation, the @validates decorator does not validate
+            # on new records, only on existing records, which is, well,
+            # idiotic.
+            values = _validate_image(image_ref.to_dict())
+            _update_values(image_ref, values)
+
+            try:
+                image_ref.save(session=session)
+            except db_exception.DBDuplicateEntry:
+                raise exception.Duplicate("Image ID %s already exists!"
+                                          % values['id'])
 
         _set_properties_for_image(context, image_ref, properties, purge_props,
                                   session)
@@ -1177,42 +1000,120 @@ def user_get_storage_usage(context, owner_id, image_id=None, session=None):
     return total_size
 
 
+def _task_info_format(task_info_ref):
+    """Format a task info ref for consumption outside of this module"""
+    if task_info_ref is None:
+        return {}
+    return {
+        'task_id': task_info_ref['task_id'],
+        'input': task_info_ref['input'],
+        'result': task_info_ref['result'],
+        'message': task_info_ref['message'],
+    }
+
+
+def _task_info_create(context, task_id, values, session=None):
+    """Create an TaskInfo object"""
+    session = session or _get_session()
+    task_info_ref = models.TaskInfo()
+    task_info_ref.task_id = task_id
+    task_info_ref.update(values)
+    task_info_ref.save(session=session)
+    return _task_info_format(task_info_ref)
+
+
+def _task_info_update(context, task_id, values, session=None):
+    """Update an TaskInfo object"""
+    session = session or _get_session()
+    task_info_ref = _task_info_get(context, task_id, session=session)
+    if task_info_ref:
+        task_info_ref.update(values)
+        task_info_ref.save(session=session)
+    return _task_info_format(task_info_ref)
+
+
+def _task_info_get(context, task_id, session=None):
+    """Fetch an TaskInfo entity by task_id"""
+    session = session or _get_session()
+    query = session.query(models.TaskInfo)
+    query = query.filter_by(task_id=task_id)
+    try:
+        task_info_ref = query.one()
+    except sa_orm.exc.NoResultFound:
+        msg = (_("TaskInfo was not found for task with id %(task_id)s") %
+               {'task_id': task_id})
+        LOG.debug(msg)
+        task_info_ref = None
+
+    return task_info_ref
+
+
 def task_create(context, values, session=None):
     """Create a task object"""
-    task_ref = models.Task()
-    _task_update(context, task_ref, values, session=session)
-    return _task_format(task_ref)
+
+    values = values.copy()
+    session = session or _get_session()
+    with session.begin():
+        task_info_values = _pop_task_info_values(values)
+
+        task_ref = models.Task()
+        _task_update(context, task_ref, values, session=session)
+
+        _task_info_create(context,
+                          task_ref.id,
+                          task_info_values,
+                          session=session)
+
+    return task_get(context, task_ref.id, session)
+
+
+def _pop_task_info_values(values):
+    task_info_values = {}
+    for k, v in values.items():
+        if k in ['input', 'result', 'message']:
+            values.pop(k)
+            task_info_values[k] = v
+
+    return task_info_values
 
 
 def task_update(context, task_id, values, session=None):
     """Update a task object"""
+
     session = session or _get_session()
-    task_ref = _task_get(context, task_id, session)
-    _task_update(context, task_ref, values, session)
-    return _task_format(task_ref)
+
+    with session.begin():
+        task_info_values = _pop_task_info_values(values)
+
+        task_ref = _task_get(context, task_id, session)
+        _drop_protected_attrs(models.Task, values)
+
+        values['updated_at'] = timeutils.utcnow()
+
+        _task_update(context, task_ref, values, session)
+
+        if task_info_values:
+            _task_info_update(context,
+                              task_id,
+                              task_info_values,
+                              session)
+
+    return task_get(context, task_id, session)
 
 
-def task_get(context, task_id, session=None):
+def task_get(context, task_id, session=None, force_show_deleted=False):
     """Fetch a task entity by id"""
-    task_ref = _task_get(context, task_id, session=session)
-    return _task_format(task_ref)
+    task_ref = _task_get(context, task_id, session=session,
+                         force_show_deleted=force_show_deleted)
+    return _task_format(task_ref, task_ref.info)
 
 
 def task_delete(context, task_id, session=None):
     """Delete a task"""
     session = session or _get_session()
-    query = session.query(models.Task)\
-                   .filter_by(id=task_id)\
-                   .filter_by(deleted=False)
-    try:
-        task_ref = query.one()
-    except sa_orm.exc.NoResultFound:
-        msg = (_("No task found with ID %s") % task_id)
-        LOG.debug(msg)
-        raise exception.TaskNotFound(task_id=task_id)
-
+    task_ref = _task_get(context, task_id, session=session)
     task_ref.delete(session=session)
-    return _task_format(task_ref)
+    return _task_format(task_ref, task_ref.info)
 
 
 def task_get_all(context, filters=None, marker=None, limit=None,
@@ -1233,7 +1134,8 @@ def task_get_all(context, filters=None, marker=None, limit=None,
     filters = filters or {}
 
     session = _get_session()
-    query = session.query(models.Task)
+    query = session.query(models.Task)\
+        .options(sa_orm.joinedload(models.Task.info))
 
     if not (context.is_admin or admin_as_user == True) and \
             context.owner is not None:
@@ -1266,7 +1168,17 @@ def task_get_all(context, filters=None, marker=None, limit=None,
                             marker=marker_task,
                             sort_dir=sort_dir)
 
-    return [_task_format(task) for task in query.all()]
+    task_refs = query.all()
+
+    tasks = []
+    for task_ref in task_refs:
+        # NOTE(venkatesh): call to task_ref.info does not make any
+        # separate query call to fetch task info as it has been
+        # eagerly loaded using joinedload(models.Task.info) method above.
+        task_info_ref = task_ref.info
+        tasks.append(_task_format(task_ref, task_info_ref))
+
+    return tasks
 
 
 def _is_task_visible(context, task):
@@ -1290,8 +1202,10 @@ def _is_task_visible(context, task):
 def _task_get(context, task_id, session=None, force_show_deleted=False):
     """Fetch a task entity by id"""
     session = session or _get_session()
-    query = session.query(models.Task)
-    query = query.filter_by(id=task_id)
+    query = session.query(models.Task).options(
+        sa_orm.joinedload(models.Task.info)
+    ).filter_by(id=task_id)
+
     if not force_show_deleted and not _can_show_deleted(context):
         query = query.filter_by(deleted=False)
     try:
@@ -1312,26 +1226,32 @@ def _task_get(context, task_id, session=None, force_show_deleted=False):
 
 def _task_update(context, task_ref, values, session=None):
     """Apply supplied dictionary of values to a task object."""
-    _drop_protected_attrs(models.Task, values)
     values["deleted"] = False
     task_ref.update(values)
     task_ref.save(session=session)
     return task_ref
 
 
-def _task_format(task_ref):
+def _task_format(task_ref, task_info_ref=None):
     """Format a task ref for consumption outside of this module"""
-    return {
+    task_dict = {
         'id': task_ref['id'],
         'type': task_ref['type'],
         'status': task_ref['status'],
-        'input': task_ref['input'],
-        'result': task_ref['result'],
         'owner': task_ref['owner'],
-        'message': task_ref['message'],
         'expires_at': task_ref['expires_at'],
         'created_at': task_ref['created_at'],
         'updated_at': task_ref['updated_at'],
         'deleted_at': task_ref['deleted_at'],
         'deleted': task_ref['deleted']
     }
+
+    if task_info_ref:
+        task_info_dict = {
+            'input': task_info_ref['input'],
+            'result': task_info_ref['result'],
+            'message': task_info_ref['message'],
+        }
+        task_dict.update(task_info_dict)
+
+    return task_dict

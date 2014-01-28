@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2013 OpenStack Foundation
 # All Rights Reserved.
 #
@@ -19,9 +17,9 @@ from oslo.config import cfg
 import webob.exc
 
 from glance.common import exception
-from glance.openstack.common import excutils
 from glance.common import utils
 import glance.db
+from glance.openstack.common import excutils
 import glance.openstack.common.log as logging
 import glance.registry.client.v1.api as registry
 import glance.store
@@ -166,7 +164,9 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
     except exception.Duplicate as e:
         msg = _("Attempt to upload duplicate image: %s") % e
         LOG.debug(msg)
-        safe_kill(req, image_id)
+        # NOTE(dosaboy): do not delete the image since it is likely that this
+        # conflict is a result of another concurrent upload that will be
+        # successful.
         notifier.error('image.upload', msg)
         raise webob.exc.HTTPConflict(explanation=msg,
                                      request=req,

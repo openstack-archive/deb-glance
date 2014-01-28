@@ -13,7 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import json
 import re
 import urllib
 
@@ -25,9 +24,9 @@ from glance.common import exception
 from glance.common import utils
 from glance.common import wsgi
 import glance.db
-import glance.domain
 import glance.gateway
 import glance.notifier
+from glance.openstack.common import jsonutils as json
 import glance.openstack.common.log as logging
 from glance.openstack.common import timeutils
 import glance.schema
@@ -36,15 +35,15 @@ import glance.store
 LOG = logging.getLogger(__name__)
 
 CONF = cfg.CONF
-CONF.import_opt('disk_formats', 'glance.domain')
-CONF.import_opt('container_formats', 'glance.domain')
+CONF.import_opt('disk_formats', 'glance.common.config', group='image_format')
+CONF.import_opt('container_formats', 'glance.common.config',
+                group='image_format')
 
 
 class ImagesController(object):
     def __init__(self, db_api=None, policy_enforcer=None, notifier=None,
                  store_api=None):
         self.db_api = db_api or glance.db.get_api()
-        self.db_api.setup_db_env()
         self.policy = policy_enforcer or policy.Enforcer()
         self.notifier = notifier or glance.notifier.Notifier()
         self.store_api = store_api or glance.store
@@ -63,6 +62,8 @@ class ImagesController(object):
             raise webob.exc.HTTPBadRequest(explanation=unicode(dup))
         except exception.Forbidden as e:
             raise webob.exc.HTTPForbidden(explanation=unicode(e))
+        except exception.InvalidParameterValue as e:
+            raise webob.exc.HTTPBadRequest(explanation=unicode(e))
         except exception.LimitExceeded as e:
             LOG.info(unicode(e))
             raise webob.exc.HTTPRequestEntityTooLarge(
@@ -128,6 +129,8 @@ class ImagesController(object):
             raise webob.exc.HTTPNotFound(explanation=msg)
         except exception.Forbidden as e:
             raise webob.exc.HTTPForbidden(explanation=unicode(e))
+        except exception.InvalidParameterValue as e:
+            raise webob.exc.HTTPBadRequest(explanation=unicode(e))
         except exception.StorageQuotaFull as e:
             msg = (_("Denying attempt to upload image because it exceeds the ."
                      "quota: %s") % e)
@@ -675,13 +678,13 @@ def _get_base_properties():
             'type': 'string',
             'description': _('Format of the container'),
             'type': 'string',
-            'enum': CONF.container_formats,
+            'enum': CONF.image_format.container_formats,
         },
         'disk_format': {
             'type': 'string',
             'description': _('Format of the disk'),
             'type': 'string',
-            'enum': CONF.disk_formats,
+            'enum': CONF.image_format.disk_formats,
         },
         'created_at': {
             'type': 'string',

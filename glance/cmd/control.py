@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright (c) 2011 OpenStack Foundation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -60,13 +58,14 @@ USAGE = """%(prog)s [options] <SERVER> <COMMAND> [CONFPATH]
 
 Where <SERVER> is one of:
 
-    all, api, registry, scrubber
+    all, {0}
 
 And command is one of:
 
-    start, stop, shutdown, restart, reload, force-reload
+    {1}
 
-And CONFPATH is the optional configuration file to use."""
+And CONFPATH is the optional configuration file to use.""".\
+    format(', '.join(ALL_SERVERS), ', '.join(ALL_COMMANDS))
 
 exitcode = 0
 
@@ -202,9 +201,9 @@ def do_start(verb, pid_file, server, args):
 def do_check_status(pid_file, server):
     if os.path.exists(pid_file):
         pid = open(pid_file).read().strip()
-        print("%s running: %s" % (server, pid))
+        print("%s (pid %s) is running..." % (server, pid))
     else:
-        print("No %s running" % server)
+        print("%s is stopped" % server)
 
 
 def get_pid_file(server, pid_file):
@@ -245,7 +244,7 @@ def do_stop(server, args, graceful=False):
         except OSError:
             pass
         try:
-            print('Stopping %s  pid: %s  signal: %s' % (server, pid, sig))
+            print('Stopping %s (pid %s) with signal(%s)' % (server, pid, sig))
             os.kill(pid, sig)
         except OSError:
             print("Process %d not running" % pid)
@@ -258,7 +257,7 @@ def do_stop(server, args, graceful=False):
             print('Waited 15 seconds for pid %s (%s) to die; giving up' %
                   (pid, pid_file))
     if not did_anything:
-        print('No %s running' % server)
+        print('%s is already stopped' % server)
 
 
 def add_command_parsers(subparsers):
@@ -285,27 +284,27 @@ def main():
     global exitcode
 
     opts = [
-            cfg.SubCommandOpt('server',
-                              title='Server types',
-                              help='Available server types',
-                              handler=add_command_parsers),
-            cfg.StrOpt('pid-file',
-                       metavar='PATH',
-                       help='File to use as pid file. Default: '
-                       '/var/run/glance/$server.pid'),
-            cfg.IntOpt('await-child',
-                       metavar='DELAY',
-                       default=0,
-                       help='Period to wait for service death '
-                            'in order to report exit code '
-                            '(default is to not wait at all)'),
-            cfg.BoolOpt('capture-output',
-                        default=False,
-                        help='Capture stdout/err in syslog '
-                        'instead of discarding'),
-            cfg.BoolOpt('respawn',
-                        default=False,
-                        help='Restart service on unexpected death'),
+        cfg.SubCommandOpt('server',
+                          title='Server types',
+                          help='Available server types',
+                          handler=add_command_parsers),
+        cfg.StrOpt('pid-file',
+                   metavar='PATH',
+                   help='File to use as pid file. Default: '
+                   '/var/run/glance/$server.pid'),
+        cfg.IntOpt('await-child',
+                   metavar='DELAY',
+                   default=0,
+                   help='Period to wait for service death '
+                        'in order to report exit code '
+                        '(default is to not wait at all)'),
+        cfg.BoolOpt('capture-output',
+                    default=False,
+                    help='Capture stdout/err in syslog '
+                    'instead of discarding'),
+        cfg.BoolOpt('respawn',
+                    default=False,
+                    help='Restart service on unexpected death'),
     ]
     CONF.register_cli_opts(opts)
 
@@ -368,7 +367,7 @@ def main():
             do_start('Restart', pid_file, server, CONF.server.args)
 
     if (CONF.server.command == 'reload' or
-        CONF.server.command == 'force-reload'):
+            CONF.server.command == 'force-reload'):
         for server in CONF.server.servers:
             do_stop(server, CONF.server.args, graceful=True)
             pid_file = get_pid_file(server, CONF.pid_file)

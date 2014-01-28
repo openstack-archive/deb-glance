@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2011 OpenStack Foundation
 # All Rights Reserved.
 #
@@ -18,10 +16,10 @@
 """Functional test case that utilizes httplib2 against the API server"""
 
 import hashlib
-import json
 
 import httplib2
 
+from glance.openstack.common import jsonutils
 from glance.openstack.common import units
 from glance.tests import functional
 from glance.tests.utils import skip_if_disabled, minimal_headers
@@ -76,16 +74,39 @@ class TestApi(functional.FunctionalTest):
         - Attempt to replace members with an overlimit amount
         17. PUT image/members/member11
         - Attempt to add a member while at limit
-        18. DELETE image
+        18. POST /images with another public image named Image2
+        - attribute and three custom properties, "distro", "arch" & "foo"
+        - Verify a 200 OK is returned
+        19. HEAD image2
+        - Verify image2 found now
+        20. GET /images
+        - Verify 2 public images
+        21. GET /images with filter on user-defined property "distro".
+        - Verify both images are returned
+        22. GET /images with filter on user-defined property 'distro' but
+        - with non-existent value. Verify no images are returned
+        23. GET /images with filter on non-existent user-defined property
+        - "boo". Verify no images are returned
+        24. GET /images with filter 'arch=i386'
+        - Verify only image2 is returned
+        25. GET /images with filter 'arch=x86_64'
+        - Verify only image1 is returned
+        26. GET /images with filter 'foo=bar'
+        - Verify only image2 is returned
+        27. DELETE image1
         - Delete image
-        19. GET image/members
+        28. GET image/members
         -  List deleted image members
-        20. PUT image/members/member2
+        29. PUT image/members/member2
         - Update existing member2 of deleted image
-        21. PUT image/members/member3
+        30. PUT image/members/member3
         - Add member3 to deleted image
-        22. DELETE image/members/member2
+        31. DELETE image/members/member2
         - Delete member2 from deleted image
+        32. DELETE image2
+        - Delete image
+        33. GET /images
+        - Verify no images are listed
         """
         self.cleanup()
         self.start_servers(**self.__dict__.copy())
@@ -115,7 +136,7 @@ class TestApi(functional.FunctionalTest):
         response, content = http.request(path, 'POST', headers=headers,
                                          body=image_data)
         self.assertEqual(response.status, 201)
-        data = json.loads(content)
+        data = jsonutils.loads(content)
         image_id = data['image']['id']
         self.assertEqual(data['image']['checksum'],
                          hashlib.md5(image_data).hexdigest())
@@ -172,7 +193,7 @@ class TestApi(functional.FunctionalTest):
                          hashlib.md5("*" * FIVE_KB).hexdigest())
 
         # 5. GET /images
-        # Verify no public images
+        # Verify one public image
         path = "http://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
         http = httplib2.Http()
         response, content = http.request(path, 'GET')
@@ -185,7 +206,7 @@ class TestApi(functional.FunctionalTest):
              "name": "Image1",
              "checksum": "c2e5db72bd7fd153f53ede5da5a06de3",
              "size": 5120}]}
-        self.assertEqual(json.loads(content), expected_result)
+        self.assertEqual(jsonutils.loads(content), expected_result)
 
         # 6. GET /images/detail
         # Verify image and all its metadata
@@ -206,7 +227,7 @@ class TestApi(functional.FunctionalTest):
             "properties": {},
             "size": 5120}
 
-        image = json.loads(content)
+        image = jsonutils.loads(content)
 
         for expected_key, expected_value in expected_image.items():
             self.assertEqual(expected_value, image['images'][0][expected_key],
@@ -224,7 +245,7 @@ class TestApi(functional.FunctionalTest):
         http = httplib2.Http()
         response, content = http.request(path, 'PUT', headers=headers)
         self.assertEqual(response.status, 200)
-        data = json.loads(content)
+        data = jsonutils.loads(content)
         self.assertEqual(data['image']['properties']['arch'], "x86_64")
         self.assertEqual(data['image']['properties']['distro'], "Ubuntu")
 
@@ -258,7 +279,7 @@ class TestApi(functional.FunctionalTest):
             "properties": {'distro': 'Ubuntu', 'arch': 'x86_64'},
             "size": 5120}
 
-        image = json.loads(content)
+        image = jsonutils.loads(content)
 
         for expected_key, expected_value in expected_image.items():
             self.assertEqual(expected_value, image['images'][0][expected_key],
@@ -278,7 +299,7 @@ class TestApi(functional.FunctionalTest):
         path = "http://%s:%d/v1/images/detail" % ("127.0.0.1", self.api_port)
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 200)
-        data = json.loads(content)['images'][0]
+        data = jsonutils.loads(content)['images'][0]
         self.assertEqual(len(data['properties']), 1)
         self.assertEqual(data['properties']['arch'], "x86_64")
 
@@ -290,12 +311,12 @@ class TestApi(functional.FunctionalTest):
         http = httplib2.Http()
         response, content = http.request(path, 'PUT', headers=headers)
         self.assertEqual(response.status, 200)
-        data = json.loads(content)
+        data = jsonutils.loads(content)
 
         path = "http://%s:%d/v1/images/detail" % ("127.0.0.1", self.api_port)
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 200)
-        data = json.loads(content)['images'][0]
+        data = jsonutils.loads(content)['images'][0]
         self.assertEqual(len(data['properties']), 2)
         self.assertEqual(data['properties']['arch'], "x86_64")
         self.assertEqual(data['properties']['distro'], "Ubuntu")
@@ -321,7 +342,7 @@ class TestApi(functional.FunctionalTest):
         http = httplib2.Http()
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 200)
-        data = json.loads(content)
+        data = jsonutils.loads(content)
         self.assertEqual(len(data['members']), 2)
         self.assertEqual(data['members'][0]['member_id'], 'pattieblack')
         self.assertEqual(data['members'][1]['member_id'], 'pattiewhite')
@@ -342,7 +363,7 @@ class TestApi(functional.FunctionalTest):
             member_id = "foo%d" % i
             memberships.append(dict(member_id=member_id))
         http = httplib2.Http()
-        body = json.dumps(dict(memberships=memberships))
+        body = jsonutils.dumps(dict(memberships=memberships))
         response, content = http.request(path, 'PUT', body=body)
         self.assertEqual(response.status, 413)
 
@@ -355,7 +376,7 @@ class TestApi(functional.FunctionalTest):
             member_id = "foo%d" % i
             memberships.append(dict(member_id=member_id))
         http = httplib2.Http()
-        body = json.dumps(dict(memberships=memberships))
+        body = jsonutils.dumps(dict(memberships=memberships))
         response, content = http.request(path, 'PUT', body=body)
         self.assertEqual(response.status, 204)
 
@@ -365,41 +386,166 @@ class TestApi(functional.FunctionalTest):
         response, content = http.request(path, 'PUT')
         self.assertEqual(response.status, 413)
 
-        # 18. DELETE image
+        # 18. POST /images with another public image named Image2
+        # attribute and three custom properties, "distro", "arch" & "foo".
+        # Verify a 200 OK is returned
+        image_data = "*" * FIVE_KB
+        headers = minimal_headers('Image2')
+        headers['X-Image-Meta-Property-Distro'] = 'Ubuntu'
+        headers['X-Image-Meta-Property-Arch'] = 'i386'
+        headers['X-Image-Meta-Property-foo'] = 'bar'
+        path = "http://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
+        http = httplib2.Http()
+        response, content = http.request(path, 'POST', headers=headers,
+                                         body=image_data)
+        self.assertEqual(response.status, 201)
+        data = jsonutils.loads(content)
+        image2_id = data['image']['id']
+        self.assertEqual(data['image']['checksum'],
+                         hashlib.md5(image_data).hexdigest())
+        self.assertEqual(data['image']['size'], FIVE_KB)
+        self.assertEqual(data['image']['name'], "Image2")
+        self.assertEqual(data['image']['is_public'], True)
+        self.assertEqual(data['image']['properties']['distro'], 'Ubuntu')
+        self.assertEqual(data['image']['properties']['arch'], 'i386')
+        self.assertEqual(data['image']['properties']['foo'], 'bar')
+
+        # 19. HEAD image2
+        # Verify image2 found now
+        path = "http://%s:%d/v1/images/%s" % ("127.0.0.1", self.api_port,
+                                              image2_id)
+        http = httplib2.Http()
+        response, content = http.request(path, 'HEAD')
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response['x-image-meta-name'], "Image2")
+
+        # 20. GET /images
+        # Verify 2 public images
+        path = "http://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
+        http = httplib2.Http()
+        response, content = http.request(path, 'GET')
+        self.assertEqual(response.status, 200)
+        images = jsonutils.loads(content)['images']
+        self.assertEqual(len(images), 2)
+        self.assertEqual(images[0]['id'], image2_id)
+        self.assertEqual(images[1]['id'], image_id)
+
+        # 21. GET /images with filter on user-defined property 'distro'.
+        # Verify both images are returned
+        path = "http://%s:%d/v1/images?property-distro=Ubuntu" % \
+               ("127.0.0.1", self.api_port)
+        http = httplib2.Http()
+        response, content = http.request(path, 'GET')
+        self.assertEqual(response.status, 200)
+        images = jsonutils.loads(content)['images']
+        self.assertEqual(len(images), 2)
+        self.assertEqual(images[0]['id'], image2_id)
+        self.assertEqual(images[1]['id'], image_id)
+
+        # 22. GET /images with filter on user-defined property 'distro' but
+        # with non-existent value. Verify no images are returned
+        path = "http://%s:%d/v1/images?property-distro=fedora" % \
+               ("127.0.0.1", self.api_port)
+        http = httplib2.Http()
+        response, content = http.request(path, 'GET')
+        self.assertEqual(response.status, 200)
+        images = jsonutils.loads(content)['images']
+        self.assertEqual(len(images), 0)
+
+        # 23. GET /images with filter on non-existent user-defined property
+        # 'boo'. Verify no images are returned
+        path = "http://%s:%d/v1/images?property-boo=bar" % ("127.0.0.1",
+                                                            self.api_port)
+        http = httplib2.Http()
+        response, content = http.request(path, 'GET')
+        self.assertEqual(response.status, 200)
+        images = jsonutils.loads(content)['images']
+        self.assertEqual(len(images), 0)
+
+        # 24. GET /images with filter 'arch=i386'
+        # Verify only image2 is returned
+        path = "http://%s:%d/v1/images?property-arch=i386" % ("127.0.0.1",
+                                                              self.api_port)
+        http = httplib2.Http()
+        response, content = http.request(path, 'GET')
+        self.assertEqual(response.status, 200)
+        images = jsonutils.loads(content)['images']
+        self.assertEqual(len(images), 1)
+        self.assertEqual(images[0]['id'], image2_id)
+
+        # 25. GET /images with filter 'arch=x86_64'
+        # Verify only image1 is returned
+        path = "http://%s:%d/v1/images?property-arch=x86_64" % ("127.0.0.1",
+                                                                self.api_port)
+        http = httplib2.Http()
+        response, content = http.request(path, 'GET')
+        self.assertEqual(response.status, 200)
+        images = jsonutils.loads(content)['images']
+        self.assertEqual(len(images), 1)
+        self.assertEqual(images[0]['id'], image_id)
+
+        # 26. GET /images with filter 'foo=bar'
+        # Verify only image2 is returned
+        path = "http://%s:%d/v1/images?property-foo=bar" % ("127.0.0.1",
+                                                            self.api_port)
+        http = httplib2.Http()
+        response, content = http.request(path, 'GET')
+        self.assertEqual(response.status, 200)
+        images = jsonutils.loads(content)['images']
+        self.assertEqual(len(images), 1)
+        self.assertEqual(images[0]['id'], image2_id)
+
+        # 27. DELETE image1
         path = "http://%s:%d/v1/images/%s" % ("127.0.0.1", self.api_port,
                                               image_id)
         http = httplib2.Http()
         response, content = http.request(path, 'DELETE')
         self.assertEqual(response.status, 200)
 
-        # 19. Try to list members of deleted image
+        # 28. Try to list members of deleted image
         path = ("http://%s:%d/v1/images/%s/members" %
                 ("127.0.0.1", self.api_port, image_id))
         http = httplib2.Http()
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 404)
 
-        # 20. Try to update member of deleted image
+        # 29. Try to update member of deleted image
         path = ("http://%s:%d/v1/images/%s/members" %
                 ("127.0.0.1", self.api_port, image_id))
         http = httplib2.Http()
         fixture = [{'member_id': 'pattieblack', 'can_share': 'false'}]
-        body = json.dumps(dict(memberships=fixture))
+        body = jsonutils.dumps(dict(memberships=fixture))
         response, content = http.request(path, 'PUT', body=body)
         self.assertEqual(response.status, 404)
 
-        # 21. Try to add member to deleted image
+        # 30. Try to add member to deleted image
         path = ("http://%s:%d/v1/images/%s/members/chickenpattie" %
                 ("127.0.0.1", self.api_port, image_id))
         http = httplib2.Http()
         response, content = http.request(path, 'PUT')
         self.assertEqual(response.status, 404)
 
-        # 22. Try to delete member of deleted image
+        # 31. Try to delete member of deleted image
         path = ("http://%s:%d/v1/images/%s/members/pattieblack" %
                 ("127.0.0.1", self.api_port, image_id))
         http = httplib2.Http()
         response, content = http.request(path, 'DELETE')
         self.assertEqual(response.status, 404)
+
+        # 32. DELETE image2
+        path = "http://%s:%d/v1/images/%s" % ("127.0.0.1", self.api_port,
+                                              image2_id)
+        http = httplib2.Http()
+        response, content = http.request(path, 'DELETE')
+        self.assertEqual(response.status, 200)
+
+        # 33. GET /images
+        # Verify no images are listed
+        path = "http://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
+        http = httplib2.Http()
+        response, content = http.request(path, 'GET')
+        self.assertEqual(response.status, 200)
+        images = jsonutils.loads(content)['images']
+        self.assertEqual(len(images), 0)
 
         self.stop_servers()

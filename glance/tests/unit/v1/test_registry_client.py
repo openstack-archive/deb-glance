@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2010-2011 OpenStack Foundation
 # All Rights Reserved.
 #
@@ -18,25 +16,25 @@
 import copy
 import datetime
 import os
+import uuid
 
 import mox
 import testtools
 
+from glance.common import client as test_client
 from glance.common import config
 from glance.common import exception
-from glance.common import client as test_client
 from glance import context
 from glance.db.sqlalchemy import api as db_api
 from glance.openstack.common import timeutils
-from glance.openstack.common import uuidutils
-import glance.registry.client.v1.api as rapi
 from glance.registry.api.v1.images import Controller as rcontroller
+import glance.registry.client.v1.api as rapi
 from glance.registry.client.v1.api import client as rclient
 from glance.tests.unit import base
 from glance.tests import utils as test_utils
 
 
-_gen_uuid = uuidutils.generate_uuid
+_gen_uuid = lambda: str(uuid.uuid4())
 
 UUID1 = _gen_uuid()
 UUID2 = _gen_uuid()
@@ -55,7 +53,6 @@ class TestRegistryV1Client(base.IsolatedUnitTest, test_utils.RegistryAPIMixIn):
     def setUp(self):
         """Establish a clean test environment"""
         super(TestRegistryV1Client, self).setUp()
-        db_api.setup_db_env()
         db_api.get_engine()
         self.context = context.RequestContext(is_admin=True)
 
@@ -635,7 +632,9 @@ class TestRegistryV1Client(base.IsolatedUnitTest, test_utils.RegistryAPIMixIn):
             el = data[k]
             self.assertEqual(v, data[k],
                              "Failed v != data[k] where v = %(v)s and "
-                             "k = %(k)s and data[k] = %(el)s" % locals())
+                             "k = %(k)s and data[k] = %(el)s" % {'v': v,
+                                                                 'k': k,
+                                                                 'el': el})
 
     def test_get_image_non_existing(self):
         """Tests that NotFound is raised when getting a non-existing image"""

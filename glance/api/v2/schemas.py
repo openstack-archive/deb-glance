@@ -13,8 +13,9 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from glance.api.v2 import images
 from glance.api.v2 import image_members
+from glance.api.v2 import images
+from glance.api.v2 import tasks
 from glance.common import wsgi
 
 
@@ -22,9 +23,11 @@ class Controller(object):
     def __init__(self, custom_image_properties=None):
         self.image_schema = images.get_schema(custom_image_properties)
         self.image_collection_schema = images.get_collection_schema(
-                custom_image_properties)
+            custom_image_properties)
         self.member_schema = image_members.get_schema()
         self.member_collection_schema = image_members.get_collection_schema()
+        self.task_schema = tasks.get_task_schema()
+        self.task_collection_schema = tasks.get_collection_schema()
 
     def image(self, req):
         return self.image_schema.raw()
@@ -37,6 +40,12 @@ class Controller(object):
 
     def members(self, req):
         return self.member_collection_schema.minimal()
+
+    def task(self, req):
+        return self.task_schema.minimal()
+
+    def tasks(self, req):
+        return self.task_collection_schema.minimal()
 
 
 def create_resource(custom_image_properties=None):

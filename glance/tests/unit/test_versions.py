@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2012 OpenStack Foundation.
 # All Rights Reserved.
 #
@@ -15,12 +13,11 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import json
-
 import webob
 
 from glance.api.middleware import version_negotiation
 from glance.api import versions
+from glance.openstack.common import jsonutils
 from glance.tests.unit import base
 
 
@@ -35,7 +32,7 @@ class VersionsTest(base.IsolatedUnitTest):
         res = versions.Controller().index(req)
         self.assertEqual(res.status_int, 300)
         self.assertEqual(res.content_type, 'application/json')
-        results = json.loads(res.body)['versions']
+        results = jsonutils.loads(res.body)['versions']
         expected = [
             {
                 'id': 'v2.2',
@@ -121,9 +118,9 @@ class VersionNegotiationTest(base.IsolatedUnitTest):
     def test_request_url_v2_3_unsupported(self):
         request = webob.Request.blank('/v2.3/images')
         resp = self.middleware.process_request(request)
-        self.assertTrue(isinstance(resp, versions.Controller))
+        self.assertIsInstance(resp, versions.Controller)
 
     def test_request_url_v3_unsupported(self):
         request = webob.Request.blank('/v3/images')
         resp = self.middleware.process_request(request)
-        self.assertTrue(isinstance(resp, versions.Controller))
+        self.assertIsInstance(resp, versions.Controller)

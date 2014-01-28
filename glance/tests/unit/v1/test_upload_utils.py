@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2013 OpenStack Foundation
 # All Rights Reserved.
 #
@@ -225,7 +223,8 @@ class TestUploadUtils(base.StoreClearingUnitTest):
 
     def _test_upload_data_to_store_exception_with_notify(self,
                                                          exc_class,
-                                                         expected_class):
+                                                         expected_class,
+                                                         image_killed=True):
         req = unit_test_utils.get_fake_request()
 
         location = "file://foo/bar"
@@ -242,8 +241,9 @@ class TestUploadUtils(base.StoreClearingUnitTest):
             mox.IgnoreArg(),
             image_meta['size']).AndRaise(exc_class)
 
-        self.mox.StubOutWithMock(upload_utils, "safe_kill")
-        upload_utils.safe_kill(req, image_meta['id'])
+        if image_killed:
+            self.mox.StubOutWithMock(upload_utils, "safe_kill")
+            upload_utils.safe_kill(req, image_meta['id'])
 
         notifier = self.mox.CreateMockAnything()
         notifier.error('image.upload', mox.IgnoreArg())
@@ -256,49 +256,53 @@ class TestUploadUtils(base.StoreClearingUnitTest):
         self.mox.VerifyAll()
 
     def test_upload_data_to_store_duplicate(self):
+        """See note in glance.api.v1.upload_utils on why we don't want image to
+        be deleted in this case.
+        """
         self._test_upload_data_to_store_exception_with_notify(
-                                        exception.Duplicate,
-                                        webob.exc.HTTPConflict)
+            exception.Duplicate,
+            webob.exc.HTTPConflict,
+            image_killed=False)
 
     def test_upload_data_to_store_forbidden(self):
         self._test_upload_data_to_store_exception_with_notify(
-                                        exception.Forbidden,
-                                        webob.exc.HTTPForbidden)
+            exception.Forbidden,
+            webob.exc.HTTPForbidden)
 
     def test_upload_data_to_store_storage_full(self):
         self._test_upload_data_to_store_exception_with_notify(
-                                        exception.StorageFull,
-                                        webob.exc.HTTPRequestEntityTooLarge)
+            exception.StorageFull,
+            webob.exc.HTTPRequestEntityTooLarge)
 
     def test_upload_data_to_store_storage_write_denied(self):
         self._test_upload_data_to_store_exception_with_notify(
-                                        exception.StorageWriteDenied,
-                                        webob.exc.HTTPServiceUnavailable)
+            exception.StorageWriteDenied,
+            webob.exc.HTTPServiceUnavailable)
 
     def test_upload_data_to_store_size_limit_exceeded(self):
         self._test_upload_data_to_store_exception_with_notify(
-                                        exception.ImageSizeLimitExceeded,
-                                        webob.exc.HTTPRequestEntityTooLarge)
+            exception.ImageSizeLimitExceeded,
+            webob.exc.HTTPRequestEntityTooLarge)
 
     def test_upload_data_to_store_http_error(self):
         self._test_upload_data_to_store_exception_with_notify(
-                                        webob.exc.HTTPError,
-                                        webob.exc.HTTPError)
+            webob.exc.HTTPError,
+            webob.exc.HTTPError)
 
     def test_upload_data_to_store_client_disconnect(self):
         self._test_upload_data_to_store_exception(
-                                        ValueError,
-                                        webob.exc.HTTPBadRequest)
+            ValueError,
+            webob.exc.HTTPBadRequest)
 
     def test_upload_data_to_store_client_disconnect_ioerror(self):
         self._test_upload_data_to_store_exception(
-                                        IOError,
-                                        webob.exc.HTTPBadRequest)
+            IOError,
+            webob.exc.HTTPBadRequest)
 
     def test_upload_data_to_store_exception(self):
         self._test_upload_data_to_store_exception_with_notify(
-                                        Exception,
-                                        webob.exc.HTTPInternalServerError)
+            Exception,
+            webob.exc.HTTPInternalServerError)
 
     def test_upload_data_to_store_not_found_after_upload(self):
         req = unit_test_utils.get_fake_request()

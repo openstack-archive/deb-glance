@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2011 OpenStack Foundation
 # All Rights Reserved.
 #
@@ -20,10 +18,10 @@
 import datetime
 import hashlib
 import httplib2
-import json
 import os
 import sys
 
+from glance.openstack.common import jsonutils
 from glance.openstack.common import units
 from glance.tests import functional
 from glance.tests.utils import execute, minimal_headers
@@ -60,7 +58,7 @@ class TestBinGlanceCacheManage(functional.FunctionalTest):
         response, content = http.request(path, 'POST', headers=headers,
                                          body=image_data)
         self.assertEqual(response.status, 201)
-        data = json.loads(content)
+        data = jsonutils.loads(content)
         self.assertEqual(data['image']['checksum'],
                          hashlib.md5(image_data).hexdigest())
         self.assertEqual(data['image']['size'], FIVE_KB)
@@ -187,7 +185,7 @@ class TestBinGlanceCacheManage(functional.FunctionalTest):
 
         # Queue second image and then cache it
         cmd = "%s --port=%d --force queue-image %s" % (
-                exe_cmd, api_port, ids[1])
+            exe_cmd, api_port, ids[1])
 
         exitcode, out, err = execute(cmd)
 
@@ -249,7 +247,7 @@ log_file = %(log_file)s
 
         # Queue third image and then delete it from queue
         cmd = "%s --port=%d --force queue-image %s" % (
-                exe_cmd, api_port, ids[2])
+            exe_cmd, api_port, ids[2])
 
         exitcode, out, err = execute(cmd)
 

@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2010-2011 OpenStack Foundation
 # All Rights Reserved.
 #
@@ -19,12 +17,12 @@
 Registry's Client API
 """
 
-import json
 import os
 
 from oslo.config import cfg
 
 from glance.common import exception
+from glance.openstack.common import jsonutils
 import glance.openstack.common.log as logging
 from glance.registry.client.v1 import client
 
@@ -135,7 +133,7 @@ def get_registry_client(cxt):
             'X-Tenant-Id': cxt.tenant,
             'X-Roles': ','.join(cxt.roles),
             'X-Identity-Status': 'Confirmed',
-            'X-Service-Catalog': json.dumps(cxt.service_catalog),
+            'X-Service-Catalog': jsonutils.dumps(cxt.service_catalog),
         }
         kwargs['identity_headers'] = identity_headers
     return client.RegistryClient(_CLIENT_HOST, _CLIENT_PORT,
@@ -164,10 +162,11 @@ def add_image_metadata(context, image_meta):
 
 
 def update_image_metadata(context, image_id, image_meta,
-                          purge_props=False):
+                          purge_props=False, from_state=None):
     LOG.debug(_("Updating image metadata for image %s..."), image_id)
     c = get_registry_client(context)
-    return c.update_image(image_id, image_meta, purge_props)
+    return c.update_image(image_id, image_meta, purge_props=purge_props,
+                          from_state=from_state)
 
 
 def delete_image_metadata(context, image_id):

@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 #    Copyright 2012 Michael Still and Canonical Inc
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -15,7 +13,6 @@
 #    under the License.
 
 import copy
-import json
 import os
 import StringIO
 import sys
@@ -24,8 +21,9 @@ import uuid
 
 import fixtures
 
-from glance.tests import utils as test_utils
 from glance.cmd import replicator as glance_replicator
+from glance.openstack.common import jsonutils
+from glance.tests import utils as test_utils
 
 
 IMG_RESPONSE_ACTIVE = {
@@ -145,12 +143,12 @@ class ImageServiceTestCase(test_utils.BaseTestCase):
         resp = {'images': [IMG_RESPONSE_ACTIVE, IMG_RESPONSE_QUEUED]}
         c.conn.prime_request('GET', 'v1/images/detail?is_public=None', '',
                              {'x-auth-token': 'noauth'},
-                             200, json.dumps(resp), {})
+                             200, jsonutils.dumps(resp), {})
         c.conn.prime_request('GET',
                              ('v1/images/detail?marker=%s&is_public=None'
                               % IMG_RESPONSE_QUEUED['id']),
                              '', {'x-auth-token': 'noauth'},
-                             200, json.dumps({'images': []}), {})
+                             200, jsonutils.dumps({'images': []}), {})
 
         imgs = list(c.get_images())
         self.assertEqual(len(imgs), 2)
@@ -386,7 +384,7 @@ class ReplicationCommandsTestCase(test_utils.BaseTestCase):
             self.assertTrue(os.path.exists('%s.img' % imgfile))
 
             with open(imgfile) as f:
-                d = json.loads(f.read())
+                d = jsonutils.loads(f.read())
                 self.assertTrue('status' in d)
                 self.assertTrue('id' in d)
                 self.assertTrue('size' in d)
@@ -397,7 +395,7 @@ class ReplicationCommandsTestCase(test_utils.BaseTestCase):
             self.assertFalse(os.path.exists('%s.img' % imgfile))
 
             with open(imgfile) as f:
-                d = json.loads(f.read())
+                d = jsonutils.loads(f.read())
                 self.assertTrue('status' in d)
                 self.assertTrue('id' in d)
                 self.assertTrue('size' in d)
@@ -418,7 +416,7 @@ class ReplicationCommandsTestCase(test_utils.BaseTestCase):
         def write_image(img, data):
             imgfile = os.path.join(tempdir, img['id'])
             with open(imgfile, 'w') as f:
-                f.write(json.dumps(img))
+                f.write(jsonutils.dumps(img))
 
             if data:
                 with open('%s.img' % imgfile, 'w') as f:
@@ -451,7 +449,7 @@ class ReplicationCommandsTestCase(test_utils.BaseTestCase):
         # A file which should be ignored
         badfile = os.path.join(tempdir, 'kjdfhf')
         with open(badfile, 'w') as f:
-            f.write(json.dumps([1, 2, 3, 4, 5]))
+            f.write(jsonutils.dumps([1, 2, 3, 4, 5]))
 
         # Finally, we're ready to test
         options = UserDict.UserDict()
@@ -550,7 +548,7 @@ class ReplicationUtilitiesTestCase(test_utils.BaseTestCase):
 
         d = {'image': {'status': 'active'}}
         glance_replicator._check_upload_response_headers({},
-                                                         json.dumps(d))
+                                                         jsonutils.dumps(d))
 
         self.assertRaises(
             glance_replicator.UploadException,
@@ -559,9 +557,9 @@ class ReplicationUtilitiesTestCase(test_utils.BaseTestCase):
     def test_image_present(self):
         client = FakeImageService(None, 'noauth')
         self.assertTrue(glance_replicator._image_present(
-                client, '5dcddce0-cba5-4f18-9cf4-9853c7b207a6'))
+            client, '5dcddce0-cba5-4f18-9cf4-9853c7b207a6'))
         self.assertFalse(glance_replicator._image_present(
-                client, uuid.uuid4()))
+            client, uuid.uuid4()))
 
     def test_dict_diff(self):
         a = {'a': 1, 'b': 2, 'c': 3}

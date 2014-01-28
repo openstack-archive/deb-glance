@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2011 OpenStack Foundation
 # Copyright 2013 IBM Corp.
 # All Rights Reserved.
@@ -64,7 +62,7 @@ class ImageRepoStub(object):
 
 
 class TaskStub(glance.domain.Task):
-    def run(self):
+    def run(self, executor):
         pass
 
     def succeed(self, result):
@@ -110,20 +108,20 @@ class TestImageNotifications(utils.BaseTestCase):
     def setUp(self):
         super(TestImageNotifications, self).setUp()
         self.image = ImageStub(
-                image_id=UUID1, name='image-1', status='active', size=1024,
-                created_at=DATETIME, updated_at=DATETIME, owner=TENANT1,
-                visibility='public', container_format='ami',
-                tags=['one', 'two'], disk_format='ami', min_ram=128,
-                min_disk=10, checksum='ca425b88f047ce8ec45ee90e813ada91',
-                locations=['http://127.0.0.1'])
+            image_id=UUID1, name='image-1', status='active', size=1024,
+            created_at=DATETIME, updated_at=DATETIME, owner=TENANT1,
+            visibility='public', container_format='ami',
+            tags=['one', 'two'], disk_format='ami', min_ram=128,
+            min_disk=10, checksum='ca425b88f047ce8ec45ee90e813ada91',
+            locations=['http://127.0.0.1'])
         self.context = glance.context.RequestContext(tenant=TENANT2,
                                                      user=USER1)
         self.image_repo_stub = ImageRepoStub()
         self.notifier = unit_test_utils.FakeNotifier()
         self.image_repo_proxy = glance.notifier.ImageRepoProxy(
-                self.image_repo_stub, self.context, self.notifier)
+            self.image_repo_stub, self.context, self.notifier)
         self.image_proxy = glance.notifier.ImageProxy(
-                self.image, self.context, self.notifier)
+            self.image, self.context, self.notifier)
 
     def test_image_save_notification(self):
         self.image_repo_proxy.save(self.image_proxy)
@@ -161,12 +159,12 @@ class TestImageNotifications(utils.BaseTestCase):
 
     def test_image_get(self):
         image = self.image_repo_proxy.get(UUID1)
-        self.assertTrue(isinstance(image, glance.notifier.ImageProxy))
+        self.assertIsInstance(image, glance.notifier.ImageProxy)
         self.assertEqual(image.image, 'image_from_get')
 
     def test_image_list(self):
         images = self.image_repo_proxy.list()
-        self.assertTrue(isinstance(images[0], glance.notifier.ImageProxy))
+        self.assertIsInstance(images[0], glance.notifier.ImageProxy)
         self.assertEqual(images[0].image, 'images_from_list')
 
     def test_image_get_data_notification(self):
@@ -453,11 +451,7 @@ class TestTaskNotifications(utils.BaseTestCase):
             self.fail('Notification contained location field.')
 
     def test_task_run_notification(self):
-        self.assertRaises(
-            NotImplementedError,
-            self.task_proxy.run,
-            executor=None
-        )
+        self.task_proxy.run(executor=None)
         output_logs = self.notifier.get_logs()
         self.assertEqual(len(output_logs), 1)
         output_log = output_logs[0]

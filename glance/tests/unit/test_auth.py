@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2011 OpenStack Foundation
 # Copyright 2013 IBM Corp.
 # All Rights Reserved.
@@ -16,8 +14,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import json
-
 import stubout
 import webob
 
@@ -25,9 +21,10 @@ from glance.api import authorization
 from glance.common import auth
 from glance.common import exception
 import glance.domain
+from glance.openstack.common import jsonutils
 from glance.openstack.common import timeutils
-from glance.tests import utils
 from glance.tests.unit import utils as unittest_utils
+from glance.tests import utils
 
 
 TENANT1 = '6838eb7b-6ded-434a-882c-b344c77fe8df'
@@ -127,13 +124,13 @@ class TestKeystoneAuthPlugin(utils.BaseTestCase):
 
     def test_get_plugin_from_strategy_keystone(self):
         strategy = auth.get_plugin_from_strategy('keystone')
-        self.assertTrue(isinstance(strategy, auth.KeystoneStrategy))
+        self.assertIsInstance(strategy, auth.KeystoneStrategy)
         self.assertTrue(strategy.configure_via_auth)
 
     def test_get_plugin_from_strategy_keystone_configure_via_auth_false(self):
         strategy = auth.get_plugin_from_strategy('keystone',
                                                  configure_via_auth=False)
-        self.assertTrue(isinstance(strategy, auth.KeystoneStrategy))
+        self.assertIsInstance(strategy, auth.KeystoneStrategy)
         self.assertFalse(strategy.configure_via_auth)
 
     def test_required_creds(self):
@@ -245,7 +242,7 @@ class TestKeystoneAuthPlugin(utils.BaseTestCase):
             resp = webob.Response()
 
             if (headers.get('X-Auth-User') != 'user1' or
-                headers.get('X-Auth-Key') != 'pass'):
+                    headers.get('X-Auth-Key') != 'pass'):
                 resp.status = 401
             else:
                 resp.status = 200
@@ -282,10 +279,10 @@ class TestKeystoneAuthPlugin(utils.BaseTestCase):
                 continue  # Expected
 
         no_strategy_creds = {
-                'username': 'user1',
-                'auth_url': 'http://localhost/redirect/',
-                'password': 'pass',
-                'region': 'RegionOne'
+            'username': 'user1',
+            'auth_url': 'http://localhost/redirect/',
+            'password': 'pass',
+            'region': 'RegionOne'
         }
 
         try:
@@ -323,23 +320,23 @@ class TestKeystoneAuthPlugin(utils.BaseTestCase):
 
         def fake_do_request(cls, url, method, headers=None, body=None):
             if (not url.rstrip('/').endswith('v2.0/tokens') or
-                url.count("2.0") != 1):
+                    url.count("2.0") != 1):
                 self.fail("Invalid v2.0 token path (%s)" % url)
 
-            creds = json.loads(body)['auth']
+            creds = jsonutils.loads(body)['auth']
             username = creds['passwordCredentials']['username']
             password = creds['passwordCredentials']['password']
             tenant = creds['tenantName']
             resp = webob.Response()
 
             if (username != 'user1' or password != 'pass' or
-                tenant != 'tenant-ok'):
+                    tenant != 'tenant-ok'):
                 resp.status = 401
             else:
                 resp.status = 200
                 body = mock_token.token
 
-            return FakeResponse(resp), json.dumps(body)
+            return FakeResponse(resp), jsonutils.dumps(body)
 
         mock_token = V2Token()
         mock_token.add_service('image', ['RegionOne'])
@@ -382,11 +379,11 @@ class TestKeystoneAuthPlugin(utils.BaseTestCase):
                 continue  # Expected
 
         no_region_creds = {
-                'username': 'user1',
-                'tenant': 'tenant-ok',
-                'auth_url': 'http://localhost/redirect/v2.0/',
-                'password': 'pass',
-                'strategy': 'keystone'
+            'username': 'user1',
+            'tenant': 'tenant-ok',
+            'auth_url': 'http://localhost/redirect/v2.0/',
+            'password': 'pass',
+            'strategy': 'keystone'
         }
 
         plugin = auth.KeystoneStrategy(no_region_creds)
@@ -405,12 +402,12 @@ class TestKeystoneAuthPlugin(utils.BaseTestCase):
             pass  # Expected
 
         wrong_region_creds = {
-                'username': 'user1',
-                'tenant': 'tenant-ok',
-                'auth_url': 'http://localhost/redirect/v2.0/',
-                'password': 'pass',
-                'strategy': 'keystone',
-                'region': 'NonExistantRegion'
+            'username': 'user1',
+            'tenant': 'tenant-ok',
+            'auth_url': 'http://localhost/redirect/v2.0/',
+            'password': 'pass',
+            'strategy': 'keystone',
+            'region': 'NonExistentRegion'
         }
 
         try:
@@ -422,11 +419,11 @@ class TestKeystoneAuthPlugin(utils.BaseTestCase):
             pass  # Expected
 
         no_strategy_creds = {
-                'username': 'user1',
-                'tenant': 'tenant-ok',
-                'auth_url': 'http://localhost/redirect/v2.0/',
-                'password': 'pass',
-                'region': 'RegionOne'
+            'username': 'user1',
+            'tenant': 'tenant-ok',
+            'auth_url': 'http://localhost/redirect/v2.0/',
+            'password': 'pass',
+            'region': 'RegionOne'
         }
 
         try:
@@ -640,13 +637,13 @@ class TestImmutableImage(utils.BaseTestCase):
         image_factory = glance.domain.ImageFactory()
         self.context = glance.context.RequestContext(tenant=TENANT1)
         image = image_factory.new_image(
-                image_id=UUID1,
-                name='Marvin',
-                owner=TENANT1,
-                disk_format='raw',
-                container_format='bare',
-                extra_properties={'foo': 'bar'},
-                tags=['ping', 'pong'],
+            image_id=UUID1,
+            name='Marvin',
+            owner=TENANT1,
+            disk_format='raw',
+            container_format='bare',
+            extra_properties={'foo': 'bar'},
+            tags=['ping', 'pong'],
         )
         self.image = authorization.ImmutableImageProxy(image, self.context)
 
@@ -774,7 +771,7 @@ class TestImmutableImage(utils.BaseTestCase):
                 return 'tiddlywinks'
 
         image = glance.api.authorization.ImmutableImageProxy(
-                FakeImage(), self.context)
+            FakeImage(), self.context)
         self.assertEqual(image.get_data(), 'tiddlywinks')
 
 
@@ -914,13 +911,6 @@ class TestImmutableTask(utils.BaseTestCase):
     def test_change_updated_at(self):
         self._test_change('updated_at', 'fake')
 
-    def test_run(self):
-        self.assertRaises(
-            NotImplementedError,
-            self.task.run,
-            'executor'
-        )
-
     def test_begin_processing(self):
         self.assertRaises(
             exception.Forbidden,
@@ -961,40 +951,32 @@ class TestTaskFactoryProxy(utils.BaseTestCase):
 
     def test_task_create_default_owner(self):
         owner = self.request1.context.owner
-        task = self.task_factory.new_task(
-            self.task_type,
-            self.task_input,
-            owner
-        )
+        task = self.task_factory.new_task(task_type=self.task_type,
+                                          task_input=self.task_input,
+                                          owner=owner)
         self.assertEqual(task.owner, TENANT1)
 
     def test_task_create_wrong_owner(self):
-        self.assertRaises(
-            exception.Forbidden,
-            self.task_factory.new_task,
-            self.task_type,
-            self.task_input,
-            self.owner
-        )
+        self.assertRaises(exception.Forbidden,
+                          self.task_factory.new_task,
+                          task_type=self.task_type,
+                          task_input=self.task_input,
+                          owner=self.owner)
 
     def test_task_create_owner_as_None(self):
-        self.assertRaises(
-            exception.Forbidden,
-            self.task_factory.new_task,
-            self.task_type,
-            self.task_input,
-            None
-        )
+        self.assertRaises(exception.Forbidden,
+                          self.task_factory.new_task,
+                          task_type=self.task_type,
+                          task_input=self.task_input,
+                          owner=None)
 
     def test_task_create_admin_context_owner_as_None(self):
         self.context.is_admin = True
-        self.assertRaises(
-            exception.Forbidden,
-            self.task_factory.new_task,
-            self.task_type,
-            self.task_input,
-            None
-        )
+        self.assertRaises(exception.Forbidden,
+                          self.task_factory.new_task,
+                          task_type=self.task_type,
+                          task_input=self.task_input,
+                          owner=None)
 
 
 class TestTaskRepoProxy(utils.BaseTestCase):

@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2011 OpenStack Foundation
 # All Rights Reserved.
 #
@@ -25,7 +23,6 @@ and spinning down the servers.
 
 import atexit
 import datetime
-import json
 import logging
 import os
 import re
@@ -41,9 +38,10 @@ import fixtures
 from sqlalchemy import create_engine
 import testtools
 
-from glance import tests as glance_tests
 from glance.common import utils
+from glance.openstack.common import jsonutils
 from glance.openstack.common import units
+from glance import tests as glance_tests
 from glance.tests import utils as test_utils
 
 execute, get_unused_port = test_utils.execute, test_utils.get_unused_port
@@ -315,6 +313,7 @@ class ApiServer(Server):
         self.image_member_quota = 10
         self.image_property_quota = 10
         self.image_tag_quota = 10
+        self.image_location_quota = 2
 
         self.needs_database = True
         default_sql_connection = 'sqlite:////%s/tests.sqlite' % self.test_dir
@@ -379,6 +378,7 @@ property_protection_rule_format = %(property_protection_rule_format)s
 image_member_quota=%(image_member_quota)s
 image_property_quota=%(image_property_quota)s
 image_tag_quota=%(image_tag_quota)s
+image_location_quota=%(image_location_quota)s
 [paste_deploy]
 flavor = %(deployment_flavor)s
 """
@@ -625,7 +625,7 @@ class FunctionalTest(test_utils.BaseTestCase):
 
     def set_policy_rules(self, rules):
         fap = open(self.policy_file, 'w')
-        fap.write(json.dumps(rules))
+        fap.write(jsonutils.dumps(rules))
         fap.close()
 
     def _reset_database(self, conn_string):
@@ -650,9 +650,10 @@ class FunctionalTest(test_utils.BaseTestCase):
                 if auth_pieces[1].strip():
                     password = "-p%s" % auth_pieces[1]
             sql = ("drop database if exists %(database)s; "
-                   "create database %(database)s;") % locals()
+                   "create database %(database)s;") % {'database': database}
             cmd = ("mysql -u%(user)s %(password)s -h%(host)s "
-                   "-e\"%(sql)s\"") % locals()
+                   "-e\"%(sql)s\"") % {'user': user, 'password': password,
+                                       'host': host, 'sql': sql}
             exitcode, out, err = execute(cmd)
             self.assertEqual(0, exitcode)
 

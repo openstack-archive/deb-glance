@@ -1,5 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 # Copyright 2011 OpenStack Foundation
 # All Rights Reserved.
 #
@@ -23,7 +21,6 @@ to the backend store.
 """
 
 import hashlib
-import json
 import os
 import shutil
 import sys
@@ -31,6 +28,7 @@ import time
 
 import httplib2
 
+from glance.openstack.common import jsonutils
 from glance.openstack.common import units
 from glance.tests import functional
 from glance.tests.utils import (skip_if_disabled,
@@ -63,7 +61,7 @@ class BaseCacheMiddlewareTest(object):
         response, content = http.request(path, 'POST', headers=headers,
                                          body=image_data)
         self.assertEqual(response.status, 201)
-        data = json.loads(content)
+        data = jsonutils.loads(content)
         self.assertEqual(data['image']['checksum'],
                          hashlib.md5(image_data).hexdigest())
         self.assertEqual(data['image']['size'], FIVE_KB)
@@ -136,9 +134,9 @@ class BaseCacheMiddlewareTest(object):
         }
         response, content = http.request(path, 'POST',
                                          headers=headers,
-                                         body=json.dumps(image_entity))
+                                         body=jsonutils.dumps(image_entity))
         self.assertEqual(response.status, 201)
-        data = json.loads(content)
+        data = jsonutils.loads(content)
         image_id = data['id']
 
         path = "http://%s:%d/v2/images/%s/file" % ("0.0.0.0", self.api_port,
@@ -197,7 +195,7 @@ class BaseCacheMiddlewareTest(object):
         http = httplib2.Http()
         response, content = http.request(path, 'POST', headers=headers)
         self.assertEqual(response.status, 201)
-        data = json.loads(content)
+        data = jsonutils.loads(content)
         self.assertEqual(data['image']['size'], FIVE_KB)
 
         image_id = data['image']['id']
@@ -235,7 +233,7 @@ class BaseCacheMiddlewareTest(object):
         response, content = http.request(path, 'POST', headers=headers,
                                          body=image_data)
         self.assertEqual(response.status, 201)
-        data = json.loads(content)
+        data = jsonutils.loads(content)
         self.assertEqual(data['image']['checksum'],
                          hashlib.md5(image_data).hexdigest())
         self.assertEqual(data['image']['size'], FIVE_KB)
@@ -293,9 +291,9 @@ class BaseCacheMiddlewareTest(object):
         }
         response, content = http.request(path, 'POST',
                                          headers=headers,
-                                         body=json.dumps(image_entity))
+                                         body=jsonutils.dumps(image_entity))
         self.assertEqual(response.status, 201)
-        data = json.loads(content)
+        data = jsonutils.loads(content)
         image_id = data['id']
 
         path = "http://%s:%d/v2/images/%s/file" % ("0.0.0.0", self.api_port,
@@ -343,7 +341,7 @@ class BaseCacheManageMiddlewareTest(object):
         http = httplib2.Http()
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 200)
-        data = json.loads(content)
+        data = jsonutils.loads(content)
         self.assertTrue('images' in data)
         self.assertEqual(0, len(data['images']))
 
@@ -360,7 +358,7 @@ class BaseCacheManageMiddlewareTest(object):
         response, content = http.request(path, 'POST', headers=headers,
                                          body=image_data)
         self.assertEqual(response.status, 201)
-        data = json.loads(content)
+        data = jsonutils.loads(content)
         self.assertEqual(data['image']['checksum'],
                          hashlib.md5(image_data).hexdigest())
         self.assertEqual(data['image']['size'], FIVE_KB)
@@ -377,7 +375,7 @@ class BaseCacheManageMiddlewareTest(object):
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 200)
 
-        data = json.loads(content)
+        data = jsonutils.loads(content)
         self.assertTrue('cached_images' in data)
         self.assertEqual(data['cached_images'], [])
 
@@ -407,7 +405,7 @@ class BaseCacheManageMiddlewareTest(object):
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 200)
 
-        data = json.loads(content)
+        data = jsonutils.loads(content)
         self.assertTrue('cached_images' in data)
 
         cached_images = data['cached_images']
@@ -475,7 +473,7 @@ class BaseCacheManageMiddlewareTest(object):
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 200)
 
-        data = json.loads(content)
+        data = jsonutils.loads(content)
         self.assertTrue('cached_images' in data)
 
         # Verify the last_modified/last_accessed values are valid floats
@@ -507,7 +505,7 @@ class BaseCacheManageMiddlewareTest(object):
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 200)
 
-        data = json.loads(content)
+        data = jsonutils.loads(content)
         self.assertTrue('cached_images' in data)
 
         cached_images = data['cached_images']
@@ -552,7 +550,7 @@ class BaseCacheManageMiddlewareTest(object):
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 200)
 
-        data = json.loads(content)
+        data = jsonutils.loads(content)
         self.assertTrue('cached_images' in data)
 
         cached_images = data['cached_images']
@@ -574,7 +572,7 @@ class BaseCacheManageMiddlewareTest(object):
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 200)
 
-        data = json.loads(content)
+        data = jsonutils.loads(content)
         self.assertTrue('cached_images' in data)
 
         cached_images = data['cached_images']
@@ -592,7 +590,7 @@ class BaseCacheManageMiddlewareTest(object):
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 200)
 
-        data = json.loads(content)
+        data = jsonutils.loads(content)
         self.assertTrue('cached_images' in data)
 
         cached_images = data['cached_images']
@@ -628,7 +626,7 @@ class BaseCacheManageMiddlewareTest(object):
         response, content = http.request(path, 'DELETE')
         self.assertEqual(response.status, 200)
 
-        data = json.loads(content)
+        data = jsonutils.loads(content)
         num_deleted = data['num_deleted']
         self.assertEqual(NUM_IMAGES, num_deleted)
 
@@ -638,7 +636,7 @@ class BaseCacheManageMiddlewareTest(object):
         response, content = http.request(path, 'DELETE')
         self.assertEqual(response.status, 200)
 
-        data = json.loads(content)
+        data = jsonutils.loads(content)
         num_deleted = data['num_deleted']
         self.assertEqual(0, num_deleted)
 
@@ -706,7 +704,7 @@ log_file = %(log_file)s
         response, content = http.request(path, 'GET')
         self.assertEqual(response.status, 200)
 
-        data = json.loads(content)
+        data = jsonutils.loads(content)
         self.assertTrue('cached_images' in data)
 
         cached_images = data['cached_images']

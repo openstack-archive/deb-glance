@@ -15,13 +15,11 @@
 
 import webob.exc
 
-import glance.api.common
 import glance.api.policy
 from glance.common import exception
 from glance.common import utils
 from glance.common import wsgi
 import glance.db
-import glance.domain
 import glance.gateway
 import glance.notifier
 import glance.openstack.common.log as logging
@@ -36,7 +34,6 @@ class ImageDataController(object):
                  gateway=None):
         if gateway is None:
             db_api = db_api or glance.db.get_api()
-            db_api.setup_db_env()
             store_api = store_api or glance.store
             policy = policy_enforcer or glance.api.policy.Enforcer()
             notifier = notifier or glance.notifier.Notifier()
@@ -101,7 +98,7 @@ class ImageDataController(object):
                                                       request=req)
 
         except exception.ImageSizeLimitExceeded as e:
-            msg = _("The incoming image is too large: %") % e
+            msg = _("The incoming image is too large: %s") % e
             LOG.error(msg)
             raise webob.exc.HTTPRequestEntityTooLarge(explanation=msg,
                                                       request=req)
@@ -126,8 +123,9 @@ class ImageDataController(object):
         try:
             image = image_repo.get(image_id)
             if not image.locations:
-                reason = _("No image data could be found")
-                raise exception.NotFound(reason)
+                raise exception.ImageDataNotFound()
+        except exception.ImageDataNotFound as e:
+            raise webob.exc.HTTPNoContent(explanation=unicode(e))
         except exception.NotFound as e:
             raise webob.exc.HTTPNotFound(explanation=unicode(e))
         except exception.Forbidden as e:
