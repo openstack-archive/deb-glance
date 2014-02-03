@@ -1,3 +1,9 @@
+glance (2013.2.1-3) unstable; urgency=medium
+
+  * Restart glance-api and registry after logrotate.
+
+ -- Thomas Goirand <zigo@debian.org>  Mon, 03 Feb 2014 16:06:45 +0800
+
 glance (2013.2.1-2) unstable; urgency=medium
 
   * Fixed sphinx doc building with sphinx 1.2 (Closes: #735802).
