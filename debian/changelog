@@ -1,3 +1,9 @@
+glance (2013.2.2-1) unstable; urgency=medium
+
+  * New upstream point release.
+
+ -- Thomas Goirand <zigo@debian.org>  Fri, 14 Feb 2014 11:19:32 +0800
+
 glance (2013.2.1-3) unstable; urgency=medium
 
   * Restart glance-api and registry after logrotate.
