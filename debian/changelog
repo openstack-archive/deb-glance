@@ -1,3 +1,11 @@
+glance (2013.2.2-4) unstable; urgency=medium
+
+  * Updates da.po thanks to Joe Dalton (Closes: #739766).
+  * Updates de.po thanks to Chris Leick (Closes: #735334).
+  * Updates sv.po thanks to Brother (Closes: #734587).
+
+ -- Thomas Goirand <zigo@debian.org>  Thu, 06 Mar 2014 06:29:15 +0000
+
 glance (2013.2.2-3) unstable; urgency=medium
 
   * Rebuilt for SQLA 0.9.x.
