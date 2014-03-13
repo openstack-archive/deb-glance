@@ -1,6 +1,6 @@
-glance (2014.1~b2-1) experimental; urgency=low
+glance (2014.1~b3-1) experimental; urgency=low
 
-  * New upstream release (beta1 of Icehouse).
+  * New upstream release (beta3 of Icehouse).
   * Refresh patches.
 
  -- Thomas Goirand <zigo@debian.org>  Mon, 17 Feb 2014 15:17:34 +0800
