@@ -14,9 +14,11 @@
 #    under the License.
 
 import collections
+import copy
 import sys
 
 from oslo.config import cfg
+import six
 
 from glance.common import exception
 from glance.common import utils
@@ -24,8 +26,8 @@ import glance.context
 import glance.domain.proxy
 from glance.openstack.common import importutils
 import glance.openstack.common.log as logging
+from glance import scrubber
 from glance.store import location
-from glance.store import scrubber
 
 LOG = logging.getLogger(__name__)
 
@@ -39,6 +41,7 @@ store_opts = [
                     'glance.store.swift.Store',
                     'glance.store.sheepdog.Store',
                     'glance.store.cinder.Store',
+                    'glance.store.vmware_datastore.Store',
                 ],
                 help=_('List of which store classes and store class locations '
                        'are currently known to glance at startup.')),
@@ -51,14 +54,18 @@ store_opts = [
                help=_('Directory that the scrubber will use to track '
                       'information about what to delete. '
                       'Make sure this is set in glance-api.conf and '
-                      'glance-scrubber.conf')),
+                      'glance-scrubber.conf.')),
     cfg.BoolOpt('delayed_delete', default=False,
                 help=_('Turn on/off delayed delete.')),
+    cfg.BoolOpt('use_user_token', default=True,
+                help=_('Whether to pass through the user token when '
+                       'making requests to the registry.')),
     cfg.IntOpt('scrub_time', default=0,
                help=_('The amount of time in seconds to delay before '
                       'performing a delete.')),
 ]
 
+REGISTERED_STORES = set()
 CONF = cfg.CONF
 CONF.register_opts(store_opts)
 
@@ -135,6 +142,20 @@ class Indexable(object):
         return self.size
 
 
+def _register_stores(store_classes):
+    """
+    Given a set of store names, add them to a globally available set
+    of store names.
+    """
+    for store_cls in store_classes:
+        REGISTERED_STORES.add(store_cls.__module__.split('.')[2])
+    # NOTE (spredzy): The actual class name is filesystem but in order
+    # to maintain backward compatibility we need to keep the 'file' store
+    # as a known store
+    if 'filesystem' in REGISTERED_STORES:
+        REGISTERED_STORES.add('file')
+
+
 def _get_store_class(store_entry):
     store_cls = None
     try:
@@ -185,6 +206,7 @@ def create_stores():
                 store_count += 1
             else:
                 LOG.debug("Store %s already registered", store_cls)
+    _register_stores(store_classes)
     return store_count
 
 
@@ -201,6 +223,11 @@ def verify_default_store():
 def get_known_schemes():
     """Returns list of known schemes"""
     return location.SCHEME_TO_CLS_MAP.keys()
+
+
+def get_known_stores():
+    """Returns list of known stores"""
+    return list(REGISTERED_STORES)
 
 
 def get_store_from_scheme(context, scheme, loc=None):
@@ -279,11 +306,12 @@ def safe_delete_from_backend(context, uri, image_id, **kwargs):
         msg = _('Failed to delete image %s in store from URI')
         LOG.warn(msg % image_id)
     except exception.StoreDeleteNotSupported as e:
-        LOG.warn(str(e))
+        LOG.warn(six.text_type(e))
     except UnsupportedBackend:
         exc_type = sys.exc_info()[0].__name__
-        msg = (_('Failed to delete image %s from store (%s)') %
-               (image_id, exc_type))
+        msg = (_('Failed to delete image %(image_id)s from store '
+                 '(%(error)s)') % {'image_id': image_id,
+                                   'error': exc_type})
         LOG.error(msg)
 
 
@@ -294,7 +322,9 @@ def schedule_delayed_delete_from_backend(context, uri, image_id, **kwargs):
     # In future we can change it using DB based queued instead,
     # such as using image location's status to saving pending delete flag
     # when that property be added.
-    file_queue.add_location(image_id, uri)
+    if CONF.use_user_token is False:
+        context = None
+    file_queue.add_location(image_id, uri, user_context=context)
 
 
 def delete_image_from_backend(context, store_api, image_id, uri):
@@ -314,9 +344,11 @@ def check_location_metadata(val, key=''):
             check_location_metadata(v, key='%s[%d]' % (key, ndx))
             ndx = ndx + 1
     elif not isinstance(val, unicode):
-        raise BackendException(_("The image metadata key %s has an invalid "
-                                 "type of %s.  Only dict, list, and unicode "
-                                 "are supported.") % (key, type(val)))
+        raise BackendException(_("The image metadata key %(key)s has an "
+                                 "invalid type of %(val)s.  Only dict, list, "
+                                 "and unicode are supported.") %
+                               {'key': key,
+                                'val': type(val)})
 
 
 def store_add_to_backend(image_id, data, size, store):
@@ -336,17 +368,20 @@ def store_add_to_backend(image_id, data, size, store):
     (location, size, checksum, metadata) = store.add(image_id, data, size)
     if metadata is not None:
         if not isinstance(metadata, dict):
-            msg = (_("The storage driver %s returned invalid metadata %s"
-                     "This must be a dictionary type") %
-                   (str(store), str(metadata)))
+            msg = (_("The storage driver %(store)s returned invalid metadata "
+                     "%(metadata)s. This must be a dictionary type") %
+                   {'store': six.text_type(store),
+                    'metadata': six.text_type(metadata)})
             LOG.error(msg)
             raise BackendException(msg)
         try:
             check_location_metadata(metadata)
         except BackendException as e:
             e_msg = (_("A bad metadata structure was returned from the "
-                       "%s storage driver: %s.  %s.") %
-                     (str(store), str(metadata), str(e)))
+                       "%(store)s storage driver: %(metadata)s.  %(error)s.") %
+                     {'store': six.text_type(store),
+                      'metadata': six.text_type(metadata),
+                      'error': six.text_type(e)})
             LOG.error(e_msg)
             raise BackendException(e_msg)
     return (location, size, checksum, metadata)
@@ -589,6 +624,15 @@ class StoreLocations(collections.MutableSequence):
     def __iter__(self):
         return iter(self.value)
 
+    def __copy__(self):
+        return type(self)(self.image_proxy, self.value)
+
+    def __deepcopy__(self, memo):
+        # NOTE(zhiyan): Only copy location entries, others can be reused.
+        value = copy.deepcopy(self.value, memo)
+        self.image_proxy.image.locations = value
+        return type(self)(self.image_proxy, value)
+
 
 def _locations_proxy(target, attr):
     """
@@ -652,8 +696,6 @@ class ImageProxy(glance.domain.proxy.Image):
     def delete(self):
         self.image.delete()
         if self.image.locations:
-            if CONF.delayed_delete:
-                self.image.status = 'pending_delete'
             for location in self.image.locations:
                 self.store_api.delete_image_from_backend(self.context,
                                                          self.store_api,
@@ -682,9 +724,9 @@ class ImageProxy(glance.domain.proxy.Image):
 
                 return data
             except Exception as e:
-                LOG.warn(_('Get image %(id)s data from %(loc)s '
-                           'failed: %(err)s.') % {'id': self.image.image_id,
-                                                  'loc': loc, 'err': e})
+                LOG.warn(_('Get image %(id)s data failed: '
+                           '%(err)s.') % {'id': self.image.image_id,
+                                          'err': six.text_type(e)})
                 err = e
         # tried all locations
         LOG.error(_('Glance tried all locations to get data for image %s '

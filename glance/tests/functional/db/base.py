@@ -137,19 +137,19 @@ class DriverTests(object):
                   'updated_at': create_time}
         image = self.db_api.image_create(self.context, values)
 
-        self.assertEqual(None, image['name'])
-        self.assertEqual(None, image['container_format'])
+        self.assertIsNone(image['name'])
+        self.assertIsNone(image['container_format'])
         self.assertEqual(0, image['min_ram'])
         self.assertEqual(0, image['min_disk'])
-        self.assertEqual(None, image['owner'])
+        self.assertIsNone(image['owner'])
         self.assertEqual(False, image['is_public'])
-        self.assertEqual(None, image['size'])
-        self.assertEqual(None, image['checksum'])
-        self.assertEqual(None, image['disk_format'])
+        self.assertIsNone(image['size'])
+        self.assertIsNone(image['checksum'])
+        self.assertIsNone(image['disk_format'])
         self.assertEqual([], image['locations'])
         self.assertEqual(False, image['protected'])
         self.assertEqual(False, image['deleted'])
-        self.assertEqual(None, image['deleted_at'])
+        self.assertIsNone(image['deleted_at'])
         self.assertEqual([], image['properties'])
         self.assertEqual(image['created_at'], create_time)
         self.assertEqual(image['updated_at'], create_time)
@@ -259,7 +259,7 @@ class DriverTests(object):
         prop = self.db_api.image_property_create(self.context, fixture)
         prop = self.db_api.image_property_delete(self.context,
                                                  prop['name'], UUID1)
-        self.assertNotEqual(prop['deleted_at'], None)
+        self.assertIsNotNone(prop['deleted_at'])
         self.assertTrue(prop['deleted'])
 
     def test_image_get(self):
@@ -933,7 +933,7 @@ class DriverTests(object):
         actual = self.db_api.image_tag_get_all(self.context, UUID1)
         self.assertEqual([], actual)
 
-    def test_image_tag_get_all_non_existant_image(self):
+    def test_image_tag_get_all_non_existent_image(self):
         bad_image_id = str(uuid.uuid4())
         actual = self.db_api.image_tag_get_all(self.context, bad_image_id)
         self.assertEqual([], actual)
@@ -959,8 +959,8 @@ class DriverTests(object):
         memberships = self.db_api.image_member_find(self.context)
         self.assertEqual(1, len(memberships))
         actual = memberships[0]
-        self.assertNotEqual(actual['created_at'], None)
-        self.assertNotEqual(actual['updated_at'], None)
+        self.assertIsNotNone(actual['created_at'])
+        self.assertIsNotNone(actual['updated_at'])
         actual.pop('id')
         actual.pop('created_at')
         actual.pop('updated_at')
@@ -1217,7 +1217,7 @@ class DriverQuotaTests(test_utils.BaseTestCase):
     def test_storage_quota_multiple_locations(self):
         dt1 = timeutils.utcnow()
         sz = 53
-        new_fixture_dict = {'id': 'SOMEID', 'created_at': dt1,
+        new_fixture_dict = {'id': str(uuid.uuid4()), 'created_at': dt1,
                             'updated_at': dt1, 'size': sz,
                             'owner': self.owner_id1}
         new_fixture = build_image_fixture(**new_fixture_dict)
@@ -1236,7 +1236,8 @@ class DriverQuotaTests(test_utils.BaseTestCase):
         # good way to delete locations.
         dt1 = timeutils.utcnow()
         sz = 53
-        new_fixture_dict = {'id': 'SOMEID', 'created_at': dt1,
+        image_id = str(uuid.uuid4())
+        new_fixture_dict = {'id': image_id, 'created_at': dt1,
                             'updated_at': dt1, 'size': sz,
                             'owner': self.owner_id1}
         new_fixture = build_image_fixture(**new_fixture_dict)
@@ -1249,7 +1250,7 @@ class DriverQuotaTests(test_utils.BaseTestCase):
         x = self.db_api.user_get_storage_usage(self.context1, self.owner_id1)
         self.assertEqual(total + (sz * 2), x)
 
-        self.db_api.image_destroy(self.context1, 'SOMEID')
+        self.db_api.image_destroy(self.context1, image_id)
         x = self.db_api.user_get_storage_usage(self.context1, self.owner_id1)
         self.assertEqual(total, x)
 
@@ -1277,8 +1278,8 @@ class TaskTests(test_utils.BaseTestCase):
                 'input': {'import_from': 'file:///a.img',
                           'import_from_format': 'qcow2',
                           'image_properties': {
-                          "name": "GreatStack 1.22",
-                          "tags": ["lamp", "custom"]
+                              "name": "GreatStack 1.22",
+                              "tags": ["lamp", "custom"]
                           }},
             },
             {
@@ -1287,17 +1288,18 @@ class TaskTests(test_utils.BaseTestCase):
                 'input': {'import_from': 'file:///b.img',
                           'import_from_format': 'qcow2',
                           'image_properties': {
-                          "name": "GreatStack 1.23",
-                          "tags": ["lamp", "good"]
+                              "name": "GreatStack 1.23",
+                              "tags": ["lamp", "good"]
                           }},
             },
             {
                 'owner': self.context.owner,
                 "type": "export",
                 "input": {
-                "export_uuid": "deadbeef-dead-dead-dead-beefbeefbeef",
-                "export_to": "swift://cloud.foo/myaccount/mycontainer/path",
-                "export_format": "qcow2"
+                    "export_uuid": "deadbeef-dead-dead-dead-beefbeefbeef",
+                    "export_to":
+                        "swift://cloud.foo/myaccount/mycontainer/path",
+                    "export_format": "qcow2"
                 }
             },
         ]
@@ -1329,8 +1331,8 @@ class TaskTests(test_utils.BaseTestCase):
 
     def test_task_get_all_marker(self):
         for fixture in self.fixtures:
-            task = self.db_api.task_create(self.context,
-                                           build_task_fixture(**fixture))
+            self.db_api.task_create(self.context,
+                                    build_task_fixture(**fixture))
         tasks = self.db_api.task_get_all(self.context, sort_key='id')
         task_ids = [t['id'] for t in tasks]
         tasks = self.db_api.task_get_all(self.context, sort_key='id',
@@ -1461,9 +1463,9 @@ class TaskTests(test_utils.BaseTestCase):
             self.assertIsNone(task['deleted_at'])
             self.assertEqual(task['created_at'], fixture['created_at'])
             self.assertEqual(task['updated_at'], fixture['updated_at'])
-            self.assertEqual(task['input'], fixture['input'])
-            self.assertEqual(task['result'], fixture['result'])
-            self.assertEqual(task['message'], fixture['message'])
+            task_details_keys = ['input', 'message', 'result']
+            for key in task_details_keys:
+                self.assertFalse(key in task)
 
     def test_task_create(self):
         task_id = str(uuid.uuid4())
@@ -1502,9 +1504,9 @@ class TaskTests(test_utils.BaseTestCase):
         self.assertEqual(task['owner'], self.context.owner)
         self.assertEqual(task['type'], 'export')
         self.assertEqual(task['status'], 'pending')
-        self.assertEqual(task['input'], None)
-        self.assertEqual(task['result'], None)
-        self.assertEqual(task['message'], None)
+        self.assertIsNone(task['input'])
+        self.assertIsNone(task['result'])
+        self.assertIsNone(task['message'])
 
     def test_task_update(self):
         self.context.tenant = str(uuid.uuid4())
@@ -1549,9 +1551,9 @@ class TaskTests(test_utils.BaseTestCase):
         self.assertEqual(task['owner'], self.context.owner)
         self.assertEqual(task['type'], 'import')
         self.assertEqual(task['status'], 'processing')
-        self.assertEqual(task['input'], None)
-        self.assertEqual(task['result'], None)
-        self.assertEqual(task['message'], None)
+        self.assertIsNone(task['input'])
+        self.assertIsNone(task['result'])
+        self.assertIsNone(task['message'])
         self.assertEqual(task['deleted'], False)
         self.assertIsNone(task['deleted_at'])
         self.assertIsNone(task['expires_at'])

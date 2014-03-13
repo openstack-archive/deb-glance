@@ -17,11 +17,12 @@ from contextlib import contextmanager
 import datetime
 import hashlib
 import os
-import StringIO
 import tempfile
 import time
 
 import fixtures
+import six
+from six.moves import xrange
 import stubout
 
 from glance.common import exception
@@ -32,7 +33,8 @@ import glance.registry  # noqa
 import glance.store.filesystem as fs_store
 import glance.store.s3 as s3_store
 from glance.tests import utils as test_utils
-from glance.tests.utils import skip_if_disabled, xattr_writes_supported
+from glance.tests.utils import skip_if_disabled
+from glance.tests.utils import xattr_writes_supported
 
 FIXTURE_LENGTH = 1024
 FIXTURE_DATA = '*' * FIXTURE_LENGTH
@@ -41,7 +43,7 @@ FIXTURE_DATA = '*' * FIXTURE_LENGTH
 class ImageCacheTestCase(object):
 
     def _setup_fixture_file(self):
-        FIXTURE_FILE = StringIO.StringIO(FIXTURE_DATA)
+        FIXTURE_FILE = six.StringIO(FIXTURE_DATA)
 
         self.assertFalse(self.cache.is_cached(1))
 
@@ -64,7 +66,7 @@ class ImageCacheTestCase(object):
         """
         self._setup_fixture_file()
 
-        buff = StringIO.StringIO()
+        buff = six.StringIO()
         with self.cache.open_for_read(1) as cache_file:
             for chunk in cache_file:
                 buff.write(chunk)
@@ -78,7 +80,7 @@ class ImageCacheTestCase(object):
         """
         self._setup_fixture_file()
 
-        buff = StringIO.StringIO()
+        buff = six.StringIO()
         with self.cache.open_for_read(1) as cache_file:
             for chunk in cache_file:
                 buff.write(chunk)
@@ -112,7 +114,7 @@ class ImageCacheTestCase(object):
             self.assertFalse(self.cache.is_cached(image_id))
 
         for image_id in (1, 2):
-            FIXTURE_FILE = StringIO.StringIO(FIXTURE_DATA)
+            FIXTURE_FILE = six.StringIO(FIXTURE_DATA)
             self.assertTrue(self.cache.cache_image_file(image_id,
                                                         FIXTURE_FILE))
 
@@ -181,7 +183,7 @@ class ImageCacheTestCase(object):
         # pruning, and the images that are least recently accessed
         # should be the ones pruned...
         for x in xrange(10):
-            FIXTURE_FILE = StringIO.StringIO(FIXTURE_DATA)
+            FIXTURE_FILE = six.StringIO(FIXTURE_DATA)
             self.assertTrue(self.cache.cache_image_file(x,
                                                         FIXTURE_FILE))
 
@@ -189,7 +191,7 @@ class ImageCacheTestCase(object):
 
         # OK, hit the images that are now cached...
         for x in xrange(10):
-            buff = StringIO.StringIO()
+            buff = six.StringIO()
             with self.cache.open_for_read(x) as cache_file:
                 for chunk in cache_file:
                     buff.write(chunk)
@@ -214,13 +216,13 @@ class ImageCacheTestCase(object):
         """
         self.assertEqual(0, self.cache.get_cache_size())
 
-        FIXTURE_FILE = StringIO.StringIO(FIXTURE_DATA)
+        FIXTURE_FILE = six.StringIO(FIXTURE_DATA)
         self.assertTrue(self.cache.cache_image_file('xxx', FIXTURE_FILE))
 
         self.assertEqual(1024, self.cache.get_cache_size())
 
         # OK, hit the image that is now cached...
-        buff = StringIO.StringIO()
+        buff = six.StringIO()
         with self.cache.open_for_read('xxx') as cache_file:
             for chunk in cache_file:
                 buff.write(chunk)
@@ -240,7 +242,7 @@ class ImageCacheTestCase(object):
         self.assertFalse(self.cache.is_cached(1))
         self.assertFalse(self.cache.is_queued(1))
 
-        FIXTURE_FILE = StringIO.StringIO(FIXTURE_DATA)
+        FIXTURE_FILE = six.StringIO(FIXTURE_DATA)
 
         self.assertTrue(self.cache.queue_image(1))
 
@@ -301,7 +303,7 @@ class ImageCacheTestCase(object):
         image_id = '1'
         self.assertFalse(self.cache.is_cached(image_id))
         try:
-            with self.cache.driver.open_for_write(image_id) as cache_file:
+            with self.cache.driver.open_for_write(image_id):
                 raise IOError
         except Exception as e:
             self.assertIsInstance(e, IOError)

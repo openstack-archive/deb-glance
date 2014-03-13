@@ -14,9 +14,10 @@
 #    under the License.
 
 import os
-import StringIO
 import tempfile
+import uuid
 
+import six
 import webob
 
 from glance.common import exception
@@ -77,14 +78,14 @@ class TestUtils(test_utils.BaseTestCase):
         """Ensure limiting reader class accesses all bytes of file"""
         BYTES = 1024
         bytes_read = 0
-        data = StringIO.StringIO("*" * BYTES)
+        data = six.StringIO("*" * BYTES)
         for chunk in utils.LimitingReader(data, BYTES):
             bytes_read += len(chunk)
 
         self.assertEqual(bytes_read, BYTES)
 
         bytes_read = 0
-        data = StringIO.StringIO("*" * BYTES)
+        data = six.StringIO("*" * BYTES)
         reader = utils.LimitingReader(data, BYTES)
         byte = reader.read(1)
         while len(byte) != 0:
@@ -99,7 +100,7 @@ class TestUtils(test_utils.BaseTestCase):
 
         def _consume_all_iter():
             bytes_read = 0
-            data = StringIO.StringIO("*" * BYTES)
+            data = six.StringIO("*" * BYTES)
             for chunk in utils.LimitingReader(data, BYTES - 1):
                 bytes_read += len(chunk)
 
@@ -107,7 +108,7 @@ class TestUtils(test_utils.BaseTestCase):
 
         def _consume_all_read():
             bytes_read = 0
-            data = StringIO.StringIO("*" * BYTES)
+            data = six.StringIO("*" * BYTES)
             reader = utils.LimitingReader(data, BYTES - 1)
             byte = reader.read(1)
             while len(byte) != 0:
@@ -215,3 +216,15 @@ class TestUtils(test_utils.BaseTestCase):
                 self.assertRaises(RuntimeError,
                                   utils.validate_key_cert,
                                   keyf.name, keyf.name)
+
+
+class UUIDTestCase(test_utils.BaseTestCase):
+
+    def test_is_uuid_like(self):
+        self.assertTrue(utils.is_uuid_like(str(uuid.uuid4())))
+
+    def test_id_is_uuid_like(self):
+        self.assertFalse(utils.is_uuid_like(1234567))
+
+    def test_name_is_uuid_like(self):
+        self.assertFalse(utils.is_uuid_like('zhongyueluo'))

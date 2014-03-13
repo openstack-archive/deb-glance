@@ -40,7 +40,8 @@ from glance.openstack.common import timeutils
 from glance.openstack.common import units
 
 from glance.tests import functional
-from glance.tests.utils import skip_if_disabled, minimal_headers
+from glance.tests.utils import minimal_headers
+from glance.tests.utils import skip_if_disabled
 
 FIVE_KB = 5 * units.Ki
 FIVE_GB = 5 * units.Gi
@@ -378,7 +379,7 @@ class TestSSL(functional.FunctionalTest):
         response, content = https.request(path, 'POST', headers=headers)
         self.assertEqual(response.status, 201)
         data = jsonutils.loads(content)
-        self.assertEqual(data['image']['checksum'], None)
+        self.assertIsNone(data['image']['checksum'])
         self.assertEqual(data['image']['size'], 0)
         self.assertEqual(data['image']['container_format'], 'ovf')
         self.assertEqual(data['image']['disk_format'], 'raw')
@@ -395,7 +396,7 @@ class TestSSL(functional.FunctionalTest):
         self.assertEqual(response.status, 200)
         data = jsonutils.loads(content)
         self.assertEqual(data['images'][0]['id'], image_id)
-        self.assertEqual(data['images'][0]['checksum'], None)
+        self.assertIsNone(data['images'][0]['checksum'])
         self.assertEqual(data['images'][0]['size'], 0)
         self.assertEqual(data['images'][0]['container_format'], 'ovf')
         self.assertEqual(data['images'][0]['disk_format'], 'raw')

@@ -17,7 +17,7 @@ from migrate.changeset import *  # noqa
 from sqlalchemy import *  # noqa
 
 from glance.db.sqlalchemy.migrate_repo.schema import (
-    Boolean, DateTime, Integer, String, Text, from_migration_import)
+    Boolean, DateTime, Integer, String, Text, from_migration_import)  # noqa
 
 
 def get_images_table(meta):
@@ -39,7 +39,7 @@ def get_image_properties_table(meta):
     (get_images_table,) = from_migration_import(
         '004_add_checksum', ['get_images_table'])
 
-    images = get_images_table(meta)
+    images = get_images_table(meta)  # noqa
 
     image_properties = Table('image_properties',
                              meta,

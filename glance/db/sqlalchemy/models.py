@@ -72,6 +72,10 @@ class GlanceBase(models.ModelBase, models.TimestampMixin):
     __protected_attributes__ = set([
         "created_at", "updated_at", "deleted_at", "deleted"])
 
+    def save(self, session=None):
+        from glance.db.sqlalchemy import api as db_api
+        super(GlanceBase, self).save(session or db_api.get_session())
+
     created_at = Column(DateTime, default=timeutils.utcnow,
                         nullable=False)
     # TODO(vsergeyev): Column `updated_at` have no default value in
@@ -125,6 +129,7 @@ class Image(BASE, GlanceBase):
     disk_format = Column(String(20))
     container_format = Column(String(20))
     size = Column(BigInteger)
+    virtual_size = Column(BigInteger)
     status = Column(String(30), nullable=False)
     is_public = Column(Boolean, nullable=False, default=False)
     checksum = Column(String(32))
@@ -178,6 +183,7 @@ class ImageLocation(BASE, GlanceBase):
     image = relationship(Image, backref=backref('locations'))
     value = Column(Text(), nullable=False)
     meta_data = Column(JSONEncodedDict(), default={})
+    status = Column(String(30), default='active', nullable=False)
 
 
 class ImageMember(BASE, GlanceBase):

@@ -41,10 +41,10 @@ DATETIME = datetime.datetime(2013, 9, 28, 15, 27, 36, 325355)
 ISOTIME = '2013-09-28T15:27:36Z'
 
 
-def _db_fixture(id, **kwargs):
+def _db_fixture(task_id, **kwargs):
     default_datetime = timeutils.utcnow()
     obj = {
-        'id': id,
+        'id': task_id,
         'status': 'pending',
         'type': 'import',
         'input': {},
@@ -61,22 +61,23 @@ def _db_fixture(id, **kwargs):
     return obj
 
 
-def _domain_fixture(id, **kwargs):
+def _domain_fixture(task_id, **kwargs):
     default_datetime = timeutils.utcnow()
-    properties = {
-        'task_id': id,
-        'status': 'pending',
-        'type': 'import',
-        'input': {},
-        'result': None,
-        'owner': None,
-        'message': None,
-        'expires_at': None,
-        'created_at': default_datetime,
-        'updated_at': default_datetime,
+    task_properties = {
+        'task_id': task_id,
+        'status': kwargs.get('status', 'pending'),
+        'task_type': kwargs.get('type', 'import'),
+        'owner': kwargs.get('owner', None),
+        'expires_at': kwargs.get('expires_at', None),
+        'created_at': kwargs.get('created_at', default_datetime),
+        'updated_at': kwargs.get('updated_at', default_datetime),
     }
-    properties.update(kwargs)
-    return glance.domain.Task(**properties)
+    task = glance.domain.Task(**task_properties)
+    task_details = glance.domain.TaskDetails(task_id,
+                                             kwargs.get('input', {}),
+                                             kwargs.get('message', None),
+                                             kwargs.get('result', None))
+    return {'task': task, 'task_details': task_details}
 
 
 class TestTasksController(test_utils.BaseTestCase):
@@ -95,14 +96,19 @@ class TestTasksController(test_utils.BaseTestCase):
 
     def _create_tasks(self):
         self.db.reset()
+        now = timeutils.utcnow()
+        times = [now + datetime.timedelta(seconds=5 * i) for i in range(4)]
         self.tasks = [
-            _db_fixture(UUID1, owner=TENANT1),
+            _db_fixture(UUID1, owner=TENANT1,
+                        created_at=times[0], updated_at=times[0]),
             # FIXME(venkatesh): change the type to include clone and export
             # once they are included as a valid types under Task domain model.
-            _db_fixture(UUID2, owner=TENANT2, type='import'),
-            _db_fixture(UUID3, owner=TENANT3, type='import'),
-            _db_fixture(UUID4, owner=TENANT4, type='import')
-        ]
+            _db_fixture(UUID2, owner=TENANT2, type='import',
+                        created_at=times[1], updated_at=times[1]),
+            _db_fixture(UUID3, owner=TENANT3, type='import',
+                        created_at=times[2], updated_at=times[2]),
+            _db_fixture(UUID4, owner=TENANT4, type='import',
+                        created_at=times[3], updated_at=times[3])]
         [self.db.task_create(None, task) for task in self.tasks]
 
     def test_index(self):
@@ -221,8 +227,7 @@ class TestTasksController(test_utils.BaseTestCase):
         output = self.controller.index(request, sort_dir='asc', limit=3)
         actual = [task.task_id for task in output['tasks']]
         self.assertEqual(3, len(actual))
-        self.assertEqual(sorted(set(actual)),
-                         sorted(set([UUID1, UUID2, UUID3])))
+        self.assertEqual(actual, [UUID1, UUID2, UUID3])
 
     def test_index_with_sort_key(self):
         path = '/tasks'
@@ -263,8 +268,11 @@ class TestTasksController(test_utils.BaseTestCase):
     def test_get(self):
         request = unit_test_utils.get_fake_request()
         output = self.controller.get(request, task_id=UUID1)
-        self.assertEqual(UUID1, output.task_id)
-        self.assertEqual('import', output.type)
+        task = output['task']
+        task_details = output['task_details']
+        self.assertEqual(UUID1, task.task_id)
+        self.assertEqual(UUID1, task_details.task_id)
+        self.assertEqual('import', task.type)
 
     def test_get_non_existent(self):
         request = unit_test_utils.get_fake_request()
@@ -285,10 +293,12 @@ class TestTasksController(test_utils.BaseTestCase):
             "image_from_format": "qcow2"}
         }
         output = self.controller.create(request, task=task)
-        self.assertEqual('import', output.type)
+        task = output['task']
+        task_details = output['task_details']
+        self.assertEqual('import', task.type)
         self.assertEqual({
             "import_from": "swift://cloud.foo/myaccount/mycontainer/path",
-            "image_from_format": "qcow2"}, output.input)
+            "image_from_format": "qcow2"}, task_details.input)
         output_logs = [nlog for nlog in self.notifier.get_logs()
                        if nlog['event_type'] == 'task.create']
         self.assertEqual(len(output_logs), 1)
@@ -546,7 +556,8 @@ class TestTasksSerializer(test_utils.BaseTestCase):
         }
         request = webob.Request.blank('/v2/tasks')
         response = webob.Response(request=request)
-        result = {'tasks': self.fixtures}
+        task_fixtures = [f['task'] for f in self.fixtures]
+        result = {'tasks': task_fixtures}
         self.serializer.index(response, result)
         actual = jsonutils.loads(response.body)
         self.assertEqual(expected, actual)
@@ -555,7 +566,8 @@ class TestTasksSerializer(test_utils.BaseTestCase):
     def test_index_next_marker(self):
         request = webob.Request.blank('/v2/tasks')
         response = webob.Response(request=request)
-        result = {'tasks': self.fixtures, 'next_marker': UUID2}
+        task_fixtures = [f['task'] for f in self.fixtures]
+        result = {'tasks': task_fixtures, 'next_marker': UUID2}
         self.serializer.index(response, result)
         output = jsonutils.loads(response.body)
         self.assertEqual('/v2/tasks?marker=%s' % UUID2, output['next'])
@@ -564,7 +576,8 @@ class TestTasksSerializer(test_utils.BaseTestCase):
         url = '/v2/tasks?limit=10&sort_key=id&sort_dir=asc'
         request = webob.Request.blank(url)
         response = webob.Response(request=request)
-        result = {'tasks': self.fixtures, 'next_marker': UUID2}
+        task_fixtures = [f['task'] for f in self.fixtures]
+        result = {'tasks': task_fixtures, 'next_marker': UUID2}
         self.serializer.index(response, result)
         output = jsonutils.loads(response.body)
         self.assertEqual('/v2/tasks?sort_key=id&sort_dir=asc&limit=10',
@@ -627,33 +640,56 @@ class TestTasksSerializer(test_utils.BaseTestCase):
             'schema': '/v2/schemas/task',
         }
         response = webob.Response()
+
         self.serializer.get(response, self.fixtures[1])
+
         actual = jsonutils.loads(response.body)
         self.assertEqual(expected, actual)
         self.assertEqual('application/json', response.content_type)
 
     def test_create(self):
         response = webob.Response()
+
         self.serializer.create(response, self.fixtures[3])
+
+        serialized_task = jsonutils.loads(response.body)
         self.assertEqual(response.status_int, 201)
-        self.assertEqual(self.fixtures[3].task_id,
-                         jsonutils.loads(response.body)['id'])
-        self.assertTrue('expires_at' in jsonutils.loads(response.body))
+        self.assertEqual(self.fixtures[3]['task'].task_id,
+                         serialized_task['id'])
+        self.assertEqual(self.fixtures[3]['task_details'].task_id,
+                         serialized_task['id'])
+        self.assertEqual(self.fixtures[3]['task_details'].input,
+                         serialized_task['input'])
+        self.assertTrue('expires_at' in serialized_task)
         self.assertEqual('application/json', response.content_type)
 
     def test_create_ensure_expires_at_is_not_returned(self):
         response = webob.Response()
+
         self.serializer.create(response, self.fixtures[0])
+
+        serialized_task = jsonutils.loads(response.body)
         self.assertEqual(response.status_int, 201)
-        self.assertEqual(self.fixtures[0].task_id,
-                         jsonutils.loads(response.body)['id'])
-        self.assertFalse('expires_at' in jsonutils.loads(response.body))
+        self.assertEqual(self.fixtures[0]['task'].task_id,
+                         serialized_task['id'])
+        self.assertEqual(self.fixtures[0]['task_details'].task_id,
+                         serialized_task['id'])
+        self.assertEqual(self.fixtures[0]['task_details'].input,
+                         serialized_task['input'])
+        self.assertFalse('expires_at' in serialized_task)
         self.assertEqual('application/json', response.content_type)
 
         response = webob.Response()
+
         self.serializer.create(response, self.fixtures[1])
+
+        serialized_task = jsonutils.loads(response.body)
         self.assertEqual(response.status_int, 201)
-        self.assertEqual(self.fixtures[1].task_id,
-                         jsonutils.loads(response.body)['id'])
-        self.assertFalse('expires_at' in jsonutils.loads(response.body))
+        self.assertEqual(self.fixtures[1]['task'].task_id,
+                         serialized_task['id'])
+        self.assertEqual(self.fixtures[1]['task_details'].task_id,
+                         serialized_task['id'])
+        self.assertEqual(self.fixtures[1]['task_details'].input,
+                         serialized_task['input'])
+        self.assertFalse('expires_at' in serialized_task)
         self.assertEqual('application/json', response.content_type)

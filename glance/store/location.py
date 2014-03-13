@@ -37,7 +37,7 @@ that it stores in its storage backends. It **may contain** security
 credentials and is **not** user-facing.
 """
 
-import urlparse
+import six.moves.urllib.parse as urlparse
 
 from glance.common import exception
 import glance.openstack.common.log as logging
@@ -65,6 +65,7 @@ def get_location_from_uri(uri):
         s3+https://accesskey:secretkey@s3.amazonaws.com/bucket/key-id
         file:///var/lib/glance/images/1
         cinder://volume-id
+        vsphere://server_host/folder/file_path?dcPath=dc_path&dsName=ds_name
     """
     pieces = urlparse.urlparse(uri)
     if pieces.scheme not in SCHEME_TO_CLS_MAP.keys():
@@ -81,7 +82,8 @@ def register_scheme_map(scheme_map):
     """
     for (k, v) in scheme_map.items():
         if k not in SCHEME_TO_CLS_MAP:
-            LOG.debug("Registering scheme %s with %s", k, v)
+            LOG.debug(_("Registering scheme %(k)s with %(v)s") % {'k': k,
+                                                                  'v': v})
             SCHEME_TO_CLS_MAP[k] = v
 
 

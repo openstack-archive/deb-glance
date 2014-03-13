@@ -41,6 +41,22 @@ class ImageDataController(object):
                                              notifier, policy)
         self.gateway = gateway
 
+    def _restore(self, image_repo, image):
+        """
+        Restore the image to queued status.
+
+        :param image_repo: The instance of ImageRepo
+        :param image: The image will be restored
+        """
+        try:
+            if image_repo and image:
+                image.status = 'queued'
+                image_repo.save(image)
+        except Exception as e:
+            msg = _("Unable to restore image %(image_id)s: %(e)s") % \
+                {'image_id': image.image_id, 'e': unicode(e)}
+            LOG.exception(msg)
+
     @utils.mutating
     def upload(self, req, image_id, data, size):
         image_repo = self.gateway.get_repo(req.context)
@@ -52,10 +68,11 @@ class ImageDataController(object):
                 image.set_data(data, size)
                 image_repo.save(image)
             except exception.NotFound as e:
-                msg = (_("Image %s could not be found after upload."
-                       "The image may have been deleted during the upload: %s "
-                       "Cleaning up the chunks uploaded")
-                       % (image_id, e))
+                msg = (_("Image %(id)s could not be found after upload."
+                         "The image may have been deleted during the upload: "
+                         "%(error)s Cleaning up the chunks uploaded") %
+                       {'id': image_id,
+                        'error': e})
                 LOG.warn(msg)
                 # NOTE(sridevi): Cleaning up the uploaded chunks.
                 try:
@@ -69,12 +86,13 @@ class ImageDataController(object):
 
         except ValueError as e:
             LOG.debug("Cannot save data for image %s: %s", image_id, e)
+            self._restore(image_repo, image)
             raise webob.exc.HTTPBadRequest(explanation=unicode(e))
-        except exception.Duplicate as e:
-            msg = (_("Unable to upload duplicate image data for image: %s") %
-                   image_id)
+
+        except exception.InvalidImageStatusTransition as e:
+            msg = unicode(e)
             LOG.debug(msg)
-            raise webob.exc.HTTPConflict(explanation=msg, request=req)
+            raise webob.exc.HTTPConflict(explanation=e.msg, request=req)
 
         except exception.Forbidden as e:
             msg = (_("Not allowed to upload image data for image %s") %
@@ -83,39 +101,45 @@ class ImageDataController(object):
             raise webob.exc.HTTPForbidden(explanation=msg, request=req)
 
         except exception.NotFound as e:
-            raise webob.exc.HTTPNotFound(explanation=unicode(e))
+            raise webob.exc.HTTPNotFound(explanation=e.msg)
 
         except exception.StorageFull as e:
             msg = _("Image storage media is full: %s") % e
             LOG.error(msg)
+            self._restore(image_repo, image)
             raise webob.exc.HTTPRequestEntityTooLarge(explanation=msg,
                                                       request=req)
 
         except exception.StorageQuotaFull as e:
             msg = _("Image exceeds the storage quota: %s") % e
             LOG.error(msg)
+            self._restore(image_repo, image)
             raise webob.exc.HTTPRequestEntityTooLarge(explanation=msg,
                                                       request=req)
 
         except exception.ImageSizeLimitExceeded as e:
             msg = _("The incoming image is too large: %s") % e
             LOG.error(msg)
+            self._restore(image_repo, image)
             raise webob.exc.HTTPRequestEntityTooLarge(explanation=msg,
                                                       request=req)
 
         except exception.StorageWriteDenied as e:
             msg = _("Insufficient permissions on image storage media: %s") % e
             LOG.error(msg)
+            self._restore(image_repo, image)
             raise webob.exc.HTTPServiceUnavailable(explanation=msg,
                                                    request=req)
 
         except webob.exc.HTTPError as e:
             LOG.error(_("Failed to upload image data due to HTTP error"))
+            self._restore(image_repo, image)
             raise
 
         except Exception as e:
             LOG.exception(_("Failed to upload image data due to "
                             "internal error"))
+            self._restore(image_repo, image)
             raise
 
     def download(self, req, image_id):
@@ -125,11 +149,11 @@ class ImageDataController(object):
             if not image.locations:
                 raise exception.ImageDataNotFound()
         except exception.ImageDataNotFound as e:
-            raise webob.exc.HTTPNoContent(explanation=unicode(e))
+            raise webob.exc.HTTPNoContent(explanation=e.msg)
         except exception.NotFound as e:
-            raise webob.exc.HTTPNotFound(explanation=unicode(e))
+            raise webob.exc.HTTPNotFound(explanation=e.msg)
         except exception.Forbidden as e:
-            raise webob.exc.HTTPForbidden(explanation=unicode(e))
+            raise webob.exc.HTTPForbidden(explanation=e.msg)
 
         return image
 
@@ -138,8 +162,8 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
     def upload(self, request):
         try:
             request.get_content_type(('application/octet-stream',))
-        except exception.InvalidContentType:
-            raise webob.exc.HTTPUnsupportedMediaType()
+        except exception.InvalidContentType as e:
+            raise webob.exc.HTTPUnsupportedMediaType(explanation=e.msg)
 
         image_size = request.content_length or None
         return {'size': image_size, 'data': request.body_file}
@@ -154,7 +178,7 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
             # an iterator very strange
             response.app_iter = iter(image.get_data())
         except exception.Forbidden as e:
-            raise webob.exc.HTTPForbidden(unicode(e))
+            raise webob.exc.HTTPForbidden(explanation=e.msg)
         #NOTE(saschpe): "response.app_iter = ..." currently resets Content-MD5
         # (https://github.com/Pylons/webob/issues/86), so it should be set
         # afterwards for the time being.

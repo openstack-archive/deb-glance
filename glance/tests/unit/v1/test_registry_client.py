@@ -518,7 +518,6 @@ class TestRegistryV1Client(base.IsolatedUnitTest, test_utils.RegistryAPIMixIn):
         iso2 = timeutils.isotime(dt2)
 
         dt3 = timeutils.utcnow() + datetime.timedelta(2)
-        iso3 = timeutils.isotime(dt3)
 
         dt4 = timeutils.utcnow() + datetime.timedelta(3)
         iso4 = timeutils.isotime(dt4)
@@ -850,7 +849,7 @@ class TestRegistryV1ClientApi(base.IsolatedUnitTest):
 
     def test_get_registry_client(self):
         actual_client = rapi.get_registry_client(self.context)
-        self.assertEqual(actual_client.identity_headers, None)
+        self.assertIsNone(actual_client.identity_headers)
 
     def test_get_registry_client_with_identity_headers(self):
         self.config(send_identity_headers=True)
@@ -896,7 +895,7 @@ class TestRegistryV1ClientApi(base.IsolatedUnitTest):
         self.config(auth_region=expected['region'])
         self.stubs.Set(os, 'getenv', lambda x: None)
 
-        self.assertEqual(rapi._CLIENT_CREDS, None)
+        self.assertIsNone(rapi._CLIENT_CREDS)
         rapi.configure_registry_admin_creds()
         self.assertEqual(rapi._CLIENT_CREDS, expected)
 
@@ -909,7 +908,7 @@ class TestRegistryV1ClientApi(base.IsolatedUnitTest):
         self.config(auth_strategy='test_strategy')
         self.config(auth_region=expected['region'])
 
-        self.assertEqual(rapi._CLIENT_CREDS, None)
+        self.assertIsNone(rapi._CLIENT_CREDS)
         rapi.configure_registry_admin_creds()
         self.assertEqual(rapi._CLIENT_CREDS, expected)
 

@@ -16,7 +16,6 @@
 import os
 import shutil
 import tempfile
-import time
 import uuid
 
 import eventlet
@@ -24,8 +23,8 @@ import mox
 
 from glance.common import exception
 
+from glance import scrubber
 import glance.store
-import glance.store.scrubber
 from glance.tests import utils as test_utils
 
 
@@ -42,6 +41,9 @@ class TestScrubber(test_utils.BaseTestCase):
     def tearDown(self):
         self.mox.UnsetStubs()
         shutil.rmtree(self.data_dir)
+        # These globals impact state outside of this test class, kill them.
+        scrubber._file_queue = None
+        scrubber._db_queue = None
         super(TestScrubber, self).tearDown()
 
     def _scrubber_cleanup_with_store_delete_exception(self, ex):
@@ -49,8 +51,7 @@ class TestScrubber(test_utils.BaseTestCase):
 
         uri = 'file://some/path/%s' % (fname)
         id = 'helloworldid'
-        now = time.time()
-        scrub = glance.store.scrubber.Scrubber(glance.store)
+        scrub = scrubber.Scrubber(glance.store)
         scrub.registry = self.mox.CreateMockAnything()
         scrub.registry.get_image(id).AndReturn({'status': 'pending_delete'})
         scrub.registry.update_image(id, {'status': 'deleted'})

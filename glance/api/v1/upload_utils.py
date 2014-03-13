@@ -68,7 +68,7 @@ def safe_kill(req, image_id):
     """
     try:
         _kill(req, image_id)
-    except Exception as e:
+    except Exception:
         LOG.exception(_("Unable to kill image %(id)s: ") % {'id': image_id})
 
 
@@ -81,7 +81,7 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
     image_id = image_meta['id']
 
     db_api = glance.db.get_api()
-    image_size = image_meta.get('size', None)
+    image_size = image_meta.get('size')
 
     try:
         remaining = glance.api.common.check_quota(
@@ -104,8 +104,7 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
             glance.api.common.check_quota(
                 req.context, size, db_api, image_id=image_id)
         except exception.StorageQuotaFull:
-            LOG.info(_('Cleaning up %s after exceeding the quota %s')
-                     % image_id)
+            LOG.info(_('Cleaning up %s after exceeding the quota') % image_id)
             glance.store.safe_delete_from_backend(
                 location, req.context, image_meta['id'])
             raise

@@ -24,11 +24,10 @@ import functools
 import httplib
 import os
 import re
-import urllib
-import urlparse
 
 try:
-    from eventlet.green import socket, ssl
+    from eventlet.green import socket
+    from eventlet.green import ssl
 except ImportError:
     import socket
     import ssl
@@ -39,8 +38,13 @@ try:
 except ImportError:
     SENDFILE_SUPPORTED = False
 
+import six
+import six.moves.urllib.parse as urlparse
+from six.moves import xrange
+
 from glance.common import auth
-from glance.common import exception, utils
+from glance.common import exception
+from glance.common import utils
 import glance.openstack.common.log as logging
 from glance.openstack.common import strutils
 
@@ -385,7 +389,7 @@ class BaseClient(object):
         """
         Create a URL object we can use to pass to _do_request().
         """
-        action = urllib.quote(action)
+        action = urlparse.quote(action)
         path = '/'.join([self.doc_root or '', action.lstrip('/')])
         scheme = "https" if self.use_ssl else "http"
         netloc = "%s:%d" % (self.host, self.port)
@@ -395,10 +399,10 @@ class BaseClient(object):
                 if value is None:
                     del params[key]
                     continue
-                if not isinstance(value, basestring):
+                if not isinstance(value, six.string_types):
                     value = str(value)
                 params[key] = strutils.safe_encode(value)
-            query = urllib.urlencode(params)
+            query = urlparse.urlencode(params)
         else:
             query = None
 
@@ -462,7 +466,7 @@ class BaseClient(object):
                 return method.lower() in ('post', 'put')
 
             def _simple(body):
-                return body is None or isinstance(body, basestring)
+                return body is None or isinstance(body, six.string_types)
 
             def _filelike(body):
                 return hasattr(body, 'read')

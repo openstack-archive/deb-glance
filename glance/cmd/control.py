@@ -40,6 +40,7 @@ if os.path.exists(os.path.join(possible_topdir, 'glance', '__init__.py')):
     sys.path.insert(0, possible_topdir)
 
 from oslo.config import cfg
+from six.moves import xrange
 
 from glance.common import config
 from glance.openstack.common import units
@@ -98,11 +99,11 @@ def do_start(verb, pid_file, server, args):
     if verb != 'Respawn' and pid_file == CONF.pid_file:
         for pid_file, pid in pid_files(server, pid_file):
             if os.path.exists('/proc/%s' % pid):
-                print("%s appears to already be running: %s" %
-                      (server, pid_file))
+                print(_("%(serv)s appears to already be running: %(pid)s") %
+                      {'serv': server, 'pid': pid_file})
                 return
             else:
-                print("Removing stale pid file %s" % pid_file)
+                print(_("Removing stale pid file %s") % pid_file)
                 os.unlink(pid_file)
 
         try:
@@ -111,8 +112,8 @@ def do_start(verb, pid_file, server, args):
             resource.setrlimit(resource.RLIMIT_DATA,
                                (MAX_MEMORY, MAX_MEMORY))
         except ValueError:
-            action = 'increase file descriptor limit'
-            print('Unable to %s.  Running as non-root?' % action)
+            print(_('Unable to increase file descriptor limit.  '
+                    'Running as non-root?'))
         os.environ['PYTHON_EGG_CACHE'] = '/tmp'
 
     def write_pid_file(pid_file, pid):
@@ -157,7 +158,7 @@ def do_start(verb, pid_file, server, args):
 
     def launch(pid_file, conf_file=None, capture_output=False, await_time=0):
         args = [server]
-        msg = '%sing %s' % (verb, server)
+        msg = (_('%(verb)sing %(serv)s') % {'verb': verb, 'serv': server})
         if conf_file:
             args += ['--config-file', conf_file]
             msg += 'with %s' % conf_file
@@ -172,7 +173,8 @@ def do_start(verb, pid_file, server, args):
             try:
                 os.execlp('%s' % server, *args)
             except OSError as e:
-                msg = 'unable to launch %s. Got error: %s' % (server, e)
+                msg = (_('unable to launch %(serv)s. Got error: %(e)s') %
+                       {'serv': server, 'e': e})
                 sys.exit(msg)
             sys.exit(0)
         else:
@@ -201,9 +203,10 @@ def do_start(verb, pid_file, server, args):
 def do_check_status(pid_file, server):
     if os.path.exists(pid_file):
         pid = open(pid_file).read().strip()
-        print("%s (pid %s) is running..." % (server, pid))
+        print(_("%(serv)s (pid %(pid)s) is running...") %
+              {'serv': server, 'pid': pid})
     else:
-        print("%s is stopped" % server)
+        print(_("%s is stopped") % server)
 
 
 def get_pid_file(server, pid_file):
@@ -219,10 +222,15 @@ def get_pid_file(server, pid_file):
 
     if not os.access(dir, os.W_OK):
         fallback = os.path.join(tempfile.mkdtemp(), '%s.pid' % server)
-        msg = ('Unable to create pid file %s.  Running as non-root?\n'
-               'Falling back to a temp file, you can stop %s service using:\n'
-               '  %s %s stop --pid-file %s'
-               % (pid_file, server, __file__, server, fallback))
+        msg = (_('Unable to create pid file %(pid)s.  Running as non-root?\n'
+                 'Falling back to a temp file, you can stop %(service)s '
+                 'service using:\n'
+                 '  %(file)s %(server)s stop --pid-file %(fb)s') %
+               {'pid': pid_file,
+                'service': server,
+                'file': __file__,
+                'server': server,
+                'fb': fallback})
         print(msg)
         pid_file = fallback
 
@@ -244,20 +252,21 @@ def do_stop(server, args, graceful=False):
         except OSError:
             pass
         try:
-            print('Stopping %s (pid %s) with signal(%s)' % (server, pid, sig))
+            print(_('Stopping %(serv)s (pid %(pid)s) with signal(%(sig)s)')
+                  % {'serv': server, 'pid': pid, 'sig': sig})
             os.kill(pid, sig)
         except OSError:
-            print("Process %d not running" % pid)
+            print(_("Process %d not running") % pid)
     for pid_file, pid in pfiles:
         for _junk in xrange(150):  # 15 seconds
             if not os.path.exists('/proc/%s' % pid):
                 break
             time.sleep(0.1)
         else:
-            print('Waited 15 seconds for pid %s (%s) to die; giving up' %
-                  (pid, pid_file))
+            print(_('Waited 15 seconds for pid %(pid)s (%(file)s) to die;'
+                    ' giving up') % {'pid': pid, 'file': pid_file})
     if not did_anything:
-        print('%s is already stopped' % server)
+        print(_('%s is already stopped') % server)
 
 
 def add_command_parsers(subparsers):
@@ -291,20 +300,20 @@ def main():
         cfg.StrOpt('pid-file',
                    metavar='PATH',
                    help='File to use as pid file. Default: '
-                   '/var/run/glance/$server.pid'),
+                   '/var/run/glance/$server.pid.'),
         cfg.IntOpt('await-child',
                    metavar='DELAY',
                    default=0,
                    help='Period to wait for service death '
                         'in order to report exit code '
-                        '(default is to not wait at all)'),
+                        '(default is to not wait at all).'),
         cfg.BoolOpt('capture-output',
                     default=False,
                     help='Capture stdout/err in syslog '
-                    'instead of discarding'),
+                    'instead of discarding it.'),
         cfg.BoolOpt('respawn',
                     default=False,
-                    help='Restart service on unexpected death'),
+                    help='Restart service on unexpected death.'),
     ]
     CONF.register_cli_opts(opts)
 
@@ -334,7 +343,8 @@ def main():
                     children[new_pid] = args
                 else:
                     rsn = 'bouncing' if bouncing else 'deliberately stopped'
-                    print('Supressed respawn as %s was %s.' % (server, rsn))
+                    print(_('Supressed respawn as %(serv)s was %(rsn)s.')
+                          % {'serv': server, 'rsn': rsn})
 
     if CONF.server.command == 'start':
         children = {}

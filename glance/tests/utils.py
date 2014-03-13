@@ -21,12 +21,11 @@ import os
 import shlex
 import shutil
 import socket
-import StringIO
 import subprocess
-import uuid
 
 import fixtures
 from oslo.config import cfg
+import six
 import stubout
 import testtools
 import webob
@@ -34,7 +33,6 @@ import webob
 from glance.common import config
 from glance.common import exception
 from glance.common import property_utils
-from glance.common import utils
 from glance.common import wsgi
 from glance import context
 from glance.db.sqlalchemy import api as db_api
@@ -440,9 +438,11 @@ class RegistryAPIMixIn(object):
         return fixture
 
     def get_extra_fixture(self, id, name, **kwargs):
+        created_at = kwargs.pop('created_at', timeutils.utcnow())
+        updated_at = kwargs.pop('updated_at', created_at)
         return self.get_fixture(
             id=id, name=name, deleted=False, deleted_at=None,
-            created_at=timeutils.utcnow(), updated_at=timeutils.utcnow(),
+            created_at=created_at, updated_at=updated_at,
             **kwargs)
 
     def get_api_response_ext(self, http_resp, url='/images', headers={},
@@ -506,7 +506,7 @@ class FakeAuthMiddleware(wsgi.Middleware):
 class FakeHTTPResponse(object):
     def __init__(self, status=200, headers=None, data=None, *args, **kwargs):
         data = data or 'I am a teapot, short and stout\n'
-        self.data = StringIO.StringIO(data)
+        self.data = six.StringIO(data)
         self.read = self.data.read
         self.status = status
         self.headers = headers or {'content-length': len(data)}
@@ -560,22 +560,3 @@ class HttplibWsgiAdapter(object):
         response = self.req.get_response(self.app)
         return FakeHTTPResponse(response.status_code, response.headers,
                                 response.body)
-
-
-class UUIDTestCase(testtools.TestCase):
-
-    def test_generate_uuid(self):
-        uuid_string = utils.generate_uuid()
-        self.assertIsInstance(uuid_string, str)
-        self.assertEqual(len(uuid_string), 36)
-        # make sure there are 4 dashes
-        self.assertEqual(len(uuid_string.replace('-', '')), 32)
-
-    def test_is_uuid_like(self):
-        self.assertTrue(utils.is_uuid_like(str(uuid.uuid4())))
-
-    def test_id_is_uuid_like(self):
-        self.assertFalse(utils.is_uuid_like(1234567))
-
-    def test_name_is_uuid_like(self):
-        self.assertFalse(utils.is_uuid_like('zhongyueluo'))

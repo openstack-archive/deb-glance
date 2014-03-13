@@ -20,6 +20,7 @@ import webob
 
 from glance.common import exception
 import glance.context
+from glance import domain
 from glance import notifier
 from glance.openstack.common import timeutils
 import glance.tests.unit.utils as unit_test_utils
@@ -95,11 +96,37 @@ class TestNotifier(utils.BaseTestCase):
         nfier = notifier.Notifier('rabbit')
         self.assertIsNotNone(nfier._transport)
 
+    def test_load_qpid(self):
+        nfier = notifier.Notifier('qpid')
+        self.assertIsNotNone(nfier._transport)
+        self.assertEqual(str(nfier._transport._driver._url),
+                         'qpid:///')
+
     def test_custom_strategy(self):
         st = "glance.notifier.notify_noop.NoopStrategy"
         self.config(notifier_strategy=st)
         #NOTE(bcwaldon): the fact that Notifier is instantiated means we're ok
         notifier.Notifier()
+
+    def test_transport_url(self):
+        transport_url = "qpid://superhost:5672/"
+        self.config(transport_url=transport_url)
+        notify = notifier.Notifier()
+        self.assertEqual(str(notify._transport._driver._url),
+                         transport_url)
+
+    def test_notification_driver_option(self):
+        self.config(rpc_backend='qpid')
+        self.config(notification_driver='messaging')
+        self.config(notifier_strategy='rabbit')
+        notify = notifier.Notifier()
+        self.assertEqual(str(notify._transport._driver._url),
+                         'rabbit:///')
+
+        self.config(notifier_strategy='default')
+        notify = notifier.Notifier()
+        self.assertEqual(str(notify._transport._driver._url),
+                         'qpid:///')
 
 
 class TestImageNotifications(utils.BaseTestCase):
@@ -354,9 +381,9 @@ class TestImageNotifications(utils.BaseTestCase):
         def data_iterator():
             self.notifier.log = []
             yield 'abcde'
-            raise Exception('Failed')
+            raise exception.GlanceException('Failed')
 
-        self.assertRaises(Exception,
+        self.assertRaises(exception.GlanceException,
                           self.image_proxy.set_data, data_iterator(), 10)
 
         output_logs = self.notifier.get_logs()
@@ -375,16 +402,17 @@ class TestTaskNotifications(utils.BaseTestCase):
         super(TestTaskNotifications, self).setUp()
         self.task = TaskStub(
             task_id='aaa',
-            type='import',
+            task_type='import',
             status='pending',
-            input={"loc": "fake"},
-            result='',
             owner=TENANT2,
-            message='',
             expires_at=None,
             created_at=DATETIME,
             updated_at=DATETIME
         )
+        self.task_details = domain.TaskDetails(task_id=self.task.task_id,
+                                               task_input={"loc": "fake"},
+                                               result='',
+                                               message='')
         self.context = glance.context.RequestContext(
             tenant=TENANT2,
             user=USER1
@@ -401,6 +429,9 @@ class TestTaskNotifications(utils.BaseTestCase):
             self.context,
             self.notifier
         )
+        self.task_details_proxy = notifier.TaskDetailsProxy(self.task_details,
+                                                            self.context,
+                                                            self.notifier)
         timeutils.set_time_override()
 
     def tearDown(self):
@@ -408,7 +439,7 @@ class TestTaskNotifications(utils.BaseTestCase):
         timeutils.clear_time_override()
 
     def test_task_create_notification(self):
-        self.task_repo_proxy.add(self.task_proxy)
+        self.task_repo_proxy.add(self.task_proxy, self.task_details_proxy)
         output_logs = self.notifier.get_logs()
         self.assertEqual(len(output_logs), 1)
         output_log = output_logs[0]

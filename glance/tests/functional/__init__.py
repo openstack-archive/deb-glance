@@ -32,13 +32,13 @@ import socket
 import sys
 import tempfile
 import time
-import urlparse
 
 import fixtures
-from sqlalchemy import create_engine
+import six.moves.urllib.parse as urlparse
 import testtools
 
 from glance.common import utils
+from glance.db.sqlalchemy import api as db_api
 from glance.openstack.common import jsonutils
 from glance.openstack.common import units
 from glance import tests as glance_tests
@@ -322,6 +322,9 @@ class ApiServer(Server):
         self.user_storage_quota = 0
         self.lock_path = self.test_dir
 
+        self.location_strategy = 'location_order'
+        self.store_type_location_strategy_preference = ""
+
         self.conf_base = """[DEFAULT]
 verbose = %(verbose)s
 debug = %(debug)s
@@ -379,8 +382,11 @@ image_member_quota=%(image_member_quota)s
 image_property_quota=%(image_property_quota)s
 image_tag_quota=%(image_tag_quota)s
 image_location_quota=%(image_location_quota)s
+location_strategy=%(location_strategy)s
 [paste_deploy]
 flavor = %(deployment_flavor)s
+[store_type_location_strategy]
+store_type_preference = %(store_type_location_strategy_preference)s
 """
         self.paste_conf_base = """[pipeline:glance-api]
 pipeline = versionnegotiation gzip unauthenticated-context rootapp
@@ -909,8 +915,7 @@ class FunctionalTest(test_utils.BaseTestCase):
         DB verification within the functional tests.
         The raw result set is returned.
         """
-        engine = create_engine(self.registry_server.sql_connection,
-                               pool_recycle=30)
+        engine = db_api.get_engine()
         return engine.execute(sql)
 
     def copy_data_file(self, file_name, dst_dir):

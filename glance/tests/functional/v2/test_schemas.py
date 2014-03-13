@@ -41,6 +41,8 @@ class TestSchemas(functional.FunctionalTest):
             'updated_at',
             'tags',
             'size',
+            'virtual_size',
+            'owner',
             'container_format',
             'disk_format',
             'self',

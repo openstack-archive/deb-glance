@@ -14,7 +14,7 @@
 #    under the License.
 
 """
-This auth module is intended to allow Openstack client-tools to select from a
+This auth module is intended to allow OpenStack client-tools to select from a
 variety of authentication strategies, including NoAuth (the default), and
 Keystone (an identity management system).
 
@@ -28,9 +28,9 @@ Keystone (an identity management system).
     > auth_plugin.management_url
     http://service_endpoint/
 """
-import urlparse
-
 import httplib2
+
+import six.moves.urllib.parse as urlparse
 
 from glance.common import exception
 from glance.openstack.common import jsonutils

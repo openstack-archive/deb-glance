@@ -174,6 +174,7 @@ def _image_format(image_id, **values):
         'min_ram': 0,
         'min_disk': 0,
         'size': None,
+        'virtual_size': None,
         'checksum': None,
         'tags': [],
         'created_at': dt,
@@ -510,10 +511,10 @@ def image_create(context, image_values):
         raise exception.Invalid('status is a required attribute')
 
     allowed_keys = set(['id', 'name', 'status', 'min_ram', 'min_disk', 'size',
-                        'checksum', 'locations', 'owner', 'protected',
-                        'is_public', 'container_format', 'disk_format',
-                        'created_at', 'updated_at', 'deleted_at', 'deleted',
-                        'properties', 'tags'])
+                        'virtual_size', 'checksum', 'locations', 'owner',
+                        'protected', 'is_public', 'container_format',
+                        'disk_format', 'created_at', 'updated_at', 'deleted',
+                        'deleted_at', 'properties', 'tags'])
 
     incorrect_keys = set(image_values.keys()) - allowed_keys
     if incorrect_keys:
@@ -523,7 +524,7 @@ def image_create(context, image_values):
     image = _image_format(image_id, **image_values)
     DATA['images'][image_id] = image
 
-    location_data = image_values.get('locations', None)
+    location_data = image_values.get('locations')
     if location_data is not None:
         _image_locations_set(image_id, location_data)
 
@@ -813,8 +814,7 @@ def task_get_all(context, filters=None, marker=None, limit=None,
 
     filtered_tasks = []
     for task in tasks:
-        task_info = DATA['task_info'][task['id']]
-        filtered_tasks.append(_format_task_from_db(task, task_info))
+        filtered_tasks.append(_format_task_from_db(task, task_info_ref=None))
 
     return filtered_tasks
 

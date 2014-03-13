@@ -14,9 +14,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-
-import warnings
-
 from oslo.config import cfg
 from oslo import messaging
 import webob
@@ -36,7 +33,7 @@ notifier_opts = [
                       'default). (DEPRECATED)')),
 
     cfg.StrOpt('default_publisher_id', default="image.localhost",
-               help='Default publisher_id for outgoing notifications'),
+               help='Default publisher_id for outgoing notifications.'),
 ]
 
 CONF = cfg.CONF
@@ -52,35 +49,55 @@ _STRATEGY_ALIASES = {
     "default": "noop",
 }
 
+_ALIASES = {
+    'glance.openstack.common.rpc.impl_kombu': 'rabbit',
+    'glance.openstack.common.rpc.impl_qpid': 'qpid',
+    'glance.openstack.common.rpc.impl_zmq': 'zmq',
+}
+
 
 class Notifier(object):
     """Uses a notification strategy to send out messages about events."""
 
     def __init__(self, strategy=None):
 
+        _driver = None
+        _strategy = strategy
+
         if CONF.notifier_strategy != 'default':
             msg = _("notifier_strategy was deprecated in "
                     "favor of `notification_driver`")
-            warnings.warn(msg, DeprecationWarning)
+            LOG.warn(msg)
 
-        # NOTE(flaper87): Use this to keep backwards
-        # compatibility. We'll try to get an oslo.messaging
-        # driver from the specified strategy.
-        _strategy = strategy or CONF.notifier_strategy
-        _driver = _STRATEGY_ALIASES.get(_strategy)
-
-        # NOTE(flaper87): The next 3 lines help
-        # with the migration to oslo.messaging.
-        # Without them, gate tests won't know
-        # what driver should be loaded.
-        # Once this patch lands, devstack will be
-        # updated and then these lines will be removed.
-        url = None
-        if _strategy in ['rabbit', 'qpid']:
-            url = _strategy + '://'
+            # NOTE(flaper87): Use this to keep backwards
+            # compatibility. We'll try to get an oslo.messaging
+            # driver from the specified strategy.
+            _strategy = strategy or CONF.notifier_strategy
+            _driver = _STRATEGY_ALIASES.get(_strategy)
 
         publisher_id = CONF.default_publisher_id
-        self._transport = messaging.get_transport(CONF, url)
+
+        # NOTE(flaper87): Assume the user has configured
+        # the transport url.
+        self._transport = messaging.get_transport(CONF,
+                                                  aliases=_ALIASES)
+
+        # NOTE(flaper87): This needs to be checked
+        # here because the `get_transport` call
+        # registers `transport_url` into ConfigOpts.
+        if not CONF.transport_url:
+            # NOTE(flaper87): The next 3 lines help
+            # with the migration to oslo.messaging.
+            # Without them, gate tests won't know
+            # what driver should be loaded.
+            # Once this patch lands, devstack will be
+            # updated and then these lines will be removed.
+            url = None
+            if _strategy in ['rabbit', 'qpid']:
+                url = _strategy + '://'
+            self._transport = messaging.get_transport(CONF, url,
+                                                      aliases=_ALIASES)
+
         self._notifier = messaging.Notifier(self._transport,
                                             driver=_driver,
                                             publisher_id=publisher_id)
@@ -228,36 +245,43 @@ class ImageProxy(glance.domain.proxy.Image):
             self.notifier.error('image.upload', msg)
             raise webob.exc.HTTPServiceUnavailable(explanation=msg)
         except ValueError as e:
-            msg = (_("Cannot save data for image %s: %s")
-                   % (self.image.image_id, e))
+            msg = (_("Cannot save data for image %(image_id)s: %(error)s") %
+                   {'image_id': self.image.image_id,
+                    'error': e})
             self.notifier.error('image.upload', msg)
             raise webob.exc.HTTPBadRequest(explanation=unicode(e))
         except exception.Duplicate as e:
-            msg = (_("Unable to upload duplicate image data for image %s: %s")
-                   % (self.image.image_id, e))
+            msg = (_("Unable to upload duplicate image data for image"
+                     "%(image_id)s: %(error)s") %
+                   {'image_id': self.image.image_id,
+                    'error': e})
             self.notifier.error('image.upload', msg)
             raise webob.exc.HTTPConflict(explanation=msg)
         except exception.Forbidden as e:
-            msg = (_("Not allowed to upload image data for image %s: %s")
-                   % (self.image.image_id, e))
+            msg = (_("Not allowed to upload image data for image %(image_id)s:"
+                     " %(error)s") % {'image_id': self.image.image_id,
+                                      'error': e})
             self.notifier.error('image.upload', msg)
             raise webob.exc.HTTPForbidden(explanation=msg)
         except exception.NotFound as e:
-            msg = (_("Image %s could not be found after upload. The image may "
-                     "have been deleted during the upload: %s")
-                   % (self.image.image_id, e))
+            msg = (_("Image %(image_id)s could not be found after upload."
+                     " The image may have been deleted during the upload:"
+                     " %(error)s") % {'image_id': self.image.image_id,
+                                      'error': e})
             self.notifier.error('image.upload', msg)
             raise webob.exc.HTTPNotFound(explanation=unicode(e))
         except webob.exc.HTTPError as e:
-            msg = (_("Failed to upload image data for image %s"
-                     " due to HTTP error: %s")
-                   % (self.image.image_id, e))
+            msg = (_("Failed to upload image data for image %(image_id)s"
+                     " due to HTTP error: %(error)s") %
+                   {'image_id': self.image.image_id,
+                    'error': e})
             self.notifier.error('image.upload', msg)
             raise
         except Exception as e:
-            msg = (_("Failed to upload image data for image %s "
-                     "due to internal error: %s")
-                   % (self.image.image_id, e))
+            msg = (_("Failed to upload image data for image %(image_id)s "
+                     "due to internal error: %(error)s") %
+                   {'image_id': self.image.image_id,
+                    'error': e})
             self.notifier.error('image.upload', msg)
             raise
         else:
@@ -266,36 +290,42 @@ class ImageProxy(glance.domain.proxy.Image):
             self.notifier.info('image.activate', payload)
 
 
-class TaskRepoProxy(glance.domain.proxy.Repo):
+class TaskRepoProxy(glance.domain.proxy.TaskRepo):
 
     def __init__(self, task_repo, context, notifier):
         self.task_repo = task_repo
         self.context = context
         self.notifier = notifier
         proxy_kwargs = {'context': self.context, 'notifier': self.notifier}
-        super(TaskRepoProxy, self).__init__(task_repo,
-                                            item_proxy_class=TaskProxy,
-                                            item_proxy_kwargs=proxy_kwargs)
+        super(TaskRepoProxy, self) \
+            .__init__(task_repo,
+                      task_proxy_class=TaskProxy,
+                      task_proxy_kwargs=proxy_kwargs,
+                      task_details_proxy_class=TaskDetailsProxy,
+                      task_details_proxy_kwargs=proxy_kwargs)
 
-    def add(self, task):
+    def add(self, task, task_details=None):
         self.notifier.info('task.create',
                            format_task_notification(task))
-        return super(TaskRepoProxy, self).add(task)
+        super(TaskRepoProxy, self).add(task, task_details)
 
     def remove(self, task):
         payload = format_task_notification(task)
         payload['deleted'] = True
         payload['deleted_at'] = timeutils.isotime()
         self.notifier.info('task.delete', payload)
-        return super(TaskRepoProxy, self).add(task)
+        super(TaskRepoProxy, self).remove(task)
 
 
 class TaskFactoryProxy(glance.domain.proxy.TaskFactory):
-    def __init__(self, factory, context, notifier):
+    def __init__(self, task_factory, context, notifier):
         kwargs = {'context': context, 'notifier': notifier}
-        super(TaskFactoryProxy, self).__init__(factory,
-                                               proxy_class=TaskProxy,
-                                               proxy_kwargs=kwargs)
+        super(TaskFactoryProxy, self).__init__(
+            task_factory,
+            task_proxy_class=TaskProxy,
+            task_proxy_kwargs=kwargs,
+            task_details_proxy_class=TaskDetailsProxy,
+            task_details_proxy_kwargs=kwargs)
 
 
 class TaskProxy(glance.domain.proxy.Task):
@@ -327,3 +357,12 @@ class TaskProxy(glance.domain.proxy.Task):
         self.notifier.info('task.failure',
                            format_task_notification(self.task))
         return super(TaskProxy, self).fail(message)
+
+
+class TaskDetailsProxy(glance.domain.proxy.TaskDetails):
+
+    def __init__(self, task_details, context, notifier):
+        self.task_details = task_details
+        self.context = context
+        self.notifier = notifier
+        super(TaskDetailsProxy, self).__init__(task_details)

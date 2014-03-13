@@ -37,7 +37,7 @@ scrubber_opts = [
                help=_('Directory that the scrubber will use to track '
                       'information about what to delete. '
                       'Make sure this is set in glance-api.conf and '
-                      'glance-scrubber.conf')),
+                      'glance-scrubber.conf.')),
     cfg.IntOpt('scrub_time', default=0,
                help=_('The amount of time in seconds to delay before '
                       'performing a delete.')),
@@ -67,11 +67,12 @@ class ScrubQueue(object):
         self.registry = registry.get_registry_client(context.RequestContext())
 
     @abc.abstractmethod
-    def add_location(self, image_id, uri):
+    def add_location(self, image_id, uri, user_context=None):
         """Adding image location to scrub queue.
 
         :param image_id: The opaque image identifier
         :param uri: The opaque image location uri
+        :param user_context: The user's request context
         """
         pass
 
@@ -156,12 +157,18 @@ class ScrubFileQueue(ScrubQueue):
         except Exception:
             LOG.error(_("%s file can not be wrote.") % file_path)
 
-    def add_location(self, image_id, uri):
+    def add_location(self, image_id, uri, user_context=None):
         """Adding image location to scrub queue.
 
         :param image_id: The opaque image identifier
         :param uri: The opaque image location uri
+        :param user_context: The user's request context
         """
+        if user_context is not None:
+            registry_client = registry.get_registry_client(user_context)
+        else:
+            registry_client = self.registry
+
         with lockutils.lock("scrubber-%s" % image_id,
                             lock_file_prefix='glance-', external=True):
 
@@ -169,7 +176,7 @@ class ScrubFileQueue(ScrubQueue):
             # 'pending_delete' images concurrently before the code
             # get lock and reach here.
             try:
-                image = self.registry.get_image(image_id)
+                image = registry_client.get_image(image_id)
                 if image['status'] == 'deleted':
                     return
             except exception.NotFound as e:
@@ -268,11 +275,12 @@ class ScrubDBQueue(ScrubQueue):
         super(ScrubDBQueue, self).__init__()
         self.cleanup_scrubber_time = CONF.cleanup_scrubber_time
 
-    def add_location(self, image_id, uri):
+    def add_location(self, image_id, uri, user_context=None):
         """Adding image location to scrub queue.
 
         :param image_id: The opaque image identifier
         :param uri: The opaque image location uri
+        :param user_context: The user's request context
         """
         raise NotImplementedError
 
@@ -332,7 +340,7 @@ class ScrubDBQueue(ScrubQueue):
         try:
             image = self.registry.get_image(image_id)
             return image['status'] == 'pending_delete'
-        except exception.NotFound as e:
+        except exception.NotFound:
             return False
 
 

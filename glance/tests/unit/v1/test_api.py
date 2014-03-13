@@ -18,12 +18,12 @@
 import copy
 import datetime
 import hashlib
-import mock
-import StringIO
 import uuid
 
+import mock
 from oslo.config import cfg
 import routes
+import six
 import webob
 
 import glance.api
@@ -31,6 +31,7 @@ import glance.api.common
 from glance.api.v1 import router
 from glance.api.v1 import upload_utils
 import glance.common.config
+from glance.common import exception
 import glance.context
 from glance.db.sqlalchemy import api as db_api
 from glance.db.sqlalchemy import models as db_models
@@ -228,7 +229,6 @@ class TestGlanceAPI(base.IsolatedUnitTest):
     def test_configured_disk_format_good(self):
         self.config(disk_formats=['foo'], group="image_format")
         fixture_headers = {
-            'x-image-meta-store': 'bad',
             'x-image-meta-name': 'bogus',
             'x-image-meta-location': 'http://localhost:0/image.tar.gz',
             'x-image-meta-disk-format': 'foo',
@@ -265,7 +265,6 @@ class TestGlanceAPI(base.IsolatedUnitTest):
     def test_configured_container_format_good(self):
         self.config(container_formats=['foo'], group="image_format")
         fixture_headers = {
-            'x-image-meta-store': 'bad',
             'x-image-meta-name': 'bogus',
             'x-image-meta-location': 'http://localhost:0/image.tar.gz',
             'x-image-meta-disk-format': 'raw',
@@ -322,7 +321,6 @@ class TestGlanceAPI(base.IsolatedUnitTest):
 
     def test_create_with_location_no_container_format(self):
         fixture_headers = {
-            'x-image-meta-store': 'bad',
             'x-image-meta-name': 'bogus',
             'x-image-meta-location': 'http://localhost:0/image.tar.gz',
             'x-image-meta-disk-format': 'vhd',
@@ -336,6 +334,23 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 400)
         self.assertTrue('Invalid container format' in res.body)
+
+    def test_create_with_bad_store_name(self):
+        fixture_headers = {
+            'x-image-meta-store': 'bad',
+            'x-image-meta-name': 'bogus',
+            'x-image-meta-disk-format': 'qcow2',
+            'x-image-meta-container-format': 'bare',
+        }
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in fixture_headers.iteritems():
+            req.headers[k] = v
+
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 400)
+        self.assertTrue('Required store bad is invalid' in res.body)
 
     def test_create_with_location_unknown_scheme(self):
         fixture_headers = {
@@ -357,7 +372,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
 
     def test_create_with_location_bad_store_uri(self):
         fixture_headers = {
-            'x-image-meta-store': 'bad',
+            'x-image-meta-store': 'swift',
             'x-image-meta-name': 'bogus',
             'x-image-meta-location': 'swift+http://bah',
             'x-image-meta-disk-format': 'qcow2',
@@ -517,7 +532,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req = webob.Request.blank("/images")
         req.method = 'POST'
 
-        req.body_file = StringIO.StringIO('X' * (CONF.image_size_cap + 1))
+        req.body_file = six.StringIO('X' * (CONF.image_size_cap + 1))
         for k, v in fixture_headers.iteritems():
             req.headers[k] = v
 
@@ -964,7 +979,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req = webob.Request.blank("/images")
         req.method = 'POST'
 
-        req.body_file = StringIO.StringIO('X' * (CONF.image_size_cap))
+        req.body_file = six.StringIO('X' * (CONF.image_size_cap))
         for k, v in fixture_headers.iteritems():
             req.headers[k] = v
 
@@ -1019,7 +1034,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req.headers['transfer-encoding'] = 'chunked'
         req.headers['x-image-disk-format'] = 'vhd'
         req.headers['x-image-container-format'] = 'ovf'
-        req.body_file = StringIO.StringIO('X' * (CONF.image_size_cap))
+        req.body_file = six.StringIO('X' * (CONF.image_size_cap))
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 403)
 
@@ -1187,6 +1202,27 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 200)
         self.assertEqual("deleted", res.headers['x-image-meta-status'])
+
+    @mock.patch.object(glance.store.filesystem.Store, 'delete')
+    def test_image_status_when_delete_fails(self, mock_fsstore_delete):
+        """
+        Tests that the image status set to active if deletion of image fails.
+        """
+        mock_fsstore_delete.side_effect = exception.Forbidden()
+
+        # trigger the v1 delete api
+        req = webob.Request.blank("/images/%s" % UUID2)
+        req.method = 'DELETE'
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 403)
+        self.assertTrue('Forbidden to delete image' in res.body)
+
+        # check image metadata is still there with active state
+        req = webob.Request.blank("/images/%s" % UUID2)
+        req.method = 'HEAD'
+        res = req.get_response(self.api)
+        self.assertEqual(res.status_int, 200)
+        self.assertEqual("active", res.headers['x-image-meta-status'])
 
     def test_delete_pending_delete_image(self):
         """
@@ -1619,7 +1655,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req = webob.Request.blank("/images/%s" % image_id)
         req.method = 'PUT'
 
-        req.body_file = StringIO.StringIO('X' * (CONF.image_size_cap + 1))
+        req.body_file = six.StringIO('X' * (CONF.image_size_cap + 1))
         for k, v in fixture_headers.iteritems():
             req.headers[k] = v
 
@@ -2490,7 +2526,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
                 res = req.get_response(self.api)
                 self.assertEqual(res.status_int, 403)
                 prop = k[len('x-image-meta-'):]
-                self.assertNotEqual(res.body.find("Forbidden to modify \'%s\' "
+                self.assertNotEqual(res.body.find("Forbidden to modify '%s' "
                                                   "of active "
                                                   "image" % prop), -1)
 
@@ -2517,7 +2553,6 @@ class TestGlanceAPI(base.IsolatedUnitTest):
                 req.method = 'HEAD'
                 res = req.get_response(self.api)
                 self.assertEqual(res.status_int, 200)
-                orig_value = res.headers[k]
 
                 req = webob.Request.blank('/images/%s' % UUID2)
                 req.headers[k] = v
@@ -3334,8 +3369,7 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         permitted role 'member' can read that protected property via
         /images/detail
         """
-        image_id = self._create_admin_image(
-            {'x-image-meta-property-x_owner_foo': 'bar'})
+        self._create_admin_image({'x-image-meta-property-x_owner_foo': 'bar'})
         another_request = unit_test_utils.get_fake_request(
             method='GET', path='/images/detail')
         headers = {'x-auth-token': 'user:tenant:member'}
@@ -3353,8 +3387,7 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         /images/detail
         """
         self.set_property_protections(use_policies=True)
-        image_id = self._create_admin_image(
-            {'x-image-meta-property-x_owner_foo': 'bar'})
+        self._create_admin_image({'x-image-meta-property-x_owner_foo': 'bar'})
         another_request = unit_test_utils.get_fake_request(
             method='GET', path='/images/detail')
         headers = {'x-auth-token': 'user:tenant:member'}
@@ -3371,8 +3404,7 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         permitted role 'fake_role' can *not* read that protected property via
         /images/detail
         """
-        image_id = self._create_admin_image(
-            {'x-image-meta-property-x_owner_foo': 'bar'})
+        self._create_admin_image({'x-image-meta-property-x_owner_foo': 'bar'})
         another_request = unit_test_utils.get_fake_request(
             method='GET', path='/images/detail')
         headers = {'x-auth-token': 'user:tenant:fake_role'}
@@ -3391,8 +3423,7 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
         /images/detail
         """
         self.set_property_protections(use_policies=True)
-        image_id = self._create_admin_image(
-            {'x-image-meta-property-x_owner_foo': 'bar'})
+        self._create_admin_image({'x-image-meta-property-x_owner_foo': 'bar'})
         another_request = unit_test_utils.get_fake_request(
             method='GET', path='/images/detail')
         headers = {'x-auth-token': 'user:tenant:fake_role'}

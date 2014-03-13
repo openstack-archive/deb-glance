@@ -20,9 +20,9 @@ from __future__ import with_statement
 
 import hashlib
 import math
-import urllib
 
 from oslo.config import cfg
+import six.moves.urllib.parse as urlparse
 
 from glance.common import exception
 from glance.common import utils
@@ -56,13 +56,13 @@ rbd_opts = [
     cfg.StrOpt('rbd_store_user', default=DEFAULT_USER,
                help=_('RADOS user to authenticate as (only applicable if '
                       'using Cephx. If <None>, a default will be chosen based '
-                      'on the client. section in rbd_store_ceph_conf)')),
+                      'on the client. section in rbd_store_ceph_conf).')),
     cfg.StrOpt('rbd_store_ceph_conf', default=DEFAULT_CONFFILE,
                help=_('Ceph configuration file path. '
                       'If <None>, librados will locate the default config. '
                       'If using cephx authentication, this file should '
                       'include a reference to the right keyring '
-                      'in a client.<USER> section')),
+                      'in a client.<USER> section.')),
 ]
 
 CONF = cfg.CONF
@@ -92,10 +92,10 @@ class StoreLocation(glance.store.location.StoreLocation):
     def get_uri(self):
         if self.fsid and self.pool and self.snapshot:
             # ensure nothing contains / or any other url-unsafe character
-            safe_fsid = urllib.quote(self.fsid, '')
-            safe_pool = urllib.quote(self.pool, '')
-            safe_image = urllib.quote(self.image, '')
-            safe_snapshot = urllib.quote(self.snapshot, '')
+            safe_fsid = urlparse.quote(self.fsid, '')
+            safe_pool = urlparse.quote(self.pool, '')
+            safe_image = urlparse.quote(self.image, '')
+            safe_snapshot = urlparse.quote(self.snapshot, '')
             return "rbd://%s/%s/%s/%s" % (safe_fsid, safe_pool,
                                           safe_image, safe_snapshot)
         else:
@@ -124,7 +124,7 @@ class StoreLocation(glance.store.location.StoreLocation):
                 (None, None, pieces[0], None)
         elif len(pieces) == 4:
             self.fsid, self.pool, self.image, self.snapshot = \
-                map(urllib.unquote, pieces)
+                map(urlparse.unquote, pieces)
         else:
             reason = _('URI must have exactly 1 or 4 components')
             msg = (_("Invalid URI: %(uri)s: %(reason)s") % {'uri': uri,

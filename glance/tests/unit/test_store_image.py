@@ -96,14 +96,6 @@ class TestStoreImage(utils.BaseTestCase):
         self.assertRaises(exception.NotFound,
                           self.store_api.get_from_backend, {}, location['url'])
 
-    def test_image_delayed_delete(self):
-        self.config(delayed_delete=True)
-        image = glance.store.ImageProxy(self.image_stub, {}, self.store_api)
-        self.assertEqual(image.status, 'active')
-        image.delete()
-        self.assertEqual(image.status, 'pending_delete')
-        self.store_api.get_from_backend({}, image.locations[0]['url'])
-
     def test_image_get_data(self):
         image = glance.store.ImageProxy(self.image_stub, {}, self.store_api)
         self.assertEqual(image.get_data(), 'XXX')
@@ -837,6 +829,7 @@ class TestStoreAddToBackend(utils.BaseTestCase):
         store.add(self.image_id, mox.IgnoreArg(), self.size).AndReturn(
             (self.location, self.size, self.checksum, in_metadata))
         store.__str__ = lambda: "hello"
+        store.__unicode__ = lambda: "hello"
 
         self.mox.ReplayAll()
 
@@ -912,6 +905,7 @@ class TestStoreAddToBackend(utils.BaseTestCase):
         store.add(self.image_id, mox.IgnoreArg(), self.size).AndReturn(
             (self.location, self.size, self.checksum, []))
         store.__str__ = lambda: "hello"
+        store.__unicode__ = lambda: "hello"
 
         self.mox.ReplayAll()
 

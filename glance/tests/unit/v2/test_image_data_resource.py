@@ -14,9 +14,9 @@
 #    under the License.
 
 import mock
-import StringIO
 import uuid
 
+import six
 import webob
 
 import glance.api.v2.image_data
@@ -37,12 +37,13 @@ class Raise(object):
 
 class FakeImage(object):
     def __init__(self, image_id=None, data=None, checksum=None, size=0,
-                 locations=None, container_format='bear', disk_format='rawr',
-                 status=None):
+                 virtual_size=0, locations=None, container_format='bear',
+                 disk_format='rawr', status=None):
         self.image_id = image_id
         self.data = data
         self.checksum = checksum
         self.size = size
+        self.virtual_size = virtual_size
         self.locations = locations
         self.container_format = container_format
         self.disk_format = disk_format
@@ -168,7 +169,7 @@ class TestImagesController(base.StoreClearingUnitTest):
         self.image_repo.result = image
         self.controller.upload(request, unit_test_utils.UUID2, 'YYYY', None)
         self.assertEqual(image.data, 'YYYY')
-        self.assertEqual(image.size, None)
+        self.assertIsNone(image.size)
 
     def test_upload_invalid(self):
         request = unit_test_utils.get_fake_request()
@@ -200,7 +201,9 @@ class TestImagesController(base.StoreClearingUnitTest):
     def test_upload_data_exists(self):
         request = unit_test_utils.get_fake_request()
         image = FakeImage()
-        image.set_data = Raise(exception.Duplicate)
+        exc = exception.InvalidImageStatusTransition(cur_status='active',
+                                                     new_status='queued')
+        image.set_data = Raise(exc)
         self.image_repo.result = image
         self.assertRaises(webob.exc.HTTPConflict, self.controller.upload,
                           request, unit_test_utils.UUID1, 'YYYY', 4)
@@ -216,7 +219,9 @@ class TestImagesController(base.StoreClearingUnitTest):
 
     def test_image_size_limit_exceeded(self):
         request = unit_test_utils.get_fake_request()
-        self.image_repo.result = exception.ImageSizeLimitExceeded()
+        image = FakeImage()
+        image.set_data = Raise(exception.ImageSizeLimitExceeded)
+        self.image_repo.result = image
         self.assertRaises(webob.exc.HTTPRequestEntityTooLarge,
                           self.controller.upload,
                           request, unit_test_utils.UUID1, 'YYYYYYY', 7)
@@ -246,6 +251,7 @@ class TestImagesController(base.StoreClearingUnitTest):
         prepare_payload = output['meta'].copy()
         prepare_payload['checksum'] = None
         prepare_payload['size'] = None
+        prepare_payload['virtual_size'] = None
         prepare_payload['location'] = None
         prepare_payload['status'] = 'queued'
         del prepare_payload['updated_at']
@@ -288,6 +294,16 @@ class TestImagesController(base.StoreClearingUnitTest):
         self.assertEqual(len(output_log), 3)
         self.assertEqual(output_log[2], activate_log)
 
+    def test_restore_image_when_upload_failed(self):
+        request = unit_test_utils.get_fake_request()
+        image = FakeImage('fake')
+        image.set_data = Raise(exception.StorageWriteDenied)
+        self.image_repo.result = image
+        self.assertRaises(webob.exc.HTTPServiceUnavailable,
+                          self.controller.upload,
+                          request, unit_test_utils.UUID2, 'ZZZ', 3)
+        self.assertEqual(self.image_repo.saved_image.status, 'queued')
+
 
 class TestImageDataDeserializer(test_utils.BaseTestCase):
 
@@ -311,7 +327,7 @@ class TestImageDataDeserializer(test_utils.BaseTestCase):
         request.headers['Content-Type'] = 'application/octet-stream'
         # If we use body_file, webob assumes we want to do a chunked upload,
         # ignoring the Content-Length header
-        request.body_file = StringIO.StringIO('YYY')
+        request.body_file = six.StringIO('YYY')
         output = self.deserializer.upload(request)
         data = output.pop('data')
         self.assertEqual(data.read(), 'YYY')
@@ -321,7 +337,7 @@ class TestImageDataDeserializer(test_utils.BaseTestCase):
     def test_upload_chunked_with_content_length(self):
         request = unit_test_utils.get_fake_request()
         request.headers['Content-Type'] = 'application/octet-stream'
-        request.body_file = StringIO.StringIO('YYY')
+        request.body_file = six.StringIO('YYY')
         # The deserializer shouldn't care if the Content-Length is
         # set when the user is attempting to send chunked data.
         request.headers['Content-Length'] = 3

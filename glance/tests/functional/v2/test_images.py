@@ -14,12 +14,15 @@
 #    under the License.
 
 import os
+import signal
+import tempfile
 import uuid
 
 import requests
 
 from glance.openstack.common import jsonutils
 from glance.tests import functional
+from glance.tests.functional.store import test_http
 
 
 TENANT1 = str(uuid.uuid4())
@@ -90,6 +93,7 @@ class TestImages(functional.FunctionalTest):
             u'schema',
             u'disk_format',
             u'container_format',
+            u'owner',
         ])
         self.assertEqual(set(image.keys()), checked_keys)
         expected_image = {
@@ -149,6 +153,7 @@ class TestImages(functional.FunctionalTest):
             u'schema',
             u'disk_format',
             u'container_format',
+            u'owner',
         ])
         self.assertEqual(set(image.keys()), checked_keys)
         expected_image = {
@@ -228,7 +233,8 @@ class TestImages(functional.FunctionalTest):
         image = jsonutils.loads(response.text)
         self.assertEqual(image_id, image['id'])
         self.assertFalse('checksum' in image)
-        self.assertFalse('size' in image)
+        self.assertNotIn('size', image)
+        self.assertNotIn('virtual_size', image)
         self.assertEqual('bar', image['foo'])
         self.assertEqual(False, image['protected'])
         self.assertEqual('kernel', image['type'])
@@ -288,9 +294,9 @@ class TestImages(functional.FunctionalTest):
         for i in range(3):
             changes.append({'op': 'add', 'path': '/locations/-',
                             'value': {'url': 'file://{0}'.format(
-                            os.path.join(self.test_dir,
-                                         'fake_image_%i' % i)),
-                            'metadata': {}},
+                                os.path.join(self.test_dir,
+                                             'fake_image_%i' % i)),
+                                      'metadata': {}},
                             })
 
         data = jsonutils.dumps(changes)
@@ -327,19 +333,23 @@ class TestImages(functional.FunctionalTest):
         response = requests.get(path, headers=headers)
         self.assertEqual(204, response.status_code)
 
+        def _verify_image_checksum_and_status(checksum, status):
+            # Checksum should be populated and status should be active
+            path = self._url('/v2/images/%s' % image_id)
+            response = requests.get(path, headers=self._headers())
+            self.assertEqual(200, response.status_code)
+            image = jsonutils.loads(response.text)
+            self.assertEqual(checksum, image['checksum'])
+            self.assertEqual(status, image['status'])
+
         # Upload some image data
         path = self._url('/v2/images/%s/file' % image_id)
         headers = self._headers({'Content-Type': 'application/octet-stream'})
         response = requests.put(path, headers=headers, data='ZZZZZ')
         self.assertEqual(204, response.status_code)
 
-        # Checksum should be populated and status should be active
-        path = self._url('/v2/images/%s' % image_id)
-        response = requests.get(path, headers=self._headers())
-        self.assertEqual(200, response.status_code)
-        image = jsonutils.loads(response.text)
-        self.assertEqual('8f113e38d28a79a5a451b16048cc2b72', image['checksum'])
-        self.assertEqual('active', image['status'])
+        expected_checksum = '8f113e38d28a79a5a451b16048cc2b72'
+        _verify_image_checksum_and_status(expected_checksum, 'active')
 
         # `disk_format` and `container_format` cannot
         # be replaced when the image is active.
@@ -356,23 +366,22 @@ class TestImages(functional.FunctionalTest):
 
         # Try to download the data that was just uploaded
         path = self._url('/v2/images/%s/file' % image_id)
-        headers = self._headers()
-        response = requests.get(path, headers=headers)
+        response = requests.get(path, headers=self._headers())
         self.assertEqual(200, response.status_code)
-        self.assertEqual('8f113e38d28a79a5a451b16048cc2b72',
-                         response.headers['Content-MD5'])
+        self.assertEqual(expected_checksum, response.headers['Content-MD5'])
         self.assertEqual(response.text, 'ZZZZZ')
 
-        # Uploading duplicate data should be rejected with a 409
+        # Uploading duplicate data should be rejected with a 409. The
+        # original data should remain untouched.
         path = self._url('/v2/images/%s/file' % image_id)
         headers = self._headers({'Content-Type': 'application/octet-stream'})
         response = requests.put(path, headers=headers, data='XXX')
         self.assertEqual(409, response.status_code)
+        _verify_image_checksum_and_status(expected_checksum, 'active')
 
         # Ensure the size is updated to reflect the data uploaded
         path = self._url('/v2/images/%s' % image_id)
-        headers = self._headers()
-        response = requests.get(path, headers=headers)
+        response = requests.get(path, headers=self._headers())
         self.assertEqual(200, response.status_code)
         self.assertEqual(5, jsonutils.loads(response.text)['size'])
 
@@ -400,7 +409,8 @@ class TestImages(functional.FunctionalTest):
         response = requests.patch(path, headers=headers, data=data)
         self.assertEqual(200, response.status_code, response.text)
         image = jsonutils.loads(response.text)
-        self.assertTrue('size' not in image)
+        self.assertNotIn('size', image)
+        self.assertNotIn('virtual_size', image)
         self.assertEqual('queued', image['status'])
 
         # Deletion should work. Deleting image-1
@@ -1205,8 +1215,8 @@ class TestImages(functional.FunctionalTest):
         self.assertEqual('2', image['x_all_permitted_joe_soap'])
         path = self._url('/v2/images/%s' % image_id)
         media_type = 'application/openstack-images-v2.1-json-patch'
-        header = self._headers({'content-type': media_type,
-                                'X-Roles': 'joe_soap'})
+        headers = self._headers({'content-type': media_type,
+                                 'X-Roles': 'joe_soap'})
         data = jsonutils.dumps([
             {'op': 'replace',
              'path': '/x_all_permitted_joe_soap', 'value': '3'}
@@ -1757,6 +1767,7 @@ class TestImages(functional.FunctionalTest):
         image_id = image['id']
         self.assertEqual(image['status'], 'queued')
         self.assertNotIn('size', image)
+        self.assertNotIn('virtual_size', image)
 
         file_path = os.path.join(self.test_dir, 'fake_image')
         with open(file_path, 'w') as fap:
@@ -1967,6 +1978,160 @@ class TestImageDirectURLVisibility(functional.FunctionalTest):
         self.assertEqual(200, response.status_code)
         image = jsonutils.loads(response.text)['images'][0]
         self.assertFalse('direct_url' in image)
+
+        self.stop_servers()
+
+
+class TestImageLocationSelectionStrategy(functional.FunctionalTest):
+
+    def setUp(self):
+        super(TestImageLocationSelectionStrategy, self).setUp()
+        self.cleanup()
+        self.api_server.deployment_flavor = 'noauth'
+        self.foo_image_file = tempfile.NamedTemporaryFile()
+        self.foo_image_file.write("foo image file")
+        self.foo_image_file.flush()
+        self.addCleanup(self.foo_image_file.close)
+        ret = test_http.http_server("foo_image_id", "foo_image")
+        self.http_server_pid, self.http_port = ret
+
+    def tearDown(self):
+        if self.http_server_pid is not None:
+            os.kill(self.http_server_pid, signal.SIGKILL)
+
+        super(TestImageLocationSelectionStrategy, self).tearDown()
+
+    def _url(self, path):
+        return 'http://127.0.0.1:%d%s' % (self.api_port, path)
+
+    def _headers(self, custom_headers=None):
+        base_headers = {
+            'X-Identity-Status': 'Confirmed',
+            'X-Auth-Token': '932c5c84-02ac-4fe5-a9ba-620af0e2bb96',
+            'X-User-Id': 'f9a41d13-0c13-47e9-bee2-ce4e8bfe958e',
+            'X-Tenant-Id': TENANT1,
+            'X-Roles': 'member',
+        }
+        base_headers.update(custom_headers or {})
+        return base_headers
+
+    def test_image_locations_with_order_strategy(self):
+        self.api_server.show_image_direct_url = True
+        self.api_server.show_multiple_locations = True
+        self.image_location_quota = 10
+        self.api_server.location_strategy = 'location_order'
+        preference = "http, swift, filesystem"
+        self.api_server.store_type_location_strategy_preference = preference
+        self.start_servers(**self.__dict__.copy())
+
+        # Create an image
+        path = self._url('/v2/images')
+        headers = self._headers({'content-type': 'application/json'})
+        data = jsonutils.dumps({'name': 'image-1', 'type': 'kernel',
+                                'foo': 'bar', 'disk_format': 'aki',
+                                'container_format': 'aki'})
+        response = requests.post(path, headers=headers, data=data)
+        self.assertEqual(201, response.status_code)
+
+        # Get the image id
+        image = jsonutils.loads(response.text)
+        image_id = image['id']
+
+        # Image locations should not be visible before location is set
+        path = self._url('/v2/images/%s' % image_id)
+        headers = self._headers({'Content-Type': 'application/json'})
+        response = requests.get(path, headers=headers)
+        self.assertEqual(200, response.status_code)
+        image = jsonutils.loads(response.text)
+        self.assertTrue('locations' in image)
+        self.assertTrue(image["locations"] == [])
+
+       # Update image locations via PATCH
+        path = self._url('/v2/images/%s' % image_id)
+        media_type = 'application/openstack-images-v2.1-json-patch'
+        headers = self._headers({'content-type': media_type})
+        values = [{'url': 'file://%s' % self.foo_image_file.name,
+                   'metadata': {'idx': '1'}},
+                  {'url': 'http://127.0.0.1:%s/foo_image' % self.http_port,
+                   'metadata': {'idx': '0'}}]
+        doc = [{'op': 'replace',
+                'path': '/locations',
+                'value': values}]
+        data = jsonutils.dumps(doc)
+        response = requests.patch(path, headers=headers, data=data)
+        self.assertEqual(200, response.status_code)
+
+        # Image locations should be visible
+        path = self._url('/v2/images/%s' % image_id)
+        headers = self._headers({'Content-Type': 'application/json'})
+        response = requests.get(path, headers=headers)
+        self.assertEqual(200, response.status_code)
+        image = jsonutils.loads(response.text)
+        self.assertTrue('locations' in image)
+        self.assertEqual(image['locations'], values)
+        self.assertTrue('direct_url' in image)
+        self.assertEqual(image['direct_url'], values[0]['url'])
+
+        self.stop_servers()
+
+    def test_image_locatons_with_store_type_strategy(self):
+        self.api_server.show_image_direct_url = True
+        self.api_server.show_multiple_locations = True
+        self.image_location_quota = 10
+        self.api_server.location_strategy = 'store_type'
+        preference = "http, swift, filesystem"
+        self.api_server.store_type_location_strategy_preference = preference
+        self.start_servers(**self.__dict__.copy())
+
+        # Create an image
+        path = self._url('/v2/images')
+        headers = self._headers({'content-type': 'application/json'})
+        data = jsonutils.dumps({'name': 'image-1', 'type': 'kernel',
+                                'foo': 'bar', 'disk_format': 'aki',
+                                'container_format': 'aki'})
+        response = requests.post(path, headers=headers, data=data)
+        self.assertEqual(201, response.status_code)
+
+        # Get the image id
+        image = jsonutils.loads(response.text)
+        image_id = image['id']
+
+        # Image locations should not be visible before location is set
+        path = self._url('/v2/images/%s' % image_id)
+        headers = self._headers({'Content-Type': 'application/json'})
+        response = requests.get(path, headers=headers)
+        self.assertEqual(200, response.status_code)
+        image = jsonutils.loads(response.text)
+        self.assertTrue('locations' in image)
+        self.assertTrue(image["locations"] == [])
+
+       # Update image locations via PATCH
+        path = self._url('/v2/images/%s' % image_id)
+        media_type = 'application/openstack-images-v2.1-json-patch'
+        headers = self._headers({'content-type': media_type})
+        values = [{'url': 'file://%s' % self.foo_image_file.name,
+                   'metadata': {'idx': '1'}},
+                  {'url': 'http://127.0.0.1:%s/foo_image' % self.http_port,
+                   'metadata': {'idx': '0'}}]
+        doc = [{'op': 'replace',
+                'path': '/locations',
+                'value': values}]
+        data = jsonutils.dumps(doc)
+        response = requests.patch(path, headers=headers, data=data)
+        self.assertEqual(200, response.status_code)
+
+        values.sort(key=lambda loc: int(loc['metadata']['idx']))
+
+        # Image locations should be visible
+        path = self._url('/v2/images/%s' % image_id)
+        headers = self._headers({'Content-Type': 'application/json'})
+        response = requests.get(path, headers=headers)
+        self.assertEqual(200, response.status_code)
+        image = jsonutils.loads(response.text)
+        self.assertTrue('locations' in image)
+        self.assertEqual(image['locations'], values)
+        self.assertTrue('direct_url' in image)
+        self.assertEqual(image['direct_url'], values[0]['url'])
 
         self.stop_servers()
 

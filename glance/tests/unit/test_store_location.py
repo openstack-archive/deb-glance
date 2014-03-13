@@ -22,6 +22,7 @@ import glance.store.http
 import glance.store.location as location
 import glance.store.s3
 import glance.store.swift
+import glance.store.vmware_datastore
 from glance.tests.unit import base
 
 
@@ -53,6 +54,7 @@ class TestStoreLocation(base.StoreClearingUnitTest):
             'rbd://%2F/%2F/%2F/%2F',
             'sheepdog://imagename',
             'cinder://12345678-9012-3455-6789-012345678901',
+            'vsphere://ip/folder/openstack_glance/2332298?dcPath=dc&dsName=ds',
         ]
 
         for uri in good_store_uris:
@@ -152,7 +154,7 @@ class TestStoreLocation(base.StoreClearingUnitTest):
         self.assertEqual("https://example.com", loc.swift_url)
         self.assertEqual("images", loc.container)
         self.assertEqual("1", loc.obj)
-        self.assertEqual(None, loc.user)
+        self.assertIsNone(loc.user)
         self.assertEqual(uri, loc.get_uri())
 
         uri = 'swift+https://user:pass@authurl.com/images/1'
@@ -201,8 +203,8 @@ class TestStoreLocation(base.StoreClearingUnitTest):
         self.assertEqual("http://storeurl.com/v1", loc.swift_url)
         self.assertEqual("container", loc.container)
         self.assertEqual("12345", loc.obj)
-        self.assertEqual(None, loc.user)
-        self.assertEqual(None, loc.key)
+        self.assertIsNone(loc.user)
+        self.assertIsNone(loc.key)
         self.assertEqual(uri, loc.get_uri())
 
         bad_uri = 'swif://'
@@ -229,7 +231,7 @@ class TestStoreLocation(base.StoreClearingUnitTest):
         self.assertEqual("example.com", loc.s3serviceurl)
         self.assertEqual("images", loc.bucket)
         self.assertEqual("1", loc.key)
-        self.assertEqual(None, loc.accesskey)
+        self.assertIsNone(loc.accesskey)
         self.assertEqual(uri, loc.get_uri())
 
         uri = 's3+https://accesskey:pass@s3serviceurl.com/images/1'
@@ -286,18 +288,18 @@ class TestStoreLocation(base.StoreClearingUnitTest):
         loc.parse_uri(uri)
 
         self.assertEqual('imagename', loc.image)
-        self.assertEqual(None, loc.fsid)
-        self.assertEqual(None, loc.pool)
-        self.assertEqual(None, loc.snapshot)
+        self.assertIsNone(loc.fsid)
+        self.assertIsNone(loc.pool)
+        self.assertIsNone(loc.snapshot)
 
         uri = u'rbd://imagename'
         loc = glance.store.rbd.StoreLocation({})
         loc.parse_uri(uri)
 
         self.assertEqual('imagename', loc.image)
-        self.assertEqual(None, loc.fsid)
-        self.assertEqual(None, loc.pool)
-        self.assertEqual(None, loc.snapshot)
+        self.assertIsNone(loc.fsid)
+        self.assertIsNone(loc.pool)
+        self.assertIsNone(loc.snapshot)
 
         uri = 'rbd://fsid/pool/image/snap'
         loc = glance.store.rbd.StoreLocation({})
@@ -377,6 +379,27 @@ class TestStoreLocation(base.StoreClearingUnitTest):
         bad_uri = 'http://image'
         self.assertRaises(exception.BadStoreUri, loc.parse_uri, bad_uri)
 
+    def test_vmware_store_location(self):
+        """
+        Test the specific StoreLocation for the VMware store
+        """
+        uri = ('vsphere://127.0.0.1/folder/'
+               'openstack_glance/29038321?dcPath=my-dc&dsName=my-ds')
+        loc = glance.store.vmware_datastore.StoreLocation({})
+        loc.parse_uri(uri)
+
+        self.assertEqual("vsphere", loc.scheme)
+        self.assertEqual("127.0.0.1", loc.server_host)
+        self.assertEqual("/folder/openstack_glance/29038321", loc.path)
+        self.assertEqual("dcPath=my-dc&dsName=my-ds", loc.query)
+        self.assertEqual(uri, loc.get_uri())
+
+        bad_uri = 'vphere://'
+        self.assertRaises(exception.BadStoreUri, loc.parse_uri, bad_uri)
+
+        bad_uri = 'http://image'
+        self.assertRaises(exception.BadStoreUri, loc.parse_uri, bad_uri)
+
     def test_cinder_store_good_location(self):
         """
         Test the specific StoreLocation for the Cinder store
@@ -412,7 +435,8 @@ class TestStoreLocation(base.StoreClearingUnitTest):
             'https': glance.store.http.Store,
             'rbd': glance.store.rbd.Store,
             'sheepdog': glance.store.sheepdog.Store,
-            'cinder': glance.store.cinder.Store}
+            'cinder': glance.store.cinder.Store,
+            'vsphere': glance.store.vmware_datastore.Store}
 
         ctx = context.RequestContext()
         for scheme, store in good_results.items():
@@ -438,19 +462,19 @@ class TestStoreLocation(base.StoreClearingUnitTest):
 
         self.stubs.Set(glance.store, 'get_size_from_backend',
                        fake_get_size_from_backend)
-        glance.store._check_image_location = mock.Mock()
-        loc1 = {'url': 'file:///fake1.img.tar.gz', 'metadata': {}}
-        loc2 = {'url': 'file:///fake2.img.tar.gz', 'metadata': {}}
+        with mock.patch('glance.store._check_image_location'):
+            loc1 = {'url': 'file:///fake1.img.tar.gz', 'metadata': {}}
+            loc2 = {'url': 'file:///fake2.img.tar.gz', 'metadata': {}}
 
-        # Test for insert location
-        image1 = FakeImageProxy()
-        locations = glance.store.StoreLocations(image1, [])
-        locations.insert(0, loc2)
-        self.assertEqual(image1.size, 1)
+            # Test for insert location
+            image1 = FakeImageProxy()
+            locations = glance.store.StoreLocations(image1, [])
+            locations.insert(0, loc2)
+            self.assertEqual(image1.size, 1)
 
-        # Test for set_attr of _locations_proxy
-        image2 = FakeImageProxy()
-        locations = glance.store.StoreLocations(image2, [loc1])
-        locations[0] = loc2
-        self.assertTrue(loc2 in locations)
-        self.assertEqual(image2.size, 1)
+            # Test for set_attr of _locations_proxy
+            image2 = FakeImageProxy()
+            locations = glance.store.StoreLocations(image2, [loc1])
+            locations[0] = loc2
+            self.assertTrue(loc2 in locations)
+            self.assertEqual(image2.size, 1)

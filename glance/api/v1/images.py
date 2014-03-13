@@ -18,15 +18,15 @@
 """
 
 import copy
-import urlparse
 
 import eventlet
 from oslo.config import cfg
-from webob.exc import (HTTPNotFound,
-                       HTTPConflict,
-                       HTTPBadRequest,
-                       HTTPForbidden,
-                       HTTPRequestEntityTooLarge)
+import six.moves.urllib.parse as urlparse
+from webob.exc import HTTPBadRequest
+from webob.exc import HTTPConflict
+from webob.exc import HTTPForbidden
+from webob.exc import HTTPNotFound
+from webob.exc import HTTPRequestEntityTooLarge
 from webob import Response
 
 from glance.api import common
@@ -43,11 +43,12 @@ from glance import notifier
 import glance.openstack.common.log as logging
 from glance.openstack.common import strutils
 import glance.registry.client.v1.api as registry
-from glance.store import (get_from_backend,
-                          get_known_schemes,
-                          get_size_from_backend,
-                          get_store_from_location,
-                          get_store_from_scheme)
+from glance.store import get_from_backend
+from glance.store import get_known_schemes
+from glance.store import get_known_stores
+from glance.store import get_size_from_backend
+from glance.store import get_store_from_location
+from glance.store import get_store_from_scheme
 
 LOG = logging.getLogger(__name__)
 SUPPORTED_PARAMS = glance.api.v1.SUPPORTED_PARAMS
@@ -69,12 +70,13 @@ def validate_image_meta(req, values):
 
     if 'disk_format' in values:
         if disk_format not in CONF.image_format.disk_formats:
-            msg = "Invalid disk format '%s' for image." % disk_format
+            msg = _("Invalid disk format '%s' for image.") % disk_format
             raise HTTPBadRequest(explanation=msg, request=req)
 
     if 'container_format' in values:
         if container_format not in CONF.image_format.container_formats:
-            msg = "Invalid container format '%s' for image." % container_format
+            msg = _("Invalid container format '%s' "
+                    "for image.") % container_format
             raise HTTPBadRequest(explanation=msg, request=req)
 
     if name and len(name) > 255:
@@ -168,8 +170,9 @@ class Controller(controller.BaseController):
 
         if len(props) > CONF.image_property_quota:
             msg = (_("The limit has been exceeded on the number of allowed "
-                     "image properties. Attempted: %s, Maximum: %s") %
-                   (len(props), CONF.image_property_quota))
+                     "image properties. Attempted: %(num)s, Maximum: "
+                     "%(quota)s") % {'num': len(props),
+                                     'quota': CONF.image_property_quota})
             LOG.info(msg)
             raise HTTPRequestEntityTooLarge(explanation=msg,
                                             request=req,
@@ -374,9 +377,10 @@ class Controller(controller.BaseController):
             if param in SUPPORTED_FILTERS or param.startswith('property-'):
                 query_filters[param] = req.params.get(param)
                 if not filters.validate(param, query_filters[param]):
-                    raise HTTPBadRequest('Bad value passed to filter %s '
-                                         'got %s' % (param,
-                                                     query_filters[param]))
+                    raise HTTPBadRequest(_('Bad value passed to filter '
+                                           '%(filter)s got %(val)s')
+                                         % {'filter': param,
+                                            'val': query_filters[param]})
         return query_filters
 
     def meta(self, req, id):
@@ -484,6 +488,12 @@ class Controller(controller.BaseController):
         :raises HTTPBadRequest if image metadata is not valid
         """
         location = self._external_source(image_meta, req)
+        store = image_meta.get('store')
+        if store and store not in get_known_stores():
+            msg = _("Required store %s is invalid") % store
+            LOG.debug(msg)
+            raise HTTPBadRequest(explanation=msg,
+                                 content_type='text/plain')
 
         image_meta['status'] = ('active' if image_meta.get('size') == 0
                                 else 'queued')
@@ -623,9 +633,9 @@ class Controller(controller.BaseController):
         except exception.Duplicate:
             # Delete image data since it has been supersceded by another
             # upload.
-            LOG.debug("duplicate operation - deleting image data for %s "
-                      "(location:%s)" %
-                      (image_id, image_meta['location']))
+            LOG.debug(_("duplicate operation - deleting image data for %(id)s "
+                      "(location:%(location)s)") %
+                      {'id': image_id, 'location': image_meta['location']})
             upload_utils.initiate_deletion(req, image_meta['location'],
                                            image_id, CONF.delayed_delete)
             # Then propagate the exception.
@@ -858,7 +868,7 @@ class Controller(controller.BaseController):
         activating = orig_status == 'queued' and (location or image_data)
 
         # Make image public in the backend store (if implemented)
-        orig_or_updated_loc = location or orig_image_meta.get('location', None)
+        orig_or_updated_loc = location or orig_image_meta.get('location')
         if orig_or_updated_loc:
             try:
                 self.update_store_acls(req, id, orig_or_updated_loc,
@@ -986,21 +996,28 @@ class Controller(controller.BaseController):
         else:
             status = 'deleted'
 
+        ori_status = image['status']
+
         try:
-            # Delete the image from the registry first, since we rely on it
+            # Update the image from the registry first, since we rely on it
             # for authorization checks.
             # See https://bugs.launchpad.net/glance/+bug/1065187
             image = registry.update_image_metadata(req.context, id,
                                                    {'status': status})
-            registry.delete_image_metadata(req.context, id)
 
-            # The image's location field may be None in the case
-            # of a saving or queued image, therefore don't ask a backend
-            # to delete the image if the backend doesn't yet store it.
-            # See https://bugs.launchpad.net/glance/+bug/747799
-            if image['location']:
-                upload_utils.initiate_deletion(req, image['location'], id,
-                                               CONF.delayed_delete)
+            try:
+                # The image's location field may be None in the case
+                # of a saving or queued image, therefore don't ask a backend
+                # to delete the image if the backend doesn't yet store it.
+                # See https://bugs.launchpad.net/glance/+bug/747799
+                if image['location']:
+                    upload_utils.initiate_deletion(req, image['location'], id,
+                                                   CONF.delayed_delete)
+            except Exception as e:
+                registry.update_image_metadata(req.context, id,
+                                               {'status': ori_status})
+                raise e
+            registry.delete_image_metadata(req.context, id)
         except exception.NotFound as e:
             msg = _("Failed to find image to delete: %(e)s") % {'e': e}
             for line in msg.split('\n'):
@@ -1049,7 +1066,7 @@ class ImageDeserializer(wsgi.JSONRequestDeserializer):
         except exception.InvalidParameterValue as e:
             msg = unicode(e)
             LOG.warn(msg, exc_info=True)
-            raise HTTPBadRequest(explanation=msg, request=request)
+            raise HTTPBadRequest(explanation=e.msg, request=request)
 
         image_meta = result['image_meta']
         image_meta = validate_image_meta(request, image_meta)

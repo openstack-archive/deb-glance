@@ -18,14 +18,14 @@ from sqlalchemy.schema import (
 
 from glance.db.sqlalchemy.migrate_repo.schema import (
     Boolean, DateTime, Integer, String, Text, create_tables, drop_tables,
-    from_migration_import)
+    from_migration_import)  # noqa
 
 
 def define_image_properties_table(meta):
     (define_images_table,) = from_migration_import(
         '001_add_images_table', ['define_images_table'])
 
-    images = define_images_table(meta)
+    images = define_images_table(meta)  # noqa
 
     # NOTE(dperaza) DB2: specify the UniqueConstraint option when creating the
     # table will cause an index being created to specify the index

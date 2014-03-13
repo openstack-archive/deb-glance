@@ -14,13 +14,14 @@
 #    under the License.
 
 import re
-import urllib
 
 from oslo.config import cfg
+import six.moves.urllib.parse as urlparse
 import webob.exc
 
 from glance.api import policy
 from glance.common import exception
+from glance.common import location_strategy
 from glance.common import utils
 from glance.common import wsgi
 import glance.db
@@ -59,15 +60,15 @@ class ImagesController(object):
                                             tags=tags, **image)
             image_repo.add(image)
         except exception.DuplicateLocation as dup:
-            raise webob.exc.HTTPBadRequest(explanation=unicode(dup))
+            raise webob.exc.HTTPBadRequest(explanation=dup.msg)
         except exception.Forbidden as e:
-            raise webob.exc.HTTPForbidden(explanation=unicode(e))
+            raise webob.exc.HTTPForbidden(explanation=e.msg)
         except exception.InvalidParameterValue as e:
-            raise webob.exc.HTTPBadRequest(explanation=unicode(e))
+            raise webob.exc.HTTPBadRequest(explanation=e.msg)
         except exception.LimitExceeded as e:
             LOG.info(unicode(e))
             raise webob.exc.HTTPRequestEntityTooLarge(
-                explanation=unicode(e), request=req, content_type='text/plain')
+                explanation=e.msg, request=req, content_type='text/plain')
 
         return image
 
@@ -92,9 +93,9 @@ class ImagesController(object):
                 result['next_marker'] = images[-1].image_id
         except (exception.NotFound, exception.InvalidSortKey,
                 exception.InvalidFilterRangeValue) as e:
-            raise webob.exc.HTTPBadRequest(explanation=unicode(e))
+            raise webob.exc.HTTPBadRequest(explanation=e.msg)
         except exception.Forbidden as e:
-            raise webob.exc.HTTPForbidden(explanation=unicode(e))
+            raise webob.exc.HTTPForbidden(explanation=e.msg)
         result['images'] = images
         return result
 
@@ -103,9 +104,9 @@ class ImagesController(object):
         try:
             return image_repo.get(image_id)
         except exception.Forbidden as e:
-            raise webob.exc.HTTPForbidden(explanation=unicode(e))
+            raise webob.exc.HTTPForbidden(explanation=e.msg)
         except exception.NotFound as e:
-            raise webob.exc.HTTPNotFound(explanation=unicode(e))
+            raise webob.exc.HTTPNotFound(explanation=e.msg)
 
     @utils.mutating
     def update(self, req, image_id, changes):
@@ -121,16 +122,12 @@ class ImagesController(object):
 
             if changes:
                     image_repo.save(image)
-
-        except exception.NotFound:
-            msg = (_("Failed to find image %(image_id)s to update") %
-                   {'image_id': image_id})
-            LOG.info(msg)
-            raise webob.exc.HTTPNotFound(explanation=msg)
+        except exception.NotFound as e:
+            raise webob.exc.HTTPNotFound(explanation=e.msg)
         except exception.Forbidden as e:
-            raise webob.exc.HTTPForbidden(explanation=unicode(e))
+            raise webob.exc.HTTPForbidden(explanation=e.msg)
         except exception.InvalidParameterValue as e:
-            raise webob.exc.HTTPBadRequest(explanation=unicode(e))
+            raise webob.exc.HTTPBadRequest(explanation=e.msg)
         except exception.StorageQuotaFull as e:
             msg = (_("Denying attempt to upload image because it exceeds the ."
                      "quota: %s") % e)
@@ -140,7 +137,7 @@ class ImagesController(object):
         except exception.LimitExceeded as e:
             LOG.info(unicode(e))
             raise webob.exc.HTTPRequestEntityTooLarge(
-                explanation=unicode(e), request=req, content_type='text/plain')
+                explanation=e.msg, request=req, content_type='text/plain')
 
         return image
 
@@ -195,9 +192,9 @@ class ImagesController(object):
             image.delete()
             image_repo.remove(image)
         except exception.Forbidden as e:
-            raise webob.exc.HTTPForbidden(explanation=unicode(e))
+            raise webob.exc.HTTPForbidden(explanation=e.msg)
         except exception.NotFound as e:
-            msg = ("Failed to find image %(image_id)s to delete" %
+            msg = (_("Failed to find image %(image_id)s to delete") %
                    {'image_id': image_id})
             LOG.info(msg)
             raise webob.exc.HTTPNotFound(explanation=msg)
@@ -207,8 +204,7 @@ class ImagesController(object):
             return None
         pos = max_pos if allow_max else max_pos - 1
         if path_pos.isdigit():
-            # NOTE(zhiyan): locations index from '1' by client perspective
-            pos = int(path_pos) - 1
+            pos = int(path_pos)
         elif path_pos != '-':
             return None
         if (not allow_max) and (pos not in range(max_pos)):
@@ -232,7 +228,7 @@ class ImagesController(object):
                 if image.status == 'queued':
                     image.status = 'active'
             except (exception.BadStoreUri, exception.DuplicateLocation) as bse:
-                raise webob.exc.HTTPBadRequest(explanation=unicode(bse))
+                raise webob.exc.HTTPBadRequest(explanation=bse.msg)
             except ValueError as ve:    # update image status failed.
                 raise webob.exc.HTTPBadRequest(explanation=unicode(ve))
 
@@ -247,7 +243,7 @@ class ImagesController(object):
             if image.status == 'queued':
                 image.status = 'active'
         except (exception.BadStoreUri, exception.DuplicateLocation) as bse:
-            raise webob.exc.HTTPBadRequest(explanation=unicode(bse))
+            raise webob.exc.HTTPBadRequest(explanation=bse.msg)
         except ValueError as ve:    # update image status failed.
             raise webob.exc.HTTPBadRequest(explanation=unicode(ve))
 
@@ -271,13 +267,14 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
 
     _disallowed_properties = ['direct_url', 'self', 'file', 'schema']
     _readonly_properties = ['created_at', 'updated_at', 'status', 'checksum',
-                            'size', 'direct_url', 'self', 'file', 'schema']
+                            'size', 'virtual_size', 'direct_url', 'self',
+                            'file', 'schema']
     _reserved_properties = ['owner', 'is_public', 'location', 'deleted',
                             'deleted_at']
     _base_properties = ['checksum', 'created_at', 'container_format',
                         'disk_format', 'id', 'min_disk', 'min_ram', 'name',
-                        'size', 'status', 'tags', 'updated_at', 'visibility',
-                        'protected']
+                        'size', 'virtual_size', 'status', 'tags',
+                        'updated_at', 'visibility', 'protected']
     _path_depth_limits = {'locations': {'add': 2, 'remove': 2, 'replace': 1}}
 
     def __init__(self, schema=None):
@@ -295,7 +292,7 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
     def _check_allowed(cls, image):
         for key in cls._disallowed_properties:
             if key in image:
-                msg = "Attribute \'%s\' is read-only." % key
+                msg = _("Attribute '%s' is read-only.") % key
                 raise webob.exc.HTTPForbidden(explanation=unicode(msg))
 
     def create(self, request):
@@ -304,7 +301,7 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
         try:
             self.schema.validate(body)
         except exception.InvalidObject as e:
-            raise webob.exc.HTTPBadRequest(explanation=unicode(e))
+            raise webob.exc.HTTPBadRequest(explanation=e.msg)
         image = {}
         properties = body
         tags = properties.pop('tags', None)
@@ -394,10 +391,10 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
     def _validate_change(self, change):
         path_root = change['path'][0]
         if path_root in self._readonly_properties:
-            msg = "Attribute \'%s\' is read-only." % path_root
+            msg = _("Attribute '%s' is read-only.") % path_root
             raise webob.exc.HTTPForbidden(explanation=unicode(msg))
         if path_root in self._reserved_properties:
-            msg = "Attribute \'%s\' is reserved." % path_root
+            msg = _("Attribute '%s' is reserved.") % path_root
             raise webob.exc.HTTPForbidden(explanation=unicode(msg))
 
         if change['op'] == 'delete':
@@ -421,14 +418,14 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
             try:
                 self.schema.validate(partial_image)
             except exception.InvalidObject as e:
-                raise webob.exc.HTTPBadRequest(explanation=unicode(e))
+                raise webob.exc.HTTPBadRequest(explanation=e.msg)
 
     def _validate_path(self, op, path):
         path_root = path[0]
         limits = self._path_depth_limits.get(path_root, {})
         if len(path) != limits.get(op, 1):
             msg = _("Invalid JSON pointer for this resource: "
-                    "\'/%s\'") % '/'.join(path)
+                    "'/%s'") % '/'.join(path)
             raise webob.exc.HTTPBadRequest(explanation=unicode(msg))
 
     def _parse_json_schema_change(self, raw_change, draft_version):
@@ -511,7 +508,7 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
         return member_status
 
     def _get_filters(self, filters):
-        visibility = filters.get('visibility', None)
+        visibility = filters.get('visibility')
         if visibility:
             if visibility not in ['public', 'private', 'shared']:
                 msg = _('Invalid visibility value: %s') % visibility
@@ -568,8 +565,9 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
         try:
             image_view = dict(image.extra_properties)
             attributes = ['name', 'disk_format', 'container_format',
-                          'visibility', 'size', 'status', 'checksum',
-                          'protected', 'min_ram', 'min_disk']
+                          'visibility', 'size', 'virtual_size', 'status',
+                          'checksum', 'protected', 'min_ram', 'min_disk',
+                          'owner']
             for key in attributes:
                 image_view[key] = getattr(image, key)
             image_view['id'] = image.image_id
@@ -586,7 +584,10 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
                     image_view['locations'] = []
 
             if CONF.show_image_direct_url and image.locations:
-                image_view['direct_url'] = image.locations[0]['url']
+                # Choose best location configured strategy
+                best_location = (
+                    location_strategy.choose_best_location(image.locations))
+                image_view['direct_url'] = best_location['url']
 
             image_view['tags'] = list(image.tags)
             image_view['self'] = self._get_image_href(image)
@@ -594,7 +595,7 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
             image_view['schema'] = '/v2/schemas/image'
             image_view = self.schema.filter(image_view)  # domain
         except exception.Forbidden as e:
-            raise webob.exc.HTTPForbidden(unicode(e))
+            raise webob.exc.HTTPForbidden(explanation=e.msg)
         return image_view
 
     def create(self, response, image):
@@ -617,7 +618,7 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
     def index(self, response, result):
         params = dict(response.request.params)
         params.pop('marker', None)
-        query = urllib.urlencode(params)
+        query = urlparse.urlencode(params)
         body = {
             'images': [self._format_image(i) for i in result['images']],
             'first': '/v2/images',
@@ -627,7 +628,7 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
             body['first'] = '%s?%s' % (body['first'], query)
         if 'next_marker' in result:
             params['marker'] = result['next_marker']
-            next_query = urllib.urlencode(params)
+            next_query = urlparse.urlencode(params)
             body['next'] = '/v2/images?%s' % next_query
         response.unicode_body = unicode(json.dumps(body, ensure_ascii=False))
         response.content_type = 'application/json'
@@ -667,23 +668,29 @@ def _get_base_properties():
         'checksum': {
             'type': 'string',
             'description': _('md5 hash of image contents. (READ-ONLY)'),
-            'type': 'string',
             'maxLength': 32,
+        },
+        'owner': {
+            'type': 'string',
+            'description': _('Owner of the image'),
+            'maxLength': 255,
         },
         'size': {
             'type': 'integer',
             'description': _('Size of image file in bytes (READ-ONLY)'),
         },
+        'virtual_size': {
+            'type': 'integer',
+            'description': _('Virtual size of image in bytes (READ-ONLY)'),
+        },
         'container_format': {
             'type': 'string',
             'description': _('Format of the container'),
-            'type': 'string',
             'enum': CONF.image_format.container_formats,
         },
         'disk_format': {
             'type': 'string',
             'description': _('Format of the disk'),
-            'type': 'string',
             'enum': CONF.image_format.disk_formats,
         },
         'created_at': {

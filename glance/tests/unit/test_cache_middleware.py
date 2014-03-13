@@ -77,7 +77,7 @@ class TestCacheMiddlewareRequestStashCacheInfo(testtools.TestCase):
 
     def test_fetch_cache_request_info_unset(self):
         out = self.middleware._fetch_request_info(self.request)
-        self.assertEqual(out, None)
+        self.assertIsNone(out)
 
 
 class ChecksumTestCacheFilter(glance.api.middleware.cache.CacheFilter):
@@ -121,7 +121,7 @@ class TestCacheMiddlewareChecksumVerification(base.IsolatedUnitTest):
         resp = webob.Response(request=self.request)
         cache_filter._process_GET_response(resp, None)
 
-        self.assertEqual(None, cache_filter.cache.image_checksum)
+        self.assertIsNone(cache_filter.cache.image_checksum)
 
 
 class FakeImageSerializer(object):
@@ -274,7 +274,7 @@ class TestCacheMiddlewareProcessRequest(base.IsolatedUnitTest):
             return {
                 'id': 'test1',
                 'name': 'fake_image',
-                'status': 'Active',
+                'status': 'active',
                 'created_at': '',
                 'min_disk': '10G',
                 'min_ram': '1024M',
@@ -285,6 +285,7 @@ class TestCacheMiddlewareProcessRequest(base.IsolatedUnitTest):
                 'disk_format': 'raw',
                 'container_format': 'bare',
                 'size': '123456789',
+                'virtual_size': '123456789',
                 'is_public': 'public',
                 'deleted': False,
                 'updated_at': '',
@@ -326,7 +327,7 @@ class TestCacheMiddlewareProcessRequest(base.IsolatedUnitTest):
         self.set_policy_rules(rules)
         cache_filter.policy = glance.api.policy.Enforcer()
 
-        self.assertEqual(None, cache_filter.process_request(request))
+        self.assertIsNone(cache_filter.process_request(request))
 
 
 class TestCacheMiddlewareProcessResponse(base.IsolatedUnitTest):

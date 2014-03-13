@@ -20,7 +20,8 @@ import os
 from glance.openstack.common import jsonutils
 from glance.openstack.common import units
 from glance.tests import functional
-from glance.tests.utils import execute, minimal_headers
+from glance.tests.utils import execute
+from glance.tests.utils import minimal_headers
 
 FIVE_KB = 5 * units.Ki
 FIVE_GB = 5 * units.Gi
@@ -102,7 +103,6 @@ class TestMiscellaneous(functional.FunctionalTest):
         self.start_servers()
 
         api_port = self.api_port
-        registry_port = self.registry_port
 
         cmd = "curl -g http://127.0.0.1:%d/v1/images" % api_port
 

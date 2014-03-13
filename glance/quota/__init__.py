@@ -12,6 +12,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import copy
 
 from oslo.config import cfg
 
@@ -242,6 +243,14 @@ class QuotaImageLocationsProxy(object):
                                       self.db_api)
         _enforce_image_location_quota(self.image, locations)
 
+    def __copy__(self):
+        return type(self)(self.image, self.context, self.db_api)
+
+    def __deepcopy__(self, memo):
+        # NOTE(zhiyan): Only copy location entries, others can be reused.
+        self.image.locations = copy.deepcopy(self.locations, memo)
+        return type(self)(self.image, self.context, self.db_api)
+
     def append(self, object):
         self._check_user_storage_quota([object])
         return self.locations.append(object)
@@ -272,7 +281,7 @@ class ImageProxy(glance.domain.proxy.Image):
             data = utils.LimitingReader(data, remaining)
         try:
             self.image.set_data(data, size=size)
-        except exception.ImageSizeLimitExceeded as ex:
+        except exception.ImageSizeLimitExceeded:
             raise exception.StorageQuotaFull(image_size=size,
                                              remaining=remaining)
 

@@ -17,7 +17,7 @@
 from __future__ import absolute_import
 
 from oslo.config import cfg
-import urlparse
+import six.moves.urllib.parse as urlparse
 
 from glance.common import exception
 from glance.openstack.common import excutils
@@ -41,8 +41,8 @@ gridfs_opts = [
                     "or a mongodb URI, or a list of hostnames / mongodb URIs. "
                     "If host is an IPv6 literal it must be enclosed "
                     "in '[' and ']' characters following the RFC2732 "
-                    "URL syntax (e.g. '[::1]' for localhost)"),
-    cfg.StrOpt('mongodb_store_db', default=None, help='Database to use'),
+                    "URL syntax (e.g. '[::1]' for localhost)."),
+    cfg.StrOpt('mongodb_store_db', default=None, help='Database to use.'),
 ]
 
 CONF = cfg.CONF
@@ -180,8 +180,9 @@ class Store(glance.store.base.Store):
             raise exception.Duplicate(_("GridFS already has an image at "
                                         "location %s") % loc.get_uri())
 
-        LOG.debug(_("Adding a new image to GridFS with id %s and size %s") %
-                 (image_id, image_size))
+        LOG.debug(_("Adding a new image to GridFS with id %(id)s and "
+                    "size %(size)s") % {'id': image_id,
+                                        'size': image_size})
 
         try:
             self.fs.put(image_file, _id=image_id)
@@ -192,8 +193,10 @@ class Store(glance.store.base.Store):
             with excutils.save_and_reraise_exception():
                 self.fs.delete(image_id)
 
-        LOG.debug(_("Uploaded image %s, md5 %s, length %s to GridFS") %
-                 (image._id, image.md5, image.length))
+        LOG.debug(_("Uploaded image %(id)s, md5 %(md5)s, length %(length)s "
+                    "to GridFS") % {'id': image._id,
+                                    'md5': image.md5,
+                                    'length': image.length})
 
         return (loc.get_uri(), image.length, image.md5, {})
 

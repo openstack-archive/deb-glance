@@ -21,15 +21,16 @@ Swift backend
 """
 
 import ConfigParser
+import hashlib
 import os
 import os.path
 import random
-import StringIO
-import urllib
-import urlparse
+import string
 import uuid
 
 import oslo.config.cfg
+import six
+import six.moves.urllib.parse as urlparse
 import testtools
 
 from glance.common import exception
@@ -193,7 +194,7 @@ class TestSwiftStore(store_tests.BaseTestCase, testtools.TestCase):
         store = self.get_store()
         image_id = str(uuid.uuid4())
         image_size = 5242880  # 5 MB
-        image_data = StringIO.StringIO('X' * image_size)
+        image_data = six.StringIO('X' * image_size)
         image_checksum = 'eb7f8c3716b9f059cee7617a4ba9d0d3'
         uri, add_size, add_checksum, _ = store.add(image_id,
                                                    image_data,
@@ -275,7 +276,7 @@ class TestSwiftStore(store_tests.BaseTestCase, testtools.TestCase):
                                         non_image_obj)
 
         # Simulate exceeding 'image_size_cap' setting
-        image_data = StringIO.StringIO('X' * image_size)
+        image_data = six.StringIO('X' * image_size)
         image_data = common_utils.LimitingReader(image_data, image_size - 1)
         image_id = str(uuid.uuid4())
         self.assertRaises(exception.ImageSizeLimitExceeded,
@@ -291,6 +292,128 @@ class TestSwiftStore(store_tests.BaseTestCase, testtools.TestCase):
         segments = [segment['name'] for segment in container[1]]
         self.assertEqual(0, len(segments), 'Got segments %s' % segments)
 
+    def test_retries_fail_start_of_download(self):
+        """
+        Get an object from Swift where Swift does not complete the request
+        in one attempt. Fails at the start of the download.
+        """
+        self.config(
+            swift_store_retry_get_count=1,
+        )
+        store = self.get_store()
+        image_id = str(uuid.uuid4())
+        image_size = 1024 * 1024 * 5  # 5 MB
+        chars = string.ascii_uppercase + string.digits
+        image_data = ''.join(random.choice(chars) for x in range(image_size))
+        image_checksum = hashlib.md5(image_data)
+        uri, add_size, add_checksum, _ = store.add(image_id,
+                                                   image_data,
+                                                   image_size)
+
+        location = glance.store.location.Location(
+            self.store_name,
+            store.get_store_location_class(),
+            uri=uri,
+            image_id=image_id)
+
+        def iter_wrapper(iterable):
+            # raise StopIteration as soon as iteration begins
+            yield ''
+
+        (get_iter, get_size) = store.get(location)
+        get_iter.wrapped = glance.store.swift.swift_retry_iter(
+            iter_wrapper(get_iter.wrapped), image_size,
+            store, location.store_location)
+        self.assertEqual(image_size, get_size)
+        received_data = ''.join(get_iter.wrapped)
+        self.assertEqual(image_data, received_data)
+        self.assertEqual(image_checksum.hexdigest(),
+                         hashlib.md5(received_data).hexdigest())
+
+    def test_retries_fail_partway_through_download(self):
+        """
+        Get an object from Swift where Swift does not complete the request
+        in one attempt. Fails partway through the download.
+        """
+        self.config(
+            swift_store_retry_get_count=1,
+        )
+        store = self.get_store()
+        image_id = str(uuid.uuid4())
+        image_size = 1024 * 1024 * 5  # 5 MB
+        chars = string.ascii_uppercase + string.digits
+        image_data = ''.join(random.choice(chars) for x in range(image_size))
+        image_checksum = hashlib.md5(image_data)
+        uri, add_size, add_checksum, _ = store.add(image_id,
+                                                   image_data,
+                                                   image_size)
+
+        location = glance.store.location.Location(
+            self.store_name,
+            store.get_store_location_class(),
+            uri=uri,
+            image_id=image_id)
+
+        def iter_wrapper(iterable):
+            bytes_received = 0
+            for chunk in iterable:
+                yield chunk
+                bytes_received += len(chunk)
+                if bytes_received > (image_size / 2):
+                    raise StopIteration
+
+        (get_iter, get_size) = store.get(location)
+        get_iter.wrapped = glance.store.swift.swift_retry_iter(
+            iter_wrapper(get_iter.wrapped), image_size,
+            store, location.store_location)
+        self.assertEqual(image_size, get_size)
+        received_data = ''.join(get_iter.wrapped)
+        self.assertEqual(image_data, received_data)
+        self.assertEqual(image_checksum.hexdigest(),
+                         hashlib.md5(received_data).hexdigest())
+
+    def test_retries_fail_end_of_download(self):
+        """
+        Get an object from Swift where Swift does not complete the request
+        in one attempt. Fails at the end of the download
+        """
+        self.config(
+            swift_store_retry_get_count=1,
+        )
+        store = self.get_store()
+        image_id = str(uuid.uuid4())
+        image_size = 1024 * 1024 * 5  # 5 MB
+        chars = string.ascii_uppercase + string.digits
+        image_data = ''.join(random.choice(chars) for x in range(image_size))
+        image_checksum = hashlib.md5(image_data)
+        uri, add_size, add_checksum, _ = store.add(image_id,
+                                                   image_data,
+                                                   image_size)
+
+        location = glance.store.location.Location(
+            self.store_name,
+            store.get_store_location_class(),
+            uri=uri,
+            image_id=image_id)
+
+        def iter_wrapper(iterable):
+            bytes_received = 0
+            for chunk in iterable:
+                yield chunk
+                bytes_received += len(chunk)
+                if bytes_received == image_size:
+                    raise StopIteration
+
+        (get_iter, get_size) = store.get(location)
+        get_iter.wrapped = glance.store.swift.swift_retry_iter(
+            iter_wrapper(get_iter.wrapped), image_size,
+            store, location.store_location)
+        self.assertEqual(image_size, get_size)
+        received_data = ''.join(get_iter.wrapped)
+        self.assertEqual(image_data, received_data)
+        self.assertEqual(image_checksum.hexdigest(),
+                         hashlib.md5(received_data).hexdigest())
+
     def stash_image(self, image_id, image_data):
         container_name = self.swift_config['swift_store_container']
         swift_put_object(self.swift_client,
@@ -302,7 +425,7 @@ class TestSwiftStore(store_tests.BaseTestCase, testtools.TestCase):
         # build this URL
         auth_url = self.swift_config['swift_store_auth_address']
         auth_url = urlparse.urlparse(auth_url)
-        user = urllib.quote(self.swift_config['swift_store_user'])
+        user = urlparse.quote(self.swift_config['swift_store_user'])
         key = self.swift_config['swift_store_key']
         netloc = ''.join(('%s:%s' % (user, key), '@', auth_url.netloc))
         path = os.path.join(auth_url.path, container_name, image_id)
@@ -312,7 +435,6 @@ class TestSwiftStore(store_tests.BaseTestCase, testtools.TestCase):
 
     def test_multitenant(self):
         """Ensure an image is properly configured when using multitenancy."""
-        fake_swift_admin = 'd2f68325-8e2c-4fb1-8c8b-89de2f3d9c4a'
         self.config(
             swift_store_multi_tenant=True,
         )
@@ -333,7 +455,7 @@ class TestSwiftStore(store_tests.BaseTestCase, testtools.TestCase):
         store = self.get_store(context=context)
 
         image_id = str(uuid.uuid4())
-        image_data = StringIO.StringIO('XXX')
+        image_data = six.StringIO('XXX')
         uri, _, _, _ = store.add(image_id, image_data, 3)
 
         location = glance.store.location.Location(
@@ -367,4 +489,46 @@ class TestSwiftStore(store_tests.BaseTestCase, testtools.TestCase):
         self.assertEqual(3, get_size)
         self.assertEqual('XXX', ''.join(get_iter))
 
+        store.delete(location)
+
+    def test_delayed_delete_with_auth(self):
+        """Ensure delete works with delayed delete and auth
+
+        Reproduces LP bug 1238604.
+        """
+        swift_store_user = self.swift_config['swift_store_user']
+        tenant_name, username = swift_store_user.split(':')
+        tenant_id, auth_token, service_catalog = keystone_authenticate(
+            self.swift_config['swift_store_auth_address'],
+            self.swift_config['swift_store_auth_version'],
+            tenant_name,
+            username,
+            self.swift_config['swift_store_key'])
+
+        context = glance.context.RequestContext(
+            tenant=tenant_id,
+            service_catalog=service_catalog,
+            auth_tok=auth_token)
+        store = self.get_store(context=context)
+
+        image_id = str(uuid.uuid4())
+        image_data = six.StringIO('data')
+        uri, _, _, _ = store.add(image_id, image_data, 4)
+
+        location = glance.store.location.Location(
+            self.store_name,
+            store.get_store_location_class(),
+            uri=uri,
+            image_id=image_id)
+
+        container_name = location.store_location.container
+        container, _ = swift_get_container(self.swift_client, container_name)
+
+        (get_iter, get_size) = store.get(location)
+        self.assertEqual(4, get_size)
+        self.assertEqual('data', ''.join(get_iter))
+
+        glance.store.schedule_delayed_delete_from_backend(context,
+                                                          uri,
+                                                          image_id)
         store.delete(location)

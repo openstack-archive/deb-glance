@@ -63,6 +63,7 @@ def _db_fixture(id, **kwargs):
         'status': 'queued',
         'tags': [],
         'size': None,
+        'virtual_size': None,
         'locations': [],
         'protected': False,
         'disk_format': None,
@@ -84,6 +85,7 @@ def _domain_fixture(id, **kwargs):
         'owner': None,
         'status': 'queued',
         'size': None,
+        'virtual_size': None,
         'locations': [],
         'protected': False,
         'disk_format': None,
@@ -127,7 +129,7 @@ class TestImagesController(base.IsolatedUnitTest):
         self.db.reset()
         self.images = [
             _db_fixture(UUID1, owner=TENANT1, checksum=CHKSUM,
-                        name='1', size=256,
+                        name='1', size=256, virtual_size=1024,
                         is_public=True,
                         locations=[{'url': '%s/%s' % (BASE_URI, UUID1),
                                     'metadata': {}}],
@@ -135,7 +137,7 @@ class TestImagesController(base.IsolatedUnitTest):
                         container_format='bare',
                         status='active'),
             _db_fixture(UUID2, owner=TENANT1, checksum=CHKSUM1,
-                        name='2', size=512,
+                        name='2', size=512, virtual_size=2048,
                         is_public=True,
                         disk_format='raw',
                         container_format='bare',
@@ -144,9 +146,10 @@ class TestImagesController(base.IsolatedUnitTest):
                         properties={'hypervisor_type': 'kvm', 'foo': 'bar',
                                     'bar': 'foo'}),
             _db_fixture(UUID3, owner=TENANT3, checksum=CHKSUM1,
-                        name='3', size=512, is_public=True,
-                        tags=['windows', '64bit', 'x86']),
-            _db_fixture(UUID4, owner=TENANT4, name='4', size=1024),
+                        name='3', size=512, virtual_size=2048,
+                        is_public=True, tags=['windows', '64bit', 'x86']),
+            _db_fixture(UUID4, owner=TENANT4, name='4',
+                        size=1024, virtual_size=3072),
         ]
         [self.db.image_create(None, image) for image in self.images]
 
@@ -283,6 +286,37 @@ class TestImagesController(base.IsolatedUnitTest):
         output = self.controller.index(request,
                                        filters={'size_min': 512,
                                                 'size_max': 512})
+        self.assertEqual(2, len(output['images']))
+        actual = set([image.image_id for image in output['images']])
+        expected = set([UUID2, UUID3])
+        self.assertEqual(actual, expected)
+
+    def test_index_virtual_size_max_filter(self):
+        ref = '/images?virtual_size_max=2048'
+        request = unit_test_utils.get_fake_request(ref)
+        output = self.controller.index(request,
+                                       filters={'virtual_size_max': 2048})
+        self.assertEqual(3, len(output['images']))
+        actual = set([image.image_id for image in output['images']])
+        expected = set([UUID1, UUID2, UUID3])
+        self.assertEqual(actual, expected)
+
+    def test_index_virtual_size_min_filter(self):
+        ref = '/images?virtual_size_min=2048'
+        request = unit_test_utils.get_fake_request(ref)
+        output = self.controller.index(request,
+                                       filters={'virtual_size_min': 2048})
+        self.assertEqual(2, len(output['images']))
+        actual = set([image.image_id for image in output['images']])
+        expected = set([UUID2, UUID3])
+        self.assertEqual(actual, expected)
+
+    def test_index_virtual_size_range_filter(self):
+        path = '/images?virtual_size_min=512&virtual_size_max=2048'
+        request = unit_test_utils.get_fake_request(path)
+        output = self.controller.index(request,
+                                       filters={'virtual_size_min': 2048,
+                                                'virtual_size_max': 2048})
         self.assertEqual(2, len(output['images']))
         actual = set([image.image_id for image in output['images']])
         expected = set([UUID2, UUID3])
@@ -704,7 +738,6 @@ class TestImagesController(base.IsolatedUnitTest):
     def test_update_add_too_many_properties(self):
         self.config(image_property_quota=1)
         request = unit_test_utils.get_fake_request()
-        output = self.controller.show(request, UUID1)
 
         changes = [
             {'op': 'add', 'path': ['foo'], 'value': 'baz'},
@@ -1021,7 +1054,7 @@ class TestImagesController(base.IsolatedUnitTest):
             {'op': 'replace', 'path': ['x_owner_foo'], 'value': 'baz'},
         ]
         self.assertRaises(webob.exc.HTTPConflict, self.controller.update,
-                          request, UUID1, changes)
+                          another_request, created_image.image_id, changes)
 
     def test_prop_protection_with_delete_and_permitted_role(self):
         enforcer = glance.api.policy.Enforcer()
@@ -1063,7 +1096,7 @@ class TestImagesController(base.IsolatedUnitTest):
             {'op': 'remove', 'path': ['x_owner_foo']}
         ]
         self.assertRaises(webob.exc.HTTPConflict, self.controller.update,
-                          request, UUID1, changes)
+                          another_request, created_image.image_id, changes)
 
     def test_create_non_protected_prop(self):
         """
@@ -1081,7 +1114,7 @@ class TestImagesController(base.IsolatedUnitTest):
                          '1')
         another_request = unit_test_utils.get_fake_request(roles=['joe_soap'])
         extra_props = {'x_all_permitted_2': '2'}
-        created_image = self.controller.create(request, image=image,
+        created_image = self.controller.create(another_request, image=image,
                                                extra_properties=extra_props,
                                                tags=[])
         self.assertEqual(created_image.extra_properties['x_all_permitted_2'],
@@ -1195,7 +1228,7 @@ class TestImagesController(base.IsolatedUnitTest):
             {'op': 'replace', 'path': ['x_none_update'], 'value': 'baz'},
         ]
         self.assertRaises(webob.exc.HTTPConflict, self.controller.update,
-                          request, UUID1, changes)
+                          another_request, created_image.image_id, changes)
 
     def test_delete_locked_down_protected_prop(self):
         """
@@ -1213,7 +1246,7 @@ class TestImagesController(base.IsolatedUnitTest):
             {'op': 'remove', 'path': ['x_none_delete']}
         ]
         self.assertRaises(webob.exc.HTTPConflict, self.controller.update,
-                          request, UUID1, changes)
+                          another_request, created_image.image_id, changes)
 
     def test_update_replace_locations(self):
         self.stubs.Set(glance.store, 'get_size_from_backend',
@@ -1224,7 +1257,7 @@ class TestImagesController(base.IsolatedUnitTest):
         self.assertEqual(output.image_id, UUID1)
         self.assertEqual(len(output.locations), 0)
         self.assertEqual(output.status, 'queued')
-        self.assertEqual(output.size, None)
+        self.assertIsNone(output.size)
 
         new_location = {'url': '%s/fake_location' % BASE_URI, 'metadata': {}}
         changes = [{'op': 'replace', 'path': ['locations'],
@@ -1320,7 +1353,7 @@ class TestImagesController(base.IsolatedUnitTest):
     def test_update_add_locations_insertion(self):
         new_location = {'url': '%s/fake_location' % BASE_URI, 'metadata': {}}
         request = unit_test_utils.get_fake_request()
-        changes = [{'op': 'add', 'path': ['locations', '1'],
+        changes = [{'op': 'add', 'path': ['locations', '0'],
                     'value': new_location}]
         output = self.controller.update(request, UUID1, changes)
         self.assertEqual(output.image_id, UUID1)
@@ -1421,7 +1454,7 @@ class TestImagesController(base.IsolatedUnitTest):
         # We must remove two properties to avoid being
         # over the limit of 1 property
         changes = [
-            {'op': 'remove', 'path': ['locations', '1']},
+            {'op': 'remove', 'path': ['locations', '0']},
             {'op': 'add', 'path': ['locations', '-'],
              'value': {'url': '%s/fake_location_3' % BASE_URI,
                        'metadata': {}}},
@@ -1466,8 +1499,8 @@ class TestImagesController(base.IsolatedUnitTest):
         # We must remove two locations to avoid being over
         # the limit of 1 location
         changes = [
-            {'op': 'remove', 'path': ['locations', '1']},
-            {'op': 'remove', 'path': ['locations', '1']},
+            {'op': 'remove', 'path': ['locations', '0']},
+            {'op': 'remove', 'path': ['locations', '0']},
         ]
         output = self.controller.update(request, UUID1, changes)
         self.assertEqual(output.image_id, UUID1)
@@ -1499,8 +1532,8 @@ class TestImagesController(base.IsolatedUnitTest):
         # We must remove two properties to avoid being
         # over the limit of 1 property
         changes = [
-            {'op': 'remove', 'path': ['locations', '1']},
-            {'op': 'remove', 'path': ['locations', '1']},
+            {'op': 'remove', 'path': ['locations', '0']},
+            {'op': 'remove', 'path': ['locations', '0']},
             {'op': 'add', 'path': ['locations', '-'],
              'value': {'url': '%s/fake_location_3' % BASE_URI,
                        'metadata': {}}},
@@ -1549,12 +1582,12 @@ class TestImagesController(base.IsolatedUnitTest):
                        unit_test_utils.fake_get_size_from_backend)
 
         request = unit_test_utils.get_fake_request()
-        changes = [{'op': 'remove', 'path': ['locations', '1']}]
+        changes = [{'op': 'remove', 'path': ['locations', '0']}]
         output = self.controller.update(request, UUID1, changes)
         self.assertEqual(output.image_id, UUID1)
         self.assertEqual(len(output.locations), 0)
         self.assertTrue(output.status == 'queued')
-        self.assertEqual(output.size, None)
+        self.assertIsNone(output.size)
 
         new_location = {'url': '%s/fake_location' % BASE_URI, 'metadata': {}}
         changes = [{'op': 'add', 'path': ['locations', '-'],
@@ -1570,7 +1603,7 @@ class TestImagesController(base.IsolatedUnitTest):
         changes = [{'op': 'remove', 'path': ['locations', None]}]
         self.assertRaises(webob.exc.HTTPBadRequest, self.controller.update,
                           request, UUID1, changes)
-        changes = [{'op': 'remove', 'path': ['locations', '0']}]
+        changes = [{'op': 'remove', 'path': ['locations', '-1']}]
         self.assertRaises(webob.exc.HTTPBadRequest, self.controller.update,
                           request, UUID1, changes)
         changes = [{'op': 'remove', 'path': ['locations', '99']}]
@@ -1588,7 +1621,7 @@ class TestImagesController(base.IsolatedUnitTest):
                        fake_delete_image_from_backend)
 
         request = unit_test_utils.get_fake_request()
-        changes = [{'op': 'remove', 'path': ['locations', '1']}]
+        changes = [{'op': 'remove', 'path': ['locations', '0']}]
         self.assertRaises(webob.exc.HTTPInternalServerError,
                           self.controller.update, request, UUID1, changes)
 
@@ -1643,7 +1676,7 @@ class TestImagesController(base.IsolatedUnitTest):
         request = unit_test_utils.get_fake_request()
         self.assertTrue(filter(lambda k: UUID1 in k, self.store.data))
         try:
-            image = self.controller.delete(request, UUID1)
+            self.controller.delete(request, UUID1)
             output_logs = self.notifier.get_logs()
             self.assertEqual(len(output_logs), 1)
             output_log = output_logs[0]
@@ -1736,11 +1769,10 @@ class TestImagesController(base.IsolatedUnitTest):
                           self.controller.index, request, marker=fake_uuid)
 
     def test_invalid_locations_op_pos(self):
-        request = unit_test_utils.get_fake_request()
         pos = self.controller._get_locations_op_pos(None, 2, True)
-        self.assertEqual(pos, None)
+        self.assertIsNone(pos)
         pos = self.controller._get_locations_op_pos('1', None, True)
-        self.assertEqual(pos, None)
+        self.assertIsNone(pos)
 
 
 class TestImagesControllerPolicies(base.IsolatedUnitTest):
@@ -1921,6 +1953,7 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
             #{'status': 'saving'},
             {'direct_url': 'http://example.com'},
             #{'size': 10},
+            #{'virtual_size': 10},
             #{'checksum': 'asdf'},
             {'self': 'http://example.com'},
             {'file': 'http://example.com'},
@@ -2126,6 +2159,7 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
             'status': 'active',
             'checksum': 'abcdefghijklmnopqrstuvwxyz012345',
             'size': 9001,
+            'virtual_size': 9001,
             'created_at': ISOTIME,
             'updated_at': ISOTIME,
         }
@@ -2519,10 +2553,11 @@ class TestImagesSerializer(test_utils.BaseTestCase):
         self.fixtures = [
             #NOTE(bcwaldon): This first fixture has every property defined
             _domain_fixture(UUID1, name='image-1', size=1024,
-                            created_at=DATETIME, updated_at=DATETIME,
-                            owner=TENANT1, visibility='public',
-                            container_format='ami', tags=['one', 'two'],
-                            disk_format='ami', min_ram=128, min_disk=10,
+                            virtual_size=3072, created_at=DATETIME,
+                            updated_at=DATETIME, owner=TENANT1,
+                            visibility='public', container_format='ami',
+                            tags=['one', 'two'], disk_format='ami',
+                            min_ram=128, min_disk=10,
                             checksum='ca425b88f047ce8ec45ee90e813ada91'),
 
             #NOTE(bcwaldon): This second fixture depends on default behavior
@@ -2541,6 +2576,7 @@ class TestImagesSerializer(test_utils.BaseTestCase):
                     'protected': False,
                     'tags': set(['one', 'two']),
                     'size': 1024,
+                    'virtual_size': 3072,
                     'checksum': 'ca425b88f047ce8ec45ee90e813ada91',
                     'container_format': 'ami',
                     'disk_format': 'ami',
@@ -2551,6 +2587,7 @@ class TestImagesSerializer(test_utils.BaseTestCase):
                     'self': '/v2/images/%s' % UUID1,
                     'file': '/v2/images/%s/file' % UUID1,
                     'schema': '/v2/schemas/image',
+                    'owner': '6838eb7b-6ded-434a-882c-b344c77fe8df',
                 },
                 {
                     'id': UUID2,
@@ -2629,6 +2666,7 @@ class TestImagesSerializer(test_utils.BaseTestCase):
             'protected': False,
             'tags': set(['one', 'two']),
             'size': 1024,
+            'virtual_size': 3072,
             'checksum': 'ca425b88f047ce8ec45ee90e813ada91',
             'container_format': 'ami',
             'disk_format': 'ami',
@@ -2639,6 +2677,7 @@ class TestImagesSerializer(test_utils.BaseTestCase):
             'self': '/v2/images/%s' % UUID1,
             'file': '/v2/images/%s/file' % UUID1,
             'schema': '/v2/schemas/image',
+            'owner': '6838eb7b-6ded-434a-882c-b344c77fe8df',
         }
         response = webob.Response()
         self.serializer.show(response, self.fixtures[0])
@@ -2673,6 +2712,7 @@ class TestImagesSerializer(test_utils.BaseTestCase):
             'protected': False,
             'tags': ['two', 'one'],
             'size': 1024,
+            'virtual_size': 3072,
             'checksum': 'ca425b88f047ce8ec45ee90e813ada91',
             'container_format': 'ami',
             'disk_format': 'ami',
@@ -2683,6 +2723,7 @@ class TestImagesSerializer(test_utils.BaseTestCase):
             'self': '/v2/images/%s' % UUID1,
             'file': '/v2/images/%s/file' % UUID1,
             'schema': '/v2/schemas/image',
+            'owner': '6838eb7b-6ded-434a-882c-b344c77fe8df',
         }
         response = webob.Response()
         self.serializer.create(response, self.fixtures[0])
@@ -2700,6 +2741,7 @@ class TestImagesSerializer(test_utils.BaseTestCase):
             'protected': False,
             'tags': set(['one', 'two']),
             'size': 1024,
+            'virtual_size': 3072,
             'checksum': 'ca425b88f047ce8ec45ee90e813ada91',
             'container_format': 'ami',
             'disk_format': 'ami',
@@ -2710,6 +2752,7 @@ class TestImagesSerializer(test_utils.BaseTestCase):
             'self': '/v2/images/%s' % UUID1,
             'file': '/v2/images/%s/file' % UUID1,
             'schema': '/v2/schemas/image',
+            'owner': '6838eb7b-6ded-434a-882c-b344c77fe8df',
         }
         response = webob.Response()
         self.serializer.update(response, self.fixtures[0])
@@ -2729,6 +2772,7 @@ class TestImagesSerializerWithUnicode(test_utils.BaseTestCase):
             _domain_fixture(UUID1, **{
                 'name': u'OpenStack\u2122-1',
                 'size': 1024,
+                'virtual_size': 3072,
                 'tags': [u'\u2160', u'\u2161'],
                 'created_at': DATETIME,
                 'updated_at': DATETIME,
@@ -2755,6 +2799,7 @@ class TestImagesSerializerWithUnicode(test_utils.BaseTestCase):
                     u'protected': False,
                     u'tags': [u'\u2161', u'\u2160'],
                     u'size': 1024,
+                    u'virtual_size': 3072,
                     u'checksum': u'ca425b88f047ce8ec45ee90e813ada91',
                     u'container_format': u'ami',
                     u'disk_format': u'ami',
@@ -2767,6 +2812,7 @@ class TestImagesSerializerWithUnicode(test_utils.BaseTestCase):
                     u'schema': u'/v2/schemas/image',
                     u'lang': u'Fran\u00E7ais',
                     u'dispos\u00E9': u'f\u00E2ch\u00E9',
+                    u'owner': u'6838eb7b-6ded-434a-882c-b344c77fe8df',
                 },
             ],
             u'first': u'/v2/images',
@@ -2788,6 +2834,7 @@ class TestImagesSerializerWithUnicode(test_utils.BaseTestCase):
             u'protected': False,
             u'tags': set([u'\u2160', u'\u2161']),
             u'size': 1024,
+            u'virtual_size': 3072,
             u'checksum': u'ca425b88f047ce8ec45ee90e813ada91',
             u'container_format': u'ami',
             u'disk_format': u'ami',
@@ -2800,6 +2847,7 @@ class TestImagesSerializerWithUnicode(test_utils.BaseTestCase):
             u'schema': u'/v2/schemas/image',
             u'lang': u'Fran\u00E7ais',
             u'dispos\u00E9': u'f\u00E2ch\u00E9',
+            u'owner': u'6838eb7b-6ded-434a-882c-b344c77fe8df',
         }
         response = webob.Response()
         self.serializer.show(response, self.fixtures[0])
@@ -2817,6 +2865,7 @@ class TestImagesSerializerWithUnicode(test_utils.BaseTestCase):
             u'protected': False,
             u'tags': [u'\u2161', u'\u2160'],
             u'size': 1024,
+            u'virtual_size': 3072,
             u'checksum': u'ca425b88f047ce8ec45ee90e813ada91',
             u'container_format': u'ami',
             u'disk_format': u'ami',
@@ -2829,6 +2878,7 @@ class TestImagesSerializerWithUnicode(test_utils.BaseTestCase):
             u'schema': u'/v2/schemas/image',
             u'lang': u'Fran\u00E7ais',
             u'dispos\u00E9': u'f\u00E2ch\u00E9',
+            u'owner': u'6838eb7b-6ded-434a-882c-b344c77fe8df',
         }
         response = webob.Response()
         self.serializer.create(response, self.fixtures[0])
@@ -2846,6 +2896,7 @@ class TestImagesSerializerWithUnicode(test_utils.BaseTestCase):
             u'protected': False,
             u'tags': set([u'\u2160', u'\u2161']),
             u'size': 1024,
+            u'virtual_size': 3072,
             u'checksum': u'ca425b88f047ce8ec45ee90e813ada91',
             u'container_format': u'ami',
             u'disk_format': u'ami',
@@ -2858,6 +2909,7 @@ class TestImagesSerializerWithUnicode(test_utils.BaseTestCase):
             u'schema': u'/v2/schemas/image',
             u'lang': u'Fran\u00E7ais',
             u'dispos\u00E9': u'f\u00E2ch\u00E9',
+            u'owner': u'6838eb7b-6ded-434a-882c-b344c77fe8df',
         }
         response = webob.Response()
         self.serializer.update(response, self.fixtures[0])
@@ -2881,11 +2933,12 @@ class TestImagesSerializerWithExtendedSchema(test_utils.BaseTestCase):
         schema = glance.api.v2.images.get_schema(custom_image_properties)
         self.serializer = glance.api.v2.images.ResponseSerializer(schema)
 
+        props = dict(color='green', mood='grouchy')
         self.fixture = _domain_fixture(
             UUID2, name='image-2', owner=TENANT2,
             checksum='ca425b88f047ce8ec45ee90e813ada91',
             created_at=DATETIME, updated_at=DATETIME, size=1024,
-            extra_properties=dict(color='green', mood='grouchy'))
+            virtual_size=3072, extra_properties=props)
 
     def test_show(self):
         expected = {
@@ -2897,6 +2950,8 @@ class TestImagesSerializerWithExtendedSchema(test_utils.BaseTestCase):
             'checksum': 'ca425b88f047ce8ec45ee90e813ada91',
             'tags': [],
             'size': 1024,
+            'virtual_size': 3072,
+            'owner': '2c014f32-55eb-467d-8fcb-4bd706012f81',
             'color': 'green',
             'created_at': ISOTIME,
             'updated_at': ISOTIME,
@@ -2919,6 +2974,8 @@ class TestImagesSerializerWithExtendedSchema(test_utils.BaseTestCase):
             'checksum': 'ca425b88f047ce8ec45ee90e813ada91',
             'tags': [],
             'size': 1024,
+            'virtual_size': 3072,
+            'owner': '2c014f32-55eb-467d-8fcb-4bd706012f81',
             'color': 'invalid',
             'created_at': ISOTIME,
             'updated_at': ISOTIME,
@@ -2940,7 +2997,7 @@ class TestImagesSerializerWithAdditionalProperties(test_utils.BaseTestCase):
             UUID2, name='image-2', owner=TENANT2,
             checksum='ca425b88f047ce8ec45ee90e813ada91',
             created_at=DATETIME, updated_at=DATETIME, size=1024,
-            extra_properties={'marx': 'groucho'})
+            virtual_size=3072, extra_properties={'marx': 'groucho'})
 
     def test_show(self):
         serializer = glance.api.v2.images.ResponseSerializer()
@@ -2954,11 +3011,13 @@ class TestImagesSerializerWithAdditionalProperties(test_utils.BaseTestCase):
             'marx': 'groucho',
             'tags': [],
             'size': 1024,
+            'virtual_size': 3072,
             'created_at': ISOTIME,
             'updated_at': ISOTIME,
             'self': '/v2/images/%s' % UUID2,
             'file': '/v2/images/%s/file' % UUID2,
             'schema': '/v2/schemas/image',
+            'owner': '2c014f32-55eb-467d-8fcb-4bd706012f81',
         }
         response = webob.Response()
         serializer.show(response, self.fixture)
@@ -2980,11 +3039,13 @@ class TestImagesSerializerWithAdditionalProperties(test_utils.BaseTestCase):
             'marx': 123,
             'tags': [],
             'size': 1024,
+            'virtual_size': 3072,
             'created_at': ISOTIME,
             'updated_at': ISOTIME,
             'self': '/v2/images/%s' % UUID2,
             'file': '/v2/images/%s/file' % UUID2,
             'schema': '/v2/schemas/image',
+            'owner': '2c014f32-55eb-467d-8fcb-4bd706012f81',
         }
         response = webob.Response()
         serializer.show(response, self.fixture)
@@ -3002,6 +3063,8 @@ class TestImagesSerializerWithAdditionalProperties(test_utils.BaseTestCase):
             'checksum': 'ca425b88f047ce8ec45ee90e813ada91',
             'tags': [],
             'size': 1024,
+            'virtual_size': 3072,
+            'owner': '2c014f32-55eb-467d-8fcb-4bd706012f81',
             'created_at': ISOTIME,
             'updated_at': ISOTIME,
             'self': '/v2/images/%s' % UUID2,
@@ -3020,8 +3083,8 @@ class TestImagesSerializerDirectUrl(test_utils.BaseTestCase):
 
         self.active_image = _domain_fixture(
             UUID1, name='image-1', visibility='public',
-            status='active', size=1024, created_at=DATETIME,
-            updated_at=DATETIME,
+            status='active', size=1024, virtual_size=3072,
+            created_at=DATETIME, updated_at=DATETIME,
             locations=[{'url': 'http://some/fake/location',
                         'metadata': {}}])
 

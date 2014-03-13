@@ -42,11 +42,14 @@ from oslo.config import cfg
 
 from glance.common import config
 from glance.common import exception
-from glance.db.sqlalchemy import migration
+from glance.db import migration as db_migration
+from glance.db.sqlalchemy import api as db_api
+from glance.openstack.common.db.sqlalchemy import migration
 from glance.openstack.common import log
+from glance.openstack.common import strutils
 
 CONF = cfg.CONF
-CONF.import_group("database", "glance.openstack.common.db.sqlalchemy.session")
+CONF.import_group("database", "glance.openstack.common.db.options")
 
 
 # Decorators for actions
@@ -65,22 +68,30 @@ class DbCommands(object):
 
     def version(self):
         """Print database's current migration level"""
-        print(migration.db_version())
+        print(migration.db_version(db_api.get_engine(),
+                                   db_migration.MIGRATE_REPO_PATH,
+                                   db_migration.INIT_VERSION))
 
     @args('--version', metavar='<version>', help='Database version')
     def upgrade(self, version=None):
         """Upgrade the database's migration level"""
-        migration.upgrade(version)
+        migration.db_sync(db_api.get_engine(),
+                          db_migration.MIGRATE_REPO_PATH,
+                          version)
 
     @args('--version', metavar='<version>', help='Database version')
     def downgrade(self, version=None):
         """Downgrade the database's migration level"""
-        migration.downgrade(version)
+        migration.db_sync(db_api.get_engine(),
+                          db_migration.MIGRATE_REPO_PATH,
+                          version)
 
     @args('--version', metavar='<version>', help='Database version')
     def version_control(self, version=None):
         """Place a database under migration control"""
-        migration.version_control(version)
+        migration.db_version_control(db_api.get_engine(),
+                                     db_migration.MIGRATE_REPO_PATH,
+                                     version)
 
     @args('--version', metavar='<version>', help='Database version')
     @args('--current_version', metavar='<version>',
@@ -90,30 +101,66 @@ class DbCommands(object):
         Place a database under migration control and upgrade/downgrade it,
         creating first if necessary.
         """
-        migration.db_sync(version, current_version)
+        if current_version is not None:
+            migration.db_version_control(db_api.get_engine(),
+                                         db_migration.MIGRATE_REPO_PATH,
+                                         current_version)
+        migration.db_sync(db_api.get_engine(),
+                          db_migration.MIGRATE_REPO_PATH,
+                          version)
+
+
+class DbLegacyCommands(object):
+    """Class for managing the db using legacy commands"""
+
+    def __init__(self, command_object):
+        self.command_object = command_object
+
+    def version(self):
+        self.command_object.version()
+
+    def upgrade(self, version=None):
+        self.command_object.upgrade(CONF.command.version)
+
+    def downgrade(self, version=None):
+        self.command_object.downgrade(CONF.command.version)
+
+    def version_control(self, version=None):
+        self.command_object.version_control(CONF.command.version)
+
+    def sync(self, version=None, current_version=None):
+        self.command_object.sync(CONF.command.version,
+                                 CONF.command.current_version)
 
 
 def add_legacy_command_parsers(command_object, subparsers):
 
+    legacy_command_object = DbLegacyCommands(command_object)
+
     parser = subparsers.add_parser('db_version')
-    parser.set_defaults(action_fn=command_object.version)
+    parser.set_defaults(action_fn=legacy_command_object.version)
+    parser.set_defaults(action='db_version')
 
     parser = subparsers.add_parser('db_upgrade')
-    parser.set_defaults(action_fn=command_object.upgrade)
+    parser.set_defaults(action_fn=legacy_command_object.upgrade)
     parser.add_argument('version', nargs='?')
+    parser.set_defaults(action='db_upgrade')
 
     parser = subparsers.add_parser('db_downgrade')
-    parser.set_defaults(action_fn=command_object.downgrade)
+    parser.set_defaults(action_fn=legacy_command_object.downgrade)
     parser.add_argument('version')
+    parser.set_defaults(action='db_downgrade')
 
     parser = subparsers.add_parser('db_version_control')
-    parser.set_defaults(action_fn=command_object.version_control)
+    parser.set_defaults(action_fn=legacy_command_object.version_control)
     parser.add_argument('version', nargs='?')
+    parser.set_defaults(action='db_version_control')
 
     parser = subparsers.add_parser('db_sync')
-    parser.set_defaults(action_fn=command_object.sync)
+    parser.set_defaults(action_fn=legacy_command_object.sync)
     parser.add_argument('version', nargs='?')
     parser.add_argument('current_version', nargs='?')
+    parser.set_defaults(action='db_sync')
 
 
 def add_command_parsers(subparsers):
@@ -181,8 +228,19 @@ def main():
         sys.exit("ERROR: %s" % e)
 
     try:
+        if CONF.command.action.startswith('db'):
+            return CONF.command.action_fn()
+        else:
+            func_kwargs = {}
+            for k in CONF.command.action_kwargs:
+                v = getattr(CONF.command, 'action_kwarg_' + k)
+                if v is None:
+                    continue
+                func_kwargs[k] = strutils.safe_decode(v)
 
-        CONF.command.action_fn()
+            func_args = [strutils.safe_decode(arg)
+                         for arg in CONF.command.action_args]
+            return CONF.command.action_fn(*func_args, **func_kwargs)
     except exception.GlanceException as e:
         sys.exit("ERROR: %s" % e)
 

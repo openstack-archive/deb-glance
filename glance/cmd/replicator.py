@@ -25,8 +25,9 @@ import optparse
 import os
 import re
 import sys
-import urllib
 import uuid
+
+import six.moves.urllib.parse as urlparse
 
 from glance.openstack.common import jsonutils
 
@@ -145,7 +146,7 @@ class ImageService(object):
 
         while True:
             url = '/v1/images/detail'
-            query = urllib.urlencode(params)
+            query = urlparse.urlencode(params)
             if query:
                 url += '?%s' % query
 
@@ -299,7 +300,9 @@ def replication_size(options, args):
             total_size += int(image['size'])
             count += 1
 
-    print(_('Total size is %d bytes across %d images') % (total_size, count))
+    print(_('Total size is %(size)d bytes across %(img_count)d images') %
+          {'size': total_size,
+           'img_count': count})
 
 
 def replication_dump(options, args):
@@ -735,19 +738,19 @@ def main():
 
     # Options
     oparser.add_option('-c', '--chunksize', action="store", default=65536,
-                       help="Amount of data to transfer per HTTP write")
+                       help="Amount of data to transfer per HTTP write.")
     oparser.add_option('-d', '--debug', action="store_true", default=False,
-                       help="Print debugging information")
+                       help="Print debugging information.")
     oparser.add_option('-D', '--dontreplicate', action="store",
                        default=('created_at date deleted_at location '
                                 'updated_at'),
-                       help="List of fields to not replicate")
+                       help="List of fields to not replicate.")
     oparser.add_option('-m', '--metaonly', action="store_true", default=False,
-                       help="Only replicate metadata, not images")
+                       help="Only replicate metadata, not images.")
     oparser.add_option('-l', '--logfile', action="store", default='',
-                       help="Path of file to log to")
+                       help="Path of file to log to.")
     oparser.add_option('-s', '--syslog', action="store_true", default=False,
-                       help="Log to syslog instead of a file")
+                       help="Log to syslog instead of a file.")
     oparser.add_option('-t', '--token', action="store", default='',
                        help=("Pass in your authentication token if you have "
                              "one. If you use this option the same token is "
@@ -759,7 +762,7 @@ def main():
                        help=("Pass in your authentication token if you have "
                              "one. This is the token used for the slave."))
     oparser.add_option('-v', '--verbose', action="store_true", default=False,
-                       help="Print more verbose output")
+                       help="Print more verbose output.")
 
     (options, command, args) = parse_options(oparser, sys.argv[1:])
 

@@ -30,18 +30,19 @@ import datetime
 import os
 import pickle
 import subprocess
-import urlparse
 import uuid
 
+from migrate.versioning import api as migration_api
 from migrate.versioning.repository import Repository
 from oslo.config import cfg
+import six.moves.urllib.parse as urlparse
+from six.moves import xrange
 import sqlalchemy
 
 from glance.common import crypt
 from glance.common import utils
 import glance.db.migration as migration
 import glance.db.sqlalchemy.migrate_repo
-from glance.db.sqlalchemy.migration import versioning_api as migration_api
 from glance.db.sqlalchemy import models
 from glance.openstack.common import jsonutils
 from glance.openstack.common import log as logging
@@ -1069,7 +1070,6 @@ class TestMigrations(test_utils.BaseTestCase):
         images.insert().values(temp).execute()
 
         locations_table = get_table(engine, 'image_locations')
-        data = image_id
         locations = [
             ('file://ab', '{"a": "yo yo"}'),
             ('file://ab', '{}'),
@@ -1171,3 +1171,84 @@ class TestMigrations(test_utils.BaseTestCase):
         self.assertIsNone(task_2.input)
         self.assertIsNone(task_2.result)
         self.assertIsNone(task_2.message)
+
+    def _pre_upgrade_033(self, engine):
+        images = get_table(engine, 'images')
+        image_locations = get_table(engine, 'image_locations')
+
+        now = datetime.datetime.now()
+        image_id = 'fake_id_028_%d'
+        url = 'file:///some/place/onthe/fs_%d'
+        status_list = ['active', 'saving', 'queued', 'killed',
+                       'pending_delete', 'deleted']
+        image_id_list = []
+
+        for (idx, status) in enumerate(status_list):
+            temp = dict(deleted=False,
+                        created_at=now,
+                        updated_at=now,
+                        status=status,
+                        is_public=True,
+                        min_disk=0,
+                        min_ram=0,
+                        id=image_id % idx)
+            images.insert().values(temp).execute()
+
+            temp = dict(deleted=False,
+                        created_at=now,
+                        updated_at=now,
+                        image_id=image_id % idx,
+                        value=url % idx)
+            image_locations.insert().values(temp).execute()
+
+            image_id_list.append(image_id % idx)
+        return image_id_list
+
+    def _check_033(self, engine, data):
+        image_locations = get_table(engine, 'image_locations')
+
+        self.assertIn('status', image_locations.c)
+        self.assertEqual(image_locations.c['status'].type.length, 30)
+
+        status_list = ['active', 'active', 'active',
+                       'deleted', 'pending_delete', 'deleted']
+
+        for (idx, image_id) in enumerate(data):
+            results = image_locations.select()\
+                .where(image_locations.c.image_id == image_id).execute()
+            r = list(results)
+            self.assertEqual(len(r), 1)
+            self.assertTrue('status' in r[0])
+            self.assertEqual(r[0]['status'], status_list[idx])
+
+    def _post_downgrade_033(self, engine):
+        image_locations = get_table(engine, 'image_locations')
+        self.assertNotIn('status', image_locations.c)
+
+    def _pre_upgrade_034(self, engine):
+        images = get_table(engine, 'images')
+
+        now = datetime.datetime.now()
+        image_id = 'fake_id_034'
+        temp = dict(deleted=False,
+                    created_at=now,
+                    updated_at=now,
+                    status='active',
+                    is_public=True,
+                    min_disk=0,
+                    min_ram=0,
+                    id=image_id)
+        images.insert().values(temp).execute()
+
+    def _check_034(self, engine, data):
+        images = get_table(engine, 'images')
+        self.assertIn('virtual_size', images.c)
+
+        result = (images.select()
+                  .where(images.c.id == 'fake_id_034')
+                  .execute().fetchone())
+        self.assertIsNone(result.virtual_size)
+
+    def _post_downgrade_034(self, engine):
+        images = get_table(engine, 'images')
+        self.assertNotIn('virtual_size', images.c)

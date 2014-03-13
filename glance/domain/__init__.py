@@ -18,17 +18,33 @@ import collections
 import datetime
 import uuid
 
+from oslo.config import cfg
+
 from glance.common import exception
 import glance.openstack.common.log as logging
 from glance.openstack.common import timeutils
 
 
+CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
+
+
+_delayed_delete_imported = False
+
+
+def _import_delayed_delete():
+    # glance.store (indirectly) imports glance.domain therefore we can't put
+    # the CONF.import_opt outside - we have to do it in a convoluted/indirect
+    # way!
+    global _delayed_delete_imported
+    if not _delayed_delete_imported:
+        CONF.import_opt('delayed_delete', 'glance.store')
+        _delayed_delete_imported = True
 
 
 class ImageFactory(object):
     _readonly_properties = ['created_at', 'updated_at', 'status', 'checksum',
-                            'size']
+                            'size', 'virtual_size']
     _reserved_properties = ['owner', 'is_public', 'locations',
                             'deleted', 'deleted_at', 'direct_url', 'self',
                             'file', 'schema']
@@ -40,7 +56,7 @@ class ImageFactory(object):
 
     def _check_unexpected(self, kwargs):
         if kwargs:
-            msg = 'new_image() got unexpected keywords %s'
+            msg = _('new_image() got unexpected keywords %s')
             raise TypeError(msg % kwargs.keys())
 
     def _check_reserved(self, properties):
@@ -74,6 +90,21 @@ class ImageFactory(object):
 
 class Image(object):
 
+    valid_state_targets = {
+        # Each key denotes a "current" state for the image. Corresponding
+        # values list the valid states to which we can jump from that "current"
+        # state.
+        # NOTE(flwang): In v2, we are deprecating the 'killed' status, so it's
+        # allowed to restore image from 'saving' to 'queued' so that upload
+        # can be retried.
+        'queued': ('saving', 'active', 'deleted'),
+        'saving': ('active', 'killed', 'deleted', 'queued'),
+        'active': ('queued', 'pending_delete', 'deleted'),
+        'killed': ('deleted'),
+        'pending_delete': ('deleted'),
+        'deleted': (),
+    }
+
     def __init__(self, image_id, status, created_at, updated_at, **kwargs):
         self.image_id = image_id
         self.status = status
@@ -90,11 +121,12 @@ class Image(object):
         self._disk_format = kwargs.pop('disk_format', None)
         self._container_format = kwargs.pop('container_format', None)
         self.size = kwargs.pop('size', None)
+        self.virtual_size = kwargs.pop('virtual_size', None)
         extra_properties = kwargs.pop('extra_properties', None) or {}
         self.extra_properties = ExtraProperties(extra_properties)
         self.tags = kwargs.pop('tags', None) or []
         if kwargs:
-            message = "__init__() got unexpected keyword argument '%s'"
+            message = _("__init__() got unexpected keyword argument '%s'")
             raise TypeError(message % kwargs.keys()[0])
 
     @property
@@ -103,20 +135,30 @@ class Image(object):
 
     @status.setter
     def status(self, status):
-        if (hasattr(self, '_status') and self._status == 'queued' and
-                status in ('saving', 'active')):
-            missing = [k for k in ['disk_format', 'container_format']
-                       if not getattr(self, k)]
-            if len(missing) > 0:
-                if len(missing) == 1:
-                    msg = _('Property %s must be set prior to saving data.')
-                else:
-                    msg = _('Properties %s must be set prior to saving data.')
-                raise ValueError(msg % ', '.join(missing))
+        has_status = hasattr(self, '_status')
+        if has_status:
+            if status not in self.valid_state_targets[self._status]:
+                kw = {'cur_status': self._status, 'new_status': status}
+                e = exception.InvalidImageStatusTransition(**kw)
+                LOG.debug(e)
+                raise e
+
+            if self._status == 'queued' and status in ('saving', 'active'):
+                missing = [k for k in ['disk_format', 'container_format']
+                           if not getattr(self, k)]
+                if len(missing) > 0:
+                    if len(missing) == 1:
+                        msg = _('Property %s must be set prior to '
+                                'saving data.')
+                    else:
+                        msg = _('Properties %s must be set prior to '
+                                'saving data.')
+                    raise ValueError(msg % ', '.join(missing))
         # NOTE(flwang): Image size should be cleared as long as the image
         # status is updated to 'queued'
         if status == 'queued':
             self.size = None
+            self.virtual_size = None
         self._status = status
 
     @property
@@ -126,7 +168,8 @@ class Image(object):
     @visibility.setter
     def visibility(self, visibility):
         if visibility not in ('public', 'private'):
-            raise ValueError('Visibility must be either "public" or "private"')
+            raise ValueError(_('Visibility must be either "public" '
+                               'or "private"'))
         self._visibility = visibility
 
     @property
@@ -168,7 +211,7 @@ class Image(object):
     @min_disk.setter
     def min_disk(self, value):
         if value and value < 0:
-            extra_msg = 'Cannot be a negative value'
+            extra_msg = _('Cannot be a negative value')
             raise exception.InvalidParameterValue(value=value,
                                                   param='min_disk',
                                                   extra_msg=extra_msg)
@@ -181,7 +224,7 @@ class Image(object):
     @min_ram.setter
     def min_ram(self, value):
         if value and value < 0:
-            extra_msg = 'Cannot be a negative value'
+            extra_msg = _('Cannot be a negative value')
             raise exception.InvalidParameterValue(value=value,
                                                   param='min_ram',
                                                   extra_msg=extra_msg)
@@ -190,7 +233,10 @@ class Image(object):
     def delete(self):
         if self.protected:
             raise exception.ProtectedImageDelete(image_id=self.image_id)
-        self.status = 'deleted'
+        if CONF.delayed_delete and self.locations:
+            self.status = 'pending_delete'
+        else:
+            self.status = 'deleted'
 
     def get_data(self):
         raise NotImplementedError()
@@ -264,22 +310,19 @@ class Task(object):
 
     _supported_task_status = ('pending', 'processing', 'success', 'failure')
 
-    def __init__(self, task_id, type, status, input, result, owner, message,
+    def __init__(self, task_id, task_type, status, owner,
                  expires_at, created_at, updated_at, task_time_to_live=48):
 
-        if type not in self._supported_task_type:
-            raise exception.InvalidTaskType(type)
+        if task_type not in self._supported_task_type:
+            raise exception.InvalidTaskType(task_type)
 
         if status not in self._supported_task_status:
             raise exception.InvalidTaskStatus(status)
 
         self.task_id = task_id
         self._status = status
-        self.type = type
-        self.input = input
-        self.result = result
+        self.type = task_type
         self.owner = owner
-        self.message = message
         self.expires_at = expires_at
         # NOTE(nikhil): We use '_time_to_live' to determine how long a
         # task should live from the time it succeeds or fails.
@@ -341,13 +384,23 @@ class Task(object):
         self.expires_at = timeutils.utcnow() + self._time_to_live
 
 
+class TaskDetails(object):
+
+    def __init__(self, task_id, task_input, message, result):
+        if task_id is None:
+            raise exception.TaskException(_('task_id is required to create '
+                                            'a new TaskDetails object'))
+        self.task_id = task_id
+        self.input = task_input
+        self.message = message
+        self.result = result
+
+
 class TaskFactory(object):
 
-    def new_task(self, task_type, task_input, owner, task_time_to_live=48):
+    def new_task(self, task_type, owner, task_time_to_live=48):
         task_id = str(uuid.uuid4())
         status = 'pending'
-        result = None
-        message = None
         # Note(nikhil): expires_at would be set on the task, only when it
         # succeeds or fails.
         expires_at = None
@@ -357,12 +410,12 @@ class TaskFactory(object):
             task_id,
             task_type,
             status,
-            task_input,
-            result,
             owner,
-            message,
             expires_at,
             created_at,
             updated_at,
             task_time_to_live
         )
+
+    def new_task_details(self, task_id, task_input, message=None, result=None):
+        return TaskDetails(task_id, task_input, message, result)

@@ -20,6 +20,7 @@ import datetime
 import traceback
 
 from oslo.config import cfg
+import six
 from webob import exc
 
 from glance.common import client
@@ -145,7 +146,7 @@ class Controller(object):
 
             command, kwargs = cmd.get("command"), cmd.get("kwargs")
 
-            if (not command or not isinstance(command, basestring) or
+            if (not command or not isinstance(command, six.string_types) or
                     (kwargs and not isinstance(kwargs, dict))):
                 msg = _("Wrong command structure: %s") % (str(cmd))
                 raise exc.HTTPBadRequest(explanation=msg)
@@ -177,7 +178,7 @@ class Controller(object):
                 if self.raise_exc:
                     raise
 
-                cls, val = e.__class__, str(e)
+                cls, val = e.__class__, six.text_type(e)
                 msg = (_("RPC Call Error: %(val)s\n%(tb)s") %
                        dict(val=val, tb=traceback.format_exc()))
                 LOG.error(msg)
@@ -187,7 +188,7 @@ class Controller(object):
                 module = cls.__module__
                 if module not in CONF.allowed_rpc_exception_modules:
                     cls = exception.RPCError
-                    val = str(exception.RPCError(cls=cls, val=val))
+                    val = six.text_type(exception.RPCError(cls=cls, val=val))
 
                 cls_path = "%s.%s" % (cls.__module__, cls.__name__)
                 result = {"_error": {"cls": cls_path, "val": val}}

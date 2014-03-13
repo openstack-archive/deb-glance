@@ -23,7 +23,8 @@ import os
 import stat
 import time
 
-from eventlet import sleep, timeout
+from eventlet import sleep
+from eventlet import timeout
 from oslo.config import cfg
 import sqlite3
 
@@ -418,7 +419,7 @@ class Driver(base.Driver):
         path = self.get_image_filepath(image_id, 'queue')
 
         # Touch the file to add it to the queue
-        with open(path, "w") as f:
+        with open(path, "w"):
             pass
 
         return True
