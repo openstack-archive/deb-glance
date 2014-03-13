@@ -1,0 +1,24 @@
+Description: Sets flavor=caching by default
+Author: Thomas Goirand <zigo@debian.org>
+Forwarded: not-needed
+Last-Update: 2014-03-13
+
+--- glance-2014.1~b3.orig/etc/glance-api.conf
++++ glance-2014.1~b3/etc/glance-api.conf
+@@ -564,7 +564,7 @@ admin_password = %SERVICE_PASSWORD%
+ # service name removed. For example, if your paste section name is
+ # [pipeline:glance-api-keystone], you would configure the flavor below
+ # as 'keystone'.
+-#flavor=
++flavor=caching
+ 
+ [store_type_location_strategy]
+ # The scheme list to use to get store preference order. The scheme must be
+--- glance-2014.1~b3.orig/etc/glance-registry.conf
++++ glance-2014.1~b3/etc/glance-registry.conf
+@@ -99,4 +99,4 @@ admin_password = %SERVICE_PASSWORD%
+ # service name removed. For example, if your paste section name is
+ # [pipeline:glance-registry-keystone], you would configure the flavor below
+ # as 'keystone'.
+-#flavor=
++flavor=caching
