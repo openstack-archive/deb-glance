@@ -1,3 +1,9 @@
+glance (2014.1~rc1-1) experimental; urgency=low
+
+  * New upstream release.
+
+ -- Thomas Goirand <zigo@debian.org>  Wed, 02 Apr 2014 11:52:30 +0800
+
 glance (2014.1~b3-1) experimental; urgency=low
 
   * New upstream release (beta3 of Icehouse).
