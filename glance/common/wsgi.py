@@ -39,6 +39,7 @@ import routes
 import routes.middleware
 import webob.dec
 import webob.exc
+from webob import multidict
 
 from glance.common import exception
 from glance.common import utils
@@ -566,6 +567,10 @@ class JSONResponseSerializer(object):
             return obj.isoformat()
         if hasattr(obj, "to_dict"):
             return obj.to_dict()
+        if isinstance(obj, multidict.MultiDict):
+            return obj.mixed()
+        if isinstance(obj, set):
+            return list(obj)
         return obj
 
     def to_json(self, data):
@@ -590,6 +595,8 @@ def translate_exception(req, e):
     if isinstance(e, webob.exc.HTTPError):
         e.explanation = gettextutils.translate(e.explanation, locale)
         e.detail = gettextutils.translate(e.detail, locale)
+        if getattr(e, 'body_template', None):
+            e.body_template = gettextutils.translate(e.body_template, locale)
     return e
 
 

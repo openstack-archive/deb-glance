@@ -92,6 +92,10 @@ class TestTasks(functional.FunctionalTest):
         # Returned task entity should have a generated id and status
         task = jsonutils.loads(response.text)
         task_id = task['id']
+
+        self.assertTrue('Location' in response.headers)
+        self.assertEqual(path + '/' + task_id, response.headers['Location'])
+
         checked_keys = set([u'created_at',
                             u'id',
                             u'input',
@@ -124,5 +128,12 @@ class TestTasks(functional.FunctionalTest):
         tasks = jsonutils.loads(response.text)['tasks']
         self.assertEqual(1, len(tasks))
         self.assertEqual(tasks[0]['id'], task_id)
+
+        # Attempt to delete a task
+        path = self._url('/v2/tasks/%s' % tasks[0]['id'])
+        response = requests.delete(path, headers=self._headers())
+        self.assertEqual(405, response.status_code)
+        self.assertIsNotNone(response.headers.get('Allow'))
+        self.assertEqual('GET', response.headers.get('Allow'))
 
         self.stop_servers()
