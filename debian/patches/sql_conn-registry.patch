@@ -1,17 +1,27 @@
-Description: Fixes default sql_connection in glance-registry.conf
-Author: Julien Danjou
+Description: Fixes default connection in glance-registry.conf & glance-api.conf
+Author: Thomas Goirand <zigo@debian.org>
 Forwarded: no
+Last-Update: 2014-04-15
 
-Index: glance/etc/glance-registry.conf
-===================================================================
---- glance.orig/etc/glance-registry.conf	2014-04-02 20:58:05.000000000 +0800
-+++ glance/etc/glance-registry.conf	2014-04-02 20:58:10.000000000 +0800
-@@ -36,7 +36,7 @@
- # SQLAlchemy connection string for the reference implementation
- # registry server. Any valid SQLAlchemy connection string is fine.
- # See: http://www.sqlalchemy.org/docs/05/reference/sqlalchemy/connections.html#sqlalchemy.create_engine
--sql_connection = sqlite:///glance.sqlite
-+sql_connection = sqlite:////var/lib/glance/glance.sqlite
+--- glance-2014.1~rc2.orig/etc/glance-api.conf
++++ glance-2014.1~rc2/etc/glance-api.conf
+@@ -563,7 +563,7 @@ image_cache_dir = /var/lib/glance/image-
+ # Deprecated group/name - [DEFAULT]/sql_connection
+ # Deprecated group/name - [DATABASE]/sql_connection
+ # Deprecated group/name - [sql]/connection
+-#connection = <None>
++connection = sqlite:////var/lib/glance/glancedb
  
- # Period in seconds after which SQLAlchemy should reestablish its connection
- # to the database.
+ # The SQL mode to be used for MySQL sessions. This option,
+ # including the default, overrides any server-set SQL mode. To
+--- glance-2014.1~rc2.orig/etc/glance-registry.conf
++++ glance-2014.1~rc2/etc/glance-registry.conf
+@@ -91,7 +91,7 @@ limit_param_default = 25
+ # Deprecated group/name - [DEFAULT]/sql_connection
+ # Deprecated group/name - [DATABASE]/sql_connection
+ # Deprecated group/name - [sql]/connection
+-#connection = <None>
++connection = sqlite:////var/lib/glance/glancedb
+ 
+ # The SQL mode to be used for MySQL sessions. This option,
+ # including the default, overrides any server-set SQL mode. To

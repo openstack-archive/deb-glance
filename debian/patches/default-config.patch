@@ -5,9 +5,9 @@ Last-Update: 2014-03-13
 
 Index: glance/etc/glance-api.conf
 ===================================================================
---- glance.orig/etc/glance-api.conf	2014-04-02 20:58:05.000000000 +0800
-+++ glance/etc/glance-api.conf	2014-04-02 20:58:15.000000000 +0800
-@@ -576,7 +576,7 @@
+--- glance.orig/etc/glance-api.conf	2014-04-15 15:12:14.000000000 +0800
++++ glance/etc/glance-api.conf	2014-04-15 15:17:41.000000000 +0800
+@@ -659,7 +659,7 @@
  # service name removed. For example, if your paste section name is
  # [pipeline:glance-api-keystone], you would configure the flavor below
  # as 'keystone'.
@@ -18,9 +18,9 @@ Index: glance/etc/glance-api.conf
  # The scheme list to use to get store preference order. The scheme must be
 Index: glance/etc/glance-registry.conf
 ===================================================================
---- glance.orig/etc/glance-registry.conf	2014-04-02 20:58:10.000000000 +0800
-+++ glance/etc/glance-registry.conf	2014-04-02 20:58:15.000000000 +0800
-@@ -103,4 +103,4 @@
+--- glance.orig/etc/glance-registry.conf	2014-04-15 15:12:14.000000000 +0800
++++ glance/etc/glance-registry.conf	2014-04-15 15:17:41.000000000 +0800
+@@ -187,4 +187,4 @@
  # service name removed. For example, if your paste section name is
  # [pipeline:glance-registry-keystone], you would configure the flavor below
  # as 'keystone'.

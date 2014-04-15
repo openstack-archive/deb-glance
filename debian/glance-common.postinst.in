@@ -37,9 +37,9 @@ if [ "$1" = "configure" ] || [ "$1" = "reconfigure" ] ; then
 	pkgos_write_new_conf glance glance-scrubber.conf
 	pkgos_write_new_conf glance policy.json
 
-	pkgos_dbc_postinst ${API_CONF} DEFAULT sql_connection glance $@
-	pkgos_inifile get ${API_CONF} DEFAULT sql_connection
-	pkgos_inifile set ${GREG_CONF} DEFAULT sql_connection "${RET}"
+	pkgos_dbc_postinst ${API_CONF} database connection glance $@
+	pkgos_inifile get ${API_CONF} database connection
+	pkgos_inifile set ${GREG_CONF} database connection "${RET}"
 
 	pkgos_rabbit_write_conf ${API_CONF} DEFAULT glance
 
