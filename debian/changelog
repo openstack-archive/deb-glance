@@ -1,12 +1,13 @@
-glance (2014.1~rc2-1) UNRELEASED; urgency=low
+glance (2014.1-1) unstable; urgency=medium
 
   * New upstream release.
+  * Uploading to unstable
   * Refreshed & rebased patches.
   * Replaced DEFAULT/sql_connection with database/connection in the config file
     handling.
   * Rebuilt with fix for db charset at db creation (Closes: #744892).
 
- -- Thomas Goirand <zigo@debian.org>  Tue, 15 Apr 2014 15:15:08 +0800
+ -- Thomas Goirand <zigo@debian.org>  Fri, 18 Apr 2014 08:44:30 +0800
 
 glance (2014.1~rc1-1) experimental; urgency=low
 
