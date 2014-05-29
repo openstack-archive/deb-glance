@@ -4,7 +4,5 @@
     compress
     delaycompress
     notifempty
-    postrotate
-        service glance-registry restart >/dev/null 2>&1 || true
-    endscript
+    copytruncate
 }
