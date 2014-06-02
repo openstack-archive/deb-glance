@@ -1,3 +1,9 @@
+glance (2014.1-5) unstable; urgency=medium
+
+  * Rebuilt with openstack-pkgs-tools >= 11~.
+
+ -- Thomas Goirand <zigo@debian.org>  Mon, 02 Jun 2014 17:34:54 +0000
+
 glance (2014.1-4) unstable; urgency=medium
 
   * Switched from restarting daemons to copytruncate for logrotate.
