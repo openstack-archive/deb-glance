@@ -1,3 +1,9 @@
+glance (2014.1.1-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Thomas Goirand <zigo@debian.org>  Mon, 09 Jun 2014 22:23:39 +0800
+
 glance (2014.1-7) unstable; urgency=medium
 
   * Convert tables into utf8 if we're upgrading from prior to Icehouse.
