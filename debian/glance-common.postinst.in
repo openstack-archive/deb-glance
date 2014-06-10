@@ -41,7 +41,7 @@ if [ "$1" = "configure" ] || [ "$1" = "reconfigure" ] ; then
 	pkgos_dbc_postinst ${API_CONF} database connection glance $@
 
 	# Convert tables into utf8 if we're upgrading from prior to Icehouse.
-	db_get ${PKG_NAME}/configure_db
+	db_get glance/configure_db
 	if [ "$RET" = "true" ] && [ -n "${2}" ] \
 	  && [ dpkg --compare-versions 2014.1~ gt "${2}" ] \
 	  && [ -r /usr/share/dbconfig-common/dpkg/postinst ] \

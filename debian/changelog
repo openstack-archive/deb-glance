@@ -1,3 +1,9 @@
+glance (2014.1.1-2) unstable; urgency=medium
+
+  * Fixed postinst which was calling debconf without package name.
+
+ -- Thomas Goirand <zigo@debian.org>  Tue, 10 Jun 2014 17:46:03 +0800
+
 glance (2014.1.1-1) unstable; urgency=medium
 
   * New upstream release.
