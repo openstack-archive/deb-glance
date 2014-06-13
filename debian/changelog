@@ -1,3 +1,9 @@
+glance (2014.1.1-3) unstable; urgency=medium
+
+  * Fixed postinst which was doing && [ dpkg instead of && dpkg.
+
+ -- Thomas Goirand <zigo@debian.org>  Fri, 13 Jun 2014 23:32:21 +0800
+
 glance (2014.1.1-2) unstable; urgency=medium
 
   * Fixed postinst which was calling debconf without package name.
