@@ -18,6 +18,7 @@ from mock import patch
 import uuid
 
 from glance.common import exception
+from glance.openstack.common import units
 import glance.quota
 import glance.store
 from glance.tests.unit import utils as unit_test_utils
@@ -69,7 +70,7 @@ class TestImageQuota(test_utils.BaseTestCase):
 
     def test_quota_allowed(self):
         quota = 10
-        self.config(user_storage_quota=quota)
+        self.config(user_storage_quota=str(quota))
         context = FakeContext()
         db_api = unit_test_utils.FakeDB()
         base_image = FakeImage()
@@ -79,6 +80,33 @@ class TestImageQuota(test_utils.BaseTestCase):
         base_image.set_data(data, size=None)
         image.set_data(data)
         self.assertEqual(quota, base_image.size)
+
+    def _test_quota_allowed_unit(self, data_length, config_quota):
+        self.config(user_storage_quota=config_quota)
+        context = FakeContext()
+        db_api = unit_test_utils.FakeDB()
+        base_image = FakeImage()
+        base_image.image_id = 'id'
+        image = glance.quota.ImageProxy(base_image, context, db_api)
+        data = '*' * data_length
+        base_image.set_data(data, size=None)
+        image.set_data(data)
+        self.assertEqual(data_length, base_image.size)
+
+    def test_quota_allowed_unit_b(self):
+        self._test_quota_allowed_unit(10, '10B')
+
+    def test_quota_allowed_unit_kb(self):
+        self._test_quota_allowed_unit(10, '1KB')
+
+    def test_quota_allowed_unit_mb(self):
+        self._test_quota_allowed_unit(10, '1MB')
+
+    def test_quota_allowed_unit_gb(self):
+        self._test_quota_allowed_unit(10, '1GB')
+
+    def test_quota_allowed_unit_tb(self):
+        self._test_quota_allowed_unit(10, '1TB')
 
     def _quota_exceeded_size(self, quota, data,
                              deleted=True, size=None):
@@ -111,17 +139,31 @@ class TestImageQuota(test_utils.BaseTestCase):
         # That's why 'get_remaining_quota' is mocked with return_value = 0.
         with patch.object(glance.api.common, 'get_remaining_quota',
                           return_value=0):
-            self._quota_exceeded_size(quota, data)
+            self._quota_exceeded_size(str(quota), data)
 
     def test_quota_exceeded_with_right_size(self):
         quota = 10
         data = '*' * (quota + 1)
-        self._quota_exceeded_size(quota, data, size=len(data), deleted=False)
+        self._quota_exceeded_size(str(quota), data, size=len(data),
+                                  deleted=False)
+
+    def test_quota_exceeded_with_right_size_b(self):
+        quota = 10
+        data = '*' * (quota + 1)
+        self._quota_exceeded_size('10B', data, size=len(data),
+                                  deleted=False)
+
+    def test_quota_exceeded_with_right_size_kb(self):
+        quota = units.Ki
+        data = '*' * (quota + 1)
+        self._quota_exceeded_size('1KB', data, size=len(data),
+                                  deleted=False)
 
     def test_quota_exceeded_with_lie_size(self):
         quota = 10
         data = '*' * (quota + 1)
-        self._quota_exceeded_size(quota, data, deleted=False, size=quota - 1)
+        self._quota_exceeded_size(str(quota), data, deleted=False,
+                                  size=quota - 1)
 
     def test_append_location(self):
         new_location = {'url': 'file:///a/path', 'metadata': {}}
@@ -163,7 +205,7 @@ class TestImageQuota(test_utils.BaseTestCase):
 
     def _make_image_with_quota(self, image_size=10, location_count=2):
         quota = image_size * location_count
-        self.config(user_storage_quota=quota)
+        self.config(user_storage_quota=str(quota))
         return self._get_image(image_size=image_size,
                                location_count=location_count)
 
@@ -296,7 +338,7 @@ class TestImagePropertyQuotas(test_utils.BaseTestCase):
         self.image.extra_properties = {'foo': 'bar', 'foo2': 'bar2'}
         exc = self.assertRaises(exception.ImagePropertyLimitExceeded,
                                 self.image_repo_proxy.save, self.image)
-        self.assertTrue("Attempted: 2, Maximum: 1" in str(exc))
+        self.assertIn("Attempted: 2, Maximum: 1", str(exc))
 
     def test_save_image_unlimited_image_properties(self):
         self.config(image_property_quota=-1)
@@ -320,7 +362,7 @@ class TestImagePropertyQuotas(test_utils.BaseTestCase):
         self.image.extra_properties = {'foo': 'bar', 'foo2': 'bar2'}
         exc = self.assertRaises(exception.ImagePropertyLimitExceeded,
                                 self.image_repo_proxy.add, self.image)
-        self.assertTrue("Attempted: 2, Maximum: 1" in str(exc))
+        self.assertIn("Attempted: 2, Maximum: 1", str(exc))
 
     def test_add_image_unlimited_image_properties(self):
         self.config(image_property_quota=-1)
@@ -356,7 +398,7 @@ class TestImageTagQuotas(test_utils.BaseTestCase):
 
         exc = self.assertRaises(exception.ImageTagLimitExceeded,
                                 setattr, self.image, 'tags', ['foo', 'bar'])
-        self.assertTrue('Attempted: 2, Maximum: 0' in str(exc))
+        self.assertIn('Attempted: 2, Maximum: 0', str(exc))
         self.assertEqual(len(self.image.tags), 0)
 
     def test_replace_unlimited_image_tags(self):
@@ -374,7 +416,7 @@ class TestImageTagQuotas(test_utils.BaseTestCase):
         self.image.tags.add('foo')
         exc = self.assertRaises(exception.ImageTagLimitExceeded,
                                 self.image.tags.add, 'bar')
-        self.assertTrue('Attempted: 2, Maximum: 1' in str(exc))
+        self.assertIn('Attempted: 2, Maximum: 1', str(exc))
 
     def test_add_unlimited_image_tags(self):
         self.config(image_tag_quota=-1)
@@ -397,14 +439,14 @@ class TestQuotaImageTagsProxy(test_utils.BaseTestCase):
     def test_add(self):
         proxy = glance.quota.QuotaImageTagsProxy(set([]))
         proxy.add('foo')
-        self.assertTrue('foo' in proxy)
+        self.assertIn('foo', proxy)
 
     def test_add_too_many_tags(self):
         self.config(image_tag_quota=0)
         proxy = glance.quota.QuotaImageTagsProxy(set([]))
         exc = self.assertRaises(exception.ImageTagLimitExceeded,
                                 proxy.add, 'bar')
-        self.assertTrue('Attempted: 1, Maximum: 0' in str(exc))
+        self.assertIn('Attempted: 1, Maximum: 0', str(exc))
 
     def test_equals(self):
         proxy = glance.quota.QuotaImageTagsProxy(set([]))
@@ -412,7 +454,7 @@ class TestQuotaImageTagsProxy(test_utils.BaseTestCase):
 
     def test_contains(self):
         proxy = glance.quota.QuotaImageTagsProxy(set(['foo']))
-        self.assertTrue('foo' in proxy)
+        self.assertIn('foo', proxy)
 
     def test_len(self):
         proxy = glance.quota.QuotaImageTagsProxy(set(['foo',
@@ -500,7 +542,7 @@ class TestImageLocationQuotas(test_utils.BaseTestCase):
         ]
         exc = self.assertRaises(exception.ImageLocationLimitExceeded,
                                 setattr, self.image, 'locations', locations)
-        self.assertTrue('Attempted: 3, Maximum: 1' in str(exc))
+        self.assertIn('Attempted: 3, Maximum: 1', str(exc))
         self.assertEqual(len(self.image.locations), 1)
 
     def test_replace_unlimited_image_locations(self):
@@ -523,7 +565,7 @@ class TestImageLocationQuotas(test_utils.BaseTestCase):
         location2 = {"url": "file:///fake2.img.tar.gz", "metadata": {}}
         exc = self.assertRaises(exception.ImageLocationLimitExceeded,
                                 self.image.locations.append, location2)
-        self.assertTrue('Attempted: 2, Maximum: 1' in str(exc))
+        self.assertIn('Attempted: 2, Maximum: 1', str(exc))
 
     def test_add_unlimited_image_locations(self):
         self.config(image_location_quota=-1)

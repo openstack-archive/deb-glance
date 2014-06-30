@@ -22,6 +22,7 @@ import eventlet.patcher
 import fixtures
 import gettext
 import mock
+import six
 import webob
 
 from glance.common import exception
@@ -33,7 +34,10 @@ from glance.tests import utils as test_utils
 
 class RequestTest(test_utils.BaseTestCase):
 
-    def _set_expected_languages(self, all_locales=[], avail_locales=None):
+    def _set_expected_languages(self, all_locales=None, avail_locales=None):
+        if all_locales is None:
+            all_locales = []
+
         # Override localedata.locale_identifiers to return some locales.
         def returns_some_locales(*args, **kwargs):
             return all_locales
@@ -334,7 +338,7 @@ class JSONRequestDeserializerTest(test_utils.BaseTestCase):
         request = wsgi.Request.blank('/')
         request.method = 'POST'
         request.body = 'asdf'
-        self.assertTrue('Content-Length' in request.headers)
+        self.assertIn('Content-Length', request.headers)
         self.assertTrue(wsgi.JSONRequestDeserializer().has_body(request))
 
     def test_no_body_no_content_length(self):
@@ -371,7 +375,7 @@ class JSONRequestDeserializerTest(test_utils.BaseTestCase):
         request.method = 'POST'
         request.body = 'fake_body'
         request.headers['transfer-encoding'] = 0
-        self.assertTrue('transfer-encoding' in request.headers)
+        self.assertIn('transfer-encoding', request.headers)
         self.assertTrue(wsgi.JSONRequestDeserializer().has_body(request))
 
     def test_get_bind_addr_default_value(self):
@@ -404,7 +408,7 @@ class TestHelpers(test_utils.BaseTestCase):
                    'location': "file:///tmp/glance-tests/2",
                    'properties': {'distro': 'Ubuntu 10.04 LTS'}}
         headers = utils.image_meta_to_http_headers(fixture)
-        for k, v in headers.iteritems():
+        for k, v in six.iteritems(headers):
             self.assertIsInstance(v, unicode)
 
     def test_data_passed_properly_through_headers(self):
@@ -426,11 +430,11 @@ class TestHelpers(test_utils.BaseTestCase):
         response = FakeResponse()
         response.headers = headers
         result = utils.get_image_meta_from_headers(response)
-        for k, v in fixture.iteritems():
+        for k, v in six.iteritems(fixture):
             if v is not None:
                 self.assertEqual(v, result[k])
             else:
-                self.assertFalse(k in result)
+                self.assertNotIn(k, result)
 
 
 class GetSocketTestCase(test_utils.BaseTestCase):
@@ -466,19 +470,19 @@ class GetSocketTestCase(test_utils.BaseTestCase):
             'glance.common.wsgi.eventlet.listen',
             lambda *x, **y: None))
         wsgi.get_socket(1234)
-        self.assertTrue(mock.call().setsockopt(
+        self.assertIn(mock.call().setsockopt(
             socket.SOL_SOCKET,
             socket.SO_REUSEADDR,
-            1) in mock_socket.mock_calls)
-        self.assertTrue(mock.call().setsockopt(
+            1), mock_socket.mock_calls)
+        self.assertIn(mock.call().setsockopt(
             socket.SOL_SOCKET,
             socket.SO_KEEPALIVE,
-            1) in mock_socket.mock_calls)
+            1), mock_socket.mock_calls)
         if hasattr(socket, 'TCP_KEEPIDLE'):
-            self.assertTrue(mock.call().setsockopt(
+            self.assertIn(mock.call().setsockopt(
                 socket.IPPROTO_TCP,
                 socket.TCP_KEEPIDLE,
-                wsgi.CONF.tcp_keepidle) in mock_socket.mock_calls)
+                wsgi.CONF.tcp_keepidle), mock_socket.mock_calls)
 
     def test_get_socket_without_all_ssl_reqs(self):
         wsgi.CONF.key_file = None

@@ -22,6 +22,7 @@ from glance.common import wsgi
 import glance.db
 import glance.gateway
 import glance.notifier
+from glance.openstack.common import excutils
 import glance.openstack.common.log as logging
 import glance.store
 
@@ -54,7 +55,7 @@ class ImageDataController(object):
                 image_repo.save(image)
         except Exception as e:
             msg = _("Unable to restore image %(image_id)s: %(e)s") % \
-                {'image_id': image.image_id, 'e': unicode(e)}
+                {'image_id': image.image_id, 'e': utils.exception_to_str(e)}
             LOG.exception(msg)
 
     @utils.mutating
@@ -85,17 +86,19 @@ class ImageDataController(object):
                                          content_type='text/plain')
 
         except ValueError as e:
-            LOG.debug("Cannot save data for image %s: %s", image_id, e)
+            LOG.debug("Cannot save data for image %(id)s: %(e)s",
+                      {'id': image_id, 'e': utils.exception_to_str(e)})
             self._restore(image_repo, image)
-            raise webob.exc.HTTPBadRequest(explanation=unicode(e))
+            raise webob.exc.HTTPBadRequest(explanation=
+                                           utils.exception_to_str(e))
 
         except exception.InvalidImageStatusTransition as e:
-            msg = unicode(e)
+            msg = utils.exception_to_str(e)
             LOG.debug(msg)
             raise webob.exc.HTTPConflict(explanation=e.msg, request=req)
 
         except exception.Forbidden as e:
-            msg = (_("Not allowed to upload image data for image %s") %
+            msg = ("Not allowed to upload image data for image %s" %
                    image_id)
             LOG.debug(msg)
             raise webob.exc.HTTPForbidden(explanation=msg, request=req)
@@ -132,15 +135,15 @@ class ImageDataController(object):
                                                    request=req)
 
         except webob.exc.HTTPError as e:
-            LOG.error(_("Failed to upload image data due to HTTP error"))
-            self._restore(image_repo, image)
-            raise
+            with excutils.save_and_reraise_exception():
+                LOG.error(_("Failed to upload image data due to HTTP error"))
+                self._restore(image_repo, image)
 
         except Exception as e:
-            LOG.exception(_("Failed to upload image data due to "
-                            "internal error"))
-            self._restore(image_repo, image)
-            raise
+            with excutils.save_and_reraise_exception():
+                LOG.exception(_("Failed to upload image data due to "
+                                "internal error"))
+                self._restore(image_repo, image)
 
     def download(self, req, image_id):
         image_repo = self.gateway.get_repo(req.context)

@@ -20,6 +20,7 @@ import os
 import time
 
 from oslo.config import cfg
+import six
 
 from glance.common import crypt
 from glance.common import exception
@@ -377,20 +378,20 @@ class Daemon(object):
             LOG.info(msg)
 
     def _run(self, application):
-        LOG.debug(_("Running application"))
+        LOG.debug("Running application")
         self.pool.spawn_n(application.run, self.pool, self.event)
         eventlet.spawn_after(self.wakeup_time, self._run, application)
-        LOG.debug(_("Next run scheduled in %s seconds") % self.wakeup_time)
+        LOG.debug("Next run scheduled in %s seconds" % self.wakeup_time)
 
 
 class Scrubber(object):
     def __init__(self, store_api):
         LOG.info(_("Initializing scrubber with configuration: %s") %
-                 unicode({'scrubber_datadir': CONF.scrubber_datadir,
-                          'cleanup': CONF.cleanup_scrubber,
-                          'cleanup_time': CONF.cleanup_scrubber_time,
-                          'registry_host': CONF.registry_host,
-                          'registry_port': CONF.registry_port}))
+                 six.text_type({'scrubber_datadir': CONF.scrubber_datadir,
+                                'cleanup': CONF.cleanup_scrubber,
+                                'cleanup_time': CONF.cleanup_scrubber_time,
+                                'registry_host': CONF.registry_host,
+                                'registry_port': CONF.registry_port}))
 
         utils.safe_mkdirs(CONF.scrubber_datadir)
 
@@ -423,7 +424,7 @@ class Scrubber(object):
     def run(self, pool, event=None):
         delete_jobs = self._get_delete_jobs(self.file_queue, True)
         if delete_jobs:
-            for image_id, jobs in delete_jobs.iteritems():
+            for image_id, jobs in six.iteritems(delete_jobs):
                 self._scrub_image(pool, image_id, jobs)
 
         if CONF.cleanup_scrubber:
@@ -448,7 +449,7 @@ class Scrubber(object):
             uri = crypt.urlsafe_decrypt(CONF.metadata_encryption_key, uri)
 
         try:
-            LOG.debug(_("Deleting URI from image %(image_id)s.") %
+            LOG.debug("Deleting URI from image %(image_id)s." %
                       {'image_id': image_id})
 
             # Here we create a request context with credentials to support
@@ -473,13 +474,13 @@ class Scrubber(object):
         """
         try:
             if not os.path.exists(file_path):
-                msg = _("%s file is not exists.") % unicode(file_path)
+                msg = _("%s file is not exists.") % six.text_type(file_path)
                 raise Exception(msg)
             atime = int(os.path.getatime(file_path))
             mtime = int(os.path.getmtime(file_path))
             if atime != mtime:
                 msg = _("%s file contains conflicting cleanup "
-                        "timestamp.") % unicode(file_path)
+                        "timestamp.") % six.text_type(file_path)
                 raise Exception(msg)
             return atime
         except Exception as e:
@@ -497,7 +498,8 @@ class Scrubber(object):
             os.chmod(file_path, 0o600)
             os.utime(file_path, (cleanup_time, cleanup_time))
         except Exception:
-            LOG.error(_("%s file can not be created.") % unicode(file_path))
+            LOG.error(_("%s file can not be created.") %
+                      six.text_type(file_path))
 
     def _cleanup(self, pool):
         now = time.time()
@@ -519,7 +521,7 @@ class Scrubber(object):
         if not delete_jobs:
             return
 
-        for image_id, jobs in delete_jobs.iteritems():
+        for image_id, jobs in six.iteritems(delete_jobs):
             with lockutils.lock("scrubber-%s" % image_id,
                                 lock_file_prefix='glance-', external=True):
                 if not self.file_queue.has_image(image_id):

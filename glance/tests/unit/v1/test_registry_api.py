@@ -20,6 +20,7 @@ import uuid
 
 from oslo.config import cfg
 import routes
+import six
 import webob
 
 import glance.api.common
@@ -91,7 +92,7 @@ class TestRegistryAPI(base.IsolatedUnitTest, test_utils.RegistryAPIMixIn):
         res = self.get_api_response_ext(200, '/images/%s' % UUID2)
         res_dict = jsonutils.loads(res.body)
         image = res_dict['image']
-        for k, v in fixture.iteritems():
+        for k, v in six.iteritems(fixture):
             self.assertEqual(v, image[k])
 
     def test_show_unknown(self):
@@ -151,7 +152,7 @@ class TestRegistryAPI(base.IsolatedUnitTest, test_utils.RegistryAPIMixIn):
         images = res_dict['images']
         self.assertEqual(len(images), 1)
 
-        for k, v in fixture.iteritems():
+        for k, v in six.iteritems(fixture):
             self.assertEqual(v, images[0][k])
 
     def test_get_index(self):
@@ -166,7 +167,7 @@ class TestRegistryAPI(base.IsolatedUnitTest, test_utils.RegistryAPIMixIn):
         images = res_dict['images']
         self.assertEqual(len(images), 1)
 
-        for k, v in fixture.iteritems():
+        for k, v in six.iteritems(fixture):
             self.assertEqual(v, images[0][k])
 
     def test_get_index_marker(self):
@@ -209,7 +210,7 @@ class TestRegistryAPI(base.IsolatedUnitTest, test_utils.RegistryAPIMixIn):
         when a malformed marker is provided
         """
         res = self.get_api_response_ext(400, url='/images?marker=4')
-        self.assertTrue('marker' in res.body)
+        self.assertIn('marker', res.body)
 
     def test_get_index_forbidden_marker(self):
         """
@@ -669,7 +670,7 @@ class TestRegistryAPI(base.IsolatedUnitTest, test_utils.RegistryAPIMixIn):
         images = res_dict['images']
         self.assertEqual(len(images), 1)
 
-        for k, v in fixture.iteritems():
+        for k, v in six.iteritems(fixture):
             self.assertEqual(v, images[0][k])
 
     def test_get_details_limit_marker(self):
@@ -712,7 +713,7 @@ class TestRegistryAPI(base.IsolatedUnitTest, test_utils.RegistryAPIMixIn):
         when a malformed marker is provided
         """
         res = self.get_api_response_ext(400, url='/images/detail?marker=4')
-        self.assertTrue('marker' in res.body)
+        self.assertIn('marker', res.body)
 
     def test_get_details_forbidden_marker(self):
         """
@@ -941,7 +942,7 @@ class TestRegistryAPI(base.IsolatedUnitTest, test_utils.RegistryAPIMixIn):
         self.assertEqual(len(images), 2)
 
         for image in images:
-            self.assertTrue(image['size'] <= 19 and image['size'] >= 18)
+            self.assertTrue(18 <= image['size'] <= 19)
 
     def test_get_details_filter_changes_since(self):
         """
@@ -1139,7 +1140,7 @@ class TestRegistryAPI(base.IsolatedUnitTest, test_utils.RegistryAPIMixIn):
         images = res_dict['images']
 
         for image in images:
-            self.assertEqual(False, image['deleted'])
+            self.assertFalse(image['deleted'])
 
     def test_get_filter_no_public_with_no_admin(self):
         """
@@ -1213,7 +1214,7 @@ class TestRegistryAPI(base.IsolatedUnitTest, test_utils.RegistryAPIMixIn):
                                         method='POST', content_type='json')
         res_dict = jsonutils.loads(res.body)
 
-        for k, v in fixture.iteritems():
+        for k, v in six.iteritems(fixture):
             self.assertEqual(v, res_dict['image'][k])
 
         # Test status was updated properly
@@ -1270,7 +1271,7 @@ class TestRegistryAPI(base.IsolatedUnitTest, test_utils.RegistryAPIMixIn):
 
         res = self.get_api_response_ext(400, body=body,
                                         method='POST', content_type='json')
-        self.assertTrue('Invalid image status' in res.body)
+        self.assertIn('Invalid image status', res.body)
 
     def test_create_image_with_bad_id(self):
         """Tests proper exception is raised if a bad disk_format is set"""
@@ -1312,7 +1313,7 @@ class TestRegistryAPI(base.IsolatedUnitTest, test_utils.RegistryAPIMixIn):
         self.assertNotEqual(res_dict['image']['created_at'],
                             res_dict['image']['updated_at'])
 
-        for k, v in fixture.iteritems():
+        for k, v in six.iteritems(fixture):
             self.assertEqual(v, res_dict['image'][k])
 
     def test_update_image_not_existing(self):
@@ -1334,7 +1335,7 @@ class TestRegistryAPI(base.IsolatedUnitTest, test_utils.RegistryAPIMixIn):
         res = self.get_api_response_ext(400, method='PUT', body=body,
                                         url='/images/%s' % UUID2,
                                         content_type='json')
-        self.assertTrue('Invalid image status' in res.body)
+        self.assertIn('Invalid image status', res.body)
 
     def test_update_private_image_no_admin(self):
         """
@@ -1702,7 +1703,7 @@ class TestRegistryAPI(base.IsolatedUnitTest, test_utils.RegistryAPIMixIn):
         res = self.get_api_response_ext(404, method='DELETE',
                                         url=('/images/%s/members/pattieblack' %
                                              UUID2))
-        self.assertTrue('Membership could not be found' in res.body)
+        self.assertIn('Membership could not be found', res.body)
 
     def test_delete_member_from_non_exist_image(self):
         """

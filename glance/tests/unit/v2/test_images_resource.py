@@ -17,6 +17,7 @@ import datetime
 import uuid
 
 from oslo.config import cfg
+import six
 import testtools
 import webob
 
@@ -233,7 +234,7 @@ class TestImagesController(base.IsolatedUnitTest):
         actual = set([image.image_id for image in output['images']])
         expected = set([])
         self.assertEqual(actual, expected)
-        self.assertTrue('next_marker' not in output)
+        self.assertNotIn('next_marker', output)
 
     def test_index_with_id_filter(self):
         request = unit_test_utils.get_fake_request('/images?id=%s' % UUID1)
@@ -375,7 +376,7 @@ class TestImagesController(base.IsolatedUnitTest):
         output = self.controller.index(request, marker=UUID3)
         actual = set([image.image_id for image in output['images']])
         self.assertEqual(1, len(actual))
-        self.assertTrue(UUID2 in actual)
+        self.assertIn(UUID2, actual)
 
     def test_index_with_limit(self):
         path = '/images'
@@ -384,8 +385,8 @@ class TestImagesController(base.IsolatedUnitTest):
         output = self.controller.index(request, limit=limit)
         actual = set([image.image_id for image in output['images']])
         self.assertEqual(limit, len(actual))
-        self.assertTrue(UUID3 in actual)
-        self.assertTrue(UUID2 in actual)
+        self.assertIn(UUID3, actual)
+        self.assertIn(UUID2, actual)
 
     def test_index_greater_than_limit_max(self):
         self.config(limit_param_default=1, api_limit_max=3)
@@ -394,7 +395,7 @@ class TestImagesController(base.IsolatedUnitTest):
         output = self.controller.index(request, limit=4)
         actual = set([image.image_id for image in output['images']])
         self.assertEqual(3, len(actual))
-        self.assertTrue(output['next_marker'] not in output)
+        self.assertNotIn(output['next_marker'], output)
 
     def test_index_default_limit(self):
         self.config(limit_param_default=1, api_limit_max=3)
@@ -449,8 +450,8 @@ class TestImagesController(base.IsolatedUnitTest):
         output = self.controller.index(request, filters={'tags': ['64bit']})
         actual = [image.tags for image in output['images']]
         self.assertEqual(2, len(actual))
-        self.assertTrue('64bit' in actual[0])
-        self.assertTrue('64bit' in actual[1])
+        self.assertIn('64bit', actual[0])
+        self.assertIn('64bit', actual[1])
 
     def test_index_with_multi_tags(self):
         path = '/images?tag=power&tag=64bit'
@@ -459,8 +460,8 @@ class TestImagesController(base.IsolatedUnitTest):
                                        filters={'tags': ['power', '64bit']})
         actual = [image.tags for image in output['images']]
         self.assertEqual(1, len(actual))
-        self.assertTrue('64bit' in actual[0])
-        self.assertTrue('power' in actual[0])
+        self.assertIn('64bit', actual[0])
+        self.assertIn('power', actual[0])
 
     def test_index_with_multi_tags_and_nonexistent(self):
         path = '/images?tag=power&tag=fake'
@@ -478,8 +479,8 @@ class TestImagesController(base.IsolatedUnitTest):
                                                 'hypervisor_type': 'kvm'})
         tags = [image.tags for image in output['images']]
         properties = [image.extra_properties for image in output['images']]
-        self.assertTrue(len(tags) == len(properties))
-        self.assertTrue('64bit' in tags[0])
+        self.assertEqual(len(tags), len(properties))
+        self.assertIn('64bit', tags[0])
         self.assertEqual('kvm', properties[0]['hypervisor_type'])
 
     def test_index_with_multiple_properties(self):
@@ -666,11 +667,11 @@ class TestImagesController(base.IsolatedUnitTest):
         self.assertEqual(output.image_id, UUID1)
         self.assertEqual(output.created_at, output.updated_at)
         self.assertEqual(len(output.tags), 2)
-        self.assertTrue('ping' in output.tags)
-        self.assertTrue('pong' in output.tags)
+        self.assertIn('ping', output.tags)
+        self.assertIn('pong', output.tags)
         output_logs = self.notifier.get_logs()
         #NOTE(markwash): don't send a notification if nothing is updated
-        self.assertTrue(len(output_logs) == 0)
+        self.assertEqual(0, len(output_logs))
 
     def test_update_with_bad_min_disk(self):
         request = unit_test_utils.get_fake_request()
@@ -713,8 +714,8 @@ class TestImagesController(base.IsolatedUnitTest):
         output = self.controller.update(request, UUID1, changes)
         self.assertEqual(output.image_id, UUID1)
         self.assertEqual(len(output.tags), 2)
-        self.assertTrue('king' in output.tags)
-        self.assertTrue('kong' in output.tags)
+        self.assertIn('king', output.tags)
+        self.assertIn('kong', output.tags)
         self.assertNotEqual(output.created_at, output.updated_at)
 
     def test_update_replace_property(self):
@@ -1505,7 +1506,7 @@ class TestImagesController(base.IsolatedUnitTest):
         output = self.controller.update(request, UUID1, changes)
         self.assertEqual(output.image_id, UUID1)
         self.assertEqual(len(output.locations), 1)
-        self.assertTrue('fake_location_2' in output.locations[0]['url'])
+        self.assertIn('fake_location_2', output.locations[0]['url'])
         self.assertNotEqual(output.created_at, output.updated_at)
 
     def test_update_add_and_remove_location_under_limit(self):
@@ -1541,7 +1542,7 @@ class TestImagesController(base.IsolatedUnitTest):
         output = self.controller.update(request, UUID1, changes)
         self.assertEqual(output.image_id, UUID1)
         self.assertEqual(len(output.locations), 1)
-        self.assertTrue('fake_location_3' in output.locations[0]['url'])
+        self.assertIn('fake_location_3', output.locations[0]['url'])
         self.assertNotEqual(output.created_at, output.updated_at)
 
     def test_update_remove_base_property(self):
@@ -1586,7 +1587,7 @@ class TestImagesController(base.IsolatedUnitTest):
         output = self.controller.update(request, UUID1, changes)
         self.assertEqual(output.image_id, UUID1)
         self.assertEqual(len(output.locations), 0)
-        self.assertTrue(output.status == 'queued')
+        self.assertEqual(output.status, 'queued')
         self.assertIsNone(output.size)
 
         new_location = {'url': '%s/fake_location' % BASE_URI, 'metadata': {}}
@@ -1664,7 +1665,7 @@ class TestImagesController(base.IsolatedUnitTest):
         ]
         output = self.controller.update(request, UUID1, changes)
         self.assertEqual(len(output.tags), 1)
-        self.assertTrue('ping' in output.tags)
+        self.assertIn('ping', output.tags)
         output_logs = self.notifier.get_logs()
         self.assertEqual(len(output_logs), 1)
         output_log = output_logs[0]
@@ -1674,7 +1675,7 @@ class TestImagesController(base.IsolatedUnitTest):
 
     def test_delete(self):
         request = unit_test_utils.get_fake_request()
-        self.assertTrue(filter(lambda k: UUID1 in k, self.store.data))
+        self.assertIn('%s/%s' % (BASE_URI, UUID1), self.store.data)
         try:
             self.controller.delete(request, UUID1)
             output_logs = self.notifier.get_logs()
@@ -1689,7 +1690,7 @@ class TestImagesController(base.IsolatedUnitTest):
                                         force_show_deleted=True)
         self.assertTrue(deleted_img['deleted'])
         self.assertEqual(deleted_img['status'], 'deleted')
-        self.assertFalse(filter(lambda k: UUID1 in k, self.store.data))
+        self.assertNotIn('%s/%s' % (BASE_URI, UUID1), self.store.data)
 
     def test_delete_queued_updates_status(self):
         """Ensure status of queued image is updated (LP bug #1048851)"""
@@ -1721,7 +1722,7 @@ class TestImagesController(base.IsolatedUnitTest):
 
     def test_delete_not_in_store(self):
         request = unit_test_utils.get_fake_request()
-        self.assertTrue(filter(lambda k: UUID1 in k, self.store.data))
+        self.assertIn('%s/%s' % (BASE_URI, UUID1), self.store.data)
         for k in self.store.data:
             if UUID1 in k:
                 del self.store.data[k]
@@ -1732,19 +1733,19 @@ class TestImagesController(base.IsolatedUnitTest):
                                         force_show_deleted=True)
         self.assertTrue(deleted_img['deleted'])
         self.assertEqual(deleted_img['status'], 'deleted')
-        self.assertFalse(filter(lambda k: UUID1 in k, self.store.data))
+        self.assertNotIn('%s/%s' % (BASE_URI, UUID1), self.store.data)
 
     def test_delayed_delete(self):
         self.config(delayed_delete=True)
         request = unit_test_utils.get_fake_request()
-        self.assertTrue(filter(lambda k: UUID1 in k, self.store.data))
+        self.assertIn('%s/%s' % (BASE_URI, UUID1), self.store.data)
 
         self.controller.delete(request, UUID1)
         deleted_img = self.db.image_get(request.context, UUID1,
                                         force_show_deleted=True)
         self.assertTrue(deleted_img['deleted'])
         self.assertEqual(deleted_img['status'], 'pending_delete')
-        self.assertTrue(filter(lambda k: UUID1 in k, self.store.data))
+        self.assertIn('%s/%s' % (BASE_URI, UUID1), self.store.data)
 
     def test_delete_non_existent(self):
         request = unit_test_utils.get_fake_request()
@@ -2375,12 +2376,12 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
     def test_index_marker_not_specified(self):
         request = unit_test_utils.get_fake_request('/images')
         output = self.deserializer.index(request)
-        self.assertFalse('marker' in output)
+        self.assertNotIn('marker', output)
 
     def test_index_limit_not_specified(self):
         request = unit_test_utils.get_fake_request('/images')
         output = self.deserializer.index(request)
-        self.assertFalse('limit' in output)
+        self.assertNotIn('limit', output)
 
     def test_index_sort_key_id(self):
         request = unit_test_utils.get_fake_request('/images?sort_key=id')
@@ -2805,8 +2806,8 @@ class TestImagesSerializerWithUnicode(test_utils.BaseTestCase):
                     u'disk_format': u'ami',
                     u'min_ram': 128,
                     u'min_disk': 10,
-                    u'created_at': unicode(ISOTIME),
-                    u'updated_at': unicode(ISOTIME),
+                    u'created_at': six.text_type(ISOTIME),
+                    u'updated_at': six.text_type(ISOTIME),
                     u'self': u'/v2/images/%s' % UUID1,
                     u'file': u'/v2/images/%s/file' % UUID1,
                     u'schema': u'/v2/schemas/image',
@@ -2840,8 +2841,8 @@ class TestImagesSerializerWithUnicode(test_utils.BaseTestCase):
             u'disk_format': u'ami',
             u'min_ram': 128,
             u'min_disk': 10,
-            u'created_at': unicode(ISOTIME),
-            u'updated_at': unicode(ISOTIME),
+            u'created_at': six.text_type(ISOTIME),
+            u'updated_at': six.text_type(ISOTIME),
             u'self': u'/v2/images/%s' % UUID1,
             u'file': u'/v2/images/%s/file' % UUID1,
             u'schema': u'/v2/schemas/image',
@@ -2871,8 +2872,8 @@ class TestImagesSerializerWithUnicode(test_utils.BaseTestCase):
             u'disk_format': u'ami',
             u'min_ram': 128,
             u'min_disk': 10,
-            u'created_at': unicode(ISOTIME),
-            u'updated_at': unicode(ISOTIME),
+            u'created_at': six.text_type(ISOTIME),
+            u'updated_at': six.text_type(ISOTIME),
             u'self': u'/v2/images/%s' % UUID1,
             u'file': u'/v2/images/%s/file' % UUID1,
             u'schema': u'/v2/schemas/image',
@@ -2902,8 +2903,8 @@ class TestImagesSerializerWithUnicode(test_utils.BaseTestCase):
             u'disk_format': u'ami',
             u'min_ram': 128,
             u'min_disk': 10,
-            u'created_at': unicode(ISOTIME),
-            u'updated_at': unicode(ISOTIME),
+            u'created_at': six.text_type(ISOTIME),
+            u'updated_at': six.text_type(ISOTIME),
             u'self': u'/v2/images/%s' % UUID1,
             u'file': u'/v2/images/%s/file' % UUID1,
             u'schema': u'/v2/schemas/image',
@@ -3124,7 +3125,7 @@ class TestImagesSerializerDirectUrl(test_utils.BaseTestCase):
         self.assertEqual(images[1]['id'], UUID2)
 
         self.assertEqual(images[0]['direct_url'], 'http://some/fake/location')
-        self.assertFalse('direct_url' in images[1])
+        self.assertNotIn('direct_url', images[1])
 
     def test_index_store_multiple_location_enabled(self):
         self.config(show_multiple_locations=True)
@@ -3140,8 +3141,8 @@ class TestImagesSerializerDirectUrl(test_utils.BaseTestCase):
     def test_index_store_location_explicitly_disabled(self):
         self.config(show_image_direct_url=False)
         images = self._do_index()
-        self.assertFalse('direct_url' in images[0])
-        self.assertFalse('direct_url' in images[1])
+        self.assertNotIn('direct_url', images[0])
+        self.assertNotIn('direct_url', images[1])
 
     def test_show_location_enabled(self):
         self.config(show_image_direct_url=True)
@@ -3151,12 +3152,12 @@ class TestImagesSerializerDirectUrl(test_utils.BaseTestCase):
     def test_show_location_enabled_but_not_set(self):
         self.config(show_image_direct_url=True)
         image = self._do_show(self.queued_image)
-        self.assertFalse('direct_url' in image)
+        self.assertNotIn('direct_url', image)
 
     def test_show_location_explicitly_disabled(self):
         self.config(show_image_direct_url=False)
         image = self._do_show(self.active_image)
-        self.assertFalse('direct_url' in image)
+        self.assertNotIn('direct_url', image)
 
 
 class TestImageSchemaFormatConfiguration(test_utils.BaseTestCase):

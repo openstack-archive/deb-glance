@@ -104,10 +104,11 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
             glance.api.common.check_quota(
                 req.context, size, db_api, image_id=image_id)
         except exception.StorageQuotaFull:
-            LOG.info(_('Cleaning up %s after exceeding the quota') % image_id)
-            glance.store.safe_delete_from_backend(
-                location, req.context, image_meta['id'])
-            raise
+            with excutils.save_and_reraise_exception():
+                LOG.info(_('Cleaning up %s after exceeding '
+                           'the quota') % image_id)
+                glance.store.safe_delete_from_backend(
+                    location, req.context, image_meta['id'])
 
         def _kill_mismatched(image_meta, attr, actual):
             supplied = image_meta.get(attr)
@@ -132,11 +133,11 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
 
         # Update the database with the checksum returned
         # from the backend store
-        LOG.debug(_("Updating image %(image_id)s data. "
+        LOG.debug("Updating image %(image_id)s data. "
                   "Checksum set to %(checksum)s, size set "
-                  "to %(size)d"), {'image_id': image_id,
-                                   'checksum': checksum,
-                                   'size': size})
+                  "to %(size)d", {'image_id': image_id,
+                                  'checksum': checksum,
+                                  'size': size})
         update_data = {'checksum': checksum,
                        'size': size}
         try:
@@ -161,7 +162,7 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
                                                    content_type='text/plain')
 
     except exception.Duplicate as e:
-        msg = _("Attempt to upload duplicate image: %s") % e
+        msg = "Attempt to upload duplicate image: %s" % e
         LOG.debug(msg)
         # NOTE(dosaboy): do not delete the image since it is likely that this
         # conflict is a result of another concurrent upload that will be
@@ -172,7 +173,7 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
                                      content_type="text/plain")
 
     except exception.Forbidden as e:
-        msg = _("Forbidden upload attempt: %s") % e
+        msg = "Forbidden upload attempt: %s" % e
         LOG.debug(msg)
         safe_kill(req, image_id)
         notifier.error('image.upload', msg)
@@ -230,7 +231,7 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
             safe_kill(req, image_id)
 
     except (ValueError, IOError) as e:
-        msg = _("Client disconnected before sending all data to backend")
+        msg = "Client disconnected before sending all data to backend"
         LOG.debug(msg)
         safe_kill(req, image_id)
         raise webob.exc.HTTPBadRequest(explanation=msg,

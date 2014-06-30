@@ -321,7 +321,7 @@ class ApiServer(Server):
         default_sql_connection = 'sqlite:////%s/tests.sqlite' % self.test_dir
         self.sql_connection = os.environ.get('GLANCE_TEST_SQL_CONNECTION',
                                              default_sql_connection)
-        self.user_storage_quota = 0
+        self.user_storage_quota = '0'
         self.lock_path = self.test_dir
 
         self.location_strategy = 'location_order'
@@ -377,7 +377,6 @@ user_storage_quota = %(user_storage_quota)s
 enable_v1_api = %(enable_v1_api)s
 enable_v2_api = %(enable_v2_api)s
 lock_path = %(lock_path)s
-enable_v2_api= %(enable_v2_api)s
 property_protection_file = %(property_protection_file)s
 property_protection_rule_format = %(property_protection_rule_format)s
 image_member_quota=%(image_member_quota)s
@@ -473,7 +472,7 @@ class RegistryServer(Server):
         self.owner_is_tenant = True
         self.workers = 0
         self.api_version = 1
-        self.user_storage_quota = 0
+        self.user_storage_quota = '0'
 
         self.conf_base = """[DEFAULT]
 verbose = %(verbose)s

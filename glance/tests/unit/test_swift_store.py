@@ -29,6 +29,7 @@ import swiftclient
 
 import glance.common.auth
 from glance.common import exception
+from glance.common import utils
 from glance.openstack.common import units
 
 from glance.store import BackendException
@@ -82,7 +83,7 @@ def stub_out_swiftclient(stubs, swift_store_auth_version):
         fixture_containers.append(container)
 
     def fake_post_container(url, token, container, headers, http_conn=None):
-        for key, value in headers.iteritems():
+        for key, value in six.iteritems(headers):
             fixture_container_headers[key] = value
 
     def fake_put_object(url, token, container, name, contents, **kwargs):
@@ -138,7 +139,7 @@ def stub_out_swiftclient(stubs, swift_store_auth_version):
         byte_range = None
         headers = kwargs.get('headers', dict())
         if headers is not None:
-            headers = dict((k.lower(), v) for k, v in headers.iteritems())
+            headers = dict((k.lower(), v) for k, v in six.iteritems(headers))
             if 'range' in headers:
                 byte_range = headers.get('range')
 
@@ -423,8 +424,8 @@ class SwiftTests(object):
             self.store.add(str(uuid.uuid4()), image_swift, 0)
         except BackendException as e:
             exception_caught = True
-            self.assertTrue("container noexist does not exist "
-                            "in Swift" in six.text_type(e))
+            self.assertIn("container noexist does not exist "
+                          "in Swift", utils.exception_to_str(e))
         self.assertTrue(exception_caught)
         self.assertEqual(SWIFT_PUT_OBJECT_CALLS, 0)
 
@@ -754,8 +755,11 @@ class TestStoreAuthV2(TestStoreAuthV1):
 class FakeConnection(object):
     def __init__(self, authurl, user, key, retries=5, preauthurl=None,
                  preauthtoken=None, snet=False, starting_backoff=1,
-                 tenant_name=None, os_options={}, auth_version="1",
+                 tenant_name=None, os_options=None, auth_version="1",
                  insecure=False, ssl_compression=True):
+        if os_options is None:
+            os_options = {}
+
         self.authurl = authurl
         self.user = user
         self.key = key

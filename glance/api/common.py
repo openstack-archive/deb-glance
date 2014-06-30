@@ -13,10 +13,14 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import re
+
 from oslo.config import cfg
 
 from glance.common import exception
+from glance.openstack.common import excutils
 from glance.openstack.common import log as logging
+from glance.openstack.common import units
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
@@ -41,11 +45,11 @@ def size_checked_iter(response, image_meta, expected_size, image_iter,
             yield chunk
             bytes_written += len(chunk)
     except Exception as err:
-        msg = (_("An error occurred reading from backend storage "
-                 "for image %(image_id)s: %(err)s") % {'image_id': image_id,
+        with excutils.save_and_reraise_exception():
+            msg = (_("An error occurred reading from backend storage for "
+                     "image %(image_id)s: %(err)s") % {'image_id': image_id,
                                                        'err': err})
-        LOG.error(msg)
-        raise
+            LOG.error(msg)
 
     if expected_size != bytes_written:
         msg = (_("Backend storage for image %(image_id)s "
@@ -98,6 +102,25 @@ def get_remaining_quota(context, db_api, image_id=None):
     #NOTE(jbresnah) in the future this value will come from a call to
     # keystone.
     users_quota = CONF.user_storage_quota
+
+    # set quota must have a number optionally followed by B, KB, MB,
+    # GB or TB without any spaces in between
+    pattern = re.compile('^(\d+)((K|M|G|T)?B)?$')
+    match = pattern.match(users_quota)
+
+    if not match:
+        LOG.warn(_("Invalid value for option user_storage_quota: "
+                   "%(users_quota)s")
+                 % {'users_quota': users_quota})
+        return None
+
+    quota_value, quota_unit = (match.groups())[0:2]
+    # fall back to Bytes if user specified anything other than
+    # permitted values
+    quota_unit = quota_unit or "B"
+    factor = getattr(units, quota_unit.replace('B', 'i'), 1)
+    users_quota = int(quota_value) * factor
+
     if users_quota <= 0:
         return None
 

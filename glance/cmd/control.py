@@ -117,9 +117,8 @@ def do_start(verb, pid_file, server, args):
         os.environ['PYTHON_EGG_CACHE'] = '/tmp'
 
     def write_pid_file(pid_file, pid):
-        fp = open(pid_file, 'w')
-        fp.write('%d\n' % pid)
-        fp.close()
+        with open(pid_file, 'w') as fp:
+            fp.write('%d\n' % pid)
 
     def redirect_to_null(fds):
         with open(os.devnull, 'r+b') as nullfile:
@@ -202,7 +201,8 @@ def do_start(verb, pid_file, server, args):
 
 def do_check_status(pid_file, server):
     if os.path.exists(pid_file):
-        pid = open(pid_file).read().strip()
+        with open(pid_file, 'r') as pidfile:
+            pid = pidfile.read().strip()
         print(_("%(serv)s (pid %(pid)s) is running...") %
               {'serv': server, 'pid': pid})
     else:
@@ -343,7 +343,7 @@ def main():
                     children[new_pid] = args
                 else:
                     rsn = 'bouncing' if bouncing else 'deliberately stopped'
-                    print(_('Supressed respawn as %(serv)s was %(rsn)s.')
+                    print(_('Suppressed respawn as %(serv)s was %(rsn)s.')
                           % {'serv': server, 'rsn': rsn})
 
     if CONF.server.command == 'start':

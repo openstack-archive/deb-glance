@@ -18,6 +18,8 @@ import copy
 import functools
 import uuid
 
+import six
+
 from glance.common import exception
 import glance.openstack.common.log as logging
 from glance.openstack.common import timeutils
@@ -246,7 +248,7 @@ def _filter_images(images, filters, context,
                 continue
 
         to_add = True
-        for k, value in filters.iteritems():
+        for k, value in six.iteritems(filters):
             key = k
             if k.endswith('_min') or k.endswith('_max'):
                 key = key[0:-4]
@@ -555,7 +557,7 @@ def image_update(context, image_id, image_values, purge_props=False,
             # this matches weirdness in the sqlalchemy api
             prop['deleted'] = True
 
-    # add in any completly new properties
+    # add in any completely new properties
     image['properties'].extend([{'name': k, 'value': v,
                                  'image_id': image_id, 'deleted': False}
                                 for k, v in new_properties.items()])
@@ -737,7 +739,7 @@ def task_update(context, task_id, values):
     try:
         task = DATA['tasks'][task_id]
     except KeyError:
-        msg = (_("No task found with ID %s") % task_id)
+        msg = "No task found with ID %s" % task_id
         LOG.debug(msg)
         raise exception.TaskNotFound(task_id=task_id)
 
@@ -769,7 +771,7 @@ def _task_get(context, task_id, force_show_deleted=False):
         raise exception.TaskNotFound(task_id=task_id)
 
     if not _is_task_visible(context, task):
-        msg = (_("Forbidding request, task %s is not visible") % task_id)
+        msg = "Forbidding request, task %s is not visible" % task_id
         LOG.debug(msg)
         raise exception.Forbidden(msg)
 
@@ -787,7 +789,7 @@ def task_delete(context, task_id):
         DATA['tasks'][task_id]['updated_at'] = timeutils.utcnow()
         return copy.deepcopy(DATA['tasks'][task_id])
     except KeyError:
-        msg = (_("No task found with ID %s") % task_id)
+        msg = "No task found with ID %s" % task_id
         LOG.debug(msg)
         raise exception.TaskNotFound(task_id=task_id)
 
@@ -847,7 +849,7 @@ def _filter_tasks(tasks, filters, context, admin_as_user=False):
             continue
 
         add = True
-        for k, value in filters.iteritems():
+        for k, value in six.iteritems(filters):
             add = task[k] == value and task['deleted'] is False
             if not add:
                 break
@@ -909,7 +911,7 @@ def _task_info_update(task_id, values):
     try:
         task_info = DATA['task_info'][task_id]
     except KeyError:
-        msg = (_("No task info found with task id %s") % task_id)
+        msg = "No task info found with task id %s" % task_id
         LOG.debug(msg)
         raise exception.TaskNotFound(task_id=task_id)
 

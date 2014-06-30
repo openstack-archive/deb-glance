@@ -395,8 +395,13 @@ The following configuration option is specified in the
 
 Optional. Default: 0 (Unlimited).
 
-This value specifies the maximum amount of bytes that each user can use
-across all storage systems.
+This value specifies the maximum amount of storage that each user can use
+across all storage systems. Optionally unit can be specified for the value.
+Values are accepted in B, KB, MB, GB or TB which are for Bytes, KiloBytes,
+MegaBytes, GigaBytes and TeraBytes respectively. Default unit is Bytes.
+
+Example values would be,
+    user_storage_quota=20GB
 
 Configuring the Filesystem Storage Backend
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -623,7 +628,7 @@ Optional. Default: True.
 
 If set to False, disables SSL layer compression of https swift
 requests. Setting to 'False' may improve performance for images which
-are already in a compressed format, eg qcow2. If set to True then
+are already in a compressed format, e.g. qcow2. If set to True then
 compression will be enabled (provided it is supported by the swift
 proxy).
 
@@ -884,6 +889,88 @@ Optional. Default: ``False``
 Can only be specified in configuration files.
 
 Allow to perform insecure SSL requests to cinder.
+
+Configuring the VMware Storage Backend
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* ``vmware_server_host=ADDRESS``
+
+Required when using the VMware storage backend.
+
+Can only be specified in configuration files.
+
+Sets the address of the ESX/ESXi or vCenter Server target system.
+The address can contain an IP (``127.0.0.1``), an IP and port
+(``127.0.0.1:443``), a DNS name (``www.my-domain.com``) or DNS and port.
+
+`This option is specific to the VMware storage backend.`
+
+* ``vmware_server_username=USERNAME``
+
+Required when using the VMware storage backend.
+
+Can only be specified in configuration files.
+
+Username for authenticating with VMware ESX/ESXi or vCenter Server.
+
+* ``vmware_server_password=PASSWORD``
+
+Required when using the VMware storage backend.
+
+Can only be specified in configuration files.
+
+Password for authenticating with VMware ESX/ESXi or vCenter Server.
+
+* ``vmware_datacenter_path=DC_PATH``
+
+Optional. Default: ``ha-datacenter``
+
+Can only be specified in configuration files.
+
+Inventory path to a datacenter. If the ``vmware_server_host`` specified
+is an ESX/ESXi, the ``vmware_datacenter_path`` is optional. If specified,
+it should be ``ha-datacenter``.
+
+* ``vmware_datastore_name=DS_NAME``
+
+Required when using the VMware storage backend.
+
+Can only be specified in configuration files.
+
+Datastore name associated with the ``vmware_datacenter_path``
+
+* ``vmware_api_retry_count=TIMES``
+
+Optional. Default: ``10``
+
+Can only be specified in configuration files.
+
+The number of times VMware ESX/VC server API must be
+retried upon connection related issues.
+
+* ``vmware_task_poll_interval=SECONDS``
+
+Optional. Default: ``5``
+
+Can only be specified in configuration files.
+
+The interval used for polling remote tasks invoked on VMware ESX/VC server.
+
+* ``vmware_store_image_dir``
+
+Optional. Default: ``/openstack_glance``
+
+Can only be specified in configuration files.
+
+The path to access the folder where the images will be stored in the datastore.
+
+* ``vmware_api_insecure=ON_OFF``
+
+Optional. Default: ``False``
+
+Can only be specified in configuration files.
+
+Allow to perform insecure SSL requests to ESX/VC server.
 
 Configuring the Image Cache
 ---------------------------

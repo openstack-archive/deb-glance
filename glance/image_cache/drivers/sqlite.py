@@ -30,6 +30,7 @@ import sqlite3
 
 from glance.common import exception
 from glance.image_cache.drivers import base
+from glance.openstack.common import excutils
 import glance.openstack.common.log as logging
 
 LOG = logging.getLogger(__name__)
@@ -157,7 +158,7 @@ class Driver(base.Driver):
         """
         Returns a list of records about cached images.
         """
-        LOG.debug(_("Gathering cached image entries."))
+        LOG.debug("Gathering cached image entries.")
         with self.get_db() as db:
             cur = db.execute("""SELECT
                              image_id, hits, last_accessed, last_modified, size
@@ -300,8 +301,8 @@ class Driver(base.Driver):
         def commit():
             with self.get_db() as db:
                 final_path = self.get_image_filepath(image_id)
-                LOG.debug(_("Fetch finished, moving "
-                          "'%(incomplete_path)s' to '%(final_path)s'"),
+                LOG.debug("Fetch finished, moving "
+                          "'%(incomplete_path)s' to '%(final_path)s'",
                           dict(incomplete_path=incomplete_path,
                                final_path=final_path))
                 os.rename(incomplete_path, final_path)
@@ -324,9 +325,9 @@ class Driver(base.Driver):
                 if os.path.exists(incomplete_path):
                     invalid_path = self.get_image_filepath(image_id, 'invalid')
 
-                    LOG.debug(_("Fetch of cache file failed (%(e)s), rolling "
-                                "back by moving '%(incomplete_path)s' to "
-                                "'%(invalid_path)s'"),
+                    LOG.debug("Fetch of cache file failed (%(e)s), rolling "
+                              "back by moving '%(incomplete_path)s' to "
+                              "'%(invalid_path)s'",
                               {'e': e,
                                'incomplete_path': incomplete_path,
                                'invalid_path': invalid_path})
@@ -340,8 +341,8 @@ class Driver(base.Driver):
             with open(incomplete_path, 'wb') as cache_file:
                 yield cache_file
         except Exception as e:
-            rollback(e)
-            raise
+            with excutils.save_and_reraise_exception():
+                rollback(e)
         else:
             commit()
         finally:
@@ -484,7 +485,7 @@ class Driver(base.Driver):
 
 def delete_cached_file(path):
     if os.path.exists(path):
-        LOG.debug(_("Deleting image cache file '%s'"), path)
+        LOG.debug("Deleting image cache file '%s'", path)
         os.unlink(path)
     else:
         LOG.warn(_("Cached image file '%s' doesn't exist, unable to"

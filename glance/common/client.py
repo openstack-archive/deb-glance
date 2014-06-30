@@ -306,7 +306,7 @@ class BaseClient(object):
 
             <http|https>://<host>:port/doc_root
         """
-        LOG.debug(_("Configuring from URL: %s"), url)
+        LOG.debug("Configuring from URL: %s", url)
         parsed = urlparse.urlparse(url)
         self.use_ssl = parsed.scheme == 'https'
         self.host = parsed.hostname
@@ -318,7 +318,7 @@ class BaseClient(object):
             if self.DEFAULT_DOC_ROOT:
                 doc_root = self.DEFAULT_DOC_ROOT.lstrip('/')
                 self.doc_root += '/' + doc_root
-                msg = (_("Appending doc_root %(doc_root)s to URL %(url)s") %
+                msg = ("Appending doc_root %(doc_root)s to URL %(url)s" %
                        {'doc_root': doc_root, 'url': url})
                 LOG.debug(msg)
 
@@ -423,7 +423,8 @@ class BaseClient(object):
                   names and values
         """
         to_str = strutils.safe_encode
-        return dict([(to_str(h), to_str(v)) for h, v in headers.iteritems()])
+        return dict([(to_str(h), to_str(v)) for h, v in
+                     six.iteritems(headers)])
 
     @handle_redirects
     def _do_request(self, method, url, body, headers):

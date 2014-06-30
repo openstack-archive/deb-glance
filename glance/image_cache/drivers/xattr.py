@@ -59,11 +59,12 @@ import stat
 import time
 
 from oslo.config import cfg
-import six
 import xattr
 
 from glance.common import exception
+from glance.common import utils
 from glance.image_cache.drivers import base
+from glance.openstack.common import excutils
 import glance.openstack.common.log as logging
 
 LOG = logging.getLogger(__name__)
@@ -141,7 +142,7 @@ class Driver(base.Driver):
         """
         Returns a list of records about cached images.
         """
-        LOG.debug(_("Gathering cached image entries."))
+        LOG.debug("Gathering cached image entries.")
         entries = []
         for path in get_all_regular_files(self.base_dir):
             image_id = os.path.basename(path)
@@ -269,26 +270,26 @@ class Driver(base.Driver):
             set_attr('hits', 0)
 
             final_path = self.get_image_filepath(image_id)
-            LOG.debug(_("Fetch finished, moving "
-                        "'%(incomplete_path)s' to '%(final_path)s'"),
+            LOG.debug("Fetch finished, moving "
+                      "'%(incomplete_path)s' to '%(final_path)s'",
                       dict(incomplete_path=incomplete_path,
                            final_path=final_path))
             os.rename(incomplete_path, final_path)
 
             # Make sure that we "pop" the image from the queue...
             if self.is_queued(image_id):
-                LOG.debug(_("Removing image '%s' from queue after "
-                            "caching it."), image_id)
+                LOG.debug("Removing image '%s' from queue after "
+                          "caching it.", image_id)
                 os.unlink(self.get_image_filepath(image_id, 'queue'))
 
         def rollback(e):
-            set_attr('error', six.text_type(e))
+            set_attr('error', utils.exception_to_str(e))
 
             invalid_path = self.get_image_filepath(image_id, 'invalid')
-            LOG.debug(_("Fetch of cache file failed (%(e)s), rolling back by "
-                        "moving '%(incomplete_path)s' to "
-                        "'%(invalid_path)s'"),
-                      {'e': six.text_type(e),
+            LOG.debug("Fetch of cache file failed (%(e)s), rolling back by "
+                      "moving '%(incomplete_path)s' to "
+                      "'%(invalid_path)s'",
+                      {'e': utils.exception_to_str(e),
                        'incomplete_path': incomplete_path,
                        'invalid_path': invalid_path})
             os.rename(incomplete_path, invalid_path)
@@ -297,8 +298,8 @@ class Driver(base.Driver):
             with open(incomplete_path, 'wb') as cache_file:
                 yield cache_file
         except Exception as e:
-            rollback(e)
-            raise
+            with excutils.save_and_reraise_exception():
+                rollback(e)
         else:
             commit()
         finally:
@@ -350,7 +351,7 @@ class Driver(base.Driver):
             return False
 
         path = self.get_image_filepath(image_id, 'queue')
-        LOG.debug(_("Queueing image '%s'."), image_id)
+        LOG.debug("Queueing image '%s'.", image_id)
 
         # Touch the file to add it to the queue
         with open(path, "w"):
@@ -380,13 +381,13 @@ class Driver(base.Driver):
             mtime = os.path.getmtime(path)
             age = now - mtime
             if not grace:
-                LOG.debug(_("No grace period, reaping '%(path)s'"
-                            " immediately"), {'path': path})
+                LOG.debug("No grace period, reaping '%(path)s'"
+                          " immediately", {'path': path})
                 delete_cached_file(path)
                 reaped += 1
             elif age > grace:
-                LOG.debug(_("Cache entry '%(path)s' exceeds grace period, "
-                            "(%(age)i s > %(grace)i s)"),
+                LOG.debug("Cache entry '%(path)s' exceeds grace period, "
+                          "(%(age)i s > %(grace)i s)",
                           {'path': path, 'age': age, 'grace': grace})
                 delete_cached_file(path)
                 reaped += 1
@@ -435,7 +436,7 @@ def get_all_regular_files(basepath):
 
 def delete_cached_file(path):
     if os.path.exists(path):
-        LOG.debug(_("Deleting image cache file '%s'"), path)
+        LOG.debug("Deleting image cache file '%s'", path)
         os.unlink(path)
     else:
         LOG.warn(_("Cached image file '%s' doesn't exist, unable to"

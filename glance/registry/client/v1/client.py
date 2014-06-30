@@ -20,6 +20,7 @@ the Glance Registry API
 
 from glance.common.client import BaseClient
 from glance.common import crypt
+from glance.openstack.common import excutils
 from glance.openstack.common import jsonutils
 import glance.openstack.common.log as logging
 from glance.registry.api.v1 import images
@@ -89,7 +90,7 @@ class RegistryClient(BaseClient):
         :param marker: image id after which to start page
         :param limit: max number of images to return
         :param sort_key: results will be ordered by this image attribute
-        :param sort_dir: direction in which to to order results (asc, desc)
+        :param sort_dir: direction in which to order results (asc, desc)
         """
         params = self._extract_params(kwargs, images.SUPPORTED_PARAMS)
         res = self.do_request("GET", "/images", params=params)
@@ -107,19 +108,19 @@ class RegistryClient(BaseClient):
                                                          **kwargs)
             status = res.status
             request_id = res.getheader('x-openstack-request-id')
-            msg = (_("Registry request %(method)s %(action)s HTTP %(status)s"
-                     " request id %(request_id)s") %
+            msg = ("Registry request %(method)s %(action)s HTTP %(status)s"
+                   " request id %(request_id)s" %
                    {'method': method, 'action': action,
                     'status': status, 'request_id': request_id})
             LOG.debug(msg)
 
         except Exception as exc:
-            exc_name = exc.__class__.__name__
-            LOG.info(_("Registry client request %(method)s %(action)s "
-                       "raised %(exc_name)s"),
-                     {'method': method, 'action': action,
-                      'exc_name': exc_name})
-            raise
+            with excutils.save_and_reraise_exception():
+                exc_name = exc.__class__.__name__
+                LOG.info(_("Registry client request %(method)s %(action)s "
+                           "raised %(exc_name)s"),
+                         {'method': method, 'action': action,
+                          'exc_name': exc_name})
         return res
 
     def get_images_detailed(self, **kwargs):
@@ -130,7 +131,7 @@ class RegistryClient(BaseClient):
         :param marker: image id after which to start page
         :param limit: max number of images to return
         :param sort_key: results will be ordered by this image attribute
-        :param sort_dir: direction in which to to order results (asc, desc)
+        :param sort_dir: direction in which to order results (asc, desc)
         """
         params = self._extract_params(kwargs, images.SUPPORTED_PARAMS)
         res = self.do_request("GET", "/images/detail", params=params)

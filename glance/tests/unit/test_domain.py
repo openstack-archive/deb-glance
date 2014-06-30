@@ -23,7 +23,6 @@ from oslo.config import cfg
 from glance.common import exception
 from glance import domain
 from glance.openstack.common import timeutils
-import glance.tests.unit.utils as unittest_utils
 import glance.tests.utils as test_utils
 
 
@@ -42,8 +41,8 @@ class TestImageFactory(test_utils.BaseTestCase):
 
     def test_minimal_new_image(self):
         image = self.image_factory.new_image()
-        self.assertTrue(image.image_id is not None)
-        self.assertTrue(image.created_at is not None)
+        self.assertIsNotNone(image.image_id)
+        self.assertIsNotNone(image.created_at)
         self.assertEqual(image.created_at, image.updated_at)
         self.assertEqual(image.status, 'queued')
         self.assertEqual(image.visibility, 'private')
@@ -52,7 +51,7 @@ class TestImageFactory(test_utils.BaseTestCase):
         self.assertIsNone(image.size)
         self.assertEqual(image.min_disk, 0)
         self.assertEqual(image.min_ram, 0)
-        self.assertEqual(image.protected, False)
+        self.assertFalse(image.protected)
         self.assertIsNone(image.disk_format)
         self.assertIsNone(image.container_format)
         self.assertEqual(image.extra_properties, {})
@@ -63,7 +62,7 @@ class TestImageFactory(test_utils.BaseTestCase):
             image_id=UUID1, name='image-1', min_disk=256,
             owner=TENANT1)
         self.assertEqual(image.image_id, UUID1)
-        self.assertTrue(image.created_at is not None)
+        self.assertIsNotNone(image.created_at)
         self.assertEqual(image.created_at, image.updated_at)
         self.assertEqual(image.status, 'queued')
         self.assertEqual(image.visibility, 'private')
@@ -72,7 +71,7 @@ class TestImageFactory(test_utils.BaseTestCase):
         self.assertIsNone(image.size)
         self.assertEqual(image.min_disk, 256)
         self.assertEqual(image.min_ram, 0)
-        self.assertEqual(image.protected, False)
+        self.assertFalse(image.protected)
         self.assertIsNone(image.disk_format)
         self.assertIsNone(image.container_format)
         self.assertEqual(image.extra_properties, {})
@@ -86,7 +85,7 @@ class TestImageFactory(test_utils.BaseTestCase):
             extra_properties=extra_properties, tags=tags)
 
         self.assertEqual(image.image_id, UUID1)
-        self.assertTrue(image.created_at is not None)
+        self.assertIsNotNone(image.created_at)
         self.assertEqual(image.created_at, image.updated_at)
         self.assertEqual(image.status, 'queued')
         self.assertEqual(image.visibility, 'private')
@@ -95,7 +94,7 @@ class TestImageFactory(test_utils.BaseTestCase):
         self.assertIsNone(image.size)
         self.assertEqual(image.min_disk, 0)
         self.assertEqual(image.min_ram, 0)
-        self.assertEqual(image.protected, False)
+        self.assertFalse(image.protected)
         self.assertIsNone(image.disk_format)
         self.assertIsNone(image.container_format)
         self.assertEqual(image.extra_properties, {'foo': 'bar'})
@@ -222,10 +221,10 @@ class TestImageMemberFactory(test_utils.BaseTestCase):
         image_member = self.image_member_factory.new_image_member(image,
                                                                   member_id)
         self.assertEqual(image_member.image_id, image.image_id)
-        self.assertTrue(image_member.created_at is not None)
+        self.assertIsNotNone(image_member.created_at)
         self.assertEqual(image_member.created_at, image_member.updated_at)
         self.assertEqual(image_member.status, 'pending')
-        self.assertTrue(image_member.member_id is not None)
+        self.assertIsNotNone(image_member.member_id)
 
 
 class TestExtraProperties(test_utils.BaseTestCase):
@@ -307,12 +306,19 @@ class TestTaskFactory(test_utils.BaseTestCase):
     def test_new_task(self):
         task_type = 'import'
         owner = TENANT1
-        task = self.task_factory.new_task(task_type, owner)
-        self.assertTrue(task.task_id is not None)
-        self.assertTrue(task.created_at is not None)
+        task_input = 'input'
+        task = self.task_factory.new_task(task_type, owner,
+                                          task_input=task_input)
+        self.assertIsNotNone(task.task_id)
+        self.assertIsNotNone(task.created_at)
+        self.assertEqual(task_type, task.type)
         self.assertEqual(task.created_at, task.updated_at)
-        self.assertEqual(task.status, 'pending')
-        self.assertEqual(task.owner, TENANT1)
+        self.assertEqual('pending', task.status)
+        self.assertIsNone(task.expires_at)
+        self.assertEqual(owner, task.owner)
+        self.assertEqual(task_input, task.task_input)
+        self.assertEqual(task.message, u'')
+        self.assertIsNone(task.result)
 
     def test_new_task_invalid_type(self):
         task_type = 'blah'
@@ -324,20 +330,6 @@ class TestTaskFactory(test_utils.BaseTestCase):
             owner,
         )
 
-    def test_new_task_details(self):
-        task_id = 'fake_task_id'
-        task_input = '{"import_from": "fake"}'
-        result = '{"result": "success"}'
-        message = 'fake message'
-        task_details = self.task_factory.new_task_details(task_id,
-                                                          task_input,
-                                                          message,
-                                                          result)
-        self.assertEqual(task_details.task_id, task_id)
-        self.assertEqual(task_details.input, task_input)
-        self.assertEqual(task_details.result, result)
-        self.assertEqual(task_details.message, message)
-
 
 class TestTask(test_utils.BaseTestCase):
 
@@ -347,7 +339,6 @@ class TestTask(test_utils.BaseTestCase):
         task_type = 'import'
         owner = TENANT1
         task_ttl = CONF.task.task_time_to_live
-        self.gateway = unittest_utils.FakeGateway()
         self.task = self.task_factory.new_task(task_type,
                                                owner,
                                                task_time_to_live=task_ttl)
@@ -364,7 +355,10 @@ class TestTask(test_utils.BaseTestCase):
             owner=None,
             expires_at=None,
             created_at=timeutils.utcnow(),
-            updated_at=timeutils.utcnow()
+            updated_at=timeutils.utcnow(),
+            task_input=None,
+            message=None,
+            result=None
         )
 
     def test_validate_status_transition_from_pending(self):
@@ -429,6 +423,8 @@ class TestTask(test_utils.BaseTestCase):
         self.task.begin_processing()
         self.task.succeed('{"location": "file://home"}')
         self.assertEqual(self.task.status, 'success')
+        self.assertEqual(self.task.result, '{"location": "file://home"}')
+        self.assertEqual(self.task.message, u'')
         expected = (timeutils.utcnow() +
                     datetime.timedelta(hours=CONF.task.task_time_to_live))
         self.assertEqual(
@@ -442,6 +438,8 @@ class TestTask(test_utils.BaseTestCase):
         self.task.begin_processing()
         self.task.fail('{"message": "connection failed"}')
         self.assertEqual(self.task.status, 'failure')
+        self.assertEqual(self.task.message, '{"message": "connection failed"}')
+        self.assertIsNone(self.task.result)
         expected = (timeutils.utcnow() +
                     datetime.timedelta(hours=CONF.task.task_time_to_live))
         self.assertEqual(
@@ -450,26 +448,42 @@ class TestTask(test_utils.BaseTestCase):
         )
 
 
-class TestTaskDetails(test_utils.BaseTestCase):
+class TestTaskStub(test_utils.BaseTestCase):
     def setUp(self):
-        super(TestTaskDetails, self).setUp()
-        self.task_input = ('{"import_from": "file:///home/a.img",'
-                           ' "import_from_format": "qcow2"}')
+        super(TestTaskStub, self).setUp()
+        self.task_id = str(uuid.uuid4())
+        self.task_type = 'import'
+        self.owner = TENANT1
+        self.task_ttl = CONF.task.task_time_to_live
 
-    def test_task_details_init(self):
-        task_details_values = ['task_id_1',
-                               self.task_input,
-                               'result',
-                               'None']
-        task_details = domain.TaskDetails(*task_details_values)
-        self.assertIsNotNone(task_details)
+    def test_task_stub_init(self):
+        self.task_factory = domain.TaskFactory()
+        task = domain.TaskStub(
+            self.task_id,
+            self.task_type,
+            'status',
+            self.owner,
+            'expires_at',
+            'created_at',
+            'updated_at'
+        )
+        self.assertEqual(self.task_id, task.task_id)
+        self.assertEqual(self.task_type, task.type)
+        self.assertEqual(self.owner, task.owner)
+        self.assertEqual('status', task.status)
+        self.assertEqual('expires_at', task.expires_at)
+        self.assertEqual('created_at', task.created_at)
+        self.assertEqual('updated_at', task.updated_at)
 
-    def test_task_details_with_no_task_id(self):
-        task_id = None
-        task_details_values = [task_id,
-                               self.task_input,
-                               'result',
-                               'None']
-        self.assertRaises(exception.TaskException,
-                          domain.TaskDetails,
-                          *task_details_values)
+    def test_task_stub_get_status(self):
+        status = 'pending'
+        task = domain.TaskStub(
+            self.task_id,
+            self.task_type,
+            status,
+            self.owner,
+            'expires_at',
+            'created_at',
+            'updated_at'
+        )
+        self.assertEqual(status, task.status)

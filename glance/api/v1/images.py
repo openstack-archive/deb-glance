@@ -25,6 +25,7 @@ import six.moves.urllib.parse as urlparse
 from webob.exc import HTTPBadRequest
 from webob.exc import HTTPConflict
 from webob.exc import HTTPForbidden
+from webob.exc import HTTPMethodNotAllowed
 from webob.exc import HTTPNotFound
 from webob.exc import HTTPRequestEntityTooLarge
 from webob import Response
@@ -40,6 +41,7 @@ from glance.common import property_utils
 from glance.common import utils
 from glance.common import wsgi
 from glance import notifier
+from glance.openstack.common import excutils
 import glance.openstack.common.log as logging
 from glance.openstack.common import strutils
 import glance.registry.client.v1.api as registry
@@ -191,7 +193,7 @@ class Controller(controller.BaseController):
             for key in create_props:
                 if (self.prop_enforcer.check_property_rules(
                         key, 'create', req.context) is False):
-                    msg = _("Property '%s' is protected") % key
+                    msg = "Property '%s' is protected" % key
                     LOG.debug(msg)
                     raise HTTPForbidden(explanation=msg,
                                         request=req,
@@ -235,7 +237,7 @@ class Controller(controller.BaseController):
                         key, 'update', req.context) is False and
                         image_meta['properties'][key] !=
                         orig_meta['properties'][key]) or not has_read):
-                    msg = _("Property '%s' is protected") % key
+                    msg = "Property '%s' is protected" % key
                     LOG.debug(msg)
                     raise HTTPForbidden(explanation=msg,
                                         request=req,
@@ -269,7 +271,7 @@ class Controller(controller.BaseController):
                         orig_meta['properties'][key]
                 elif (self.prop_enforcer.check_property_rules(
                         key, 'delete', req.context) is False):
-                    msg = _("Property '%s' is protected") % key
+                    msg = "Property '%s' is protected" % key
                     LOG.debug(msg)
                     raise HTTPForbidden(explanation=msg,
                                         request=req,
@@ -331,6 +333,12 @@ class Controller(controller.BaseController):
                  'properties': {'distro': 'Ubuntu 10.04 LTS', ...}}, ...
             ]}
         """
+        if req.method == 'HEAD':
+            msg = (_("This operation is currently not permitted on "
+                     "Glance images details."))
+            raise HTTPMethodNotAllowed(explanation=msg,
+                                       headers={'Allow': 'GET'},
+                                       body_template='${explanation}')
         self._enforce(req, 'get_images')
         params = self._get_query_params(req)
         try:
@@ -417,7 +425,7 @@ class Controller(controller.BaseController):
             for scheme in schemes:
                 if pieces.scheme == scheme:
                     return source
-            msg = _("External sourcing not supported for store %s") % source
+            msg = "External sourcing not supported for store %s" % source
             LOG.debug(msg)
             raise HTTPBadRequest(explanation=msg,
                                  request=req,
@@ -490,7 +498,7 @@ class Controller(controller.BaseController):
         location = self._external_source(image_meta, req)
         store = image_meta.get('store')
         if store and store not in get_known_stores():
-            msg = _("Required store %s is invalid") % store
+            msg = "Required store %s is invalid" % store
             LOG.debug(msg)
             raise HTTPBadRequest(explanation=msg,
                                  content_type='text/plain')
@@ -502,7 +510,7 @@ class Controller(controller.BaseController):
             try:
                 store = get_store_from_location(location)
             except exception.BadStoreUri:
-                msg = _("Invalid location %s") % location
+                msg = "Invalid location %s" % location
                 LOG.debug(msg)
                 raise HTTPBadRequest(explanation=msg,
                                      request=req,
@@ -525,7 +533,7 @@ class Controller(controller.BaseController):
             self.notifier.info("image.create", redact_loc(image_meta))
             return image_meta
         except exception.Duplicate:
-            msg = (_("An image with identifier %s already exists") %
+            msg = ("An image with identifier %s already exists" %
                    image_meta['id'])
             LOG.debug(msg)
             raise HTTPConflict(explanation=msg,
@@ -539,7 +547,7 @@ class Controller(controller.BaseController):
                                  request=req,
                                  content_type="text/plain")
         except exception.Forbidden:
-            msg = _("Forbidden to reserve image.")
+            msg = "Forbidden to reserve image."
             LOG.debug(msg)
             raise HTTPForbidden(explanation=msg,
                                 request=req,
@@ -566,7 +574,7 @@ class Controller(controller.BaseController):
                                                               copy_from)
             except Exception as e:
                 upload_utils.safe_kill(req, image_meta['id'])
-                msg = _("Copy from external source failed: %s") % e
+                msg = "Copy from external source failed: %s" % e
                 LOG.debug(msg)
                 return
             image_meta['size'] = image_size or image_meta['size']
@@ -575,7 +583,7 @@ class Controller(controller.BaseController):
                 req.get_content_type(('application/octet-stream',))
             except exception.InvalidContentType:
                 upload_utils.safe_kill(req, image_meta['id'])
-                msg = _("Content-Type must be application/octet-stream")
+                msg = "Content-Type must be application/octet-stream"
                 LOG.debug(msg)
                 raise HTTPBadRequest(explanation=msg)
 
@@ -586,13 +594,13 @@ class Controller(controller.BaseController):
         store = self.get_store_or_400(req, scheme)
 
         image_id = image_meta['id']
-        LOG.debug(_("Setting image %s to status 'saving'"), image_id)
+        LOG.debug("Setting image %s to status 'saving'", image_id)
         registry.update_image_metadata(req.context, image_id,
                                        {'status': 'saving'})
 
-        LOG.debug(_("Uploading image data for image %(image_id)s "
-                    "to %(scheme)s store"), {'image_id': image_id,
-                                             'scheme': scheme})
+        LOG.debug("Uploading image data for image %(image_id)s "
+                  "to %(scheme)s store", {'image_id': image_id,
+                                          'scheme': scheme})
 
         self.notifier.info("image.prepare", redact_loc(image_meta))
 
@@ -631,17 +639,16 @@ class Controller(controller.BaseController):
             self.notifier.info("image.update", redact_loc(image_meta_data))
             return image_meta_data
         except exception.Duplicate:
-            # Delete image data since it has been supersceded by another
-            # upload.
-            LOG.debug(_("duplicate operation - deleting image data for %(id)s "
-                      "(location:%(location)s)") %
-                      {'id': image_id, 'location': image_meta['location']})
-            upload_utils.initiate_deletion(req, image_meta['location'],
-                                           image_id, CONF.delayed_delete)
-            # Then propagate the exception.
-            raise
+            with excutils.save_and_reraise_exception():
+                # Delete image data since it has been supersceded by another
+                # upload and re-raise.
+                LOG.debug("duplicate operation - deleting image data for "
+                          " %(id)s (location:%(location)s)" %
+                          {'id': image_id, 'location': image_meta['location']})
+                upload_utils.initiate_deletion(req, image_meta['location'],
+                                               image_id, CONF.delayed_delete)
         except exception.Invalid as e:
-            msg = _("Failed to activate image. Got error: %(e)s") % {'e': e}
+            msg = "Failed to activate image. Got error: %(e)s" % {'e': e}
             LOG.debug(msg)
             raise HTTPBadRequest(explanation=msg,
                                  request=req,
@@ -684,7 +691,7 @@ class Controller(controller.BaseController):
         location = image_meta.get('location')
         sources = filter(lambda x: x, (copy_from, location, image_data))
         if len(sources) >= 2:
-            msg = _("It's invalid to provide multiple image sources.")
+            msg = "It's invalid to provide multiple image sources."
             LOG.debug(msg)
             raise HTTPBadRequest(explanation=msg,
                                  request=req,
@@ -710,11 +717,11 @@ class Controller(controller.BaseController):
                     # size provided by the client will be used as-is.
                     if (image_size_store and
                             image_size_store != image_size_meta):
-                        msg = _("Provided image size must match the stored "
-                                "image size. (provided size: %(ps)d, "
-                                "stored size: %(ss)d)") % {
-                                    "ps": image_size_meta,
-                                    "ss": image_size_store}
+                        msg = ("Provided image size must match the stored "
+                               "image size. (provided size: %(ps)d, "
+                               "stored size: %(ss)d)" % {
+                                   "ps": image_size_meta,
+                                   "ss": image_size_store})
                         LOG.debug(msg)
                         raise HTTPConflict(explanation=msg,
                                            request=req,
@@ -878,7 +885,7 @@ class Controller(controller.BaseController):
                 self.update_store_acls(req, id, orig_or_updated_loc,
                                        public=is_public)
             except exception.BadStoreUri:
-                msg = _("Invalid location %s") % location
+                msg = "Invalid location %s" % location
                 LOG.debug(msg)
                 raise HTTPBadRequest(explanation=msg,
                                      request=req,
@@ -925,7 +932,7 @@ class Controller(controller.BaseController):
                                                  image_data)
 
         except exception.Invalid as e:
-            msg = (_("Failed to update image metadata. Got error: %(e)s") %
+            msg = ("Failed to update image metadata. Got error: %(e)s" %
                    {'e': e})
             LOG.debug(msg)
             raise HTTPBadRequest(explanation=msg,
@@ -946,7 +953,7 @@ class Controller(controller.BaseController):
                                 request=req,
                                 content_type="text/plain")
         except (exception.Conflict, exception.Duplicate) as e:
-            LOG.info(unicode(e))
+            LOG.info(utils.exception_to_str(e))
             raise HTTPConflict(body='Image operation conflicts',
                                request=req,
                                content_type='text/plain')
@@ -978,19 +985,19 @@ class Controller(controller.BaseController):
 
         image = self.get_image_meta_or_404(req, id)
         if image['protected']:
-            msg = _("Image is protected")
+            msg = "Image is protected"
             LOG.debug(msg)
             raise HTTPForbidden(explanation=msg,
                                 request=req,
                                 content_type="text/plain")
 
         if image['status'] == 'pending_delete':
-            msg = (_("Forbidden to delete a %s image.") % image['status'])
+            msg = "Forbidden to delete a %s image." % image['status']
             LOG.debug(msg)
             raise HTTPForbidden(explanation=msg, request=req,
                                 content_type="text/plain")
         elif image['status'] == 'deleted':
-            msg = _("Image %s not found.") % id
+            msg = "Image %s not found." % id
             LOG.debug(msg)
             raise HTTPNotFound(explanation=msg, request=req,
                                content_type="text/plain")
@@ -1053,7 +1060,7 @@ class Controller(controller.BaseController):
         try:
             return get_store_from_scheme(request.context, scheme)
         except exception.UnknownScheme:
-            msg = _("Store for scheme %s not found") % scheme
+            msg = "Store for scheme %s not found" % scheme
             LOG.debug(msg)
             raise HTTPBadRequest(explanation=msg,
                                  request=request,
@@ -1068,7 +1075,7 @@ class ImageDeserializer(wsgi.JSONRequestDeserializer):
         try:
             result['image_meta'] = utils.get_image_meta_from_headers(request)
         except exception.InvalidParameterValue as e:
-            msg = unicode(e)
+            msg = utils.exception_to_str(e)
             LOG.warn(msg, exc_info=True)
             raise HTTPBadRequest(explanation=e.msg, request=request)
 
@@ -1145,7 +1152,6 @@ class ImageSerializer(wsgi.JSONResponseSerializer):
     def meta(self, response, result):
         image_meta = result['image_meta']
         self._inject_image_meta_headers(response, image_meta)
-        self._inject_location_header(response, image_meta)
         self._inject_checksum_header(response, image_meta)
         return response
 
@@ -1162,7 +1168,6 @@ class ImageSerializer(wsgi.JSONResponseSerializer):
         response.headers['Content-Type'] = 'application/octet-stream'
 
         self._inject_image_meta_headers(response, image_meta)
-        self._inject_location_header(response, image_meta)
         self._inject_checksum_header(response, image_meta)
 
         return response
@@ -1171,7 +1176,6 @@ class ImageSerializer(wsgi.JSONResponseSerializer):
         image_meta = result['image_meta']
         response.body = self.to_json(dict(image=image_meta))
         response.headers['Content-Type'] = 'application/json'
-        self._inject_location_header(response, image_meta)
         self._inject_checksum_header(response, image_meta)
         return response
 

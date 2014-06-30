@@ -108,16 +108,40 @@ def http_response_iterator(conn, response, size):
 
 class _Reader(object):
 
-    def __init__(self, data, checksum):
+    def __init__(self, data, checksum, blocksize=8192):
         self.data = data
         self.checksum = checksum
         self._size = 0
+        self.blocksize = blocksize
+        self.current_chunk = ""
+        self.closed = False
 
-    def read(self, length):
-        result = self.data.read(length)
-        self._size += len(result)
-        self.checksum.update(result)
-        return result
+    def read(self, size=None):
+        ret = ""
+        while size is None or size >= len(self.current_chunk):
+            ret += self.current_chunk
+            if size is not None:
+                size -= len(self.current_chunk)
+            if self.closed:
+                self.current_chunk = ""
+                break
+            self._get_chunk()
+        else:
+            ret += self.current_chunk[:size]
+            self.current_chunk = self.current_chunk[size:]
+        return ret
+
+    def _get_chunk(self):
+        if not self.closed:
+            chunk = self.data.read(self.blocksize)
+            chunk_len = len(chunk)
+            self._size += chunk_len
+            self.checksum.update(chunk)
+            if chunk:
+                self.current_chunk = '%x\r\n%s\r\n' % (chunk_len, chunk)
+            else:
+                self.current_chunk = '0\r\n\r\n'
+                self.closed = True
 
     @property
     def size(self):
@@ -178,8 +202,7 @@ class StoreLocation(glance.store.location.StoreLocation):
             self.path = path
             self.query = query
             return
-        reason = (_('Badly formed VMware datastore URI %(uri)s.')
-                  % {'uri': uri})
+        reason = 'Badly formed VMware datastore URI %(uri)s.' % {'uri': uri}
         LOG.debug(reason)
         raise exception.BadStoreUri(reason)
 
@@ -270,7 +293,9 @@ class Store(glance.store.base.Store):
                              'image_id': image_id})
         cookie = self._build_vim_cookie_header(
             self._session.vim.client.options.transport.cookiejar)
-        headers = {'Cookie': cookie, 'Content-Length': image_size}
+        headers = {'Connection': 'Keep-Alive',
+                   'Cookie': cookie,
+                   'Transfer-Encoding': 'chunked'}
         try:
             conn = self._get_http_conn('PUT', loc, headers,
                                        content=image_file)
@@ -361,8 +386,8 @@ class Store(glance.store.base.Store):
 
     def _query(self, location, method, headers, depth=0):
         if depth > MAX_REDIRECTS:
-            msg = (_("The HTTP URL exceeded %(max_redirects)s maximum "
-                     "redirects.") % {'max_redirects': MAX_REDIRECTS})
+            msg = ("The HTTP URL exceeded %(max_redirects)s maximum "
+                   "redirects." % {'max_redirects': MAX_REDIRECTS})
             LOG.debug(msg)
             raise exception.MaxRedirectsExceeded(redirects=MAX_REDIRECTS)
         loc = location.store_location
@@ -375,18 +400,18 @@ class Store(glance.store.base.Store):
                               {'image': location.image_id})
         if resp.status >= 400:
             if resp.status == httplib.NOT_FOUND:
-                msg = _('VMware datastore could not find image at URI.')
+                msg = 'VMware datastore could not find image at URI.'
                 LOG.debug(msg)
                 raise exception.NotFound(msg)
-            msg = (_('HTTP request returned a %(status)s status code.')
+            msg = ('HTTP request returned a %(status)s status code.'
                    % {'status': resp.status})
             LOG.debug(msg)
             raise exception.BadStoreUri(msg)
         location_header = resp.getheader('location')
         if location_header:
             if resp.status not in (301, 302):
-                msg = (_("The HTTP URL %(path)s attempted to redirect "
-                         "with an invalid %(status)s status code.")
+                msg = ("The HTTP URL %(path)s attempted to redirect "
+                       "with an invalid %(status)s status code."
                        % {'path': loc.path, 'status': resp.status})
                 LOG.debug(msg)
                 raise exception.BadStoreUri(msg)

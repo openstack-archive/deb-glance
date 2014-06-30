@@ -23,6 +23,7 @@ from oslo.config import cfg
 
 from glance.common import exception
 from glance.common import utils
+from glance.openstack.common import excutils
 from glance.openstack.common import importutils
 import glance.openstack.common.log as logging
 from glance.openstack.common import units
@@ -171,12 +172,12 @@ class ImageCache(object):
         max_size = CONF.image_cache_max_size
         current_size = self.driver.get_cache_size()
         if max_size > current_size:
-            LOG.debug(_("Image cache has free space, skipping prune..."))
+            LOG.debug("Image cache has free space, skipping prune...")
             return (0, 0)
 
         overage = current_size - max_size
-        LOG.debug(_("Image cache currently %(overage)d bytes over max "
-                    "size. Starting prune to max size of %(max_size)d "),
+        LOG.debug("Image cache currently %(overage)d bytes over max "
+                  "size. Starting prune to max size of %(max_size)d ",
                   {'overage': overage, 'max_size': max_size})
 
         total_bytes_pruned = 0
@@ -184,7 +185,7 @@ class ImageCache(object):
         entry = self.driver.get_least_recently_accessed()
         while entry and current_size > max_size:
             image_id, size = entry
-            LOG.debug(_("Pruning '%(image_id)s' to free %(size)d bytes"),
+            LOG.debug("Pruning '%(image_id)s' to free %(size)d bytes",
                       {'image_id': image_id, 'size': size})
             self.driver.delete_cached_image(image_id)
             total_bytes_pruned = total_bytes_pruned + size
@@ -192,9 +193,9 @@ class ImageCache(object):
             current_size = current_size - size
             entry = self.driver.get_least_recently_accessed()
 
-        LOG.debug(_("Pruning finished pruning. "
-                    "Pruned %(total_files_pruned)d and "
-                    "%(total_bytes_pruned)d."),
+        LOG.debug("Pruning finished pruning. "
+                  "Pruned %(total_files_pruned)d and "
+                  "%(total_bytes_pruned)d.",
                   {'total_files_pruned': total_files_pruned,
                    'total_bytes_pruned': total_bytes_pruned})
         return total_files_pruned, total_bytes_pruned
@@ -231,7 +232,7 @@ class ImageCache(object):
         if not self.driver.is_cacheable(image_id):
             return image_iter
 
-        LOG.debug(_("Tee'ing image '%s' into cache"), image_id)
+        LOG.debug("Tee'ing image '%s' into cache", image_id)
 
         return self.cache_tee_iter(image_id, image_iter, image_checksum)
 
@@ -255,10 +256,10 @@ class ImageCache(object):
                     raise exception.GlanceException(msg)
 
         except exception.GlanceException as e:
-            # image_iter has given us bad, (size_checked_iter has found a
-            # bad length), or corrupt data (checksum is wrong).
-            LOG.exception(e)
-            raise
+            with excutils.save_and_reraise_exception():
+                # image_iter has given us bad, (size_checked_iter has found a
+                # bad length), or corrupt data (checksum is wrong).
+                LOG.exception(e)
         except Exception as e:
             LOG.exception(_("Exception encountered while tee'ing "
                             "image '%(image_id)s' into cache: %(error)s. "

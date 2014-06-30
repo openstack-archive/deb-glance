@@ -71,13 +71,12 @@ def _domain_fixture(task_id, **kwargs):
         'expires_at': kwargs.get('expires_at', None),
         'created_at': kwargs.get('created_at', default_datetime),
         'updated_at': kwargs.get('updated_at', default_datetime),
+        'task_input': kwargs.get('task_input', {}),
+        'message': kwargs.get('message', None),
+        'result': kwargs.get('result', None)
     }
     task = glance.domain.Task(**task_properties)
-    task_details = glance.domain.TaskDetails(task_id,
-                                             kwargs.get('input', {}),
-                                             kwargs.get('message', None),
-                                             kwargs.get('result', None))
-    return {'task': task, 'task_details': task_details}
+    return task
 
 
 class TestTasksController(test_utils.BaseTestCase):
@@ -154,7 +153,7 @@ class TestTasksController(test_utils.BaseTestCase):
         actual = set([task.task_id for task in output['tasks']])
         expected = set([])
         self.assertEqual(actual, expected)
-        self.assertTrue('next_marker' not in output)
+        self.assertNotIn('next_marker', output)
 
     def test_index_with_id_filter(self):
         request = unit_test_utils.get_fake_request('/tasks?id=%s' % UUID1)
@@ -194,7 +193,7 @@ class TestTasksController(test_utils.BaseTestCase):
         output = self.controller.index(request, marker=UUID3)
         actual = set([task.task_id for task in output['tasks']])
         self.assertEqual(1, len(actual))
-        self.assertTrue(UUID2 in actual)
+        self.assertIn(UUID2, actual)
 
     def test_index_with_limit(self):
         path = '/tasks'
@@ -211,7 +210,7 @@ class TestTasksController(test_utils.BaseTestCase):
         output = self.controller.index(request, limit=4)
         actual = set([task.task_id for task in output['tasks']])
         self.assertEqual(3, len(actual))
-        self.assertTrue(output['next_marker'] not in output)
+        self.assertNotIn(output['next_marker'], output)
 
     def test_index_default_limit(self):
         self.config(limit_param_default=1, api_limit_max=3)
@@ -267,11 +266,8 @@ class TestTasksController(test_utils.BaseTestCase):
 
     def test_get(self):
         request = unit_test_utils.get_fake_request()
-        output = self.controller.get(request, task_id=UUID1)
-        task = output['task']
-        task_details = output['task_details']
+        task = self.controller.get(request, task_id=UUID1)
         self.assertEqual(UUID1, task.task_id)
-        self.assertEqual(UUID1, task_details.task_id)
         self.assertEqual('import', task.type)
 
     def test_get_non_existent(self):
@@ -292,13 +288,11 @@ class TestTasksController(test_utils.BaseTestCase):
             "import_from": "swift://cloud.foo/myaccount/mycontainer/path",
             "image_from_format": "qcow2"}
         }
-        output = self.controller.create(request, task=task)
-        task = output['task']
-        task_details = output['task_details']
+        task = self.controller.create(request, task=task)
         self.assertEqual('import', task.type)
         self.assertEqual({
             "import_from": "swift://cloud.foo/myaccount/mycontainer/path",
-            "image_from_format": "qcow2"}, task_details.input)
+            "image_from_format": "qcow2"}, task.task_input)
         output_logs = [nlog for nlog in self.notifier.get_logs()
                        if nlog['event_type'] == 'task.create']
         self.assertEqual(len(output_logs), 1)
@@ -456,12 +450,12 @@ class TestTasksDeserializer(test_utils.BaseTestCase):
     def test_index_marker_not_specified(self):
         request = unit_test_utils.get_fake_request('/tasks')
         output = self.deserializer.index(request)
-        self.assertFalse('marker' in output)
+        self.assertNotIn('marker', output)
 
     def test_index_limit_not_specified(self):
         request = unit_test_utils.get_fake_request('/tasks')
         output = self.deserializer.index(request)
-        self.assertFalse('limit' in output)
+        self.assertNotIn('limit', output)
 
     def test_index_sort_key_id(self):
         request = unit_test_utils.get_fake_request('/tasks?sort_key=id')
@@ -495,21 +489,23 @@ class TestTasksSerializer(test_utils.BaseTestCase):
         self.serializer = glance.api.v2.tasks.ResponseSerializer()
         self.fixtures = [
             _domain_fixture(UUID1, type='import', status='pending',
-                            input={'loc': 'fake'}, result={}, owner=TENANT1,
-                            message='', created_at=DATETIME,
+                            task_input={'loc': 'fake'}, result={},
+                            owner=TENANT1, message='', created_at=DATETIME,
                             updated_at=DATETIME),
             _domain_fixture(UUID2, type='import', status='processing',
-                            input={'loc': 'bake'}, owner=TENANT2, message='',
-                            created_at=DATETIME, updated_at=DATETIME,
-                            result={}),
+                            task_input={'loc': 'bake'}, owner=TENANT2,
+                            message='', created_at=DATETIME,
+                            updated_at=DATETIME, result={}),
             _domain_fixture(UUID3, type='import', status='success',
-                            input={'loc': 'foo'}, owner=TENANT3, message='',
-                            created_at=DATETIME, updated_at=DATETIME,
-                            result={}, expires_at=DATETIME),
+                            task_input={'loc': 'foo'}, owner=TENANT3,
+                            message='', created_at=DATETIME,
+                            updated_at=DATETIME, result={},
+                            expires_at=DATETIME),
             _domain_fixture(UUID4, type='import', status='failure',
-                            input={'loc': 'boo'}, owner=TENANT4, message='',
-                            created_at=DATETIME, updated_at=DATETIME,
-                            result={}, expires_at=DATETIME),
+                            task_input={'loc': 'boo'}, owner=TENANT4,
+                            message='', created_at=DATETIME,
+                            updated_at=DATETIME, result={},
+                            expires_at=DATETIME),
         ]
 
     def test_index(self):
@@ -563,7 +559,7 @@ class TestTasksSerializer(test_utils.BaseTestCase):
         }
         request = webob.Request.blank('/v2/tasks')
         response = webob.Response(request=request)
-        task_fixtures = [f['task'] for f in self.fixtures]
+        task_fixtures = [f for f in self.fixtures]
         result = {'tasks': task_fixtures}
         self.serializer.index(response, result)
         actual = jsonutils.loads(response.body)
@@ -573,7 +569,7 @@ class TestTasksSerializer(test_utils.BaseTestCase):
     def test_index_next_marker(self):
         request = webob.Request.blank('/v2/tasks')
         response = webob.Response(request=request)
-        task_fixtures = [f['task'] for f in self.fixtures]
+        task_fixtures = [f for f in self.fixtures]
         result = {'tasks': task_fixtures, 'next_marker': UUID2}
         self.serializer.index(response, result)
         output = jsonutils.loads(response.body)
@@ -583,7 +579,7 @@ class TestTasksSerializer(test_utils.BaseTestCase):
         url = '/v2/tasks?limit=10&sort_key=id&sort_dir=asc'
         request = webob.Request.blank(url)
         response = webob.Response(request=request)
-        task_fixtures = [f['task'] for f in self.fixtures]
+        task_fixtures = [f for f in self.fixtures]
         result = {'tasks': task_fixtures, 'next_marker': UUID2}
         self.serializer.index(response, result)
         output = jsonutils.loads(response.body)
@@ -661,13 +657,11 @@ class TestTasksSerializer(test_utils.BaseTestCase):
 
         serialized_task = jsonutils.loads(response.body)
         self.assertEqual(response.status_int, 201)
-        self.assertEqual(self.fixtures[3]['task'].task_id,
+        self.assertEqual(self.fixtures[3].task_id,
                          serialized_task['id'])
-        self.assertEqual(self.fixtures[3]['task_details'].task_id,
-                         serialized_task['id'])
-        self.assertEqual(self.fixtures[3]['task_details'].input,
+        self.assertEqual(self.fixtures[3].task_input,
                          serialized_task['input'])
-        self.assertTrue('expires_at' in serialized_task)
+        self.assertIn('expires_at', serialized_task)
         self.assertEqual('application/json', response.content_type)
 
     def test_create_ensure_expires_at_is_not_returned(self):
@@ -677,13 +671,11 @@ class TestTasksSerializer(test_utils.BaseTestCase):
 
         serialized_task = jsonutils.loads(response.body)
         self.assertEqual(response.status_int, 201)
-        self.assertEqual(self.fixtures[0]['task'].task_id,
+        self.assertEqual(self.fixtures[0].task_id,
                          serialized_task['id'])
-        self.assertEqual(self.fixtures[0]['task_details'].task_id,
-                         serialized_task['id'])
-        self.assertEqual(self.fixtures[0]['task_details'].input,
+        self.assertEqual(self.fixtures[0].task_input,
                          serialized_task['input'])
-        self.assertFalse('expires_at' in serialized_task)
+        self.assertNotIn('expires_at', serialized_task)
         self.assertEqual('application/json', response.content_type)
 
         response = webob.Response()
@@ -692,11 +684,9 @@ class TestTasksSerializer(test_utils.BaseTestCase):
 
         serialized_task = jsonutils.loads(response.body)
         self.assertEqual(response.status_int, 201)
-        self.assertEqual(self.fixtures[1]['task'].task_id,
+        self.assertEqual(self.fixtures[1].task_id,
                          serialized_task['id'])
-        self.assertEqual(self.fixtures[1]['task_details'].task_id,
-                         serialized_task['id'])
-        self.assertEqual(self.fixtures[1]['task_details'].input,
+        self.assertEqual(self.fixtures[1].task_input,
                          serialized_task['input'])
-        self.assertFalse('expires_at' in serialized_task)
+        self.assertNotIn('expires_at', serialized_task)
         self.assertEqual('application/json', response.content_type)

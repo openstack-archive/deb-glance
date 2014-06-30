@@ -21,7 +21,6 @@ import webob
 
 from glance.common import exception
 import glance.context
-from glance import domain
 from glance import notifier
 from glance.openstack.common import timeutils
 import glance.tests.unit.utils as unit_test_utils
@@ -63,10 +62,12 @@ class ImageRepoStub(object):
         return ['images_from_list']
 
 
-class TaskStub(glance.domain.Task):
+class TaskStub(glance.domain.TaskStub):
     def run(self, executor):
         pass
 
+
+class Task(glance.domain.Task):
     def succeed(self, result):
         pass
 
@@ -275,7 +276,7 @@ class TestImageNotifications(utils.BaseTestCase):
         output_log = output_logs[0]
         self.assertEqual(output_log['notification_type'], 'ERROR')
         self.assertEqual(output_log['event_type'], 'image.upload')
-        self.assertTrue('Modern Major General' in output_log['payload'])
+        self.assertIn('Modern Major General', output_log['payload'])
 
     def test_image_set_data_value_error(self):
         def data_iterator():
@@ -292,7 +293,7 @@ class TestImageNotifications(utils.BaseTestCase):
         output_log = output_logs[0]
         self.assertEqual(output_log['notification_type'], 'ERROR')
         self.assertEqual(output_log['event_type'], 'image.upload')
-        self.assertTrue('value wrong' in output_log['payload'])
+        self.assertIn('value wrong', output_log['payload'])
 
     def test_image_set_data_duplicate(self):
         def data_iterator():
@@ -309,7 +310,7 @@ class TestImageNotifications(utils.BaseTestCase):
         output_log = output_logs[0]
         self.assertEqual(output_log['notification_type'], 'ERROR')
         self.assertEqual(output_log['event_type'], 'image.upload')
-        self.assertTrue('Cant have duplicates' in output_log['payload'])
+        self.assertIn('Cant have duplicates', output_log['payload'])
 
     def test_image_set_data_storage_write_denied(self):
         def data_iterator():
@@ -326,7 +327,7 @@ class TestImageNotifications(utils.BaseTestCase):
         output_log = output_logs[0]
         self.assertEqual(output_log['notification_type'], 'ERROR')
         self.assertEqual(output_log['event_type'], 'image.upload')
-        self.assertTrue('The Very Model' in output_log['payload'])
+        self.assertIn('The Very Model', output_log['payload'])
 
     def test_image_set_data_forbidden(self):
         def data_iterator():
@@ -343,7 +344,7 @@ class TestImageNotifications(utils.BaseTestCase):
         output_log = output_logs[0]
         self.assertEqual(output_log['notification_type'], 'ERROR')
         self.assertEqual(output_log['event_type'], 'image.upload')
-        self.assertTrue('Not allowed' in output_log['payload'])
+        self.assertIn('Not allowed', output_log['payload'])
 
     def test_image_set_data_not_found(self):
         def data_iterator():
@@ -360,7 +361,7 @@ class TestImageNotifications(utils.BaseTestCase):
         output_log = output_logs[0]
         self.assertEqual(output_log['notification_type'], 'ERROR')
         self.assertEqual(output_log['event_type'], 'image.upload')
-        self.assertTrue('Not found' in output_log['payload'])
+        self.assertIn('Not found', output_log['payload'])
 
     def test_image_set_data_HTTP_error(self):
         def data_iterator():
@@ -377,7 +378,7 @@ class TestImageNotifications(utils.BaseTestCase):
         output_log = output_logs[0]
         self.assertEqual(output_log['notification_type'], 'ERROR')
         self.assertEqual(output_log['event_type'], 'image.upload')
-        self.assertTrue('Http issue' in output_log['payload'])
+        self.assertIn('Http issue', output_log['payload'])
 
     def test_image_set_data_error(self):
         def data_iterator():
@@ -394,7 +395,7 @@ class TestImageNotifications(utils.BaseTestCase):
         output_log = output_logs[0]
         self.assertEqual(output_log['notification_type'], 'ERROR')
         self.assertEqual(output_log['event_type'], 'image.upload')
-        self.assertTrue('Failed' in output_log['payload'])
+        self.assertIn('Failed', output_log['payload'])
 
 
 class TestTaskNotifications(utils.BaseTestCase):
@@ -402,19 +403,29 @@ class TestTaskNotifications(utils.BaseTestCase):
 
     def setUp(self):
         super(TestTaskNotifications, self).setUp()
-        self.task = TaskStub(
+        task_input = {"loc": "fake"}
+        self.task_stub = TaskStub(
             task_id='aaa',
             task_type='import',
             status='pending',
             owner=TENANT2,
             expires_at=None,
             created_at=DATETIME,
-            updated_at=DATETIME
+            updated_at=DATETIME,
         )
-        self.task_details = domain.TaskDetails(task_id=self.task.task_id,
-                                               task_input={"loc": "fake"},
-                                               result='',
-                                               message='')
+
+        self.task = Task(
+            task_id='aaa',
+            task_type='import',
+            status='pending',
+            owner=TENANT2,
+            expires_at=None,
+            created_at=DATETIME,
+            updated_at=DATETIME,
+            task_input=task_input,
+            result='res',
+            message='blah'
+        )
         self.context = glance.context.RequestContext(
             tenant=TENANT2,
             user=USER1
@@ -431,9 +442,11 @@ class TestTaskNotifications(utils.BaseTestCase):
             self.context,
             self.notifier
         )
-        self.task_details_proxy = notifier.TaskDetailsProxy(self.task_details,
-                                                            self.context,
-                                                            self.notifier)
+        self.task_stub_proxy = glance.notifier.TaskStubProxy(
+            self.task_stub,
+            self.context,
+            self.notifier
+        )
         self.patcher = mock.patch.object(timeutils, 'utcnow')
         mock_utcnow = self.patcher.start()
         mock_utcnow.return_value = datetime.datetime.utcnow()
@@ -443,7 +456,7 @@ class TestTaskNotifications(utils.BaseTestCase):
         self.patcher.stop()
 
     def test_task_create_notification(self):
-        self.task_repo_proxy.add(self.task_proxy, self.task_details_proxy)
+        self.task_repo_proxy.add(self.task_stub_proxy)
         output_logs = self.notifier.get_logs()
         self.assertEqual(len(output_logs), 1)
         output_log = output_logs[0]
@@ -463,7 +476,7 @@ class TestTaskNotifications(utils.BaseTestCase):
 
     def test_task_delete_notification(self):
         now = timeutils.isotime()
-        self.task_repo_proxy.remove(self.task_proxy)
+        self.task_repo_proxy.remove(self.task_stub_proxy)
         output_logs = self.notifier.get_logs()
         self.assertEqual(len(output_logs), 1)
         output_log = output_logs[0]

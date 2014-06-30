@@ -22,7 +22,9 @@ import hashlib
 import math
 
 from oslo.config import cfg
+import six
 import six.moves.urllib.parse as urlparse
+from six import text_type
 
 from glance.common import exception
 from glance.common import utils
@@ -82,7 +84,7 @@ class StoreLocation(glance.store.location.StoreLocation):
 
     def process_specs(self):
         # convert to ascii since librbd doesn't handle unicode
-        for key, value in self.specs.iteritems():
+        for key, value in six.iteritems(self.specs):
             self.specs[key] = str(value)
         self.fsid = self.specs.get('fsid')
         self.pool = self.specs.get('pool')
@@ -105,17 +107,17 @@ class StoreLocation(glance.store.location.StoreLocation):
         prefix = 'rbd://'
         if not uri.startswith(prefix):
             reason = _('URI must start with rbd://')
-            msg = (_("Invalid URI: %(uri)s: %(reason)s") % {'uri': uri,
-                                                            'reason': reason})
+            msg = "Invalid URI: %(uri)s: %(reason)s" % {'uri': uri,
+                                                        'reason': reason}
             LOG.debug(msg)
             raise exception.BadStoreUri(message=reason)
         # convert to ascii since librbd doesn't handle unicode
         try:
             ascii_uri = str(uri)
         except UnicodeError:
-            reason = _('URI contains non-ascii characters')
-            msg = (_("Invalid URI: %(uri)s: %(reason)s") % {'uri': uri,
-                                                            'reason': reason})
+            reason = 'URI contains non-ascii characters'
+            msg = "Invalid URI: %(uri)s: %(reason)s" % {'uri': uri,
+                                                        'reason': reason}
             LOG.debug(msg)
             raise exception.BadStoreUri(message=reason)
         pieces = ascii_uri[len(prefix):].split('/')
@@ -126,15 +128,15 @@ class StoreLocation(glance.store.location.StoreLocation):
             self.fsid, self.pool, self.image, self.snapshot = \
                 map(urlparse.unquote, pieces)
         else:
-            reason = _('URI must have exactly 1 or 4 components')
-            msg = (_("Invalid URI: %(uri)s: %(reason)s") % {'uri': uri,
-                                                            'reason': reason})
+            reason = 'URI must have exactly 1 or 4 components'
+            msg = "Invalid URI: %(uri)s: %(reason)s" % {'uri': uri,
+                                                        'reason': reason}
             LOG.debug(msg)
             raise exception.BadStoreUri(message=reason)
         if any(map(lambda p: p == '', pieces)):
-            reason = _('URI cannot contain empty components')
-            msg = (_("Invalid URI: %(uri)s: %(reason)s") % {'uri': uri,
-                                                            'reason': reason})
+            reason = 'URI cannot contain empty components'
+            msg = "Invalid URI: %(uri)s: %(reason)s" % {'uri': uri,
+                                                        'reason': reason}
             LOG.debug(msg)
             raise exception.BadStoreUri(message=reason)
 
@@ -232,7 +234,7 @@ class Store(glance.store.base.Store):
                         img_info = image.stat()
                         return img_info['size']
                 except rbd.ImageNotFound:
-                    msg = _('RBD image %s does not exist') % loc.get_uri()
+                    msg = 'RBD image %s does not exist' % loc.get_uri()
                     LOG.debug(msg)
                     raise exception.NotFound(msg)
 
@@ -279,9 +281,9 @@ class Store(glance.store.base.Store):
                             try:
                                 image.unprotect_snap(snapshot_name)
                             except rbd.ImageBusy:
-                                log_msg = _("snapshot %(image)s@%(snap)s "
-                                            "could not be unprotected because "
-                                            "it is in use")
+                                log_msg = ("snapshot %(image)s@%(snap)s "
+                                           "could not be unprotected because "
+                                           "it is in use")
                                 LOG.debug(log_msg %
                                           {'image': image_name,
                                            'snap': snapshot_name})
@@ -294,8 +296,8 @@ class Store(glance.store.base.Store):
                     raise exception.NotFound(
                         _("RBD image %s does not exist") % image_name)
                 except rbd.ImageBusy:
-                    log_msg = _("image %s could not be removed "
-                                "because it is in use")
+                    log_msg = ("image %s could not be removed "
+                               "because it is in use")
                     LOG.debug(log_msg % image_name)
                     raise exception.InUseByStore()
 
@@ -322,8 +324,11 @@ class Store(glance.store.base.Store):
                 fsid = conn.get_fsid()
             with conn.open_ioctx(self.pool) as ioctx:
                 order = int(math.log(self.chunk_size, 2))
-                LOG.debug('creating image %s with order %d and size %d',
-                          image_name, order, image_size)
+                LOG.debug('creating image %(name)s with order %(order)d and '
+                          'size %(size)d',
+                          {'name': text_type(image_name),
+                          'order': order,
+                          'size': image_size})
                 if image_size == 0:
                     LOG.warning(_("since image size is zero we will be doing "
                                   "resize-before-write for each chunk which "
@@ -350,10 +355,10 @@ class Store(glance.store.base.Store):
                                 chunk_length = len(chunk)
                                 length = offset + chunk_length
                                 bytes_written += chunk_length
-                                LOG.debug(_("resizing image to %s KiB") %
+                                LOG.debug("resizing image to %s KiB" %
                                           (length / units.Ki))
                                 image.resize(length)
-                            LOG.debug(_("writing chunk at offset %s") %
+                            LOG.debug("writing chunk at offset %s" %
                                       (offset))
                             offset += image.write(chunk, offset)
                             checksum.update(chunk)

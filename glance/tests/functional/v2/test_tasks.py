@@ -99,13 +99,14 @@ class TestTasks(functional.FunctionalTest):
         checked_keys = set([u'created_at',
                             u'id',
                             u'input',
+                            u'message',
                             u'owner',
                             u'schema',
                             u'self',
                             u'status',
                             u'type',
                             u'updated_at'])
-        self.assertEqual(set(task.keys()), checked_keys)
+        self.assertEqual(checked_keys, set(task.keys()))
         expected_task = {
             'status': 'pending',
             'type': 'import',

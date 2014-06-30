@@ -96,7 +96,7 @@ class CacheFilter(wsgi.Middleware):
         try:
             self.policy.enforce(req.context, action, {})
         except exception.Forbidden as e:
-            raise webob.exc.HTTPForbidden(explanation=unicode(e), request=req)
+            raise webob.exc.HTTPForbidden(explanation=e.msg, request=req)
 
     def process_request(self, request):
         """
@@ -122,7 +122,7 @@ class CacheFilter(wsgi.Middleware):
         except webob.exc.HTTPForbidden:
             return None
 
-        LOG.debug(_("Cache hit for image '%s'"), image_id)
+        LOG.debug("Cache hit for image '%s'", image_id)
         image_iterator = self.get_from_cache(image_id)
         method = getattr(self, '_process_%s_request' % version)
 
@@ -235,7 +235,7 @@ class CacheFilter(wsgi.Middleware):
 
     def _process_DELETE_response(self, resp, image_id):
         if self.cache.is_cached(image_id):
-            LOG.debug(_("Removing image %s from cache"), image_id)
+            LOG.debug("Removing image %s from cache", image_id)
             self.cache.delete_cached_image(image_id)
         return resp
 

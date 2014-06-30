@@ -22,6 +22,7 @@ iso8601>=0.1.9
 ordereddict
 oslo.config>=1.2.0
 stevedore>=0.14
+netaddr>=0.7.6
 
 # For Swift storage backend.
 python-swiftclient>=1.6
@@ -40,4 +41,4 @@ pyOpenSSL>=0.11
 # Required by openstack.common libraries
 six>=1.6.0
 
-oslo.messaging>=1.3.0a9
+oslo.messaging>=1.3.0

@@ -22,11 +22,11 @@ import hashlib
 import os
 
 from oslo.config import cfg
-import six
 import six.moves.urllib.parse as urlparse
 
 from glance.common import exception
 from glance.common import utils
+from glance.openstack.common import excutils
 from glance.openstack.common import jsonutils
 import glance.openstack.common.log as logging
 from glance.openstack.common import processutils
@@ -75,7 +75,7 @@ class StoreLocation(glance.store.location.StoreLocation):
         self.scheme = pieces.scheme
         path = (pieces.netloc + pieces.path).strip()
         if path == '':
-            reason = _("No path specified in URI: %s") % uri
+            reason = "No path specified in URI: %s" % uri
             LOG.debug(reason)
             raise exception.BadStoreUri('No path specified')
         self.path = path
@@ -280,19 +280,20 @@ class Store(glance.store.base.Store):
                         'used: %(error)s  An empty dictionary will be '
                         'returned to the client.') %
                       {'file': CONF.filesystem_store_metadata_file,
-                       'error': six.text_type(bee)})
+                       'error': utils.exception_to_str(bee)})
             return {}
         except IOError as ioe:
             LOG.error(_('The path for the metadata file %(file)s could not be '
                         'opened: %(error)s  An empty dictionary will be '
                         'returned to the client.') %
                       {'file': CONF.filesystem_store_metadata_file,
-                       'error': six.text_type(ioe)})
+                       'error': utils.exception_to_str(ioe)})
             return {}
         except Exception as ex:
             LOG.exception(_('An error occurred processing the storage systems '
                             'meta data file: %s.  An empty dictionary will be '
-                            'returned to the client.') % six.text_type(ex))
+                            'returned to the client.') %
+                          utils.exception_to_str(ex))
             return {}
 
     def get(self, location):
@@ -306,7 +307,7 @@ class Store(glance.store.base.Store):
         :raises `glance.exception.NotFound` if image does not exist
         """
         filepath, filesize = self._resolve_location(location)
-        msg = _("Found image at %s. Returning in ChunkedFile.") % filepath
+        msg = "Found image at %s. Returning in ChunkedFile." % filepath
         LOG.debug(msg)
         return (ChunkedFile(filepath), filesize)
 
@@ -321,7 +322,7 @@ class Store(glance.store.base.Store):
         :rtype int
         """
         filepath, filesize = self._resolve_location(location)
-        msg = _("Found image at %s.") % filepath
+        msg = "Found image at %s." % filepath
         LOG.debug(msg)
         return filesize
 
@@ -340,7 +341,7 @@ class Store(glance.store.base.Store):
         fn = loc.path
         if os.path.exists(fn):
             try:
-                LOG.debug(_("Deleting image at %(fn)s"), {'fn': fn})
+                LOG.debug("Deleting image at %(fn)s", {'fn': fn})
                 os.unlink(fn)
             except OSError:
                 raise exception.Forbidden(_("You cannot delete file %s") % fn)
@@ -441,14 +442,14 @@ class Store(glance.store.base.Store):
                           errno.EACCES: exception.StorageWriteDenied()}
             raise exceptions.get(e.errno, e)
         except Exception:
-            self._delete_partial(filepath, image_id)
-            raise
+            with excutils.save_and_reraise_exception():
+                self._delete_partial(filepath, image_id)
 
         checksum_hex = checksum.hexdigest()
         metadata = self._get_metadata()
 
-        LOG.debug(_("Wrote %(bytes_written)d bytes to %(filepath)s with "
-                    "checksum %(checksum_hex)s"),
+        LOG.debug("Wrote %(bytes_written)d bytes to %(filepath)s with "
+                  "checksum %(checksum_hex)s",
                   {'bytes_written': bytes_written,
                    'filepath': filepath,
                    'checksum_hex': checksum_hex})

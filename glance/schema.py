@@ -17,6 +17,7 @@ import jsonschema
 import six
 
 from glance.common import exception
+from glance.common import utils
 
 
 class Schema(object):
@@ -33,11 +34,11 @@ class Schema(object):
             jsonschema.validate(obj, self.raw())
         except jsonschema.ValidationError as e:
             raise exception.InvalidObject(schema=self.name,
-                                          reason=six.text_type(e))
+                                          reason=utils.exception_to_str(e))
 
     def filter(self, obj):
         filtered = {}
-        for key, value in obj.iteritems():
+        for key, value in six.iteritems(obj):
             if self._filter_func(self.properties, key) and value is not None:
                 filtered[key] = value
         return filtered
