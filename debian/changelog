@@ -1,3 +1,15 @@
+glance (2014.2~b1-2) UNRELEASED; urgency=low
+
+  [ Thomas Goirand ]
+  * Fixed new (build-)depends.
+  * Fixed packaging branch in gbp.conf
+  * Removed differences with upstream branch.
+
+  [ stanzgy ]
+  * Add dh-systemd support
+
+ -- Thomas Goirand <thomas@goirand.fr>  Mon, 14 Jul 2014 11:55:30 +0800
+
 glance (2014.2~b1-1) unstable; urgency=medium
 
   * New upstream release.
