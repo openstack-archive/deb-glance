@@ -3,9 +3,11 @@ Author: Thomas Goirand <zigo@debian.org>
 Forwarded: no
 Last-Update: 2014-04-15
 
---- glance-2014.1~rc2.orig/etc/glance-api.conf
-+++ glance-2014.1~rc2/etc/glance-api.conf
-@@ -563,7 +563,7 @@ image_cache_dir = /var/lib/glance/image-
+Index: glance/etc/glance-api.conf
+===================================================================
+--- glance.orig/etc/glance-api.conf	2014-07-31 23:23:44.000000000 +0800
++++ glance/etc/glance-api.conf	2014-07-31 23:23:53.000000000 +0800
+@@ -583,7 +583,7 @@
  # Deprecated group/name - [DEFAULT]/sql_connection
  # Deprecated group/name - [DATABASE]/sql_connection
  # Deprecated group/name - [sql]/connection
@@ -14,9 +16,11 @@ Last-Update: 2014-04-15
  
  # The SQL mode to be used for MySQL sessions. This option,
  # including the default, overrides any server-set SQL mode. To
---- glance-2014.1~rc2.orig/etc/glance-registry.conf
-+++ glance-2014.1~rc2/etc/glance-registry.conf
-@@ -91,7 +91,7 @@ limit_param_default = 25
+Index: glance/etc/glance-registry.conf
+===================================================================
+--- glance.orig/etc/glance-registry.conf	2014-07-31 23:23:44.000000000 +0800
++++ glance/etc/glance-registry.conf	2014-07-31 23:23:53.000000000 +0800
+@@ -140,7 +140,7 @@
  # Deprecated group/name - [DEFAULT]/sql_connection
  # Deprecated group/name - [DATABASE]/sql_connection
  # Deprecated group/name - [sql]/connection
