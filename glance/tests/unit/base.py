@@ -18,7 +18,9 @@ import shutil
 
 import fixtures
 from oslo.config import cfg
+from oslo.db import options
 
+from glance.common import exception
 from glance.openstack.common import jsonutils
 from glance import store
 from glance.store import location
@@ -29,8 +31,6 @@ from glance.tests import utils as test_utils
 
 CONF = cfg.CONF
 CONF.import_opt('filesystem_store_datadir', 'glance.store.filesystem')
-CONF.import_opt('connection', 'glance.openstack.common.db.sqlalchemy.session',
-                group='database')
 
 
 class StoreClearingUnitTest(test_utils.BaseTestCase):
@@ -43,14 +43,24 @@ class StoreClearingUnitTest(test_utils.BaseTestCase):
         self._create_stores()
         self.addCleanup(setattr, location, 'SCHEME_TO_CLS_MAP', dict())
 
-    def _create_stores(self):
+    def _create_stores(self, passing_config=True):
         """Create known stores. Mock out sheepdog's subprocess dependency
         on collie.
+
+        :param passing_config: making store driver passes basic configurations.
+        :returns: the number of how many store drivers been loaded.
         """
-        self.stubs.Set(sheepdog.Store, 'configure_add', lambda x: None)
-        self.stubs.Set(vmware_datastore.Store, 'configure', lambda x: None)
-        self.stubs.Set(vmware_datastore.Store, 'configure_add', lambda x: None)
-        store.create_stores()
+
+        def _fun(*args, **kwargs):
+            if passing_config:
+                return None
+            else:
+                raise exception.BadStoreConfiguration()
+
+        self.stubs.Set(sheepdog.Store, 'configure', _fun)
+        self.stubs.Set(vmware_datastore.Store, 'configure', _fun)
+        self.stubs.Set(vmware_datastore.Store, 'configure_add', _fun)
+        return store.create_stores()
 
 
 class IsolatedUnitTest(StoreClearingUnitTest):
@@ -65,8 +75,8 @@ class IsolatedUnitTest(StoreClearingUnitTest):
         super(IsolatedUnitTest, self).setUp()
         self.test_dir = self.useFixture(fixtures.TempDir()).path
         policy_file = self._copy_data_file('policy.json', self.test_dir)
-        self.config(connection='sqlite://',
-                    group='database')
+        options.set_defaults(CONF, connection='sqlite://',
+                             sqlite_db='glance.sqlite')
         self.config(verbose=False,
                     debug=False,
                     default_store='filesystem',

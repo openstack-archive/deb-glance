@@ -17,32 +17,32 @@ from oslo.config import cfg
 import webob.exc
 
 from glance.common import exception
+from glance.common import store_utils
 from glance.common import utils
 import glance.db
 from glance.openstack.common import excutils
+from glance.openstack.common import gettextutils
 import glance.openstack.common.log as logging
 import glance.registry.client.v1.api as registry
-import glance.store
+import glance.store as store_api
 
 
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
+_LE = gettextutils._LE
+_LI = gettextutils._LI
 
 
-def initiate_deletion(req, location, id, delayed_delete=False):
+def initiate_deletion(req, location_data, id):
     """
-    Deletes image data from the backend store.
+    Deletes image data from the location of backend store.
 
     :param req: The WSGI/Webob Request object
-    :param location: URL to the image data in a data store
-    :param image_id: Opaque image identifier
-    :param delayed_delete: whether data deletion will be delayed
+    :param location_data: Location to the image data in a data store
+    :param id: Opaque image identifier
     """
-    if delayed_delete:
-        glance.store.schedule_delayed_delete_from_backend(req.context,
-                                                          location, id)
-    else:
-        glance.store.safe_delete_from_backend(req.context, location, id)
+    store_utils.delete_image_location_from_backend(req.context,
+                                                   id, location_data)
 
 
 def _kill(req, image_id):
@@ -69,7 +69,7 @@ def safe_kill(req, image_id):
     try:
         _kill(req, image_id)
     except Exception:
-        LOG.exception(_("Unable to kill image %(id)s: ") % {'id': image_id})
+        LOG.exception(_LE("Unable to kill image %(id)s: ") % {'id': image_id})
 
 
 def upload_data_to_store(req, image_meta, image_data, store, notifier):
@@ -89,14 +89,18 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
         if remaining is not None:
             image_data = utils.LimitingReader(image_data, remaining)
 
-        (location,
+        (uri,
          size,
          checksum,
-         locations_metadata) = glance.store.store_add_to_backend(
+         location_metadata) = store_api.store_add_to_backend(
              image_meta['id'],
              utils.CooperativeReader(image_data),
              image_meta['size'],
              store)
+
+        location_data = {'url': uri,
+                         'metadata': location_metadata,
+                         'status': 'active'}
 
         try:
             # recheck the quota in case there were simultaneous uploads that
@@ -105,10 +109,10 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
                 req.context, size, db_api, image_id=image_id)
         except exception.StorageQuotaFull:
             with excutils.save_and_reraise_exception():
-                LOG.info(_('Cleaning up %s after exceeding '
-                           'the quota') % image_id)
-                glance.store.safe_delete_from_backend(
-                    location, req.context, image_meta['id'])
+                LOG.info(_LI('Cleaning up %s after exceeding '
+                             'the quota') % image_id)
+                store_utils.safe_delete_from_backend(
+                    req.context, image_meta['id'], location_data)
 
         def _kill_mismatched(image_meta, attr, actual):
             supplied = image_meta.get(attr)
@@ -121,7 +125,7 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
                                                    'actual': actual})
                 LOG.error(msg)
                 safe_kill(req, image_id)
-                initiate_deletion(req, location, image_id, CONF.delayed_delete)
+                initiate_deletion(req, location_data, image_id)
                 raise webob.exc.HTTPBadRequest(explanation=msg,
                                                content_type="text/plain",
                                                request=req)
@@ -146,23 +150,23 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
                                                         update_data)
 
         except exception.NotFound as e:
-            msg = _("Image %s could not be found after upload. The image may "
-                    "have been deleted during the upload.") % image_id
+            msg = _LI("Image %s could not be found after upload. The image may"
+                      " have been deleted during the upload.") % image_id
             LOG.info(msg)
 
             # NOTE(jculp): we need to clean up the datastore if an image
             # resource is deleted while the image data is being uploaded
             #
-            # We get "location" from above call to store.add(), any
+            # We get "location_data" from above call to store.add(), any
             # exceptions that occur there handle this same issue internally,
             # Since this is store-agnostic, should apply to all stores.
-            initiate_deletion(req, location, image_id, CONF.delayed_delete)
+            initiate_deletion(req, location_data, image_id)
             raise webob.exc.HTTPPreconditionFailed(explanation=msg,
                                                    request=req,
                                                    content_type='text/plain')
 
     except exception.Duplicate as e:
-        msg = "Attempt to upload duplicate image: %s" % e
+        msg = u"Attempt to upload duplicate image: %s" % e
         LOG.debug(msg)
         # NOTE(dosaboy): do not delete the image since it is likely that this
         # conflict is a result of another concurrent upload that will be
@@ -173,7 +177,7 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
                                      content_type="text/plain")
 
     except exception.Forbidden as e:
-        msg = "Forbidden upload attempt: %s" % e
+        msg = u"Forbidden upload attempt: %s" % e
         LOG.debug(msg)
         safe_kill(req, image_id)
         notifier.error('image.upload', msg)
@@ -182,7 +186,7 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
                                       content_type="text/plain")
 
     except exception.StorageFull as e:
-        msg = _("Image storage media is full: %s") % e
+        msg = _("Image storage media is full: %s") % utils.exception_to_str(e)
         LOG.error(msg)
         safe_kill(req, image_id)
         notifier.error('image.upload', msg)
@@ -191,7 +195,8 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
                                                   content_type='text/plain')
 
     except exception.StorageWriteDenied as e:
-        msg = _("Insufficient permissions on image storage media: %s") % e
+        msg = (_("Insufficient permissions on image storage media: %s") %
+               utils.exception_to_str(e))
         LOG.error(msg)
         safe_kill(req, image_id)
         notifier.error('image.upload', msg)
@@ -211,7 +216,7 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
 
     except exception.StorageQuotaFull as e:
         msg = (_("Denying attempt to upload image because it exceeds the ."
-                 "quota: %s") % e)
+                 "quota: %s") % utils.exception_to_str(e))
         LOG.info(msg)
         safe_kill(req, image_id)
         notifier.error('image.upload', msg)
@@ -224,7 +229,7 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
         # but something in the above function calls is affecting the
         # exception context and we must explicitly re-raise the
         # caught exception.
-        msg = _("Received HTTP error while uploading image %s") % image_id
+        msg = _LE("Received HTTP error while uploading image %s") % image_id
         notifier.error('image.upload', msg)
         with excutils.save_and_reraise_exception():
             LOG.exception(msg)
@@ -247,4 +252,4 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
                                                 request=req,
                                                 content_type='text/plain')
 
-    return image_meta, location, locations_metadata
+    return image_meta, location_data

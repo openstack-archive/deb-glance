@@ -20,7 +20,12 @@
 
 """Defines interface for DB access."""
 
+import threading
+
 from oslo.config import cfg
+from oslo.db import exception as db_exception
+from oslo.db.sqlalchemy import session
+from retrying import retry
 import six
 from six.moves import xrange
 import sqlalchemy
@@ -29,8 +34,7 @@ import sqlalchemy.sql as sa_sql
 
 from glance.common import exception
 from glance.db.sqlalchemy import models
-from glance.openstack.common.db import exception as db_exception
-from glance.openstack.common.db.sqlalchemy import session
+from glance.openstack.common import gettextutils
 import glance.openstack.common.log as os_logging
 from glance.openstack.common import timeutils
 
@@ -38,6 +42,8 @@ from glance.openstack.common import timeutils
 BASE = models.BASE
 sa_logger = None
 LOG = os_logging.getLogger(__name__)
+_LI = gettextutils._LI
+_LW = gettextutils._LW
 
 
 STATUSES = ['active', 'saving', 'queued', 'killed', 'pending_delete',
@@ -45,19 +51,26 @@ STATUSES = ['active', 'saving', 'queued', 'killed', 'pending_delete',
 
 CONF = cfg.CONF
 CONF.import_opt('debug', 'glance.openstack.common.log')
-CONF.import_opt('connection', 'glance.openstack.common.db.options',
-                group='database')
-
 
 _FACADE = None
+_LOCK = threading.Lock()
+
+
+def _retry_on_deadlock(exc):
+    """Decorator to retry a DB API call if Deadlock was received."""
+
+    if isinstance(exc, db_exception.DBDeadlock):
+        LOG.warn(_LW("Deadlock detected. Retrying..."))
+        return True
+    return False
 
 
 def _create_facade_lazily():
-    global _FACADE
+    global _LOCK, _FACADE
     if _FACADE is None:
-        _FACADE = session.EngineFacade(
-            CONF.database.connection,
-            **dict(six.iteritems(CONF.database)))
+        with _LOCK:
+            if _FACADE is None:
+                _FACADE = session.EngineFacade.from_config(CONF)
     return _FACADE
 
 
@@ -82,7 +95,7 @@ def clear_db_env():
 
 def _check_mutate_authorization(context, image_ref):
     if not is_image_mutable(context, image_ref):
-        LOG.info(_("Attempted to modify image user did not own."))
+        LOG.info(_LI("Attempted to modify image user did not own."))
         msg = _("You do not own this image")
         if image_ref.is_public:
             exc_class = exception.ForbiddenPublicImage
@@ -120,8 +133,7 @@ def image_destroy(context, image_id):
         image_ref.delete(session=session)
         delete_time = image_ref.deleted_at
 
-        _image_locations_delete_all(context, image_ref.id, delete_time,
-                                    session)
+        _image_locations_delete_all(context, image_id, delete_time, session)
 
         _image_property_delete_all(context, image_id, delete_time, session)
 
@@ -132,18 +144,37 @@ def image_destroy(context, image_id):
     return _normalize_locations(image_ref)
 
 
-def _normalize_locations(image):
-    undeleted_locations = filter(lambda x: not x.deleted, image['locations'])
-    image['locations'] = [{'url': loc['value'],
-                           'metadata': loc['meta_data']}
-                          for loc in undeleted_locations]
+def _normalize_locations(image, force_show_deleted=False):
+    """
+    Generate suitable dictionary list for locations field of image.
+
+    We don't need to set other data fields of location record which return
+    from image query.
+    """
+
+    if force_show_deleted:
+        locations = image['locations']
+    else:
+        locations = filter(lambda x: not x.deleted, image['locations'])
+    image['locations'] = [{'id': loc['id'],
+                           'url': loc['value'],
+                           'metadata': loc['meta_data'],
+                           'status': loc['status']}
+                          for loc in locations]
+    return image
+
+
+def _normalize_tags(image):
+    undeleted_tags = filter(lambda x: not x.deleted, image['tags'])
+    image['tags'] = [tag['value'] for tag in undeleted_tags]
     return image
 
 
 def image_get(context, image_id, session=None, force_show_deleted=False):
     image = _image_get(context, image_id, session=session,
                        force_show_deleted=force_show_deleted)
-    image = _normalize_locations(image.to_dict())
+    image = _normalize_locations(image.to_dict(),
+                                 force_show_deleted=force_show_deleted)
     return image
 
 
@@ -272,7 +303,7 @@ def _paginate_query(query, model, limit, sort_keys, marker=None,
     if 'id' not in sort_keys:
         # TODO(justinsb): If this ever gives a false-positive, check
         # the actual primary key, rather than assuming its id
-        LOG.warn(_('Id not in sort_keys; is sort_keys unique?'))
+        LOG.warn(_LW('Id not in sort_keys; is sort_keys unique?'))
 
     assert(not (sort_dir and sort_dirs))
 
@@ -479,7 +510,7 @@ def _select_images_query(context, image_conditions, admin_as_user,
 def image_get_all(context, filters=None, marker=None, limit=None,
                   sort_key='created_at', sort_dir='desc',
                   member_status='accepted', is_public=None,
-                  admin_as_user=False):
+                  admin_as_user=False, return_tag=False):
     """
     Get all images that match zero or more filters.
 
@@ -497,6 +528,9 @@ def image_get_all(context, filters=None, marker=None, limit=None,
     :param admin_as_user: For backwards compatibility. If true, then return to
                       an admin the equivalent set of images which it would see
                       if it were a regular user
+    :param return_tag: To indicates whether image entry in result includes it
+                       relevant tag entries. This could improve upper-layer
+                       query performance, to prevent using separated calls
     """
     filters = filters or {}
 
@@ -545,8 +579,18 @@ def image_get_all(context, filters=None, marker=None, limit=None,
 
     query = query.options(sa_orm.joinedload(models.Image.properties))\
                  .options(sa_orm.joinedload(models.Image.locations))
+    if return_tag:
+        query = query.options(sa_orm.joinedload(models.Image.tags))
 
-    return [_normalize_locations(image.to_dict()) for image in query.all()]
+    images = []
+    for image in query.all():
+        image_dict = image.to_dict()
+        image_dict = _normalize_locations(image_dict,
+                                          force_show_deleted=showing_deleted)
+        if return_tag:
+            image_dict = _normalize_tags(image_dict)
+        images.append(image_dict)
+    return images
 
 
 def _drop_protected_attrs(model_class, values):
@@ -565,14 +609,12 @@ def _image_get_disk_usage_by_owner(owner, session, image_id=None):
     if image_id is not None:
         query = query.filter(models.Image.id != image_id)
     query = query.filter(models.Image.size > 0)
-    query = query.filter(~models.Image.status.in_(['killed',
-                                                   'pending_delete',
-                                                   'deleted']))
+    query = query.filter(~models.Image.status.in_(['killed', 'deleted']))
     images = query.all()
 
     total = 0
     for i in images:
-        locations = [l for l in i.locations if not l['deleted']]
+        locations = [l for l in i.locations if l['status'] != 'deleted']
         total += (i.size * len(locations))
     return total
 
@@ -603,6 +645,8 @@ def _update_values(image_ref, values):
             setattr(image_ref, k, values[k])
 
 
+@retry(retry_on_exception=_retry_on_deadlock, wait_fixed=500,
+       stop_max_attempt_number=50)
 def _image_update(context, values, image_id, purge_props=False,
                   from_state=None):
     """
@@ -706,35 +750,118 @@ def _image_update(context, values, image_id, purge_props=False,
         _set_properties_for_image(context, image_ref, properties, purge_props,
                                   session)
 
-    if location_data is not None:
-        _image_locations_set(image_ref.id, location_data, session)
+        if location_data is not None:
+            _image_locations_set(context, image_ref.id, location_data,
+                                 session=session)
 
     return image_get(context, image_ref.id)
 
 
-def _image_locations_set(image_id, locations, session):
-    location_refs = session.query(models.ImageLocation)\
-                           .filter_by(image_id=image_id)\
-                           .filter_by(deleted=False)\
-                           .all()
-    for location_ref in location_refs:
-        location_ref.delete(session=session)
-
-    for location in locations:
-        location_ref = models.ImageLocation(image_id=image_id,
-                                            value=location['url'],
-                                            meta_data=location['metadata'])
-        location_ref.save()
+def image_location_add(context, image_id, location, session=None):
+    deleted = location['status'] in ('deleted', 'pending_delete')
+    delete_time = timeutils.utcnow() if deleted else None
+    location_ref = models.ImageLocation(image_id=image_id,
+                                        value=location['url'],
+                                        meta_data=location['metadata'],
+                                        status=location['status'],
+                                        deleted=deleted,
+                                        deleted_at=delete_time)
+    session = session or get_session()
+    location_ref.save(session=session)
 
 
-def _image_locations_delete_all(context, image_id, delete_time=None,
-                                session=None):
+def image_location_update(context, image_id, location, session=None):
+    loc_id = location.get('id')
+    if loc_id is None:
+        msg = _("The location data has an invalid ID: %d") % loc_id
+        raise exception.Invalid(msg)
+
+    try:
+        session = session or get_session()
+        location_ref = session.query(models.ImageLocation)\
+            .filter_by(id=loc_id)\
+            .filter_by(image_id=image_id)\
+            .one()
+
+        deleted = location['status'] in ('deleted', 'pending_delete')
+        updated_time = timeutils.utcnow()
+        delete_time = updated_time if deleted else None
+
+        location_ref.update({"value": location['url'],
+                             "meta_data": location['metadata'],
+                             "status": location['status'],
+                             "deleted": deleted,
+                             "updated_at": updated_time,
+                             "deleted_at": delete_time})
+        location_ref.save(session=session)
+    except sa_orm.exc.NoResultFound:
+        msg = (_("No location found with ID %(loc)s from image %(img)s") %
+               dict(loc=location_id, img=image_id))
+        LOG.warn(msg)
+        raise exception.NotFound(msg)
+
+
+def image_location_delete(context, image_id, location_id, status,
+                          delete_time=None, session=None):
+    if status not in ('deleted', 'pending_delete'):
+        msg = _("The status of deleted image location can only be set to "
+                "'pending_delete' or 'deleted'")
+        raise exception.Invalid(msg)
+
+    try:
+        session = session or get_session()
+        location_ref = session.query(models.ImageLocation)\
+            .filter_by(id=location_id)\
+            .filter_by(image_id=image_id)\
+            .one()
+
+        delete_time = delete_time or timeutils.utcnow()
+
+        location_ref.update({"deleted": True,
+                             "status": status,
+                             "updated_at": delete_time,
+                             "deleted_at": delete_time})
+        location_ref.save(session=session)
+    except sa_orm.exc.NoResultFound:
+        msg = (_("No location found with ID %(loc)s from image %(img)s") %
+               dict(loc=location_id, img=image_id))
+        LOG.warn(msg)
+        raise exception.NotFound(msg)
+
+
+def _image_locations_set(context, image_id, locations, session=None):
+    # NOTE(zhiyan): 1. Remove records from DB for deleted locations
+    session = session or get_session()
+    query = session.query(models.ImageLocation) \
+        .filter_by(image_id=image_id) \
+        .filter_by(deleted=False) \
+        .filter(~models.ImageLocation.id.in_([loc['id']
+                                              for loc in locations
+                                              if loc.get('id')]))
+    for loc_id in [loc_ref.id for loc_ref in query.all()]:
+        image_location_delete(context, image_id, loc_id, 'deleted',
+                              session=session)
+
+    # NOTE(zhiyan): 2. Adding or update locations
+    for loc in locations:
+        if loc.get('id') is None:
+            image_location_add(context, image_id, loc, session=session)
+        else:
+            image_location_update(context, image_id, loc, session=session)
+
+
+def _image_locations_delete_all(context, image_id,
+                                delete_time=None, session=None):
     """Delete all image locations for given image"""
-    locs_updated_count = _image_child_entry_delete_all(models.ImageLocation,
-                                                       image_id,
-                                                       delete_time,
-                                                       session)
-    return locs_updated_count
+    session = session or get_session()
+    location_refs = session.query(models.ImageLocation) \
+        .filter_by(image_id=image_id) \
+        .filter_by(deleted=False) \
+        .all()
+
+    for loc_id in [loc_ref.id for loc_ref in location_refs]:
+        image_location_delete(context, image_id, loc_id, 'deleted',
+                              delete_time=delete_time, session=session)
 
 
 def _set_properties_for_image(context, image_ref, properties,
@@ -1026,12 +1153,11 @@ def image_tag_get_all(context, image_id, session=None):
     """Get a list of tags for a specific image."""
     _check_image_id(image_id)
     session = session or get_session()
-    tags = session.query(models.ImageTag)\
+    tags = session.query(models.ImageTag.value)\
                   .filter_by(image_id=image_id)\
                   .filter_by(deleted=False)\
-                  .order_by(sqlalchemy.asc(models.ImageTag.created_at))\
                   .all()
-    return [tag['value'] for tag in tags]
+    return [tag[0] for tag in tags]
 
 
 def user_get_storage_usage(context, owner_id, image_id=None, session=None):

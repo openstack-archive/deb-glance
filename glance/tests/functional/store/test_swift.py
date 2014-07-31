@@ -176,8 +176,6 @@ class TestSwiftStore(store_tests.BaseTestCase, testtools.TestCase):
 
     def get_store(self, **kwargs):
         store = glance.store.swift.Store(context=kwargs.get('context'))
-        store.configure()
-        store.configure_add()
         return store
 
     def test_object_chunking(self):
@@ -496,6 +494,9 @@ class TestSwiftStore(store_tests.BaseTestCase, testtools.TestCase):
 
         Reproduces LP bug 1238604.
         """
+        self.config(
+            scrubber_datadir="/tmp",
+        )
         swift_store_user = self.swift_config['swift_store_user']
         tenant_name, username = swift_store_user.split(':')
         tenant_id, auth_token, service_catalog = keystone_authenticate(

@@ -26,11 +26,15 @@ from glance.common import crypt
 from glance.common import exception
 from glance.common import utils
 from glance import context
+from glance.openstack.common import gettextutils
 from glance.openstack.common import lockutils
 import glance.openstack.common.log as logging
 import glance.registry.client.v1.api as registry
 
 LOG = logging.getLogger(__name__)
+_LE = gettextutils._LE
+_LI = gettextutils._LI
+_LW = gettextutils._LW
 
 scrubber_opts = [
     cfg.StrOpt('scrubber_datadir',
@@ -68,12 +72,14 @@ class ScrubQueue(object):
         self.registry = registry.get_registry_client(context.RequestContext())
 
     @abc.abstractmethod
-    def add_location(self, image_id, uri, user_context=None):
+    def add_location(self, image_id, location, user_context=None):
         """Adding image location to scrub queue.
 
         :param image_id: The opaque image identifier
-        :param uri: The opaque image location uri
+        :param location: The opaque image location
         :param user_context: The user's request context
+
+        :retval A boolean value to indicate success or not
         """
         pass
 
@@ -132,7 +138,7 @@ class ScrubFileQueue(ScrubQueue):
                     else:
                         break
         except Exception:
-            LOG.error(_("%s file can not be read.") % file_path)
+            LOG.error(_LE("%s file can not be read.") % file_path)
 
         return uris, delete_times
 
@@ -156,14 +162,16 @@ class ScrubFileQueue(ScrubQueue):
                 f.write(''.join(lines))
             os.chmod(file_path, 0o600)
         except Exception:
-            LOG.error(_("%s file can not be wrote.") % file_path)
+            LOG.error(_LE("%s file can not be wrote.") % file_path)
 
-    def add_location(self, image_id, uri, user_context=None):
+    def add_location(self, image_id, location, user_context=None):
         """Adding image location to scrub queue.
 
         :param image_id: The opaque image identifier
-        :param uri: The opaque image location uri
+        :param location: The opaque image location
         :param user_context: The user's request context
+
+        :retval A boolean value to indicate success or not
         """
         if user_context is not None:
             registry_client = registry.get_registry_client(user_context)
@@ -179,18 +187,20 @@ class ScrubFileQueue(ScrubQueue):
             try:
                 image = registry_client.get_image(image_id)
                 if image['status'] == 'deleted':
-                    return
+                    return True
             except exception.NotFound as e:
-                LOG.error(_("Failed to find image to delete: "
-                            "%(e)s"), {'e': e})
-                return
+                LOG.warn(_LW("Failed to find image to delete: %s"),
+                         utils.exception_to_str(e))
+                return False
 
             delete_time = time.time() + self.scrub_time
             file_path = os.path.join(self.scrubber_datadir, str(image_id))
 
             if self.metadata_encryption_key is not None:
                 uri = crypt.urlsafe_encrypt(self.metadata_encryption_key,
-                                            uri, 64)
+                                            location['url'], 64)
+            else:
+                uri = location['url']
 
             if os.path.exists(file_path):
                 # Append the uri of location to the queue file
@@ -204,6 +214,7 @@ class ScrubFileQueue(ScrubQueue):
                 with open(file_path, 'w') as f:
                     f.write('\n'.join([uri, str(int(delete_time))]))
             os.utime(file_path, (delete_time, delete_time))
+            return True
 
     def _walk_all_locations(self, remove=False):
         """Returns a list of image id and location tuple from scrub queue.
@@ -213,7 +224,8 @@ class ScrubFileQueue(ScrubQueue):
         :retval a list of image image_id and location tuple from scrub queue
         """
         if not os.path.exists(self.scrubber_datadir):
-            LOG.info(_("%s directory does not exist.") % self.scrubber_datadir)
+            LOG.info(_LI("%s directory does not exist.") %
+                     self.scrubber_datadir)
             return []
 
         ret = []
@@ -276,12 +288,14 @@ class ScrubDBQueue(ScrubQueue):
         super(ScrubDBQueue, self).__init__()
         self.cleanup_scrubber_time = CONF.cleanup_scrubber_time
 
-    def add_location(self, image_id, uri, user_context=None):
+    def add_location(self, image_id, location, user_context=None):
         """Adding image location to scrub queue.
 
         :param image_id: The opaque image identifier
-        :param uri: The opaque image location uri
+        :param location: The opaque image location
         :param user_context: The user's request context
+
+        :retval A boolean value to indicate success or not
         """
         raise NotImplementedError
 
@@ -360,8 +374,8 @@ def get_scrub_queues():
 
 class Daemon(object):
     def __init__(self, wakeup_time=300, threads=1000):
-        LOG.info(_("Starting Daemon: wakeup_time=%(wakeup_time)s "
-                   "threads=%(threads)s"),
+        LOG.info(_LI("Starting Daemon: wakeup_time=%(wakeup_time)s "
+                     "threads=%(threads)s"),
                  {'wakeup_time': wakeup_time, 'threads': threads})
         self.wakeup_time = wakeup_time
         self.event = eventlet.event.Event()
@@ -374,7 +388,7 @@ class Daemon(object):
         try:
             self.event.wait()
         except KeyboardInterrupt:
-            msg = _("Daemon Shutdown on KeyboardInterrupt")
+            msg = _LI("Daemon Shutdown on KeyboardInterrupt")
             LOG.info(msg)
 
     def _run(self, application):
@@ -386,7 +400,7 @@ class Daemon(object):
 
 class Scrubber(object):
     def __init__(self, store_api):
-        LOG.info(_("Initializing scrubber with configuration: %s") %
+        LOG.info(_LI("Initializing scrubber with configuration: %s") %
                  six.text_type({'scrubber_datadir': CONF.scrubber_datadir,
                                 'cleanup': CONF.cleanup_scrubber,
                                 'cleanup_time': CONF.cleanup_scrubber_time,
@@ -410,7 +424,7 @@ class Scrubber(object):
             else:
                 image_id_uri_list = queue.get_all_locations()
         except Exception:
-            LOG.error(_("Can not %s scrub jobs from queue.") %
+            LOG.error(_LE("Can not %s scrub jobs from queue.") %
                       'pop' if pop else 'get')
             return None
 
@@ -434,17 +448,18 @@ class Scrubber(object):
         if len(delete_jobs) == 0:
             return
 
-        LOG.info(_("Scrubbing image %(id)s from %(count)d locations.") %
+        LOG.info(_LI("Scrubbing image %(id)s from %(count)d locations.") %
                  {'id': image_id, 'count': len(delete_jobs)})
         # NOTE(bourke): The starmap must be iterated to do work
-        list(pool.starmap(self._delete_image_from_backend, delete_jobs))
+        list(pool.starmap(self._delete_image_location_from_backend,
+                          delete_jobs))
 
         image = self.registry.get_image(image_id)
         if (image['status'] == 'pending_delete' and
                 not self.file_queue.has_image(image_id)):
             self.registry.update_image(image_id, {'status': 'deleted'})
 
-    def _delete_image_from_backend(self, image_id, uri):
+    def _delete_image_location_from_backend(self, image_id, uri):
         if CONF.metadata_encryption_key is not None:
             uri = crypt.urlsafe_decrypt(CONF.metadata_encryption_key, uri)
 
@@ -462,8 +477,9 @@ class Scrubber(object):
 
             self.store_api.delete_from_backend(admin_context, uri)
         except Exception:
-            msg = _("Failed to delete URI from image %(image_id)s")
-            LOG.error(msg % {'image_id': image_id})
+            msg = (_LE("Failed to delete URI from image %(image_id)s") %
+                   {'image_id': image_id})
+            LOG.error(msg)
 
     def _read_cleanup_file(self, file_path):
         """Reading cleanup to get latest cleanup timestamp.
@@ -484,7 +500,7 @@ class Scrubber(object):
                 raise Exception(msg)
             return atime
         except Exception as e:
-            LOG.error(e)
+            LOG.error(utils.exception_to_str(e))
         return None
 
     def _update_cleanup_file(self, file_path, cleanup_time):
@@ -498,7 +514,7 @@ class Scrubber(object):
             os.chmod(file_path, 0o600)
             os.utime(file_path, (cleanup_time, cleanup_time))
         except Exception:
-            LOG.error(_("%s file can not be created.") %
+            LOG.error(_LE("%s file can not be created.") %
                       six.text_type(file_path))
 
     def _cleanup(self, pool):
@@ -513,8 +529,8 @@ class Scrubber(object):
         if cleanup_time > now:
             return
 
-        LOG.info(_("Getting images deleted before "
-                   "%s") % CONF.cleanup_scrubber_time)
+        LOG.info(_LI("Getting images deleted before %s") %
+                 CONF.cleanup_scrubber_time)
         self._update_cleanup_file(cleanup_file, now)
 
         delete_jobs = self._get_delete_jobs(self.db_queue, False)

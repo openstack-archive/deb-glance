@@ -25,7 +25,6 @@ import atexit
 import datetime
 import logging
 import os
-import re
 import shutil
 import signal
 import socket
@@ -321,6 +320,8 @@ class ApiServer(Server):
         default_sql_connection = 'sqlite:////%s/tests.sqlite' % self.test_dir
         self.sql_connection = os.environ.get('GLANCE_TEST_SQL_CONNECTION',
                                              default_sql_connection)
+        self.data_api = kwargs.get("data_api",
+                                   "glance.db.sqlalchemy.api")
         self.user_storage_quota = '0'
         self.lock_path = self.test_dir
 
@@ -370,6 +371,7 @@ image_cache_driver = %(image_cache_driver)s
 policy_file = %(policy_file)s
 policy_default_rule = %(policy_default_rule)s
 db_auto_create = False
+data_api = %(data_api)s
 sql_connection = %(sql_connection)s
 show_image_direct_url = %(show_image_direct_url)s
 show_multiple_locations = %(show_multiple_locations)s
@@ -473,6 +475,7 @@ class RegistryServer(Server):
         self.workers = 0
         self.api_version = 1
         self.user_storage_quota = '0'
+        self.metadata_encryption_key = "012345678901234567890123456789ab"
 
         self.conf_base = """[DEFAULT]
 verbose = %(verbose)s
@@ -489,6 +492,7 @@ owner_is_tenant = %(owner_is_tenant)s
 enable_v2_registry = %(enable_v2_registry)s
 workers = %(workers)s
 user_storage_quota = %(user_storage_quota)s
+metadata_encryption_key = %(metadata_encryption_key)s
 [paste_deploy]
 flavor = %(deployment_flavor)s
 """
@@ -497,6 +501,9 @@ pipeline = unauthenticated-context registryapp
 
 [pipeline:glance-registry-fakeauth]
 pipeline = fakeauth context registryapp
+
+[pipeline:glance-registry-trusted-auth]
+pipeline = context registryapp
 
 [app:registryapp]
 paste.app_factory = glance.registry.api:API.factory
@@ -846,43 +853,6 @@ class FunctionalTest(test_utils.BaseTestCase):
         self.add_log_details(failed)
 
         return msg if expect_launch else None
-
-    def reload_server(self,
-                      server,
-                      expect_launch,
-                      expect_exit=True,
-                      expected_exitcode=0,
-                      **kwargs):
-        """
-        Reload a running server
-
-        Any kwargs passed to this method will override the configuration
-        value in the conf file used in starting the server.
-
-        :param server: the server to launch
-        :param expect_launch: true iff the server is expected to
-                              successfully start
-        :param expect_exit: true iff the launched process is expected
-                            to exit in a timely fashion
-        :param expected_exitcode: expected exitcode from the launcher
-        """
-        self.cleanup()
-
-        # Start up the requested server
-        exitcode, out, err = server.reload(expect_exit=expect_exit,
-                                           expected_exitcode=expected_exitcode,
-                                           **kwargs)
-        if expect_exit:
-            self.assertEqual(expected_exitcode, exitcode,
-                             "Failed to spin up the requested server. "
-                             "Got: %s" % err)
-
-            self.assertTrue(re.search("Restarting glance-[a-z]+ with", out))
-
-        self.launched_servers.append(server)
-
-        launch_msg = self.wait_for_servers([server], expect_launch)
-        self.assertTrue(launch_msg is None, launch_msg)
 
     def stop_server(self, server, name):
         """

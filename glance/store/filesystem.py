@@ -30,6 +30,7 @@ from glance.openstack.common import excutils
 from glance.openstack.common import jsonutils
 import glance.openstack.common.log as logging
 from glance.openstack.common import processutils
+from glance.openstack.common import units
 import glance.store
 import glance.store.base
 import glance.store.location
@@ -75,9 +76,9 @@ class StoreLocation(glance.store.location.StoreLocation):
         self.scheme = pieces.scheme
         path = (pieces.netloc + pieces.path).strip()
         if path == '':
-            reason = "No path specified in URI: %s" % uri
-            LOG.debug(reason)
-            raise exception.BadStoreUri('No path specified')
+            reason = _("No path specified in URI")
+            LOG.info(reason)
+            raise exception.BadStoreUri(message=reason)
         self.path = path
 
 
@@ -355,9 +356,9 @@ class Store(glance.store.base.Store):
         """
 
         #Calculate total available space
-        df = processutils.execute("df", "--block-size=1",
+        df = processutils.execute("df", "-k", "-P",
                                   mount_point)[0].strip("'\n'")
-        total_available_space = int(df.split('\n')[1].split()[3])
+        total_available_space = int(df.split('\n')[1].split()[3]) * units.Ki
 
         return max(0, total_available_space)
 
@@ -463,4 +464,4 @@ class Store(glance.store.base.Store):
             msg = _('Unable to remove partial image data for image %(id)s: '
                     '%(error)s')
             LOG.error(msg % {'id': id,
-                             'error': e})
+                             'error': utils.exception_to_str(e)})

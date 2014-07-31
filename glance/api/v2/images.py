@@ -28,6 +28,7 @@ from glance.common import wsgi
 import glance.db
 import glance.gateway
 import glance.notifier
+from glance.openstack.common import gettextutils
 from glance.openstack.common import jsonutils as json
 import glance.openstack.common.log as logging
 from glance.openstack.common import timeutils
@@ -35,6 +36,8 @@ import glance.schema
 import glance.store
 
 LOG = logging.getLogger(__name__)
+_LI = gettextutils._LI
+_LW = gettextutils._LW
 
 CONF = cfg.CONF
 CONF.import_opt('disk_formats', 'glance.common.config', group='image_format')
@@ -122,7 +125,7 @@ class ImagesController(object):
                 change_method(req, image, change)
 
             if changes:
-                    image_repo.save(image)
+                image_repo.save(image)
         except exception.NotFound as e:
             raise webob.exc.HTTPNotFound(explanation=e.msg)
         except exception.Forbidden as e:
@@ -130,8 +133,8 @@ class ImagesController(object):
         except exception.InvalidParameterValue as e:
             raise webob.exc.HTTPBadRequest(explanation=e.msg)
         except exception.StorageQuotaFull as e:
-            msg = (_("Denying attempt to upload image because it exceeds the ."
-                     "quota: %s") % e)
+            msg = (_LI("Denying attempt to upload image because it exceeds the"
+                       " .quota: %s") % utils.exception_to_str(e))
             LOG.info(msg)
             raise webob.exc.HTTPRequestEntityTooLarge(
                 explanation=msg, request=req, content_type='text/plain')
@@ -518,6 +521,10 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
             if visibility not in ['public', 'private', 'shared']:
                 msg = _('Invalid visibility value: %s') % visibility
                 raise webob.exc.HTTPBadRequest(explanation=msg)
+        changes_since = filters.get('changes-since', None)
+        if changes_since:
+            msg = _('The "changes-since" filter is no longer available on v2.')
+            raise webob.exc.HTTPBadRequest(explanation=msg)
 
         return filters
 
@@ -580,19 +587,30 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
             image_view['updated_at'] = timeutils.isotime(image.updated_at)
 
             if CONF.show_multiple_locations:
-                if image.locations:
-                    image_view['locations'] = list(image.locations)
+                locations = list(image.locations)
+                if locations:
+                    image_view['locations'] = []
+                    for loc in locations:
+                        tmp = dict(loc)
+                        tmp.pop('id', None)
+                        tmp.pop('status', None)
+                        image_view['locations'].append(tmp)
                 else:
                     # NOTE (flwang): We will still show "locations": [] if
                     # image.locations is None to indicate it's allowed to show
                     # locations but it's just non-existent.
                     image_view['locations'] = []
+                    LOG.debug("There is not available location "
+                              "for image %s" % image.image_id)
 
-            if CONF.show_image_direct_url and image.locations:
-                # Choose best location configured strategy
-                best_location = (
-                    location_strategy.choose_best_location(image.locations))
-                image_view['direct_url'] = best_location['url']
+            if CONF.show_image_direct_url:
+                if image.locations:
+                    # Choose best location configured strategy
+                    l = location_strategy.choose_best_location(image.locations)
+                    image_view['direct_url'] = l['url']
+                else:
+                    LOG.debug("There is not available location "
+                              "for image %s" % image.image_id)
 
             image_view['tags'] = list(image.tags)
             image_view['self'] = self._get_image_href(image)
@@ -801,9 +819,9 @@ def load_custom_properties():
             schema_data = schema_file.read()
         return json.loads(schema_data)
     else:
-        msg = _('Could not find schema properties file %s. Continuing '
-                'without custom properties')
-        LOG.warn(msg % filename)
+        msg = (_LW('Could not find schema properties file %s. Continuing '
+                   'without custom properties') % filename)
+        LOG.warn(msg)
         return {}
 
 

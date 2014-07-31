@@ -13,5 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from glance.openstack.common import gettextutils
-gettextutils.install('glance', lazy=True)
+from glance import i18n
+
+i18n.enable_lazy()
+i18n.install('glance')

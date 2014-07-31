@@ -142,6 +142,10 @@ class InvalidPropertyProtectionConfiguration(Invalid):
     message = _("Invalid configuration in property protection file.")
 
 
+class InvalidSwiftStoreConfiguration(Invalid):
+    message = _("Invalid configuration in glance-swift conf file.")
+
+
 class InvalidFilterRangeValue(Invalid):
     message = _("Unable to filter using the specified range.")
 
@@ -237,6 +241,10 @@ class StoreAddNotSupported(GlanceException):
 class StoreAddDisabled(GlanceException):
     message = _("Configuration for store failed. Adding images to this "
                 "store is disabled.")
+
+
+class StoreNotConfigured(GlanceException):
+    message = _("Store is not configured.")
 
 
 class MaxRedirectsExceeded(GlanceException):

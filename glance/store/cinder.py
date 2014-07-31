@@ -112,17 +112,17 @@ class StoreLocation(glance.store.location.StoreLocation):
 
     def parse_uri(self, uri):
         if not uri.startswith('cinder://'):
-            reason = _("URI must start with cinder://")
-            LOG.error(reason)
-            raise exception.BadStoreUri(uri, reason)
+            reason = _("URI must start with 'cinder://'")
+            LOG.info(reason)
+            raise exception.BadStoreUri(message=reason)
 
         self.scheme = 'cinder'
         self.volume_id = uri[9:]
 
         if not utils.is_uuid_like(self.volume_id):
-            reason = _("URI contains invalid volume ID: %s") % self.volume_id
-            LOG.error(reason)
-            raise exception.BadStoreUri(uri, reason)
+            reason = _("URI contains invalid volume ID")
+            LOG.info(reason)
+            raise exception.BadStoreUri(message=reason)
 
 
 class Store(glance.store.base.Store):
@@ -175,5 +175,5 @@ class Store(glance.store.base.Store):
             raise exception.NotFound(reason)
         except Exception as e:
             LOG.exception(_("Failed to get image size due to "
-                            "internal error: %s") % e)
+                            "internal error: %s") % utils.exception_to_str(e))
             return 0

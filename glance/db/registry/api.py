@@ -120,7 +120,7 @@ def is_image_visible(context, image, status=None):
 def image_get_all(client, filters=None, marker=None, limit=None,
                   sort_key='created_at', sort_dir='desc',
                   member_status='accepted', is_public=None,
-                  admin_as_user=False):
+                  admin_as_user=False, return_tag=False):
     """
     Get all images that match zero or more filters.
 
@@ -138,12 +138,16 @@ def image_get_all(client, filters=None, marker=None, limit=None,
     :param admin_as_user: For backwards compatibility. If true, then return to
                       an admin the equivalent set of images which it would see
                       if it were a regular user
+    :param return_tag: To indicates whether image entry in result includes it
+                       relevant tag entries. This could improve upper-layer
+                       query performance, to prevent using separated calls
     """
     return client.image_get_all(filters=filters, marker=marker, limit=limit,
                                 sort_key=sort_key, sort_dir=sort_dir,
                                 member_status=member_status,
                                 is_public=is_public,
-                                admin_as_user=admin_as_user)
+                                admin_as_user=admin_as_user,
+                                return_tag=return_tag)
 
 
 @_get_client
@@ -223,5 +227,38 @@ def image_tag_get_all(client, image_id, session=None):
 
 
 @_get_client
+def image_location_delete(client, image_id, location_id, status, session=None):
+    """Delete an image location."""
+    client.image_location_delete(image_id=image_id, location_id=location_id,
+                                 status=status)
+
+
+@_get_client
 def user_get_storage_usage(client, owner_id, image_id=None, session=None):
     return client.user_get_storage_usage(owner_id=owner_id, image_id=image_id)
+
+
+@_get_client
+def task_get_all(client, filters=None, marker=None, limit=None,
+                 sort_key='created_at', sort_dir='desc', admin_as_user=False):
+    """Get all tasks that match zero or more filters.
+
+    :param filters: dict of filter keys and values.
+    :param marker: task id after which to start page
+    :param limit: maximum number of tasks to return
+    :param sort_key: task attribute by which results should be sorted
+    :param sort_dir: direction in which results should be sorted (asc, desc)
+    :param admin_as_user: For backwards compatibility. If true, then return to
+                      an admin the equivalent set of tasks which it would see
+                      if it were a regular user
+    :return: tasks set
+    """
+    return client.task_get_all(filters=filters, marker=marker, limit=limit,
+                               sort_key=sort_key, sort_dir=sort_dir,
+                               admin_as_user=admin_as_user)
+
+
+@_get_client
+def task_create(client, values, session=None):
+    """Create a task object"""
+    return client.task_create(values=values)

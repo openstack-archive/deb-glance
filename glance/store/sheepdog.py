@@ -147,12 +147,12 @@ class StoreLocation(glance.store.location.StoreLocation):
     def parse_uri(self, uri):
         valid_schema = 'sheepdog://'
         if not uri.startswith(valid_schema):
-            raise exception.BadStoreUri(_("URI must start with %s://") %
-                                        valid_schema)
+            reason = _("URI must start with '%s://'") % valid_schema
+            raise exception.BadStoreUri(message=reason)
         self.image = uri[len(valid_schema):]
         if not utils.is_uuid_like(self.image):
-            raise exception.BadStoreUri(_("URI must contains well-formated "
-                                          "image id"))
+            reason = _("URI must contains well-formated image id")
+            raise exception.BadStoreUri(message=reason)
 
 
 class ImageIterator(object):
@@ -182,7 +182,7 @@ class Store(glance.store.base.Store):
     def get_schemes(self):
         return ('sheepdog',)
 
-    def configure_add(self):
+    def configure(self):
         """
         Configure the Store to use the stored configuration options
         Any store that needs special configuration should implement
@@ -195,7 +195,8 @@ class Store(glance.store.base.Store):
             self.addr = CONF.sheepdog_store_address.strip()
             self.port = CONF.sheepdog_store_port
         except cfg.ConfigFileValueError as e:
-            reason = _("Error in store configuration: %s") % e
+            reason = (_("Error in store configuration: %s") %
+                      utils.exception_to_str(e))
             LOG.error(reason)
             raise exception.BadStoreConfiguration(store_name='sheepdog',
                                                   reason=reason)
@@ -211,7 +212,8 @@ class Store(glance.store.base.Store):
             cmd = ["collie", "vdi", "list", "-a", self.addr, "-p", self.port]
             processutils.execute(*cmd)
         except Exception as e:
-            reason = _("Error in store configuration: %s") % e
+            reason = (_("Error in store configuration: %s") %
+                      utils.exception_to_str(e))
             LOG.error(reason)
             raise exception.BadStoreConfiguration(store_name='sheepdog',
                                                   reason=reason)

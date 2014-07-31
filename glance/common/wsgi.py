@@ -44,9 +44,10 @@ from webob import multidict
 
 from glance.common import exception
 from glance.common import utils
-from glance.openstack.common import gettextutils
+from glance import i18n
 from glance.openstack.common import jsonutils
 import glance.openstack.common.log as logging
+from glance.openstack.common import processutils
 
 
 bind_opts = [
@@ -74,9 +75,10 @@ socket_opts = [
 ]
 
 eventlet_opts = [
-    cfg.IntOpt('workers', default=1,
+    cfg.IntOpt('workers', default=processutils.get_worker_count(),
                help=_('The number of child process workers that will be '
-                      'created to service API requests.')),
+                      'created to service requests. The default will be '
+                      'equal to the number of CPUs available.')),
     cfg.StrOpt('eventlet_hub', default='poll',
                help=_('Name of eventlet hub to use. Traditionally, we have '
                       'only supported \'poll\', however \'selects\' may be '
@@ -524,7 +526,7 @@ class Request(webob.Request):
         """
         if not self.accept_language:
             return None
-        langs = gettextutils.get_available_languages('glance')
+        langs = i18n.get_available_languages('glance')
         return self.accept_language.best_match(langs)
 
 
@@ -594,10 +596,10 @@ def translate_exception(req, e):
     locale = req.best_match_language()
 
     if isinstance(e, webob.exc.HTTPError):
-        e.explanation = gettextutils.translate(e.explanation, locale)
-        e.detail = gettextutils.translate(e.detail, locale)
+        e.explanation = i18n.translate(e.explanation, locale)
+        e.detail = i18n.translate(e.detail, locale)
         if getattr(e, 'body_template', None):
-            e.body_template = gettextutils.translate(e.body_template, locale)
+            e.body_template = i18n.translate(e.body_template, locale)
     return e
 
 

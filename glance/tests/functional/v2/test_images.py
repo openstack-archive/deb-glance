@@ -19,6 +19,7 @@ import tempfile
 import uuid
 
 import requests
+import six
 
 from glance.openstack.common import jsonutils
 from glance.tests import functional
@@ -37,7 +38,7 @@ class TestImages(functional.FunctionalTest):
         super(TestImages, self).setUp()
         self.cleanup()
         self.api_server.deployment_flavor = 'noauth'
-        self.start_servers(**self.__dict__.copy())
+        self.api_server.data_api = 'glance.db.sqlalchemy.api'
 
     def _url(self, path):
         return 'http://127.0.0.1:%d%s' % (self.api_port, path)
@@ -55,6 +56,7 @@ class TestImages(functional.FunctionalTest):
 
     def test_image_lifecycle(self):
         # Image list should be empty
+        self.start_servers(**self.__dict__.copy())
         path = self._url('/v2/images')
         response = requests.get(path, headers=self._headers())
         self.assertEqual(200, response.status_code)
@@ -200,6 +202,15 @@ class TestImages(functional.FunctionalTest):
         images = jsonutils.loads(response.text)['images']
         self.assertEqual(1, len(images))
         self.assertEqual(images[0]['id'], image_id)
+
+        # The "changes-since" filter shouldn't work on glance v2
+        path = self._url('/v2/images?changes-since=20001007T10:10:10')
+        response = requests.get(path, headers=self._headers())
+        self.assertEqual(400, response.status_code)
+
+        path = self._url('/v2/images?changes-since=aaa')
+        response = requests.get(path, headers=self._headers())
+        self.assertEqual(400, response.status_code)
 
         # Image list should list only image-1 based on the filter
         # 'foo=bar&abc=xyz'
@@ -451,7 +462,66 @@ class TestImages(functional.FunctionalTest):
 
         self.stop_servers()
 
+    def test_download_policy_when_cache_is_not_enabled(self):
+
+        rules = {'context_is_admin': 'role:admin', 'default': '',
+                 'download_image': '!'}
+        self.set_policy_rules(rules)
+        self.start_servers(**self.__dict__.copy())
+
+        # Create an image
+        path = self._url('/v2/images')
+        headers = self._headers({'content-type': 'application/json',
+                                 'X-Roles': 'member'})
+        data = jsonutils.dumps({'name': 'image-1', 'disk_format': 'aki',
+                                'container_format': 'aki'})
+        response = requests.post(path, headers=headers, data=data)
+        self.assertEqual(201, response.status_code)
+
+        # Returned image entity
+        image = jsonutils.loads(response.text)
+        image_id = image['id']
+        expected_image = {
+            'status': 'queued',
+            'name': 'image-1',
+            'tags': [],
+            'visibility': 'private',
+            'self': '/v2/images/%s' % image_id,
+            'protected': False,
+            'file': '/v2/images/%s/file' % image_id,
+            'min_disk': 0,
+            'min_ram': 0,
+            'schema': '/v2/schemas/image',
+        }
+        for key, value in six.iteritems(expected_image):
+            self.assertEqual(image[key], value, key)
+
+        # Upload data to image
+        path = self._url('/v2/images/%s/file' % image_id)
+        headers = self._headers({'Content-Type': 'application/octet-stream'})
+        response = requests.put(path, headers=headers, data='ZZZZZ')
+        self.assertEqual(204, response.status_code)
+
+        # Get an image should fail
+        path = self._url('/v2/images/%s/file' % image_id)
+        headers = self._headers({'Content-Type': 'application/octet-stream'})
+        response = requests.get(path, headers=headers)
+        self.assertEqual(403, response.status_code)
+
+        # Image Deletion should work
+        path = self._url('/v2/images/%s' % image_id)
+        response = requests.delete(path, headers=self._headers())
+        self.assertEqual(204, response.status_code)
+
+        # This image should be no longer be directly accessible
+        path = self._url('/v2/images/%s' % image_id)
+        response = requests.get(path, headers=self._headers())
+        self.assertEqual(404, response.status_code)
+
+        self.stop_servers()
+
     def test_permissions(self):
+        self.start_servers(**self.__dict__.copy())
         # Create an image that belongs to TENANT1
         path = self._url('/v2/images')
         headers = self._headers({'Content-Type': 'application/json'})
@@ -1395,6 +1465,7 @@ class TestImages(functional.FunctionalTest):
         self.stop_servers()
 
     def test_tag_lifecycle(self):
+        self.start_servers(**self.__dict__.copy())
         # Create an image with a tag - duplicate should be ignored
         path = self._url('/v2/images')
         headers = self._headers({'Content-Type': 'application/json'})
@@ -1574,6 +1645,7 @@ class TestImages(functional.FunctionalTest):
 
     def test_images_container(self):
         # Image list should be empty and no next link should be present
+        self.start_servers(**self.__dict__.copy())
         path = self._url('/v2/images')
         response = requests.get(path, headers=self._headers())
         self.assertEqual(200, response.status_code)
@@ -1754,6 +1826,7 @@ class TestImages(functional.FunctionalTest):
         self.stop_servers()
 
     def test_update_locations(self):
+        self.start_servers(**self.__dict__.copy())
         # Create an image
         path = self._url('/v2/images')
         headers = self._headers({'content-type': 'application/json'})
@@ -1789,6 +1862,14 @@ class TestImages(functional.FunctionalTest):
         self.assertEqual(200, response.status_code)
         image = jsonutils.loads(response.text)
         self.assertEqual(image['size'], 6)
+
+
+class TestImagesWithRegistry(TestImages):
+    def setUp(self):
+        super(TestImagesWithRegistry, self).setUp()
+        self.api_server.data_api = (
+            'glance.tests.functional.v2.registry_data_api')
+        self.registry_server.deployment_flavor = 'trusted-auth'
 
 
 class TestImageDirectURLVisibility(functional.FunctionalTest):
@@ -1992,6 +2073,14 @@ class TestImageDirectURLVisibility(functional.FunctionalTest):
         self.stop_servers()
 
 
+class TestImageDirectURLVisibilityWithRegistry(TestImageDirectURLVisibility):
+    def setUp(self):
+        super(TestImageDirectURLVisibilityWithRegistry, self).setUp()
+        self.api_server.data_api = (
+            'glance.tests.functional.v2.registry_data_api')
+        self.registry_server.deployment_flavor = 'trusted-auth'
+
+
 class TestImageLocationSelectionStrategy(functional.FunctionalTest):
 
     def setUp(self):
@@ -2144,6 +2233,15 @@ class TestImageLocationSelectionStrategy(functional.FunctionalTest):
         self.assertEqual(image['direct_url'], values[0]['url'])
 
         self.stop_servers()
+
+
+class TestImageLocationSelectionStrategyWithRegistry(
+        TestImageLocationSelectionStrategy):
+    def setUp(self):
+        super(TestImageLocationSelectionStrategyWithRegistry, self).setUp()
+        self.api_server.data_api = (
+            'glance.tests.functional.v2.registry_data_api')
+        self.registry_server.deployment_flavor = 'trusted-auth'
 
 
 class TestImageMembers(functional.FunctionalTest):
@@ -2447,12 +2545,21 @@ class TestImageMembers(functional.FunctionalTest):
         self.stop_servers()
 
 
+class TestImageMembersWithRegistry(TestImageMembers):
+    def setUp(self):
+        super(TestImageMembersWithRegistry, self).setUp()
+        self.api_server.data_api = (
+            'glance.tests.functional.v2.registry_data_api')
+        self.registry_server.deployment_flavor = 'trusted-auth'
+
+
 class TestQuotas(functional.FunctionalTest):
 
     def setUp(self):
         super(TestQuotas, self).setUp()
         self.cleanup()
         self.api_server.deployment_flavor = 'noauth'
+        self.registry_server.deployment_flavor = 'trusted-auth'
         self.user_storage_quota = 100
         self.start_servers(**self.__dict__.copy())
 
@@ -2521,3 +2628,11 @@ class TestQuotas(functional.FunctionalTest):
             yield 'x' * (self.user_storage_quota + 1)
 
         self._upload_image_test(data_gen(), 413)
+
+
+class TestQuotasWithRegistry(TestQuotas):
+    def setUp(self):
+        super(TestQuotasWithRegistry, self).setUp()
+        self.api_server.data_api = (
+            'glance.tests.functional.v2.registry_data_api')
+        self.registry_server.deployment_flavor = 'trusted-auth'

@@ -21,11 +21,13 @@ the Glance Registry API
 from glance.common.client import BaseClient
 from glance.common import crypt
 from glance.openstack.common import excutils
+from glance.openstack.common import gettextutils
 from glance.openstack.common import jsonutils
 import glance.openstack.common.log as logging
 from glance.registry.api.v1 import images
 
 LOG = logging.getLogger(__name__)
+_LI = gettextutils._LI
 
 
 class RegistryClient(BaseClient):
@@ -58,7 +60,9 @@ class RegistryClient(BaseClient):
                 for loc in image_metadata['location_data']:
                     url = crypt.urlsafe_decrypt(self.metadata_encryption_key,
                                                 loc['url'])
-                    ld.append({'url': url, 'metadata': loc['metadata']})
+                    ld.append({'id': loc['id'], 'url': url,
+                               'metadata': loc['metadata'],
+                               'status': loc['status']})
                 image_metadata['location_data'] = ld
         return image_metadata
 
@@ -78,7 +82,10 @@ class RegistryClient(BaseClient):
                     else:
                         url = crypt.urlsafe_encrypt(
                             self.metadata_encryption_key, loc['url'], 64)
-                    ld.append({'url': url, 'metadata': loc['metadata']})
+                    ld.append({'url': url, 'metadata': loc['metadata'],
+                               'status': loc['status'],
+                               # NOTE(zhiyan): New location has no ID field.
+                               'id': loc.get('id')})
                 image_metadata['location_data'] = ld
         return image_metadata
 
@@ -117,8 +124,8 @@ class RegistryClient(BaseClient):
         except Exception as exc:
             with excutils.save_and_reraise_exception():
                 exc_name = exc.__class__.__name__
-                LOG.info(_("Registry client request %(method)s %(action)s "
-                           "raised %(exc_name)s"),
+                LOG.info(_LI("Registry client request %(method)s %(action)s "
+                             "raised %(exc_name)s"),
                          {'method': method, 'action': action,
                           'exc_name': exc_name})
         return res

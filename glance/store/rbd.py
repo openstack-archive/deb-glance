@@ -28,6 +28,8 @@ from six import text_type
 
 from glance.common import exception
 from glance.common import utils
+from glance import i18n
+from glance.openstack.common import excutils
 import glance.openstack.common.log as logging
 from glance.openstack.common import units
 import glance.store.base
@@ -47,6 +49,7 @@ DEFAULT_CHUNKSIZE = 8  # in MiB
 DEFAULT_SNAPNAME = 'snap'
 
 LOG = logging.getLogger(__name__)
+_LI = i18n._LI
 
 rbd_opts = [
     cfg.IntOpt('rbd_store_chunk_size', default=DEFAULT_CHUNKSIZE,
@@ -107,18 +110,16 @@ class StoreLocation(glance.store.location.StoreLocation):
         prefix = 'rbd://'
         if not uri.startswith(prefix):
             reason = _('URI must start with rbd://')
-            msg = "Invalid URI: %(uri)s: %(reason)s" % {'uri': uri,
-                                                        'reason': reason}
-            LOG.debug(msg)
+            msg = _LI("Invalid URI: %s") % reason
+            LOG.info(msg)
             raise exception.BadStoreUri(message=reason)
         # convert to ascii since librbd doesn't handle unicode
         try:
             ascii_uri = str(uri)
         except UnicodeError:
-            reason = 'URI contains non-ascii characters'
-            msg = "Invalid URI: %(uri)s: %(reason)s" % {'uri': uri,
-                                                        'reason': reason}
-            LOG.debug(msg)
+            reason = _('URI contains non-ascii characters')
+            msg = _LI("Invalid URI: %s") % reason
+            LOG.info(msg)
             raise exception.BadStoreUri(message=reason)
         pieces = ascii_uri[len(prefix):].split('/')
         if len(pieces) == 1:
@@ -128,16 +129,14 @@ class StoreLocation(glance.store.location.StoreLocation):
             self.fsid, self.pool, self.image, self.snapshot = \
                 map(urlparse.unquote, pieces)
         else:
-            reason = 'URI must have exactly 1 or 4 components'
-            msg = "Invalid URI: %(uri)s: %(reason)s" % {'uri': uri,
-                                                        'reason': reason}
-            LOG.debug(msg)
+            reason = _('URI must have exactly 1 or 4 components')
+            msg = _LI("Invalid URI: %s") % reason
+            LOG.info(msg)
             raise exception.BadStoreUri(message=reason)
         if any(map(lambda p: p == '', pieces)):
-            reason = 'URI cannot contain empty components'
-            msg = "Invalid URI: %(uri)s: %(reason)s" % {'uri': uri,
-                                                        'reason': reason}
-            LOG.debug(msg)
+            reason = _('URI cannot contain empty components')
+            msg = _LI("Invalid URI: %s") % reason
+            LOG.info(msg)
             raise exception.BadStoreUri(message=reason)
 
 
@@ -197,7 +196,8 @@ class Store(glance.store.base.Store):
             self.user = str(CONF.rbd_store_user)
             self.conf_file = str(CONF.rbd_store_ceph_conf)
         except cfg.ConfigFileValueError as e:
-            reason = _("Error in store configuration: %s") % e
+            reason = (_("Error in store configuration: %s") %
+                      utils.exception_to_str(e))
             LOG.error(reason)
             raise exception.BadStoreConfiguration(store_name='rbd',
                                                   reason=reason)
@@ -365,14 +365,13 @@ class Store(glance.store.base.Store):
                         if loc.snapshot:
                             image.create_snap(loc.snapshot)
                             image.protect_snap(loc.snapshot)
-                except Exception as exc:
-                    # Delete image if one was created
-                    try:
-                        self._delete_image(loc.image, loc.snapshot)
-                    except exception.NotFound:
-                        pass
-
-                    raise exc
+                except Exception:
+                    with excutils.save_and_reraise_exception():
+                        # Delete image if one was created
+                        try:
+                            self._delete_image(loc.image, loc.snapshot)
+                        except exception.NotFound:
+                            pass
 
         # Make sure we send back the image size whether provided or inferred.
         if image_size == 0:

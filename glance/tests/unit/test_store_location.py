@@ -12,10 +12,13 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+
+import fixtures
 import mock
 
 from glance.common import exception
 from glance import context
+import glance.location
 import glance.store
 import glance.store.filesystem
 import glance.store.http
@@ -24,6 +27,15 @@ import glance.store.s3
 import glance.store.swift
 import glance.store.vmware_datastore
 from glance.tests.unit import base
+
+
+CONF = {'default_store': 'file',
+        'swift_store_auth_address': 'localhost:8080',
+        'swift_store_container': 'glance',
+        'swift_store_user': 'user',
+        'swift_store_key': 'key',
+        'default_swift_reference': 'store_1'
+        }
 
 
 class TestStoreLocation(base.StoreClearingUnitTest):
@@ -44,6 +56,9 @@ class TestStoreLocation(base.StoreClearingUnitTest):
             "glance.store.gridfs.Store",
             "glance.store.vmware_datastore.Store",
         ])
+        conf = CONF.copy()
+        self.config(**conf)
+        reload(glance.store.swift)
         super(TestStoreLocation, self).setUp()
 
     def test_get_location_from_uri_back_to_uri(self):
@@ -159,6 +174,42 @@ class TestStoreLocation(base.StoreClearingUnitTest):
         """
         Test the specific StoreLocation for the Swift store
         """
+        uri = 'swift+config://store_1/images/1'
+        loc = glance.store.swift.StoreLocation({})
+        loc.parse_uri(uri)
+
+        self.assertEqual("swift+config", loc.scheme)
+        self.assertEqual("localhost:8080", loc.auth_or_store_url)
+        self.assertEqual("https://localhost:8080", loc.swift_url)
+        self.assertEqual("images", loc.container)
+        self.assertEqual("1", loc.obj)
+        self.assertEqual('user', loc.user)
+        self.assertEqual('swift+https://user:key@localhost:8080/images/1',
+                         loc.get_uri())
+
+        conf_file = "glance-swift.conf"
+        test_dir = self.useFixture(fixtures.TempDir()).path
+        self.swift_config_file = self._copy_data_file(conf_file, test_dir)
+        conf = CONF.copy()
+        conf.update({'swift_store_config_file': self.swift_config_file})
+        self.config(**conf)
+        reload(glance.store.swift)
+
+        uri = 'swift+config://store_2/images/1'
+        loc = glance.store.swift.StoreLocation({})
+        loc.parse_uri(uri)
+
+        self.assertEqual("swift+config", loc.scheme)
+        self.assertEqual("localhost:8080", loc.auth_or_store_url)
+        self.assertEqual("https://localhost:8080", loc.swift_url)
+        self.assertEqual("images", loc.container)
+        self.assertEqual("1", loc.obj)
+        self.assertEqual('tenant:user1', loc.user)
+        self.assertEqual('key1', loc.key)
+        self.assertEqual('swift+https://tenant%3Auser1:key1@localhost:8080'
+                         '/images/1',
+                         loc.get_uri())
+
         uri = 'swift://example.com/images/1'
         loc = glance.store.swift.StoreLocation({})
         loc.parse_uri(uri)
@@ -499,19 +550,19 @@ class TestStoreLocation(base.StoreClearingUnitTest):
 
         self.stubs.Set(glance.store, 'get_size_from_backend',
                        fake_get_size_from_backend)
-        with mock.patch('glance.store._check_image_location'):
+        with mock.patch('glance.location._check_image_location'):
             loc1 = {'url': 'file:///fake1.img.tar.gz', 'metadata': {}}
             loc2 = {'url': 'file:///fake2.img.tar.gz', 'metadata': {}}
 
             # Test for insert location
             image1 = FakeImageProxy()
-            locations = glance.store.StoreLocations(image1, [])
+            locations = glance.location.StoreLocations(image1, [])
             locations.insert(0, loc2)
             self.assertEqual(image1.size, 1)
 
             # Test for set_attr of _locations_proxy
             image2 = FakeImageProxy()
-            locations = glance.store.StoreLocations(image2, [loc1])
+            locations = glance.location.StoreLocations(image2, [loc1])
             locations[0] = loc2
             self.assertIn(loc2, locations)
             self.assertEqual(image2.size, 1)

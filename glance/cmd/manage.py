@@ -39,17 +39,20 @@ if os.path.exists(os.path.join(possible_topdir, 'glance', '__init__.py')):
     sys.path.insert(0, possible_topdir)
 
 from oslo.config import cfg
+from oslo.db.sqlalchemy import migration
 
 from glance.common import config
 from glance.common import exception
+from glance.common import utils
 from glance.db import migration as db_migration
 from glance.db.sqlalchemy import api as db_api
-from glance.openstack.common.db.sqlalchemy import migration
+from glance.openstack.common import gettextutils
 from glance.openstack.common import log
 from glance.openstack.common import strutils
 
 
 LOG = log.getLogger(__name__)
+_LW = gettextutils._LW
 
 manager_opts = [
     cfg.BoolOpt('db_enforce_mysql_charset',
@@ -64,7 +67,6 @@ manager_opts = [
 
 CONF = cfg.CONF
 CONF.register_opts(manager_opts)
-CONF.import_group("database", "glance.openstack.common.db.options")
 
 
 # Decorators for actions
@@ -83,11 +85,11 @@ class DbCommands(object):
 
     def _need_sanity_check(self):
         if not CONF.db_enforce_mysql_charset:
-            LOG.warning(_('Warning: '
-                          'The db_enforce_mysql_charset option is now '
-                          'deprecated and will be removed in the Juno '
-                          'release. Please migrate DB manually e.g. '
-                          'convert data of all tables to UTF-8 charset.'))
+            LOG.warning(_LW('Warning: '
+                            'The db_enforce_mysql_charset option is now '
+                            'deprecated and will be removed in the Juno '
+                            'release. Please migrate DB manually e.g. '
+                            'convert data of all tables to UTF-8 charset.'))
         return CONF.db_enforce_mysql_charset
 
     def version(self):
@@ -269,7 +271,7 @@ def main():
                          for arg in CONF.command.action_args]
             return CONF.command.action_fn(*func_args, **func_kwargs)
     except exception.GlanceException as e:
-        sys.exit("ERROR: %s" % e)
+        sys.exit("ERROR: %s" % utils.exception_to_str(e))
 
 
 if __name__ == '__main__':

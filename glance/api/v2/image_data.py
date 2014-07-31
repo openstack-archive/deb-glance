@@ -23,10 +23,12 @@ import glance.db
 import glance.gateway
 import glance.notifier
 from glance.openstack.common import excutils
+from glance.openstack.common import gettextutils
 import glance.openstack.common.log as logging
 import glance.store
 
 LOG = logging.getLogger(__name__)
+_LE = gettextutils._LE
 
 
 class ImageDataController(object):
@@ -54,13 +56,15 @@ class ImageDataController(object):
                 image.status = 'queued'
                 image_repo.save(image)
         except Exception as e:
-            msg = _("Unable to restore image %(image_id)s: %(e)s") % \
-                {'image_id': image.image_id, 'e': utils.exception_to_str(e)}
+            msg = (_LE("Unable to restore image %(image_id)s: %(e)s") %
+                   {'image_id': image.image_id,
+                    'e': utils.exception_to_str(e)})
             LOG.exception(msg)
 
     @utils.mutating
     def upload(self, req, image_id, data, size):
         image_repo = self.gateway.get_repo(req.context)
+        image = None
         try:
             image = image_repo.get(image_id)
             image.status = 'saving'
@@ -73,7 +77,7 @@ class ImageDataController(object):
                          "The image may have been deleted during the upload: "
                          "%(error)s Cleaning up the chunks uploaded") %
                        {'id': image_id,
-                        'error': e})
+                        'error': utils.exception_to_str(e)})
                 LOG.warn(msg)
                 # NOTE(sridevi): Cleaning up the uploaded chunks.
                 try:
@@ -107,28 +111,32 @@ class ImageDataController(object):
             raise webob.exc.HTTPNotFound(explanation=e.msg)
 
         except exception.StorageFull as e:
-            msg = _("Image storage media is full: %s") % e
+            msg = _("Image storage media "
+                    "is full: %s") % utils.exception_to_str(e)
             LOG.error(msg)
             self._restore(image_repo, image)
             raise webob.exc.HTTPRequestEntityTooLarge(explanation=msg,
                                                       request=req)
 
         except exception.StorageQuotaFull as e:
-            msg = _("Image exceeds the storage quota: %s") % e
+            msg = _("Image exceeds the storage "
+                    "quota: %s") % utils.exception_to_str(e)
             LOG.error(msg)
             self._restore(image_repo, image)
             raise webob.exc.HTTPRequestEntityTooLarge(explanation=msg,
                                                       request=req)
 
         except exception.ImageSizeLimitExceeded as e:
-            msg = _("The incoming image is too large: %s") % e
+            msg = _("The incoming image is "
+                    "too large: %s") % utils.exception_to_str(e)
             LOG.error(msg)
             self._restore(image_repo, image)
             raise webob.exc.HTTPRequestEntityTooLarge(explanation=msg,
                                                       request=req)
 
         except exception.StorageWriteDenied as e:
-            msg = _("Insufficient permissions on image storage media: %s") % e
+            msg = _("Insufficient permissions on image "
+                    "storage media: %s") % utils.exception_to_str(e)
             LOG.error(msg)
             self._restore(image_repo, image)
             raise webob.exc.HTTPServiceUnavailable(explanation=msg,
@@ -136,13 +144,13 @@ class ImageDataController(object):
 
         except webob.exc.HTTPError as e:
             with excutils.save_and_reraise_exception():
-                LOG.error(_("Failed to upload image data due to HTTP error"))
+                LOG.error(_LE("Failed to upload image data due to HTTP error"))
                 self._restore(image_repo, image)
 
         except Exception as e:
             with excutils.save_and_reraise_exception():
-                LOG.exception(_("Failed to upload image data due to "
-                                "internal error"))
+                LOG.exception(_LE("Failed to upload image data due to "
+                                  "internal error"))
                 self._restore(image_repo, image)
 
     def download(self, req, image_id):

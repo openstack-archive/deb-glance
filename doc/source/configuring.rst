@@ -161,14 +161,13 @@ Optional. Default: ``600``
 
 * ``workers=PROCESSES``
 
-Number of Glance API worker processes to start. Each worker
-process will listen on the same port. Increasing this
-value may increase performance (especially if using SSL
-with compression enabled). Typically it is recommended
-to have one worker process per CPU. The value `0` will
-prevent any new processes from being created.
+Number of Glance API or Registry worker processes to start. Each worker
+process will listen on the same port. Increasing this value may increase
+performance (especially if using SSL with compression enabled). Typically
+it is recommended to have one worker process per CPU. The value `0`
+will prevent any new processes from being created.
 
-Optional. Default: ``1``
+Optional. Default: The number of CPUs available will be used by default.
 
 * ``db_auto_create=False``
 
@@ -636,13 +635,42 @@ proxy).
 
 The number of times a Swift download will be retried before the request
 fails.
+Optional. Default: ``0``
+
+Configuring Multiple Swift Accounts/Stores
+------------------------------------------
+
+In order to not store Swift account credentials in the database, and to
+have support for multiple accounts (or multiple Swift backing stores), a
+reference is stored in the database and the corresponding configuration
+(credentials/ parameters) details are stored in the configuration file.
+Optional.  Default: not enabled.
+
+The location for this file is specified using the ``swift_store_config_file`` config file
+in the section ``[DEFAULT]``. **If an incorrect value is specified, Glance API Swift store
+service will not be configured.**
+* ``swift_store_config_file=PATH``
+
+`This option is specific to the Swift storage backend.`
+
+* ``default_swift_reference=DEFAULT_REFERENCE``
+
+Required when multiple Swift accounts/backing stores are configured.
 
 Can only be specified in configuration files.
 
 `This option is specific to the Swift storage backend.`
 
-Optional. Default: ``0``
+It is the default swift reference that is used to add any new images.
+* ``swift_store_auth_insecure``
 
+If True, bypass SSL certificate verification for Swift.
+
+Can only be specified in configuration files.
+
+`This option is specific to the Swift storage backend.`
+
+Optional. Default: ``False``
 
 Configuring the S3 Storage Backend
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -731,6 +759,40 @@ Can only be specified in configuration files.
 When sending images to S3, what directory should be
 used to buffer the chunks? By default the platform's
 temporary directory will be used.
+
+* ``s3_store_large_object_size=SIZE_IN_MB``
+
+Optional. Default: ``100``
+
+Can only be specified in configuration files.
+
+`This option is specific to the S3 storage backend.`
+
+Size, in ``MB``, should S3 start chunking image files
+and do a multipart upload in S3.
+
+* ``s3_store_large_object_chunk_size=SIZE_IN_MB``
+
+Optional. Default: ``10``
+
+Can only be specified in configuration files.
+
+`This option is specific to the S3 storage backend.`
+
+Multipart upload part size, in ``MB``, should S3 use
+when uploading parts. The size must be greater than or
+equal to 5MB. The default is 10MB.
+
+* ``s3_store_thread_pools=NUM``
+
+Optional. Default: ``10``
+
+Can only be specified in configuration files.
+
+`This option is specific to the S3 storage backend.`
+
+The number of thread pools to perform a multipart upload
+in S3. The default is 10.
 
 Configuring the RBD Storage Backend
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1136,227 +1198,18 @@ Configuring Notifications
 -------------------------
 
 Glance can optionally generate notifications to be logged or sent to
-a RabbitMQ queue. The configuration options are specified in the
+a message queue. The configuration options are specified in the
 ``glance-api.conf`` config file in the section ``[DEFAULT]``.
 
-* ``notifier_strategy``
+* ``notification_driver``
 
 Optional. Default: ``noop``
 
-Sets the strategy used for notifications. Options are ``logging``,
-``rabbit``, ``qpid`` and ``noop``.
-For more information :doc:`Glance notifications <notifications>`
-
-* ``rabbit_host``
-
-Optional. Default: ``localhost``
-
-Host to connect to when using ``rabbit`` strategy.
-
-* ``rabbit_port``
-
-Optional. Default: ``5672``
-
-Port to connect to when using ``rabbit`` strategy.
-
-* ``rabbit_use_ssl``
-
-Optional. Default: ``false``
-
-Boolean to use SSL for connecting when using ``rabbit`` strategy.
-
-* ``rabbit_userid``
-
-Optional. Default: ``guest``
-
-Userid to use for connection when using ``rabbit`` strategy.
-
-* ``rabbit_password``
-
-Optional. Default: ``guest``
-
-Password to use for connection when using ``rabbit`` strategy.
-
-* ``rabbit_virtual_host``
-
-Optional. Default: ``/``
-
-Virtual host to use for connection when using ``rabbit`` strategy.
-
-* ``rabbit_notification_exchange``
-
-Optional. Default: ``glance``
-
-Exchange name to use for connection when using ``rabbit`` strategy.
-
-* ``rabbit_notification_topic``
-
-Optional. Default: ``notifications``
-
-Topic to use for connection when using ``rabbit`` strategy.
-
-* ``rabbit_max_retries``
-
-Optional. Default: ``0``
-
-Number of retries on communication failures when using ``rabbit`` strategy.
-A value of 0 means to retry forever.
-
-* ``rabbit_retry_backoff``
-
-Optional. Default: ``2``
-
-Number of seconds to wait before reconnecting on failures when using
-``rabbit`` strategy.
-
-* ``rabbit_retry_max_backoff``
-
-Optional. Default: ``30``
-
-Maximum seconds to wait before reconnecting on failures when using
-``rabbit`` strategy.
-
-* ``rabbit_durable_queues``
-
-Optional. Default: ``False``
-
-Controls durability of exchange and queue when using ``rabbit`` strategy.
-
-* ``qpid_notification_exchange``
-
-Optional. Default: ``glance``
-
-Message exchange to use when using the ``qpid`` notification strategy.
-
-* ``qpid_notification_topic``
-
-Optional. Default: ``glanice_notifications``
-
-This is the topic prefix for notifications when using the ``qpid``
-notification strategy. When a notification is sent at the ``info`` priority,
-the topic will be ``notifications.info``. The same idea applies for
-the ``error`` and ``warn`` notification priorities. To receive all
-notifications, you would set up a receiver with a topic of
-``notifications.*``.
-
-* ``qpid_hostname``
-
-Optional. Default: ``localhost``
-
-This is the hostname or IP address of the Qpid broker that will be used
-when Glance has been configured to use the ``qpid`` notification strategy.
-
-* ``qpid_port``
-
-Optional. Default: ``5672``
-
-This is the port number to connect to on the Qpid broker, ``qpid_hostname``,
-when using the ``qpid`` notification strategy.
-
-* ``qpid_username``
-
-Optional. Default: None
-
-This is the username that Glance will use to authenticate with the Qpid
-broker if using the ``qpid`` notification strategy.
-
-* ``qpid_password``
-
-Optional. Default: None
-
-This is the username that Glance will use to authenticate with the Qpid
-broker if using the ``qpid`` notification strategy.
-
-* ``qpid_sasl_mechanisms``
-
-Optional. Default: None
-
-This is a space separated list of SASL mechanisms to use for authentication
-with the Qpid broker if using the ``qpid`` notification strategy.
-
-* ``qpid_reconnect_timeout``
-
-Optional. Default: None
-
-This option specifies a timeout in seconds for automatic reconnect attempts
-to the Qpid broker if the ``qpid`` notification strategy is used.  In general,
-it is safe to leave all of the reconnect timing options not set. In that case,
-the Qpid client's default behavior will be used, which is to attempt to
-reconnect to the broker at exponential back-off intervals (in 1 second, then 2
-seconds, then 4, 8, 16, etc).
-
-* ``qpid_reconnect_limit``
-
-Optional. Default: None
-
-This option specifies a maximum number of reconnect attempts to the Qpid
-broker if the ``qpid`` notification strategy is being used.  Normally the
-Qpid client will continue attempting to reconnect until successful.
-
-* ``qpid_reconnect_interval_min``
-
-Optional. Default: None
-
-This option specifies the minimum number of seconds between reconnection
-attempts if the ``qpid`` notification strategy is being used.
-
-* ``qpid_reconnect_interval_max``
-
-Optional. Default: None
-
-This option specifies the maximum number of seconds between reconnection
-attempts if the ``qpid`` notification strategy is being used.
-
-* ``qpid_reconnect_interval``
-
-This option specifies the exact number of seconds between reconnection
-attempts if the ``qpid`` notification strategy is being used. Setting
-this option is equivalent to setting ``qpid_reconnect_interval_max`` and
-``qpid_reconnect_interval_min`` to the same value.
-
-* ``qpid_heartbeat``
-
-Optional. Default: ``5``
-
-This option is used to specify the number of seconds between heartbeat messages
-exchanged between the Qpid client and Qpid broker if the ``qpid`` notification
-strategy is being used.  Heartbeats are used to more quickly detect that a
-connection has been lost.
-
-* ``qpid_protocol``
-
-Optional. Default: ``tcp``
-
-This option is used to specify the transport protocol to use if using the
-``qpid`` notification strategy. To enable SSL, set this option to ``ssl``.
-
-* ``qpid_tcp_nodelay``
-
-Optional. Default: ``True``
-
-This option can be used to disable the TCP NODELAY option. It effectively
-disables the Nagle algorithm for the connection to the Qpid broker. This
-option only applies if the ``qpid`` notification strategy is used.
-
-Configuring Access Policies
----------------------------
-
-Access rules may be configured using a
-:doc:`Policy Configuration file <policies>`. Two configuration options tell
-the Glance API server about the policies to use.
-
-* ``policy_file=PATH``
-
-Optional. Default: Looks for a file called ``policy.json`` or
-``glance.policy.json`` in standard configuration directories.
-
-Policy file to load when starting the API server
-
-* ``policy_default_rule=RULE``
-
-Optional. Default: "default"
-
-Name of the rule in the policy configuration file to use as the default rule
+Sets the notification driver used by oslo.messaging. Options include
+``messaging``, ``messagingv2``, ``log`` and ``routing``.
+
+For more information see :doc:`Glance notifications <notifications>` and
+`oslo.messaging <http://docs.openstack.org/developer/oslo.messaging/>`_.
 
 Configuring Glance Property Protections
 ---------------------------------------

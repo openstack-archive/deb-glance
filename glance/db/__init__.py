@@ -75,12 +75,11 @@ class ImageRepo(object):
         db_api_images = self.db_api.image_get_all(
             self.context, filters=filters, marker=marker, limit=limit,
             sort_key=sort_key, sort_dir=sort_dir,
-            member_status=member_status)
+            member_status=member_status, return_tag=True)
         images = []
         for db_api_image in db_api_images:
-            tags = self.db_api.image_tag_get_all(self.context,
-                                                 db_api_image['id'])
-            image = self._format_image_from_db(dict(db_api_image), tags)
+            db_image = dict(db_api_image)
+            image = self._format_image_from_db(db_image, db_image['tags'])
             images.append(image)
         return images
 
@@ -91,14 +90,12 @@ class ImageRepo(object):
             # NOTE(markwash) db api requires us to filter deleted
             if not prop['deleted']:
                 properties[prop['name']] = prop['value']
-        locations = db_image['locations']
+        locations = [loc for loc in db_image['locations']
+                     if loc['status'] == 'active']
         if CONF.metadata_encryption_key:
             key = CONF.metadata_encryption_key
-            ld = []
             for l in locations:
-                url = crypt.urlsafe_decrypt(key, l['url'])
-                ld.append({'url': url, 'metadata': l['metadata']})
-            locations = ld
+                l['url'] = crypt.urlsafe_decrypt(key, l['url'])
         return glance.domain.Image(
             image_id=db_image['id'],
             name=db_image['name'],
@@ -125,9 +122,12 @@ class ImageRepo(object):
         if CONF.metadata_encryption_key:
             key = CONF.metadata_encryption_key
             ld = []
-            for l in locations:
-                url = crypt.urlsafe_encrypt(key, l['url'])
-                ld.append({'url': url, 'metadata': l['metadata']})
+            for loc in locations:
+                url = crypt.urlsafe_encrypt(key, loc['url'])
+                ld.append({'url': url, 'metadata': loc['metadata'],
+                           'status': loc['status'],
+                           # NOTE(zhiyan): New location has no ID field.
+                           'id': loc.get('id')})
             locations = ld
         return {
             'id': image.image_id,

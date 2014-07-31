@@ -26,14 +26,6 @@ import glance.openstack.common.log as logging
 from glance.openstack.common import timeutils
 
 notifier_opts = [
-    cfg.StrOpt('notifier_strategy', default='default',
-               help=_('Notifications can be sent when images are create, '
-                      'updated or deleted. There are three methods of sending '
-                      'notifications, logging (via the log_file directive), '
-                      'rabbit (via a rabbitmq queue), qpid (via a Qpid '
-                      'message queue), or noop (no notifications sent, the '
-                      'default). (DEPRECATED)')),
-
     cfg.StrOpt('default_publisher_id', default="image.localhost",
                help='Default publisher_id for outgoing notifications.'),
 ]
@@ -42,14 +34,6 @@ CONF = cfg.CONF
 CONF.register_opts(notifier_opts)
 
 LOG = logging.getLogger(__name__)
-
-_STRATEGY_ALIASES = {
-    "logging": "log",
-    "rabbit": "messaging",
-    "qpid": "messaging",
-    "noop": "noop",
-    "default": "noop",
-}
 
 _ALIASES = {
     'glance.openstack.common.rpc.impl_kombu': 'rabbit',
@@ -61,57 +45,10 @@ _ALIASES = {
 class Notifier(object):
     """Uses a notification strategy to send out messages about events."""
 
-    def __init__(self, strategy=None):
-
-        _driver = None
-        _strategy = strategy
-
-        if CONF.notifier_strategy != 'default':
-            msg = _("notifier_strategy was deprecated in "
-                    "favor of `notification_driver`")
-            LOG.warn(msg)
-
-            # NOTE(flaper87): Use this to keep backwards
-            # compatibility. We'll try to get an oslo.messaging
-            # driver from the specified strategy.
-            _strategy = strategy or CONF.notifier_strategy
-            _driver = _STRATEGY_ALIASES.get(_strategy)
-
+    def __init__(self):
         publisher_id = CONF.default_publisher_id
-
-        try:
-            # NOTE(flaper87): Assume the user has configured
-            # the transport url.
-            self._transport = messaging.get_transport(CONF,
-                                                      aliases=_ALIASES)
-        except messaging.DriverLoadFailure:
-            # NOTE(flaper87): Catch driver load failures and re-raise
-            # them *just* if the `transport_url` option was set. This
-            # step is intended to keep backwards compatibility and avoid
-            # weird behaviors (like exceptions on missing dependencies)
-            # when the old notifier options are used.
-            if CONF.transport_url is not None:
-                with excutils.save_and_reraise_exception():
-                    LOG.exception(_('Error loading the notifier'))
-
-        # NOTE(flaper87): This needs to be checked
-        # here because the `get_transport` call
-        # registers `transport_url` into ConfigOpts.
-        if not CONF.transport_url:
-            # NOTE(flaper87): The next 3 lines help
-            # with the migration to oslo.messaging.
-            # Without them, gate tests won't know
-            # what driver should be loaded.
-            # Once this patch lands, devstack will be
-            # updated and then these lines will be removed.
-            url = None
-            if _strategy in ['rabbit', 'qpid']:
-                url = _strategy + '://'
-            self._transport = messaging.get_transport(CONF, url,
-                                                      aliases=_ALIASES)
-
+        self._transport = messaging.get_transport(CONF, aliases=_ALIASES)
         self._notifier = messaging.Notifier(self._transport,
-                                            driver=_driver,
                                             publisher_id=publisher_id)
 
     def warn(self, event_type, payload):
@@ -223,9 +160,9 @@ class ImageProxy(glance.domain.proxy.Image):
             'receiver_user_id': self.context.user,
         }
 
-    def get_data(self):
+    def _get_chunk_data_iterator(self, data):
         sent = 0
-        for chunk in self.image.get_data():
+        for chunk in data:
             yield chunk
             sent += len(chunk)
 
@@ -242,24 +179,32 @@ class ImageProxy(glance.domain.proxy.Image):
                      " notification: %(err)s") % {'err': err})
             LOG.error(msg)
 
+    def get_data(self):
+        # Due to the need of evaluating subsequent proxies, this one
+        # should return a generator, the call should be done before
+        # generator creation
+        data = self.image.get_data()
+        return self._get_chunk_data_iterator(data)
+
     def set_data(self, data, size=None):
         payload = format_image_notification(self.image)
         self.notifier.info('image.prepare', payload)
         try:
             self.image.set_data(data, size)
         except exception.StorageFull as e:
-            msg = (_("Image storage media is full: %s") % e)
+            msg = (_("Image storage media is full: %s") %
+                   utils.exception_to_str(e))
             self.notifier.error('image.upload', msg)
             raise webob.exc.HTTPRequestEntityTooLarge(explanation=msg)
         except exception.StorageWriteDenied as e:
             msg = (_("Insufficient permissions on image storage media: %s")
-                   % e)
+                   % utils.exception_to_str(e))
             self.notifier.error('image.upload', msg)
             raise webob.exc.HTTPServiceUnavailable(explanation=msg)
         except ValueError as e:
             msg = (_("Cannot save data for image %(image_id)s: %(error)s") %
                    {'image_id': self.image.image_id,
-                    'error': e})
+                    'error': utils.exception_to_str(e)})
             self.notifier.error('image.upload', msg)
             raise webob.exc.HTTPBadRequest(explanation=
                                            utils.exception_to_str(e))
@@ -267,20 +212,20 @@ class ImageProxy(glance.domain.proxy.Image):
             msg = (_("Unable to upload duplicate image data for image"
                      "%(image_id)s: %(error)s") %
                    {'image_id': self.image.image_id,
-                    'error': e})
+                    'error': utils.exception_to_str(e)})
             self.notifier.error('image.upload', msg)
             raise webob.exc.HTTPConflict(explanation=msg)
         except exception.Forbidden as e:
             msg = (_("Not allowed to upload image data for image %(image_id)s:"
                      " %(error)s") % {'image_id': self.image.image_id,
-                                      'error': e})
+                                      'error': utils.exception_to_str(e)})
             self.notifier.error('image.upload', msg)
             raise webob.exc.HTTPForbidden(explanation=msg)
         except exception.NotFound as e:
             msg = (_("Image %(image_id)s could not be found after upload."
                      " The image may have been deleted during the upload:"
                      " %(error)s") % {'image_id': self.image.image_id,
-                                      'error': e})
+                                      'error': utils.exception_to_str(e)})
             self.notifier.error('image.upload', msg)
             raise webob.exc.HTTPNotFound(explanation=utils.exception_to_str(e))
         except webob.exc.HTTPError as e:
@@ -288,14 +233,14 @@ class ImageProxy(glance.domain.proxy.Image):
                 msg = (_("Failed to upload image data for image %(image_id)s"
                          " due to HTTP error: %(error)s") %
                        {'image_id': self.image.image_id,
-                        'error': e})
+                        'error': utils.exception_to_str(e)})
                 self.notifier.error('image.upload', msg)
         except Exception as e:
             with excutils.save_and_reraise_exception():
                 msg = (_("Failed to upload image data for image %(image_id)s "
                          "due to internal error: %(error)s") %
                        {'image_id': self.image.image_id,
-                        'error': e})
+                        'error': utils.exception_to_str(e)})
                 self.notifier.error('image.upload', msg)
         else:
             payload = format_image_notification(self.image)
