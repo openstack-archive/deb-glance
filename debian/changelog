@@ -1,4 +1,4 @@
-glance (2014.2~b1-2) UNRELEASED; urgency=low
+glance (2014.2~b2-2) experimental; urgency=low
 
   [ Thomas Goirand ]
   * Fixed new (build-)depends.
@@ -9,12 +9,6 @@ glance (2014.2~b1-2) UNRELEASED; urgency=low
   * Add dh-systemd support
 
  -- Thomas Goirand <thomas@goirand.fr>  Mon, 14 Jul 2014 11:55:30 +0800
-
-glance (2014.2~b1-1) unstable; urgency=medium
-
-  * New upstream release.
-
- -- Thomas Goirand <zigo@debian.org>  Tue, 01 Jul 2014 00:36:47 +0800
 
 glance (2014.1.1-3) unstable; urgency=medium
 
