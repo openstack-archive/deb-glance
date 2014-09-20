@@ -91,11 +91,21 @@ eventlet_opts = [
                       'Keystone v3 API with big service catalogs')),
 ]
 
+profiler_opts = [
+    cfg.BoolOpt("enabled", default=True,
+                help=_('If False fully disable profiling feature.')),
+    cfg.BoolOpt("trace_sqlalchemy", default=True,
+                help=_("If False doesn't trace SQL requests."))
+]
+
+
+LOG = logging.getLogger(__name__)
 
 CONF = cfg.CONF
 CONF.register_opts(bind_opts)
 CONF.register_opts(socket_opts)
 CONF.register_opts(eventlet_opts)
+CONF.register_opts(profiler_opts, group="profiler")
 
 
 def get_bind_addr(default_port=None):
@@ -183,6 +193,15 @@ def get_socket(default_port):
                         CONF.tcp_keepidle)
 
     return sock
+
+
+def set_eventlet_hub():
+    try:
+        eventlet.hubs.use_hub(cfg.CONF.eventlet_hub)
+    except Exception:
+        msg = _("eventlet '%s' hub is not available on this platform")
+        raise exception.WorkerCreationFailure(
+            reason=msg % cfg.CONF.eventlet_hub)
 
 
 class Server(object):
@@ -315,12 +334,6 @@ class Server(object):
                                            cfg.CONF.pydev_worker_debug_port)
 
         eventlet.wsgi.HttpProtocol.default_request_version = "HTTP/1.0"
-        try:
-            eventlet.hubs.use_hub(cfg.CONF.eventlet_hub)
-        except Exception:
-            msg = _("eventlet '%s' hub is not available on this platform")
-            raise exception.WorkerCreationFailure(
-                reason=msg % cfg.CONF.eventlet_hub)
         self.pool = self.create_pool()
         try:
             eventlet.wsgi.server(self.sock,
@@ -436,6 +449,14 @@ class APIMapper(routes.Mapper):
         return routes.Mapper.routematch(self, url, environ)
 
 
+class RejectMethodController(object):
+    def reject(self, req, allowed_methods, *args, **kwargs):
+        LOG.debug("The method %s is not allowed for this resource" %
+                  req.environ['REQUEST_METHOD'])
+        raise webob.exc.HTTPMethodNotAllowed(
+            headers=[('Allow', allowed_methods)])
+
+
 class Router(object):
     """
     WSGI middleware that maps incoming requests to WSGI apps.
@@ -478,7 +499,7 @@ class Router(object):
     def __call__(self, req):
         """
         Route the incoming request to a controller based on self.map.
-        If no match, return a 404.
+        If no match, return either a 404(Not Found) or 501(Not Implemented).
         """
         return self._router
 
@@ -487,12 +508,17 @@ class Router(object):
     def _dispatch(req):
         """
         Called by self._router after matching the incoming request to a route
-        and putting the information into req.environ.  Either returns 404
-        or the routed WSGI app's response.
+        and putting the information into req.environ.  Either returns 404,
+        501, or the routed WSGI app's response.
         """
         match = req.environ['wsgiorg.routing_args'][1]
         if not match:
-            return webob.exc.HTTPNotFound()
+            implemented_http_methods = ['GET', 'HEAD', 'POST', 'PUT',
+                                        'DELETE', 'PATCH']
+            if req.environ['REQUEST_METHOD'] not in implemented_http_methods:
+                return webob.exc.HTTPNotImplemented()
+            else:
+                return webob.exc.HTTPNotFound()
         app = match['controller']
         return app
 

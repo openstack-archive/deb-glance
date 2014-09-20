@@ -25,6 +25,7 @@ import threading
 from oslo.config import cfg
 from oslo.db import exception as db_exception
 from oslo.db.sqlalchemy import session
+import osprofiler.sqlalchemy
 from retrying import retry
 import six
 from six.moves import xrange
@@ -34,16 +35,23 @@ import sqlalchemy.sql as sa_sql
 
 from glance.common import exception
 from glance.db.sqlalchemy import models
-from glance.openstack.common import gettextutils
+from glance import i18n
 import glance.openstack.common.log as os_logging
 from glance.openstack.common import timeutils
 
+from glance.db.sqlalchemy.metadef_api import namespace as metadef_namespace_api
+from glance.db.sqlalchemy.metadef_api import object as metadef_object_api
+from glance.db.sqlalchemy.metadef_api import property as metadef_property_api
+from glance.db.sqlalchemy.metadef_api\
+    import resource_type as metadef_resource_type_api
+from glance.db.sqlalchemy.metadef_api\
+    import resource_type_association as metadef_association_api
 
 BASE = models.BASE
 sa_logger = None
 LOG = os_logging.getLogger(__name__)
-_LI = gettextutils._LI
-_LW = gettextutils._LW
+_LI = i18n._LI
+_LW = i18n._LW
 
 
 STATUSES = ['active', 'saving', 'queued', 'killed', 'pending_delete',
@@ -51,6 +59,7 @@ STATUSES = ['active', 'saving', 'queued', 'killed', 'pending_delete',
 
 CONF = cfg.CONF
 CONF.import_opt('debug', 'glance.openstack.common.log')
+CONF.import_group("profiler", "glance.common.wsgi")
 
 _FACADE = None
 _LOCK = threading.Lock()
@@ -71,6 +80,11 @@ def _create_facade_lazily():
         with _LOCK:
             if _FACADE is None:
                 _FACADE = session.EngineFacade.from_config(CONF)
+
+                if CONF.profiler.enabled and CONF.profiler.trace_sqlalchemy:
+                    osprofiler.sqlalchemy.add_tracing(sqlalchemy,
+                                                      _FACADE.get_engine(),
+                                                      "db")
     return _FACADE
 
 
@@ -796,7 +810,7 @@ def image_location_update(context, image_id, location, session=None):
         location_ref.save(session=session)
     except sa_orm.exc.NoResultFound:
         msg = (_("No location found with ID %(loc)s from image %(img)s") %
-               dict(loc=location_id, img=image_id))
+               dict(loc=loc_id, img=image_id))
         LOG.warn(msg)
         raise exception.NotFound(msg)
 
@@ -1100,20 +1114,21 @@ def _can_show_deleted(context):
 
 
 def image_tag_set_all(context, image_id, tags):
+    #NOTE(kragniz): tag ordering should match exactly what was provided, so a
+    # subsequent call to image_tag_get_all returns them in the correct order
+
     session = get_session()
-    existing_tags = set(image_tag_get_all(context, image_id, session))
-    tags = set(tags)
+    existing_tags = image_tag_get_all(context, image_id, session)
 
-    tags_to_create = tags - existing_tags
-    #NOTE(bcwaldon): we call 'reversed' here to ensure the ImageTag.id fields
-    # will be populated in the order required to reflect the correct ordering
-    # on a subsequent call to image_tag_get_all
-    for tag in reversed(list(tags_to_create)):
-        image_tag_create(context, image_id, tag, session)
+    tags_created = []
+    for tag in tags:
+        if tag not in tags_created and tag not in existing_tags:
+            tags_created.append(tag)
+            image_tag_create(context, image_id, tag, session)
 
-    tags_to_delete = existing_tags - tags
-    for tag in tags_to_delete:
-        image_tag_delete(context, image_id, tag, session)
+    for tag in existing_tags:
+        if tag not in tags:
+            image_tag_delete(context, image_id, tag, session)
 
 
 def image_tag_create(context, image_id, value, session=None):
@@ -1418,3 +1433,199 @@ def _task_format(task_ref, task_info_ref=None):
         task_dict.update(task_info_dict)
 
     return task_dict
+
+
+def metadef_namespace_get_all(context, marker=None, limit=None, sort_key=None,
+                              sort_dir=None, filters=None, session=None):
+    """List all available namespaces."""
+    session = session or get_session()
+    namespaces = metadef_namespace_api.get_all(
+        context, session, marker, limit, sort_key, sort_dir, filters)
+    return namespaces
+
+
+def metadef_namespace_get(context, namespace_name, session=None):
+    """Get a namespace or raise if it does not exist or is not visible."""
+    session = session or get_session()
+    return metadef_namespace_api.get(
+        context, namespace_name, session)
+
+
+def metadef_namespace_create(context, values, session=None):
+    """Create a namespace or raise if it already exists."""
+    session = session or get_session()
+    return metadef_namespace_api.create(context, values, session)
+
+
+def metadef_namespace_update(context, namespace_id, namespace_dict,
+                             session=None):
+    """Update a namespace or raise if it does not exist or not visible"""
+    session = session or get_session()
+    return metadef_namespace_api.\
+        update(context, namespace_id, namespace_dict, session)
+
+
+def metadef_namespace_delete(context, namespace_name, session=None):
+    """Delete the namespace and all foreign references"""
+    session = session or get_session()
+    return metadef_namespace_api.delete_cascade(
+        context, namespace_name, session)
+
+
+def metadef_object_get_all(context, namespace_name, session=None):
+    """Get a metadata-schema object or raise if it does not exist."""
+    session = session or get_session()
+    return metadef_object_api.get_all(
+        context, namespace_name, session)
+
+
+def metadef_object_get(context, namespace_name, object_name, session=None):
+    """Get a metadata-schema object or raise if it does not exist."""
+    session = session or get_session()
+    return metadef_object_api.get(
+        context, namespace_name, object_name, session)
+
+
+def metadef_object_create(context, namespace_name, object_dict,
+                          session=None):
+    """Create a metadata-schema object or raise if it already exists."""
+    session = session or get_session()
+    return metadef_object_api.create(
+        context, namespace_name, object_dict, session)
+
+
+def metadef_object_update(context, namespace_name, object_id, object_dict,
+                          session=None):
+    """Update an object or raise if it does not exist or not visible."""
+    session = session or get_session()
+    return metadef_object_api.update(
+        context, namespace_name, object_id, object_dict, session)
+
+
+def metadef_object_delete(context, namespace_name, object_name,
+                          session=None):
+    """Delete an object or raise if namespace or object doesn't exist."""
+    session = session or get_session()
+    return metadef_object_api.delete(
+        context, namespace_name, object_name, session)
+
+
+def metadef_object_delete_namespace_content(
+        context, namespace_name, session=None):
+    """Delete an object or raise if namespace or object doesn't exist."""
+    session = session or get_session()
+    return metadef_object_api.delete_by_namespace_name(
+        context, namespace_name, session)
+
+
+def metadef_object_count(context, namespace_name, session=None):
+    """Get count of properties for a namespace, raise if ns doesn't exist."""
+    session = session or get_session()
+    return metadef_object_api.count(context, namespace_name, session)
+
+
+def metadef_property_get_all(context, namespace_name, session=None):
+    """Get a metadef property or raise if it does not exist."""
+    session = session or get_session()
+    return metadef_property_api.get_all(context, namespace_name, session)
+
+
+def metadef_property_get(context, namespace_name,
+                         property_name, session=None):
+    """Get a metadef property or raise if it does not exist."""
+    session = session or get_session()
+    return metadef_property_api.get(
+        context, namespace_name, property_name, session)
+
+
+def metadef_property_create(context, namespace_name, property_dict,
+                            session=None):
+    """Create a metadef property or raise if it already exists."""
+    session = session or get_session()
+    return metadef_property_api.create(
+        context, namespace_name, property_dict, session)
+
+
+def metadef_property_update(context, namespace_name, property_id,
+                            property_dict, session=None):
+    """Update an object or raise if it does not exist or not visible."""
+    session = session or get_session()
+    return metadef_property_api.update(
+        context, namespace_name, property_id, property_dict, session)
+
+
+def metadef_property_delete(context, namespace_name, property_name,
+                            session=None):
+    """Delete a property or raise if it or namespace doesn't exist."""
+    session = session or get_session()
+    return metadef_property_api.delete(
+        context, namespace_name, property_name, session)
+
+
+def metadef_property_delete_namespace_content(
+        context, namespace_name, session=None):
+    """Delete a property or raise if it or namespace doesn't exist."""
+    session = session or get_session()
+    return metadef_property_api.delete_by_namespace_name(
+        context, namespace_name, session)
+
+
+def metadef_property_count(context, namespace_name, session=None):
+    """Get count of properties for a namespace, raise if ns doesn't exist."""
+    session = session or get_session()
+    return metadef_property_api.count(context, namespace_name, session)
+
+
+def metadef_resource_type_create(context, values, session=None):
+    """Create a resource_type"""
+    session = session or get_session()
+    return metadef_resource_type_api.create(
+        context, values, session)
+
+
+def metadef_resource_type_get(context, resource_type_name, session=None):
+    """Get a resource_type"""
+    session = session or get_session()
+    return metadef_resource_type_api.get(
+        context, resource_type_name, session)
+
+
+def metadef_resource_type_get_all(context, session=None):
+    """list all resource_types"""
+    session = session or get_session()
+    return metadef_resource_type_api.get_all(context, session)
+
+
+def metadef_resource_type_delete(context, resource_type_name, session=None):
+    """Get a resource_type"""
+    session = session or get_session()
+    return metadef_resource_type_api.delete(
+        context, resource_type_name, session)
+
+
+def metadef_resource_type_association_get(
+        context, namespace_name, resource_type_name, session=None):
+    session = session or get_session()
+    return metadef_association_api.get(
+        context, namespace_name, resource_type_name, session)
+
+
+def metadef_resource_type_association_create(
+        context, namespace_name, values, session=None):
+    session = session or get_session()
+    return metadef_association_api.create(
+        context, namespace_name, values, session)
+
+
+def metadef_resource_type_association_delete(
+        context, namespace_name, resource_type_name, session=None):
+    session = session or get_session()
+    return metadef_association_api.delete(
+        context, namespace_name, resource_type_name, session)
+
+
+def metadef_resource_type_association_get_all_by_namespace(
+        context, namespace_name, session=None):
+    session = session or get_session()
+    return metadef_association_api.\
+        get_all_by_namespace(context, namespace_name, session)

@@ -279,6 +279,7 @@ class ApiServer(Server):
         self.pid_file = pid_file or os.path.join(self.test_dir, "api.pid")
         self.scrubber_datadir = os.path.join(self.test_dir, "scrubber")
         self.log_file = os.path.join(self.test_dir, "api.log")
+        self.image_size_cap = 1099511627776
         self.s3_store_host = "s3.amazonaws.com"
         self.s3_store_access_key = ""
         self.s3_store_secret_key = ""
@@ -342,6 +343,7 @@ metadata_encryption_key = %(metadata_encryption_key)s
 registry_host = 127.0.0.1
 registry_port = %(registry_port)s
 log_file = %(log_file)s
+image_size_cap = %(image_size_cap)d
 s3_store_host = %(s3_store_host)s
 s3_store_access_key = %(s3_store_access_key)s
 s3_store_secret_key = %(s3_store_secret_key)s
@@ -533,6 +535,7 @@ class ScrubberDaemon(Server):
         self.daemon = daemon
 
         self.image_dir = os.path.join(self.test_dir, "images")
+        self.scrub_time = 5
         self.scrubber_datadir = os.path.join(self.test_dir,
                                              "scrubber")
         self.pid_file = os.path.join(self.test_dir, "scrubber.pid")
@@ -546,6 +549,11 @@ class ScrubberDaemon(Server):
                                                    "2")
         self.metadata_encryption_key = "012345678901234567890123456789ab"
         self.lock_path = self.test_dir
+
+        default_sql_connection = 'sqlite:////%s/tests.sqlite' % self.test_dir
+        self.sql_connection = os.environ.get('GLANCE_TEST_SQL_CONNECTION',
+                                             default_sql_connection)
+
         self.conf_base = """[DEFAULT]
 verbose = %(verbose)s
 debug = %(debug)s
@@ -553,6 +561,7 @@ filesystem_store_datadir=%(image_dir)s
 log_file = %(log_file)s
 daemon = %(daemon)s
 wakeup_time = 2
+scrub_time = %(scrub_time)s
 scrubber_datadir = %(scrubber_datadir)s
 registry_host = 127.0.0.1
 registry_port = %(registry_port)s
@@ -563,6 +572,8 @@ swift_store_key = %(swift_store_key)s
 swift_store_container = %(swift_store_container)s
 swift_store_auth_version = %(swift_store_auth_version)s
 lock_path = %(lock_path)s
+sql_connection = %(sql_connection)s
+sql_idle_timeout = 3600
 """
 
     def start(self, expect_exit=True, expected_exitcode=0, **kwargs):

@@ -32,6 +32,8 @@ except ImportError:
     import socket
     import ssl
 
+import osprofiler.web
+
 try:
     import sendfile  # noqa
     SENDFILE_SUPPORTED = True
@@ -457,6 +459,7 @@ class BaseClient(object):
         try:
             connection_type = self.get_connection_type()
             headers = self._encode_headers(headers or {})
+            headers.update(osprofiler.web.get_trace_id_headers())
 
             if 'x-auth-token' not in headers and self.auth_tok:
                 headers['x-auth-token'] = self.auth_tok
@@ -503,7 +506,7 @@ class BaseClient(object):
                     if use_sendfile or header.lower() != 'content-length':
                         c.putheader(header, str(value))
 
-                iter = self.image_iterator(c, headers, body)
+                iter = utils.chunkreadable(body)
 
                 if use_sendfile:
                     # send actual file without copying into userspace
@@ -568,14 +571,6 @@ class BaseClient(object):
 
     def _iterable(self, body):
         return isinstance(body, collections.Iterable)
-
-    def image_iterator(self, connection, headers, body):
-        if self._sendable(body):
-            return SendFileIterator(connection, body)
-        elif self._iterable(body):
-            return utils.chunkreadable(body)
-        else:
-            return ImageBodyIterator(body)
 
     def get_status_code(self, response):
         """

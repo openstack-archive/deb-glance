@@ -520,6 +520,180 @@ class TestImages(functional.FunctionalTest):
 
         self.stop_servers()
 
+    def test_download_image_not_allowed_using_restricted_policy(self):
+
+        rules = {
+            "context_is_admin": "role:admin",
+            "default": "",
+            "restricted":
+            "not ('aki':%(container_format)s and role:_member_)",
+            "download_image": "role:admin or rule:restricted"
+        }
+
+        self.set_policy_rules(rules)
+        self.start_servers(**self.__dict__.copy())
+
+        # Create an image
+        path = self._url('/v2/images')
+        headers = self._headers({'content-type': 'application/json',
+                                 'X-Roles': 'member'})
+        data = jsonutils.dumps({'name': 'image-1', 'disk_format': 'aki',
+                                'container_format': 'aki'})
+        response = requests.post(path, headers=headers, data=data)
+        self.assertEqual(201, response.status_code)
+
+        # Returned image entity
+        image = jsonutils.loads(response.text)
+        image_id = image['id']
+        expected_image = {
+            'status': 'queued',
+            'name': 'image-1',
+            'tags': [],
+            'visibility': 'private',
+            'self': '/v2/images/%s' % image_id,
+            'protected': False,
+            'file': '/v2/images/%s/file' % image_id,
+            'min_disk': 0,
+            'min_ram': 0,
+            'schema': '/v2/schemas/image',
+        }
+
+        for key, value in six.iteritems(expected_image):
+            self.assertEqual(image[key], value, key)
+
+        # Upload data to image
+        path = self._url('/v2/images/%s/file' % image_id)
+        headers = self._headers({'Content-Type': 'application/octet-stream'})
+        response = requests.put(path, headers=headers, data='ZZZZZ')
+        self.assertEqual(204, response.status_code)
+
+        # Get an image should fail
+        path = self._url('/v2/images/%s/file' % image_id)
+        headers = self._headers({'Content-Type': 'application/octet-stream',
+                                 'X-Roles': '_member_'})
+        response = requests.get(path, headers=headers)
+        self.assertEqual(403, response.status_code)
+
+        # Image Deletion should work
+        path = self._url('/v2/images/%s' % image_id)
+        response = requests.delete(path, headers=self._headers())
+        self.assertEqual(204, response.status_code)
+
+        # This image should be no longer be directly accessible
+        path = self._url('/v2/images/%s' % image_id)
+        response = requests.get(path, headers=self._headers())
+        self.assertEqual(404, response.status_code)
+
+        self.stop_servers()
+
+    def test_download_image_allowed_using_restricted_policy(self):
+
+        rules = {
+            "context_is_admin": "role:admin",
+            "default": "",
+            "restricted":
+            "not ('aki':%(container_format)s and role:_member_)",
+            "download_image": "role:admin or rule:restricted"
+        }
+
+        self.set_policy_rules(rules)
+        self.start_servers(**self.__dict__.copy())
+
+        # Create an image
+        path = self._url('/v2/images')
+        headers = self._headers({'content-type': 'application/json',
+                                 'X-Roles': 'member'})
+        data = jsonutils.dumps({'name': 'image-1', 'disk_format': 'aki',
+                                'container_format': 'aki'})
+        response = requests.post(path, headers=headers, data=data)
+        self.assertEqual(201, response.status_code)
+
+        # Returned image entity
+        image = jsonutils.loads(response.text)
+        image_id = image['id']
+        expected_image = {
+            'status': 'queued',
+            'name': 'image-1',
+            'tags': [],
+            'visibility': 'private',
+            'self': '/v2/images/%s' % image_id,
+            'protected': False,
+            'file': '/v2/images/%s/file' % image_id,
+            'min_disk': 0,
+            'min_ram': 0,
+            'schema': '/v2/schemas/image',
+        }
+
+        for key, value in six.iteritems(expected_image):
+            self.assertEqual(image[key], value, key)
+
+        # Upload data to image
+        path = self._url('/v2/images/%s/file' % image_id)
+        headers = self._headers({'Content-Type': 'application/octet-stream'})
+        response = requests.put(path, headers=headers, data='ZZZZZ')
+        self.assertEqual(204, response.status_code)
+
+        # Get an image should be allowed
+        path = self._url('/v2/images/%s/file' % image_id)
+        headers = self._headers({'Content-Type': 'application/octet-stream',
+                                 'X-Roles': 'member'})
+        response = requests.get(path, headers=headers)
+        self.assertEqual(200, response.status_code)
+
+        # Image Deletion should work
+        path = self._url('/v2/images/%s' % image_id)
+        response = requests.delete(path, headers=self._headers())
+        self.assertEqual(204, response.status_code)
+
+        # This image should be no longer be directly accessible
+        path = self._url('/v2/images/%s' % image_id)
+        response = requests.get(path, headers=self._headers())
+        self.assertEqual(404, response.status_code)
+
+        self.stop_servers()
+
+    def test_image_size_cap(self):
+        self.api_server.image_size_cap = 128
+        self.start_servers(**self.__dict__.copy())
+        # create an image
+        path = self._url('/v2/images')
+        headers = self._headers({'content-type': 'application/json'})
+        data = jsonutils.dumps({'name': 'image-size-cap-test-image',
+                                'type': 'kernel', 'disk_format': 'aki',
+                                'container_format': 'aki'})
+        response = requests.post(path, headers=headers, data=data)
+        self.assertEqual(201, response.status_code)
+
+        image = jsonutils.loads(response.text)
+        image_id = image['id']
+
+        #try to populate it with oversized data
+        path = self._url('/v2/images/%s/file' % image_id)
+        headers = self._headers({'Content-Type': 'application/octet-stream'})
+
+        class StreamSim(object):
+            # Using a one-shot iterator to force chunked transfer in the PUT
+            # request
+            def __init__(self, size):
+                self.size = size
+
+            def __iter__(self):
+                yield 'Z' * self.size
+
+        response = requests.put(path, headers=headers, data=StreamSim(
+                                self.api_server.image_size_cap + 1))
+        self.assertEqual(413, response.status_code)
+
+        # hashlib.md5('Z'*129).hexdigest()
+        #     == '76522d28cb4418f12704dfa7acd6e7ee'
+        # If the image has this checksum, it means that the whole stream was
+        # accepted and written to the store, which should not be the case.
+        path = self._url('/v2/images/{0}'.format(image_id))
+        headers = self._headers({'content-type': 'application/json'})
+        response = requests.get(path, headers=headers)
+        image_checksum = jsonutils.loads(response.text).get('checksum')
+        self.assertNotEqual(image_checksum, '76522d28cb4418f12704dfa7acd6e7ee')
+
     def test_permissions(self):
         self.start_servers(**self.__dict__.copy())
         # Create an image that belongs to TENANT1
@@ -694,7 +868,8 @@ class TestImages(functional.FunctionalTest):
                                 'spl_create_prop_policy': 'create_policy_bar',
                                 'spl_read_prop': 'read_bar',
                                 'spl_update_prop': 'update_bar',
-                                'spl_delete_prop': 'delete_bar'})
+                                'spl_delete_prop': 'delete_bar',
+                                'spl_delete_empty_prop': ''})
         response = requests.post(path, headers=headers, data=data)
         self.assertEqual(201, response.status_code)
         image = jsonutils.loads(response.text)
@@ -725,14 +900,15 @@ class TestImages(functional.FunctionalTest):
         response = requests.patch(path, headers=headers, data=data)
         self.assertEqual(403, response.status_code, response.text)
 
-        # Attempt to replace, add and remove properties
+        # Attempt to replace properties
         path = self._url('/v2/images/%s' % image_id)
         media_type = 'application/openstack-images-v2.1-json-patch'
         headers = self._headers({'content-type': media_type,
                                  'X-Roles': 'spl_role'})
         data = jsonutils.dumps([
+            # Updating an empty property to verify bug #1332103.
+            {'op': 'replace', 'path': '/spl_update_prop', 'value': ''},
             {'op': 'replace', 'path': '/spl_update_prop', 'value': 'u'},
-            {'op': 'remove', 'path': '/spl_delete_prop'},
         ])
         response = requests.patch(path, headers=headers, data=data)
         self.assertEqual(200, response.status_code, response.text)
@@ -744,9 +920,26 @@ class TestImages(functional.FunctionalTest):
         # hence the value has changed
         self.assertEqual('u', image['spl_update_prop'])
 
-        # 'spl_delete_prop' has delete permission for spl_role
-        # hence the property has been deleted
-        self.assertTrue('spl_delete_prop' not in image.keys())
+        # Attempt to remove properties
+        path = self._url('/v2/images/%s' % image_id)
+        media_type = 'application/openstack-images-v2.1-json-patch'
+        headers = self._headers({'content-type': media_type,
+                                 'X-Roles': 'spl_role'})
+        data = jsonutils.dumps([
+            {'op': 'remove', 'path': '/spl_delete_prop'},
+            # Deleting an empty property to verify bug #1332103.
+            {'op': 'remove', 'path': '/spl_delete_empty_prop'},
+        ])
+        response = requests.patch(path, headers=headers, data=data)
+        self.assertEqual(200, response.status_code, response.text)
+
+        # Returned image entity should reflect the changes
+        image = jsonutils.loads(response.text)
+
+        # 'spl_delete_prop' and 'spl_delete_empty_prop' have delete
+        # permission for spl_role hence the property has been deleted
+        self.assertNotIn('spl_delete_prop', image.keys())
+        self.assertNotIn('spl_delete_empty_prop', image.keys())
 
         # Image Deletion should work
         path = self._url('/v2/images/%s' % image_id)
@@ -834,6 +1027,8 @@ class TestImages(functional.FunctionalTest):
         headers = self._headers({'content-type': media_type,
                                  'X-Roles': 'admin'})
         data = jsonutils.dumps([
+            # Updating an empty property to verify bug #1332103.
+            {'op': 'replace', 'path': '/spl_creator_policy', 'value': ''},
             {'op': 'replace', 'path': '/spl_creator_policy', 'value': 'r'},
         ])
         response = requests.patch(path, headers=headers, data=data)
@@ -870,12 +1065,14 @@ class TestImages(functional.FunctionalTest):
         # 'random_role' is forbidden to read 'spl_creator_policy'.
         self.assertFalse('spl_creator_policy' in image)
 
-        # Attempt to add and remove properties which are permitted
+        # Attempt to replace and remove properties which are permitted
         path = self._url('/v2/images/%s' % image_id)
         media_type = 'application/openstack-images-v2.1-json-patch'
         headers = self._headers({'content-type': media_type,
                                  'X-Roles': 'admin'})
         data = jsonutils.dumps([
+            # Deleting an empty property to verify bug #1332103.
+            {'op': 'replace', 'path': '/spl_creator_policy', 'value': ''},
             {'op': 'remove', 'path': '/spl_creator_policy'},
         ])
         response = requests.patch(path, headers=headers, data=data)
@@ -1560,14 +1757,14 @@ class TestImages(functional.FunctionalTest):
         response = requests.patch(path, headers=headers, data=data)
         self.assertEqual(200, response.status_code)
         tags = jsonutils.loads(response.text)['tags']
-        self.assertEqual(['snozz', 'sniff'], tags)
+        self.assertEqual(['sniff', 'snozz'], sorted(tags))
 
         # Image should show the appropriate tags
         path = self._url('/v2/images/%s' % image_id)
         response = requests.get(path, headers=self._headers())
         self.assertEqual(200, response.status_code)
         tags = jsonutils.loads(response.text)['tags']
-        self.assertEqual(['snozz', 'sniff'], tags)
+        self.assertEqual(['sniff', 'snozz'], sorted(tags))
 
         # Attempt to tag the image with a duplicate should be ignored
         path = self._url('/v2/images/%s/tags/snozz' % image_id)
@@ -1584,7 +1781,8 @@ class TestImages(functional.FunctionalTest):
         response = requests.get(path, headers=self._headers())
         self.assertEqual(200, response.status_code)
         tags = jsonutils.loads(response.text)['tags']
-        self.assertEqual(['gabe@example.com', 'snozz', 'sniff'], tags)
+        self.assertEqual(['gabe@example.com', 'sniff', 'snozz'],
+                         sorted(tags))
 
         # Query images by single tag
         path = self._url('/v2/images?tag=sniff')
@@ -1627,7 +1825,7 @@ class TestImages(functional.FunctionalTest):
         response = requests.get(path, headers=self._headers())
         self.assertEqual(200, response.status_code)
         tags = jsonutils.loads(response.text)['tags']
-        self.assertEqual(['snozz', 'sniff'], tags)
+        self.assertEqual(['sniff', 'snozz'], sorted(tags))
 
         # Deleting the same tag should return a 404
         path = self._url('/v2/images/%s/tags/gabe%%40example.com' % image_id)

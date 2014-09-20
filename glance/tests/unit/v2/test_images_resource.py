@@ -663,6 +663,14 @@ class TestImagesController(base.IsolatedUnitTest):
                           request, image={}, extra_properties={},
                           tags=tags)
 
+    def test_create_with_duplicate_location(self):
+        request = unit_test_utils.get_fake_request()
+        location = {'url': '%s/fake_location' % BASE_URI, 'metadata': {}}
+        image = {'name': 'image-1', 'locations': [location, location]}
+        self.assertRaises(webob.exc.HTTPBadRequest, self.controller.create,
+                          request, image=image, extra_properties={},
+                          tags=[])
+
     def test_update_no_changes(self):
         request = unit_test_utils.get_fake_request()
         output = self.controller.update(request, UUID1, changes=[])
@@ -697,6 +705,16 @@ class TestImagesController(base.IsolatedUnitTest):
         self.controller.delete(request, UUID1)
         self.assertRaises(webob.exc.HTTPNotFound, self.controller.update,
                           request, UUID1, changes=[])
+
+    def test_update_with_too_many_properties(self):
+        self.config(user_storage_quota='1')
+        new_location = {'url': '%s/fake_location' % BASE_URI, 'metadata': {}}
+        request = unit_test_utils.get_fake_request()
+        changes = [{'op': 'add', 'path': ['locations', '-'],
+                    'value': new_location}]
+        self.assertRaises(webob.exc.HTTPRequestEntityTooLarge,
+                          self.controller.update,
+                          request, UUID1, changes=changes)
 
     def test_update_replace_base_attribute(self):
         self.db.image_update(None, UUID1, {'properties': {'foo': 'bar'}})
@@ -1765,6 +1783,15 @@ class TestImagesController(base.IsolatedUnitTest):
         self.assertRaises(webob.exc.HTTPNotFound, self.controller.delete,
                           request, UUID4)
 
+    def test_delete_in_use(self):
+        def fake_safe_delete_from_backend(self, *args, **kwargs):
+            raise exception.InUseByStore()
+        self.stubs.Set(self.store_utils, 'safe_delete_from_backend',
+                       fake_safe_delete_from_backend)
+        request = unit_test_utils.get_fake_request()
+        self.assertRaises(webob.exc.HTTPConflict, self.controller.delete,
+                          request, UUID1)
+
     def test_index_with_invalid_marker(self):
         fake_uuid = str(uuid.uuid4())
         request = unit_test_utils.get_fake_request()
@@ -1992,8 +2019,9 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
             self.deserializer.update(request)
         except webob.exc.HTTPUnsupportedMediaType as e:
             # desired result, but must have correct Accept-Patch header
-            expected = ('application/openstack-images-v2.0-json-patch, '
-                        'application/openstack-images-v2.1-json-patch')
+            accept_patch = ['application/openstack-images-v2.1-json-patch',
+                            'application/openstack-images-v2.0-json-patch']
+            expected = ', '.join(sorted(accept_patch))
             self.assertEqual(e.headers['Accept-Patch'], expected)
         else:
             self.fail('Did not raise HTTPUnsupportedMediaType')
@@ -2635,10 +2663,14 @@ class TestImagesSerializer(test_utils.BaseTestCase):
         result = {'images': self.fixtures, 'next_marker': UUID2}
         self.serializer.index(response, result)
         output = jsonutils.loads(response.body)
-        self.assertEqual('/v2/images?sort_key=id&sort_dir=asc&limit=10',
-                         output['first'])
-        expect_next = '/v2/images?sort_key=id&sort_dir=asc&limit=10&marker=%s'
-        self.assertEqual(expect_next % UUID2, output['next'])
+
+        expected_url = '/v2/images?limit=10&sort_dir=asc&sort_key=id'
+        self.assertEqual(unit_test_utils.sort_url_by_qs_keys(expected_url),
+                         unit_test_utils.sort_url_by_qs_keys(output['first']))
+        expect_next = '/v2/images?limit=10&marker=%s&sort_dir=asc&sort_key=id'
+        self.assertEqual(unit_test_utils.sort_url_by_qs_keys(
+                         expect_next % UUID2),
+                         unit_test_utils.sort_url_by_qs_keys(output['next']))
 
     def test_index_forbidden_get_image_location(self):
         """Make sure the serializer works fine no mater if current user is
@@ -2715,7 +2747,7 @@ class TestImagesSerializer(test_utils.BaseTestCase):
             'status': 'queued',
             'visibility': 'public',
             'protected': False,
-            'tags': ['two', 'one'],
+            'tags': ['one', 'two'],
             'size': 1024,
             'virtual_size': 3072,
             'checksum': 'ca425b88f047ce8ec45ee90e813ada91',
@@ -2733,7 +2765,9 @@ class TestImagesSerializer(test_utils.BaseTestCase):
         response = webob.Response()
         self.serializer.create(response, self.fixtures[0])
         self.assertEqual(response.status_int, 201)
-        self.assertEqual(expected, jsonutils.loads(response.body))
+        actual = jsonutils.loads(response.body)
+        actual['tags'] = sorted(actual['tags'])
+        self.assertEqual(expected, actual)
         self.assertEqual('application/json', response.content_type)
         self.assertEqual(response.location, '/v2/images/%s' % UUID1)
 
@@ -2802,7 +2836,7 @@ class TestImagesSerializerWithUnicode(test_utils.BaseTestCase):
                     u'status': u'queued',
                     u'visibility': u'public',
                     u'protected': False,
-                    u'tags': [u'\u2161', u'\u2160'],
+                    u'tags': [u'\u2160', u'\u2161'],
                     u'size': 1024,
                     u'virtual_size': 3072,
                     u'checksum': u'ca425b88f047ce8ec45ee90e813ada91',
@@ -2827,7 +2861,9 @@ class TestImagesSerializerWithUnicode(test_utils.BaseTestCase):
         response = webob.Response(request=request)
         result = {u'images': self.fixtures}
         self.serializer.index(response, result)
-        self.assertEqual(expected, jsonutils.loads(response.body))
+        actual = jsonutils.loads(response.body)
+        actual['images'][0]['tags'] = sorted(actual['images'][0]['tags'])
+        self.assertEqual(expected, actual)
         self.assertEqual('application/json', response.content_type)
 
     def test_show_full_fixture(self):
@@ -2868,7 +2904,7 @@ class TestImagesSerializerWithUnicode(test_utils.BaseTestCase):
             u'status': u'queued',
             u'visibility': u'public',
             u'protected': False,
-            u'tags': [u'\u2161', u'\u2160'],
+            u'tags': [u'\u2160', u'\u2161'],
             u'size': 1024,
             u'virtual_size': 3072,
             u'checksum': u'ca425b88f047ce8ec45ee90e813ada91',
@@ -2888,7 +2924,9 @@ class TestImagesSerializerWithUnicode(test_utils.BaseTestCase):
         response = webob.Response()
         self.serializer.create(response, self.fixtures[0])
         self.assertEqual(response.status_int, 201)
-        self.assertEqual(expected, jsonutils.loads(response.body))
+        actual = jsonutils.loads(response.body)
+        actual['tags'] = sorted(actual['tags'])
+        self.assertEqual(expected, actual)
         self.assertEqual('application/json', response.content_type)
         self.assertEqual(response.location, '/v2/images/%s' % UUID1)
 

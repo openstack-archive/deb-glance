@@ -22,7 +22,7 @@ import os
 import uuid
 
 import fixtures
-import mox
+from mock import patch
 from oslo.config import cfg
 import six
 import six.moves.builtins as __builtin__
@@ -30,7 +30,6 @@ import six.moves.builtins as __builtin__
 from glance.common import exception
 from glance.openstack.common import units
 
-from glance.store.filesystem import ChunkedFile
 from glance.store.filesystem import Store
 from glance.store.location import get_location_from_uri
 from glance.tests.unit import base
@@ -43,14 +42,16 @@ class TestStore(base.IsolatedUnitTest):
     def setUp(self):
         """Establish a clean test environment"""
         super(TestStore, self).setUp()
-        self.orig_chunksize = ChunkedFile.CHUNKSIZE
-        ChunkedFile.CHUNKSIZE = 10
+        self.orig_read_chunksize = Store.READ_CHUNKSIZE
+        self.orig_write_chunksize = Store.WRITE_CHUNKSIZE
+        Store.READ_CHUNKSIZE = Store.WRITE_CHUNKSIZE = 10
         self.store = Store()
 
     def tearDown(self):
         """Clear the test environment"""
         super(TestStore, self).tearDown()
-        ChunkedFile.CHUNKSIZE = self.orig_chunksize
+        Store.READ_CHUNKSIZE = self.orig_read_chunksize
+        Store.WRITE_CHUNKSIZE = self.orig_write_chunksize
 
     def test_configure_add_single_datadir(self):
         """
@@ -191,7 +192,7 @@ class TestStore(base.IsolatedUnitTest):
 
     def test_add(self):
         """Test that we can add an image via the filesystem backend"""
-        ChunkedFile.CHUNKSIZE = 1024
+        Store.WRITE_CHUNKSIZE = 1024
         expected_image_id = str(uuid.uuid4())
         expected_file_size = 5 * units.Ki  # 5K
         expected_file_contents = "*" * expected_file_size
@@ -232,7 +233,7 @@ class TestStore(base.IsolatedUnitTest):
         self.store.configure_add()
 
         """Test that we can add an image via the filesystem backend"""
-        ChunkedFile.CHUNKSIZE = 1024
+        Store.WRITE_CHUNKSIZE = 1024
         expected_image_id = str(uuid.uuid4())
         expected_file_size = 5 * units.Ki  # 5K
         expected_file_contents = "*" * expected_file_size
@@ -279,7 +280,7 @@ class TestStore(base.IsolatedUnitTest):
 
         self.stubs.Set(self.store, '_get_capacity_info',
                        fake_get_capacity_info)
-        ChunkedFile.CHUNKSIZE = 1024
+        Store.WRITE_CHUNKSIZE = 1024
         expected_image_id = str(uuid.uuid4())
         expected_file_size = 5 * units.Ki  # 5K
         expected_file_contents = "*" * expected_file_size
@@ -347,7 +348,7 @@ class TestStore(base.IsolatedUnitTest):
         Tests that adding an image with an existing identifier
         raises an appropriate exception
         """
-        ChunkedFile.CHUNKSIZE = 1024
+        Store.WRITE_CHUNKSIZE = 1024
         image_id = str(uuid.uuid4())
         file_size = 5 * units.Ki  # 5K
         file_contents = "*" * file_size
@@ -362,28 +363,21 @@ class TestStore(base.IsolatedUnitTest):
                           image_id, image_file, 0)
 
     def _do_test_add_write_failure(self, errno, exception):
-        ChunkedFile.CHUNKSIZE = 1024
+        Store.WRITE_CHUNKSIZE = 1024
         image_id = str(uuid.uuid4())
         file_size = 5 * units.Ki  # 5K
         file_contents = "*" * file_size
         path = os.path.join(self.test_dir, image_id)
         image_file = six.StringIO(file_contents)
 
-        m = mox.Mox()
-        m.StubOutWithMock(__builtin__, 'open')
         e = IOError()
         e.errno = errno
-        open(path, 'wb').AndRaise(e)
-        m.ReplayAll()
-
-        try:
+        with patch.object(__builtin__, 'open', side_effect=e) as mock_open:
             self.assertRaises(exception,
                               self.store.add,
                               image_id, image_file, 0)
             self.assertFalse(os.path.exists(path))
-        finally:
-            m.VerifyAll()
-            m.UnsetStubs()
+            mock_open.assert_called_once_with(path, 'wb')
 
     def test_add_storage_full(self):
         """
@@ -419,7 +413,7 @@ class TestStore(base.IsolatedUnitTest):
         Tests the partial image file is cleaned up after a read
         failure.
         """
-        ChunkedFile.CHUNKSIZE = 1024
+        Store.WRITE_CHUNKSIZE = 1024
         image_id = str(uuid.uuid4())
         file_size = 5 * units.Ki  # 5K
         file_contents = "*" * file_size

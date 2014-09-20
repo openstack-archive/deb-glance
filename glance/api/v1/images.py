@@ -40,6 +40,7 @@ from glance.common import exception
 from glance.common import property_utils
 from glance.common import utils
 from glance.common import wsgi
+from glance.i18n import _LE
 from glance import notifier
 from glance.openstack.common import excutils
 from glance.openstack.common import gettextutils
@@ -48,7 +49,6 @@ from glance.openstack.common import strutils
 import glance.registry.client.v1.api as registry
 from glance.store import get_from_backend
 from glance.store import get_known_schemes
-from glance.store import get_known_stores
 from glance.store import get_size_from_backend
 from glance.store import get_store_from_location
 from glance.store import get_store_from_scheme
@@ -148,10 +148,12 @@ class Controller(controller.BaseController):
         else:
             self.prop_enforcer = None
 
-    def _enforce(self, req, action):
+    def _enforce(self, req, action, target=None):
         """Authorize an action against our policies"""
+        if target is None:
+            target = {}
         try:
-            self.policy.enforce(req.context, action, {})
+            self.policy.enforce(req.context, action, target)
         except exception.Forbidden:
             raise HTTPForbidden()
 
@@ -447,9 +449,10 @@ class Controller(controller.BaseController):
         return Controller._validate_source(source, req)
 
     @staticmethod
-    def _get_from_store(context, where):
+    def _get_from_store(context, where, dest=None):
         try:
-            image_data, image_size = get_from_backend(context, where)
+            image_data, image_size = get_from_backend(
+                context, where, dest=dest)
         except exception.NotFound as e:
             raise HTTPNotFound(explanation=e.msg)
         image_size = int(image_size) if image_size else None
@@ -465,9 +468,20 @@ class Controller(controller.BaseController):
 
         :raises HTTPNotFound if image is not available to user
         """
+
         self._enforce(req, 'get_image')
-        self._enforce(req, 'download_image')
-        image_meta = self.get_active_image_meta_or_404(req, id)
+
+        try:
+            image_meta = self.get_active_image_meta_or_404(req, id)
+        except HTTPNotFound:
+            # provision for backward-compatibility breaking issue
+            # catch the 404 exception and raise it after enforcing
+            # the policy
+            with excutils.save_and_reraise_exception():
+                self._enforce(req, 'download_image')
+        else:
+            target = utils.create_mashup_dict(image_meta)
+            self._enforce(req, 'download_image', target=target)
 
         self._enforce_read_protected_props(image_meta, req)
 
@@ -500,7 +514,7 @@ class Controller(controller.BaseController):
         """
         location = self._external_source(image_meta, req)
         store = image_meta.get('store')
-        if store and store not in get_known_stores():
+        if store and store not in get_known_schemes():
             msg = "Required store %s is invalid" % store
             LOG.debug(msg)
             raise HTTPBadRequest(explanation=msg,
@@ -571,32 +585,33 @@ class Controller(controller.BaseController):
         :retval The location where the image was stored
         """
 
+        scheme = req.headers.get('x-image-meta-store', CONF.default_store)
+        store = self.get_store_or_400(req, scheme)
+
         copy_from = self._copy_from(req)
         if copy_from:
             try:
                 image_data, image_size = self._get_from_store(req.context,
-                                                              copy_from)
-            except Exception as e:
-                upload_utils.safe_kill(req, image_meta['id'])
-                msg = ("Copy from external source failed: %s" %
-                       utils.exception_to_str(e))
-                LOG.debug(msg)
+                                                              copy_from,
+                                                              dest=store)
+            except Exception:
+                upload_utils.safe_kill(req, image_meta['id'], 'queued')
+                msg = (_LE("Copy from external source '%(scheme)s' failed for "
+                           "image: %(image)s") %
+                       {'scheme': scheme, 'image': image_meta['id']})
+                LOG.exception(msg)
                 return
             image_meta['size'] = image_size or image_meta['size']
         else:
             try:
                 req.get_content_type(('application/octet-stream',))
             except exception.InvalidContentType:
-                upload_utils.safe_kill(req, image_meta['id'])
+                upload_utils.safe_kill(req, image_meta['id'], 'queued')
                 msg = "Content-Type must be application/octet-stream"
                 LOG.debug(msg)
                 raise HTTPBadRequest(explanation=msg)
 
             image_data = req.body_file
-
-        scheme = req.headers.get('x-image-meta-store', CONF.default_store)
-
-        store = self.get_store_or_400(req, scheme)
 
         image_id = image_meta['id']
         LOG.debug("Setting image %s to status 'saving'", image_id)
@@ -646,8 +661,7 @@ class Controller(controller.BaseController):
                 LOG.debug("duplicate operation - deleting image data for "
                           " %(id)s (location:%(location)s)" %
                           {'id': image_id, 'location': image_meta['location']})
-                upload_utils.initiate_deletion(req, image_meta['location'],
-                                               image_id, CONF.delayed_delete)
+                upload_utils.initiate_deletion(req, location_data, image_id)
         except exception.Invalid as e:
             msg = ("Failed to activate image. Got error: %s" %
                    utils.exception_to_str(e))
@@ -1052,6 +1066,14 @@ class Controller(controller.BaseController):
             raise HTTPForbidden(explanation=msg,
                                 request=req,
                                 content_type="text/plain")
+        except exception.InUseByStore as e:
+            msg = (_LI("Image %s could not be deleted because it is in use: "
+                       "%s") % (id, utils.exception_to_str(e)))
+            for line in msg.split('\n'):
+                LOG.info(line)
+            raise HTTPConflict(explanation=msg,
+                               request=req,
+                               content_type="text/plain")
         else:
             self.notifier.info('image.delete', redact_loc(image))
             return Response(body='', status=200)
@@ -1102,7 +1124,7 @@ class ImageDeserializer(wsgi.JSONRequestDeserializer):
         if image_size is None and data is not None:
             data = utils.LimitingReader(data, CONF.image_size_cap)
 
-            #NOTE(bcwaldon): this is a hack to make sure the downstream code
+            # NOTE(bcwaldon): this is a hack to make sure the downstream code
             # gets the correct image data
             request.body_file = data
 
