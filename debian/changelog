@@ -1,4 +1,4 @@
-glance (2014.2~b2-2) experimental; urgency=low
+glance (2014.2~b3-2) experimental; urgency=low
 
   [ Thomas Goirand ]
   * Fixed new (build-)depends.
