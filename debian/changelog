@@ -1,3 +1,9 @@
+glance (2014.1.2-3) unstable; urgency=medium
+
+  * Re-upload with the right translation file (Closes: #762470).
+
+ -- Thomas Goirand <zigo@debian.org>  Mon, 29 Sep 2014 08:37:30 +0000
+
 glance (2014.1.2-2) unstable; urgency=medium
 
   * Updated pt_BR.po thanks to Adriano Rafael Gomes (Closes: #762471).
