@@ -1,15 +1,15 @@
-# Debconf translations for glance.
-# Copyright (C) 2012 THE glance'S COPYRIGHT HOLDER
-# This file is distributed under the same license as the glance package.
-# Adriano Rafael Gomes <adrianorg@gmail.com>, 2012.
+# Debconf translations for keystone.
+# Copyright (C) 2012 THE keystone'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the keystone package.
+# Adriano Rafael Gomes <adrianorg@arg.eti.br>, 2012-2014.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: glance\n"
-"Report-Msgid-Bugs-To: glance@packages.debian.org\n"
-"POT-Creation-Date: 2013-09-25 15:31+0800\n"
-"PO-Revision-Date: 2012-06-08 17:37-0300\n"
-"Last-Translator: Adriano Rafael Gomes <adrianorg@gmail.com>\n"
+"Project-Id-Version: keystone 2014.1.2.1-1\n"
+"Report-Msgid-Bugs-To: keystone@packages.debian.org\n"
+"POT-Creation-Date: 2013-07-10 23:09+0800\n"
+"PO-Revision-Date: 2014-09-04 18:00-0300\n"
+"Last-Translator: Adriano Rafael Gomes <adrianorg@arg.eti.br>\n"
 "Language-Team: Brazilian Portuguese <debian-l10n-portuguese@lists.debian."
 "org>\n"
 "Language: pt_BR\n"
@@ -17,350 +17,257 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#. Type: select
-#. Choices
-#: ../glance-common.templates:2001
-msgid "keystone"
-msgstr ""
-
-#. Type: select
-#. Choices
-#: ../glance-common.templates:2001
-msgid "caching"
-msgstr ""
-
-#. Type: select
-#. Choices
-#: ../glance-common.templates:2001
-msgid "keystone+caching"
-msgstr ""
-
-#. Type: select
-#. Choices
-#: ../glance-common.templates:2001
-msgid "cachemanagement"
-msgstr ""
-
-#. Type: select
-#. Choices
-#: ../glance-common.templates:2001
-msgid "keystone+cachemanagement"
-msgstr ""
-
-#. Type: select
+#. Type: boolean
 #. Description
-#: ../glance-common.templates:2002
-msgid "Pipeline flavor:"
-msgstr "Sabor do pipeline:"
-
-#. Type: select
-#. Description
-#: ../glance-common.templates:2002
-#, fuzzy
-#| msgid "Please specify the flavor of pipeline to be used by Glance."
-msgid "Please specify the flavor of the pipeline to be used by Glance."
-msgstr "Por favor, especifique o sabor do pipeline a ser usado pelo Glance."
-
-#. Type: select
-#. Description
-#: ../glance-common.templates:2002
-msgid ""
-"If you use the OpenStack Identity Service (Keystone), you might want to "
-"select \"keystone\". If you don't use this service, you can safely choose "
-"\"caching\" only."
-msgstr ""
-"Se você usa o Serviço de Identidade OpenStack (Keystone), você pode querer "
-"selecionar \"keystone\". Se você não usa esse serviço, você pode escolher "
-"seguramente apenas \"caching\"."
-
-#. Type: string
-#. Description
-#: ../glance-common.templates:3001
-#, fuzzy
-#| msgid "Auth server admin token:"
-msgid "Authentication server hostname:"
-msgstr "Token admin do servidor de autenticação:"
-
-#. Type: string
-#. Description
-#: ../glance-common.templates:3001
-#, fuzzy
-#| msgid ""
-#| "Please specify the URL of your Glance authentication server. Typically "
-#| "this is also the URL of your OpenStack Identity Service (Keystone)."
-msgid ""
-"Please specify the hostname of the authentication server for Glance. "
-"Typically this is also the hostname of the OpenStack Identity Service "
-"(Keystone)."
-msgstr ""
-"Por favor, especifique a URL do seu servidor de autenticação Glance. "
-"Tipicamente, essa é também a URL do seu Serviço de Identidade OpenStack "
-"(Keystone)."
-
-#. Type: string
-#. Description
-#. Translators: a "tenant" in OpenStack world is
-#. an entity that contains one or more username/password couples.
-#. It's typically the tenant that will be used for billing. Having more than one
-#. username/password is very helpful in larger organization.
-#. You're advised to either keep "tenant" without translating it
-#. or keep it parenthezised. Example for French:
-#. locataire ("tenant")
-#: ../glance-common.templates:4001
-#, fuzzy
-#| msgid "Auth server admin token:"
-msgid "Authentication server tenant name:"
-msgstr "Token admin do servidor de autenticação:"
-
-#. Type: string
-#. Description
-#. Translators: a "tenant" in OpenStack world is
-#. an entity that contains one or more username/password couples.
-#. It's typically the tenant that will be used for billing. Having more than one
-#. username/password is very helpful in larger organization.
-#. You're advised to either keep "tenant" without translating it
-#. or keep it parenthezised. Example for French:
-#. locataire ("tenant")
-#: ../glance-common.templates:4001
-msgid "Please specify the authentication server tenant name."
-msgstr ""
-
-#. Type: string
-#. Description
-#: ../glance-common.templates:5001
-#, fuzzy
-#| msgid "Auth server admin token:"
-msgid "Authentication server username:"
-msgstr "Token admin do servidor de autenticação:"
-
-#. Type: string
-#. Description
-#: ../glance-common.templates:5001
-msgid "Please specify the username to use with the authentication server."
-msgstr ""
-
-#. Type: password
-#. Description
-#: ../glance-common.templates:6001
-#, fuzzy
-#| msgid "Auth server admin token:"
-msgid "Authentication server password:"
-msgstr "Token admin do servidor de autenticação:"
-
-#. Type: password
-#. Description
-#: ../glance-common.templates:6001
-msgid "Please specify the password to use with the authentication server."
-msgstr ""
+#: ../keystone.templates:2001
+msgid "Set up a database for Keystone?"
+msgstr "Configurar um banco de dados para o Keystone?"
 
 #. Type: boolean
 #. Description
-#: ../glance-common.templates:7001
-#, fuzzy
-#| msgid "Set up a database for glance-registry?"
-msgid "Set up a database for Glance?"
-msgstr "Configurar um banco de dados para o glance-registry?"
-
-#. Type: boolean
-#. Description
-#: ../glance-common.templates:7001
-#, fuzzy
-#| msgid ""
-#| "No database has been set up for glance-registry to use. Before "
-#| "continuing, you should make sure you have:"
+#: ../keystone.templates:2001
 msgid ""
-"No database has been set up for glance-registry or glance-api to use. Before "
-"continuing, you should make sure you have the following information:"
+"No database has been set up for Keystone to use. Before continuing, you "
+"should make sure you have the following information:"
 msgstr ""
-"Nenhum banco de dados foi configurado para o glance-registry usar. Antes de "
-"continuar, você deve se certificar que você tem:"
+"Nenhum banco de dados foi configurado para ser usado com o Keystone. Antes "
+"de continuar, você deve se certificar que você tem as seguintes informações:"
 
 #. Type: boolean
 #. Description
-#: ../glance-common.templates:7001
-#, fuzzy
-#| msgid ""
-#| " - the server host name (that server must allow TCP connections\n"
-#| "   from this machine);\n"
-#| " - a username and password to access the database.\n"
-#| " - A database type that you want to use."
+#: ../keystone.templates:2001
 msgid ""
 " * the type of database that you want to use;\n"
-" * the database server hostname (that server must allow TCP connections from "
-"this\n"
+" * the database server host name (that server must allow TCP connections "
+"from this\n"
 "   machine);\n"
 " * a username and password to access the database."
 msgstr ""
-" - o nome do servidor (tal servidor deve permitir conexões TCP\n"
-"   a partir deste computador);\n"
-" - um usuário e uma senha para acessar o banco de dados;\n"
-" - o tipo de banco de dados que você quer utilizar."
+" * o tipo de banco de dados que você quer usar;\n"
+" * o nome de máquina do servidor de banco de dados (tal servidor deve\n"
+"   permitir conexões TCP a partir deste computador);\n"
+" * um usuário e uma senha para acessar o banco de dados."
 
 #. Type: boolean
 #. Description
-#: ../glance-common.templates:7001
-#, fuzzy
-#| msgid ""
-#| "If some of these requirements are missing, reject this option and run "
-#| "with regular sqlite support."
+#: ../keystone.templates:2001
 msgid ""
 "If some of these requirements are missing, do not choose this option and run "
 "with regular SQLite support."
 msgstr ""
 "Se algum desses requisitos estiver faltando, rejeite essa opção e execute "
-"com suporte regular ao sqlite."
+"com suporte regular ao SQLite."
 
 #. Type: boolean
 #. Description
-#: ../glance-common.templates:7001
-#, fuzzy
-#| msgid ""
-#| "You can change this setting later on by running 'dpkg-reconfigure -plow "
-#| "glance-registry"
+#: ../keystone.templates:2001
 msgid ""
 "You can change this setting later on by running \"dpkg-reconfigure -plow "
-"glance-common\"."
+"keystone\"."
 msgstr ""
-"Você pode mudar essa configuração depois, executando 'dpkg-reconfigure -plow "
-"glance-registry'"
+"Você pode mudar essa configuração depois, executando \"dpkg-reconfigure -"
+"plow keystone\"."
 
-#. Type: string
-#. Description
-#: ../glance-common.templates:8001
-msgid "IP address of your RabbitMQ host:"
-msgstr ""
-
-#. Type: string
-#. Description
-#. Type: string
-#. Description
 #. Type: password
 #. Description
-#: ../glance-common.templates:8001 ../glance-common.templates:9001
-#: ../glance-common.templates:10001
+#: ../keystone.templates:3001
+msgid "Authentication server administration token:"
+msgstr "\"Token\" de administração do servidor de autenticação:"
+
+#. Type: password
+#. Description
+#: ../keystone.templates:3001
+msgid "Please enter the token to use with the authentication server."
+msgstr ""
+"Por favor, informe o \"token\" a ser usado com o servidor de autenticação."
+
+#. Type: boolean
+#. Description
+#. Translators: a "tenant" in OpenStack world is
+#. an entity that contains one or more username/password couples.
+#. It's typically the tenant that will be used for billing. Having more than one
+#. username/password is very helpful in larger organization.
+#. You're advised to either keep "tenant" without translating it
+#. or keep it parenthezised. Example for French:
+#. locataire ("tenant")
+#: ../keystone.templates:4001
+msgid "Register administration tenants?"
+msgstr "Registrar locatários (\"tenants\") de administração?"
+
+#. Type: boolean
+#. Description
+#. Translators: a "tenant" in OpenStack world is
+#. an entity that contains one or more username/password couples.
+#. It's typically the tenant that will be used for billing. Having more than one
+#. username/password is very helpful in larger organization.
+#. You're advised to either keep "tenant" without translating it
+#. or keep it parenthezised. Example for French:
+#. locataire ("tenant")
+#: ../keystone.templates:4001
 msgid ""
-"In order to interoperate with other components of OpenStack, this package "
-"needs to connect to a central RabbitMQ server."
+"For OpenStack to work, you need a basic tenant configuration. The creation "
+"of these administration tenants can be done automatically."
 msgstr ""
+"Para o OpenStack funcionar, você precisa de uma configuração de locatário "
+"(\"tenant\") básica. A criação desses locatários (\"tenants\") de "
+"administração pode ser feita automaticamente."
 
 #. Type: string
 #. Description
-#: ../glance-common.templates:8001
-#, fuzzy
-#| msgid "Please specify the flavor of pipeline to be used by Glance."
-msgid "Please specify the IP address of that server."
-msgstr "Por favor, especifique o sabor do pipeline a ser usado pelo Glance."
+#: ../keystone.templates:5001
+msgid "Username of the administrative user:"
+msgstr "Nome de usuário do usuário administrativo:"
 
 #. Type: string
 #. Description
-#: ../glance-common.templates:9001
-msgid "Username for connection to the RabbitMQ server:"
-msgstr ""
+#: ../keystone.templates:5001
+msgid "Please enter a username for the administrative user."
+msgstr "Por favor, informe um nome de usuário para o usuário administrativo."
 
 #. Type: string
 #. Description
-#: ../glance-common.templates:9001
-msgid "Please specify the username used to connect to the RabbitMQ server."
-msgstr ""
+#: ../keystone.templates:6001
+msgid "Email address of the administrative user:"
+msgstr "Endereço de e-mail do usuário administrativo:"
+
+#. Type: string
+#. Description
+#: ../keystone.templates:6001
+msgid "Please enter the email address of the administrative user."
+msgstr "Por favor, informe o endereço de e-mail do usuário administrativo."
 
 #. Type: password
 #. Description
-#: ../glance-common.templates:10001
-msgid "Password for connection to the RabbitMQ server:"
-msgstr ""
+#: ../keystone.templates:7001
+msgid "Password of the administrative user:"
+msgstr "Senha do usuário administrativo:"
 
 #. Type: password
 #. Description
-#: ../glance-common.templates:10001
-msgid "Please specify the password used to connect to the RabbitMQ server."
+#: ../keystone.templates:7001
+msgid "Please enter a password for the administrative user."
+msgstr "Por favor, informe a senha para o usuário administrativo."
+
+#. Type: password
+#. Description
+#: ../keystone.templates:8001
+msgid "Re-enter password to verify:"
+msgstr "Informe novamente a senha para verificação:"
+
+#. Type: password
+#. Description
+#: ../keystone.templates:8001
+msgid ""
+"Please enter the same administrative password again to verify that you have "
+"typed it correctly."
 msgstr ""
+"Por favor, informe novamente a mesma senha administrativa para verificar se "
+"você a digitou corretamente."
+
+#. Type: error
+#. Description
+#: ../keystone.templates:9001
+msgid "Password input error"
+msgstr "Erro na informação da senha"
+
+#. Type: error
+#. Description
+#: ../keystone.templates:9001
+msgid "The two passwords you entered were not the same. Please try again."
+msgstr ""
+"As duas senhas que você informou não foram as mesmas. Por favor, tente "
+"novamente."
+
+#. Type: string
+#. Description
+#: ../keystone.templates:10001
+msgid "Name of the administrative role:"
+msgstr "Nome do papel administrativo:"
+
+#. Type: string
+#. Description
+#: ../keystone.templates:10001
+msgid "Please enter the name of the administrative role."
+msgstr "Por favor, informe o nome do papel administrativo."
+
+#. Type: string
+#. Description
+#. Translators: a "tenant" in OpenStack world is
+#. an entity that contains one or more username/password couples.
+#. It's typically the tenant that will be used for billing. Having more than one
+#. username/password is very helpful in larger organization.
+#. You're advised to either keep "tenant" without translating it
+#. or keep it parenthezised. Example for French:
+#. locataire ("tenant")
+#: ../keystone.templates:11001
+msgid "Name of the administrative tenant:"
+msgstr "Nome do locatário (\"tenant\") administrativo:"
+
+#. Type: string
+#. Description
+#. Translators: a "tenant" in OpenStack world is
+#. an entity that contains one or more username/password couples.
+#. It's typically the tenant that will be used for billing. Having more than one
+#. username/password is very helpful in larger organization.
+#. You're advised to either keep "tenant" without translating it
+#. or keep it parenthezised. Example for French:
+#. locataire ("tenant")
+#: ../keystone.templates:11001
+msgid "Please enter the name of the administrative tenant."
+msgstr "Por favor, informe o nome do locatário (\"tenant\") administrativo."
 
 #. Type: boolean
 #. Description
-#: ../glance-api.templates:2001
-msgid "Register Glance in the Keystone endpoint catalog?"
-msgstr ""
+#: ../keystone.templates:12001
+msgid "Register Keystone endpoint?"
+msgstr "Registrar o \"endpoint\" do Keystone?"
 
 #. Type: boolean
 #. Description
-#: ../glance-api.templates:2001
+#: ../keystone.templates:12001
 msgid ""
 "Each OpenStack service (each API) should be registered in order to be "
 "accessible. This is done using \"keystone service-create\" and \"keystone "
 "endpoint-create\". This can be done automatically now."
 msgstr ""
-
-#. Type: boolean
-#. Description
-#: ../glance-api.templates:2001
-msgid ""
-"Note that you will need to have an up and running Keystone server on which "
-"to connect using the Keystone authentication token."
-msgstr ""
+"Cada serviço OpenStack (cada API) deve ser registrado para ser acessível. "
+"Isso é feito usando \"keystone service-create\" e \"keystone endpoint-create"
+"\". Isso pode ser feito automaticamente agora."
 
 #. Type: string
 #. Description
-#: ../glance-api.templates:3001
-msgid "Keystone server IP address:"
-msgstr ""
+#: ../keystone.templates:13001
+msgid "Keystone endpoint IP address:"
+msgstr "Endereço IP do \"endpoint\" Keystone:"
 
 #. Type: string
 #. Description
-#: ../glance-api.templates:3001
-msgid ""
-"Please enter the IP address of the Keystone server, so that glance-api can "
-"contact Keystone to do the Glance service and endpoint creation."
+#: ../keystone.templates:13001
+msgid "Please enter the IP address that will be used to contact Keystone."
 msgstr ""
-
-#. Type: password
-#. Description
-#: ../glance-api.templates:4001
-msgid "Keystone authentication token:"
-msgstr ""
-
-#. Type: password
-#. Description
-#: ../glance-api.templates:4001
-msgid ""
-"To configure its endpoint in Keystone, glance-api needs the Keystone "
-"authentication token."
-msgstr ""
+"Por favor, informe o endereço IP que será usado para contatar o Keystone."
 
 #. Type: string
 #. Description
-#: ../glance-api.templates:5001
-msgid "Glance endpoint IP address:"
-msgstr ""
-
-#. Type: string
-#. Description
-#: ../glance-api.templates:5001
-msgid "Please enter the IP address that will be used to contact Glance."
-msgstr ""
-
-#. Type: string
-#. Description
-#: ../glance-api.templates:5001
-msgid ""
-"This IP address should be accessible from the clients that will use this "
-"service, so if you are installing a public cloud, this should be a public IP "
-"address."
-msgstr ""
-
-#. Type: string
-#. Description
-#: ../glance-api.templates:6001
+#: ../keystone.templates:14001
 msgid "Name of the region to register:"
-msgstr ""
+msgstr "Nome da região para registrar:"
 
 #. Type: string
 #. Description
-#: ../glance-api.templates:6001
+#: ../keystone.templates:14001
 msgid ""
 "OpenStack supports using availability zones, with each region representing a "
 "location. Please enter the zone that you wish to use when registering the "
 "endpoint."
 msgstr ""
+"O OpenStack suporta usar zonas de disponibilidade, com cada região "
+"representando uma localidade. Por favor, informe a zona que você deseja usar "
+"ao registrar o \"endpoint\"."
 
-#~ msgid "Auth server URL:"
-#~ msgstr "URL para o servidor de autenticação:"
+#~ msgid ""
+#~ "If you don't choose this option, no database will be set up and Keystone "
+#~ "will use regular SQLite support."
+#~ msgstr ""
+#~ "Se você não escolher essa opção, nenhum banco de dados será configurado e "
+#~ "o Keystone usará suporte regular ao SQLite."
