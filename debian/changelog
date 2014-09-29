@@ -1,3 +1,9 @@
+glance (2014.1.2-2) unstable; urgency=medium
+
+  * Updated pt_BR.po thanks to Adriano Rafael Gomes (Closes: #762471).
+
+ -- Thomas Goirand <zigo@debian.org>  Mon, 29 Sep 2014 16:25:03 +0800
+
 glance (2014.1.2-1) unstable; urgency=medium
 
   * New upstream release. 
