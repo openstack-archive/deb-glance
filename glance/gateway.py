@@ -24,14 +24,14 @@ import glance.domain
 import glance.location
 import glance.notifier
 import glance.quota
-import glance.store
+import glance_store
 
 
 class Gateway(object):
     def __init__(self, db_api=None, store_api=None, notifier=None,
                  policy_enforcer=None):
         self.db_api = db_api or glance.db.get_api()
-        self.store_api = store_api or glance.store
+        self.store_api = store_api or glance_store
         self.store_utils = store_utils
         self.notifier = notifier or glance.notifier.Notifier()
         self.policy = policy_enforcer or policy.Enforcer()
@@ -120,6 +120,14 @@ class Gateway(object):
         authorized_task_stub_repo = authorization.TaskStubRepoProxy(
             notifier_task_stub_repo, context)
         return authorized_task_stub_repo
+
+    def get_task_executor_factory(self, context):
+        task_repo = self.get_task_repo(context)
+        image_repo = self.get_repo(context)
+        image_factory = self.get_image_factory(context)
+        return glance.domain.TaskExecutorFactory(task_repo,
+                                                 image_repo,
+                                                 image_factory)
 
     def get_metadef_namespace_factory(self, context):
         ns_factory = glance.domain.MetadefNamespaceFactory()

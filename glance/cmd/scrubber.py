@@ -30,37 +30,30 @@ possible_topdir = os.path.normpath(os.path.join(os.path.abspath(sys.argv[0]),
 if os.path.exists(os.path.join(possible_topdir, 'glance', '__init__.py')):
     sys.path.insert(0, possible_topdir)
 
+import glance_store
 from oslo.config import cfg
 
 from glance.common import config
 from glance.openstack.common import log
 from glance import scrubber
-import glance.store
+
 
 CONF = cfg.CONF
 
 
 def main():
-    CONF.register_cli_opt(
-        cfg.BoolOpt('daemon',
-                    short='D',
-                    default=False,
-                    help='Run as a long-running process. When not '
-                         'specified (the default) run the scrub operation '
-                         'once and then exits. When specified do not exit '
-                         'and run scrub on wakeup_time interval as '
-                         'specified in the config.'))
-    CONF.register_opt(cfg.IntOpt('wakeup_time', default=300))
+    CONF.register_cli_opts(scrubber.scrubber_cmd_cli_opts)
+    CONF.register_opts(scrubber.scrubber_cmd_opts)
 
     try:
-
         config.parse_args()
         log.setup('glance')
 
-        glance.store.create_stores()
-        glance.store.verify_default_store()
+        glance_store.register_opts(config.CONF)
+        glance_store.create_stores(config.CONF)
+        glance_store.verify_default_store()
 
-        app = scrubber.Scrubber(glance.store)
+        app = scrubber.Scrubber(glance_store)
 
         if CONF.daemon:
             server = scrubber.Daemon(CONF.wakeup_time)

@@ -15,6 +15,7 @@
 
 import re
 
+import glance_store
 from oslo.config import cfg
 import six
 import six.moves.urllib.parse as urlparse
@@ -33,7 +34,6 @@ from glance.openstack.common import jsonutils as json
 import glance.openstack.common.log as logging
 from glance.openstack.common import timeutils
 import glance.schema
-import glance.store
 
 LOG = logging.getLogger(__name__)
 _LI = gettextutils._LI
@@ -51,7 +51,7 @@ class ImagesController(object):
         self.db_api = db_api or glance.db.get_api()
         self.policy = policy_enforcer or policy.Enforcer()
         self.notifier = notifier or glance.notifier.Notifier()
-        self.store_api = store_api or glance.store
+        self.store_api = store_api or glance_store
         self.gateway = glance.gateway.Gateway(self.db_api, self.store_api,
                                               self.notifier, self.policy)
 
@@ -73,6 +73,8 @@ class ImagesController(object):
             LOG.info(utils.exception_to_str(e))
             raise webob.exc.HTTPRequestEntityTooLarge(
                 explanation=e.msg, request=req, content_type='text/plain')
+        except exception.Duplicate as dupex:
+            raise webob.exc.HTTPConflict(explanation=dupex.msg)
 
         return image
 
@@ -320,7 +322,13 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
         tags = properties.pop('tags', None)
         for key in self._base_properties:
             try:
-                image[key] = properties.pop(key)
+                # NOTE(flwang): Instead of changing the _check_unexpected
+                # of ImageFactory. It would be better to do the mapping
+                # at here.
+                if key == 'id':
+                    image['image_id'] = properties.pop(key)
+                else:
+                    image[key] = properties.pop(key)
             except KeyError:
                 pass
         return dict(image=image, extra_properties=properties, tags=tags)
@@ -416,8 +424,8 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
         partial_image = None
         if len(change['path']) == 1:
             partial_image = {path_root: change['value']}
-        elif ((path_root in _get_base_properties().keys()) and
-              (_get_base_properties()[path_root].get('type', '') == 'array')):
+        elif ((path_root in get_base_properties().keys()) and
+              (get_base_properties()[path_root].get('type', '') == 'array')):
             # NOTE(zhiyan): cient can use PATCH API to adding element to
             # the image's existing set property directly.
             # Such as: 1. using '/locations/N' path to adding a location
@@ -667,7 +675,7 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
         response.status_int = 204
 
 
-def _get_base_properties():
+def get_base_properties():
     return {
         'id': {
             'type': 'string',
@@ -801,7 +809,7 @@ def _get_base_links():
 
 
 def get_schema(custom_properties=None):
-    properties = _get_base_properties()
+    properties = get_base_properties()
     links = _get_base_links()
     if CONF.allow_additional_image_properties:
         schema = glance.schema.PermissiveSchema('image', properties, links)

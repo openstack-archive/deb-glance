@@ -53,9 +53,28 @@ scrubber_opts = [
                        'clean up the files it uses for taking data. Only '
                        'one server in your deployment should be designated '
                        'the cleanup host.')),
+    cfg.BoolOpt('delayed_delete', default=False,
+                help=_('Turn on/off delayed delete.')),
     cfg.IntOpt('cleanup_scrubber_time', default=86400,
                help=_('Items must have a modified time that is older than '
                       'this value in order to be candidates for cleanup.'))
+]
+
+scrubber_cmd_opts = [
+    cfg.IntOpt('wakeup_time', default=300,
+               help=_('Loop time between checking for new '
+                      'items to schedule for delete.'))
+]
+
+scrubber_cmd_cli_opts = [
+    cfg.BoolOpt('daemon',
+                short='D',
+                default=False,
+                help=_('Run as a long-running process. When not '
+                       'specified (the default) run the scrub operation '
+                       'once and then exits. When specified do not exit '
+                       'and run scrub on wakeup_time interval as '
+                       'specified in the config.'))
 ]
 
 CONF = cfg.CONF
@@ -136,7 +155,7 @@ class ScrubFileQueue(ScrubQueue):
                 while True:
                     loc_id = f.readline().strip()
                     if loc_id:
-                        lid = unicode(loc_id)
+                        lid = six.text_type(loc_id)
                         loc_ids.append(int(lid) if lid.isdigit() else lid)
                         uris.append(unicode(f.readline().strip()))
                         delete_times.append(int(f.readline().strip()))

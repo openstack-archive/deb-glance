@@ -17,6 +17,7 @@
 import copy
 import webob.exc
 
+import glance_store
 from oslo.config import cfg
 import six
 import six.moves.urllib.parse as urlparse
@@ -33,7 +34,6 @@ import glance.openstack.common.jsonutils as json
 import glance.openstack.common.log as logging
 from glance.openstack.common import timeutils
 import glance.schema
-import glance.store
 
 LOG = logging.getLogger(__name__)
 _LI = gettextutils._LI
@@ -50,12 +50,13 @@ class TasksController(object):
         self.db_api = db_api or glance.db.get_api()
         self.policy = policy_enforcer or policy.Enforcer()
         self.notifier = notifier or glance.notifier.Notifier()
-        self.store_api = store_api or glance.store
+        self.store_api = store_api or glance_store
         self.gateway = glance.gateway.Gateway(self.db_api, self.store_api,
                                               self.notifier, self.policy)
 
     def create(self, req, task):
         task_factory = self.gateway.get_task_factory(req.context)
+        executor_factory = self.gateway.get_task_executor_factory(req.context)
         task_repo = self.gateway.get_task_repo(req.context)
         live_time = CONF.task.task_time_to_live
         try:
@@ -64,6 +65,8 @@ class TasksController(object):
                                              task_time_to_live=live_time,
                                              task_input=task['input'])
             task_repo.add(new_task)
+            task_executor = executor_factory.new_task_executor(req.context)
+            new_task.run(task_executor)
         except exception.Forbidden as e:
             msg = (_LI("Forbidden to create task. Reason: %(reason)s")
                    % {'reason': utils.exception_to_str(e)})

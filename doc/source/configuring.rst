@@ -418,6 +418,23 @@ the filesystem storage backend will attempt to create this directory if it does
 not exist. Ensure that the user that ``glance-api`` runs under has write
 permissions to this directory.
 
+* ``filesystem_store_file_perm=PERM_MODE``
+
+Optional. Default: ``0``
+
+Can only be specified in configuration files.
+
+`This option is specific to the filesystem storage backend.`
+
+The required permission value, in octal representation, for the created image file.
+You can use this value to specify the user of the consuming service (such as Nova) as
+the only member of the group that owns the created files. To keep the default value,
+assign a permission value that is less than or equal to 0.  Note that the file owner
+must maintain read permission; if this value removes that permission an error message
+will be logged and the BadStoreConfiguration exception will be raised.  If the Glance
+service has insufficient privileges to change file access permissions, a file will still
+be saved, but a warning message will appear in the Glance log.
+
 Configuring the Filesystem Storage Backend with multiple stores
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1257,10 +1274,6 @@ Configuring Glance Tasks
 
 Glance Tasks are implemented only for version 2 of the OpenStack Images API.
 
-``Please be aware that Glance tasks are currently a work in progress
-feature.`` Although, the API is available, the execution part of it
-is being worked on.
-
 The config value ``task_time_to_live`` is used to determine how long a task
 would be visible to the user after transitioning to either the ``success`` or
 the ``failure`` state.
@@ -1268,6 +1281,22 @@ the ``failure`` state.
 * ``task_time_to_live=<Time_in_hours>``
 
 Optional. Default: ``48``
+
+The config value ``task_executor`` is used to determine which executor
+should be used by the Glance service to process the task.
+
+* ``task_executor=<executor_type>``
+
+Optional. Default: ``eventlet``
+
+The config value ``eventlet_executor_pool_size`` is used to configure the
+eventlet task executor. It sets the maximum on the number of threads which can
+be spun up at any given point of time, that are used for the execution of
+Glance Tasks.
+
+* ``eventlet_executor_pool_size=<Size_of_pool_in_int>``
+
+Optional. Default: ``1000``
 
 Configuring Glance performance profiling
 ----------------------------------------

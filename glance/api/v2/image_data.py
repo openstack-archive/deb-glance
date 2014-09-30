@@ -15,6 +15,8 @@
 
 import webob.exc
 
+import glance_store
+
 import glance.api.policy
 from glance.common import exception
 from glance.common import utils
@@ -25,7 +27,7 @@ import glance.notifier
 from glance.openstack.common import excutils
 from glance.openstack.common import gettextutils
 import glance.openstack.common.log as logging
-import glance.store
+
 
 LOG = logging.getLogger(__name__)
 _LE = gettextutils._LE
@@ -37,7 +39,7 @@ class ImageDataController(object):
                  gateway=None):
         if gateway is None:
             db_api = db_api or glance.db.get_api()
-            store_api = store_api or glance.store
+            store_api = store_api or glance_store
             policy = policy_enforcer or glance.api.policy.Enforcer()
             notifier = notifier or glance.notifier.Notifier()
             gateway = glance.gateway.Gateway(db_api, store_api,
@@ -110,7 +112,7 @@ class ImageDataController(object):
         except exception.NotFound as e:
             raise webob.exc.HTTPNotFound(explanation=e.msg)
 
-        except exception.StorageFull as e:
+        except glance_store.StorageFull as e:
             msg = _("Image storage media "
                     "is full: %s") % utils.exception_to_str(e)
             LOG.error(msg)
@@ -134,7 +136,7 @@ class ImageDataController(object):
             raise webob.exc.HTTPRequestEntityTooLarge(explanation=msg,
                                                       request=req)
 
-        except exception.StorageWriteDenied as e:
+        except glance_store.StorageWriteDenied as e:
             msg = _("Insufficient permissions on image "
                     "storage media: %s") % utils.exception_to_str(e)
             LOG.error(msg)
@@ -170,6 +172,7 @@ class ImageDataController(object):
 
 
 class RequestDeserializer(wsgi.JSONRequestDeserializer):
+
     def upload(self, request):
         try:
             request.get_content_type(('application/octet-stream',))
@@ -181,13 +184,28 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
 
 
 class ResponseSerializer(wsgi.JSONResponseSerializer):
+
     def download(self, response, image):
+        offset, chunk_size = 0, None
+        range_val = response.request.get_content_range()
+
+        if range_val:
+            # NOTE(flaper87): if not present, both, start
+            # and stop, will be None.
+            if range_val.start is not None:
+                offset = range_val.start
+
+            if range_val.stop is not None:
+                chunk_size = range_val.stop - offset
+
         response.headers['Content-Type'] = 'application/octet-stream'
+
         try:
             # NOTE(markwash): filesystem store (and maybe others?) cause a
             # problem with the caching middleware if they are not wrapped in
             # an iterator very strange
-            response.app_iter = iter(image.get_data())
+            response.app_iter = iter(image.get_data(offset=offset,
+                                                    chunk_size=chunk_size))
         except exception.Forbidden as e:
             raise webob.exc.HTTPForbidden(explanation=e.msg)
         #NOTE(saschpe): "response.app_iter = ..." currently resets Content-MD5

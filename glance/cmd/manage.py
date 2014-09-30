@@ -46,27 +46,15 @@ from glance.common import exception
 from glance.common import utils
 from glance.db import migration as db_migration
 from glance.db.sqlalchemy import api as db_api
+from glance.db.sqlalchemy import metadata
 from glance.openstack.common import gettextutils
 from glance.openstack.common import log
 from glance.openstack.common import strutils
 
 
+CONF = cfg.CONF
 LOG = log.getLogger(__name__)
 _LW = gettextutils._LW
-
-manager_opts = [
-    cfg.BoolOpt('db_enforce_mysql_charset',
-                default=True,
-                help=_('DEPRECATED. TO BE REMOVED IN THE JUNO RELEASE. '
-                       'Whether or not to enforce that all DB tables have '
-                       'charset utf8. If your database tables do not have '
-                       'charset utf8 you will need to convert before this '
-                       'option is removed. This option is only relevant if '
-                       'your database engine is MySQL.'))
-]
-
-CONF = cfg.CONF
-CONF.register_opts(manager_opts)
 
 
 # Decorators for actions
@@ -83,15 +71,6 @@ class DbCommands(object):
     def __init__(self):
         pass
 
-    def _need_sanity_check(self):
-        if not CONF.db_enforce_mysql_charset:
-            LOG.warning(_LW('Warning: '
-                            'The db_enforce_mysql_charset option is now '
-                            'deprecated and will be removed in the Juno '
-                            'release. Please migrate DB manually e.g. '
-                            'convert data of all tables to UTF-8 charset.'))
-        return CONF.db_enforce_mysql_charset
-
     def version(self):
         """Print database's current migration level"""
         print(migration.db_version(db_api.get_engine(),
@@ -103,16 +82,14 @@ class DbCommands(object):
         """Upgrade the database's migration level"""
         migration.db_sync(db_api.get_engine(),
                           db_migration.MIGRATE_REPO_PATH,
-                          version,
-                          sanity_check=self._need_sanity_check())
+                          version)
 
     @args('--version', metavar='<version>', help='Database version')
     def downgrade(self, version=None):
         """Downgrade the database's migration level"""
         migration.db_sync(db_api.get_engine(),
                           db_migration.MIGRATE_REPO_PATH,
-                          version,
-                          sanity_check=self._need_sanity_check())
+                          version)
 
     @args('--version', metavar='<version>', help='Database version')
     def version_control(self, version=None):
@@ -135,8 +112,26 @@ class DbCommands(object):
                                          version=current_version)
         migration.db_sync(db_api.get_engine(),
                           db_migration.MIGRATE_REPO_PATH,
-                          version,
-                          sanity_check=self._need_sanity_check())
+                          version)
+
+    @args('--path', metavar='<path>', help='Path to the directory where '
+                                           'json metadata files are stored')
+    def load_metadefs(self, path=None):
+        """Load metadefinition json files to database"""
+        metadata.db_load_metadefs(db_api.get_engine(),
+                                  path)
+
+    def unload_metadefs(self):
+        """Unload metadefinitions from database"""
+        metadata.db_unload_metadefs(db_api.get_engine())
+
+    @args('--path', metavar='<path>', help='Path to the directory where '
+                                           'json metadata files should be '
+                                           'saved.')
+    def export_metadefs(self, path=None):
+        """Export metadefinitions data from database to files"""
+        metadata.db_export_metadefs(db_api.get_engine(),
+                                    path)
 
 
 class DbLegacyCommands(object):
@@ -160,6 +155,15 @@ class DbLegacyCommands(object):
     def sync(self, version=None, current_version=None):
         self.command_object.sync(CONF.command.version,
                                  CONF.command.current_version)
+
+    def load_metadefs(self, path=None):
+        self.command_object.load_metadefs(CONF.command.path)
+
+    def unload_metadefs(self):
+        self.command_object.unload_metadefs()
+
+    def export_metadefs(self, path=None):
+        self.command_object.export_metadefs(CONF.command.path)
 
 
 def add_legacy_command_parsers(command_object, subparsers):
@@ -190,6 +194,20 @@ def add_legacy_command_parsers(command_object, subparsers):
     parser.add_argument('version', nargs='?')
     parser.add_argument('current_version', nargs='?')
     parser.set_defaults(action='db_sync')
+
+    parser = subparsers.add_parser('db_load_metadefs')
+    parser.set_defaults(action_fn=legacy_command_object.load_metadefs)
+    parser.add_argument('path', nargs='?')
+    parser.set_defaults(action='db_load_metadefs')
+
+    parser = subparsers.add_parser('db_unload_metadefs')
+    parser.set_defaults(action_fn=legacy_command_object.unload_metadefs)
+    parser.set_defaults(action='db_unload_metadefs')
+
+    parser = subparsers.add_parser('db_export_metadefs')
+    parser.set_defaults(action_fn=legacy_command_object.export_metadefs)
+    parser.add_argument('path', nargs='?')
+    parser.set_defaults(action='db_export_metadefs')
 
 
 def add_command_parsers(subparsers):

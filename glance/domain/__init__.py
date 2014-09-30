@@ -22,24 +22,28 @@ from oslo.config import cfg
 import six
 
 from glance.common import exception
+from glance import i18n
+from glance.openstack.common import excutils
+from glance.openstack.common import importutils
 import glance.openstack.common.log as logging
 from glance.openstack.common import timeutils
 
-
-CONF = cfg.CONF
+_LE = i18n._LE
 LOG = logging.getLogger(__name__)
+CONF = cfg.CONF
+CONF.import_opt('task_executor', 'glance.common.config', group='task')
 
 
 _delayed_delete_imported = False
 
 
 def _import_delayed_delete():
-    # glance.store (indirectly) imports glance.domain therefore we can't put
+    # glance_store (indirectly) imports glance.domain therefore we can't put
     # the CONF.import_opt outside - we have to do it in a convoluted/indirect
     # way!
     global _delayed_delete_imported
     if not _delayed_delete_imported:
-        CONF.import_opt('delayed_delete', 'glance.store')
+        CONF.import_opt('delayed_delete', 'glance_store')
         _delayed_delete_imported = True
 
 
@@ -239,7 +243,7 @@ class Image(object):
         else:
             self.status = 'deleted'
 
-    def get_data(self):
+    def get_data(self, *args, **kwargs):
         raise NotImplementedError()
 
     def set_data(self, data, size=None):
@@ -371,6 +375,7 @@ class Task(object):
                        {'task_id': self.task_id, 'cur_status': self.status,
                         'new_status': new_status})
             LOG.info(log_msg)
+            self._status = new_status
         else:
             log_msg = (_("Task [%(task_id)s] status failed to change from "
                          "%(cur_status)s to %(new_status)s") %
@@ -399,7 +404,7 @@ class Task(object):
         self.expires_at = timeutils.utcnow() + self._time_to_live
 
     def run(self, executor):
-        pass
+        executor.begin_processing(self.task_id)
 
 
 class TaskStub(object):
@@ -443,6 +448,29 @@ class TaskFactory(object):
             kwargs.get('result'),
             task_time_to_live
         )
+
+
+class TaskExecutorFactory(object):
+
+    def __init__(self, task_repo, image_repo, image_factory):
+        self.task_repo = task_repo
+        self.image_repo = image_repo
+        self.image_factory = image_factory
+
+    def new_task_executor(self, context):
+        try:
+            executor_cls = ('glance.async.%s_executor.'
+                            'TaskExecutor' % CONF.task.task_executor)
+            LOG.debug("Loading %s executor" % CONF.task.task_executor)
+            executor = importutils.import_class(executor_cls)
+            return executor(context,
+                            self.task_repo,
+                            self.image_repo,
+                            self.image_factory)
+        except ImportError:
+            with excutils.save_and_reraise_exception():
+                LOG.exception(_LE("Failed to load the %s executor provided "
+                                  "in the config.") % CONF.task.task_executor)
 
 
 class MetadefNamespace(object):

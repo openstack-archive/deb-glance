@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import BaseHTTPServer
 import os
 import signal
 import tempfile
@@ -23,13 +24,48 @@ import six
 
 from glance.openstack.common import jsonutils
 from glance.tests import functional
-from glance.tests.functional.store import test_http
 
 
 TENANT1 = str(uuid.uuid4())
 TENANT2 = str(uuid.uuid4())
 TENANT3 = str(uuid.uuid4())
 TENANT4 = str(uuid.uuid4())
+
+
+def get_handler_class(fixture):
+    class StaticHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header('Content-Length', str(len(fixture)))
+            self.end_headers()
+            self.wfile.write(fixture)
+            return
+
+        def do_HEAD(self):
+            self.send_response(200)
+            self.send_header('Content-Length', str(len(fixture)))
+            self.end_headers()
+            return
+
+        def log_message(*args, **kwargs):
+            # Override this method to prevent debug output from going
+            # to stderr during testing
+            return
+
+    return StaticHTTPRequestHandler
+
+
+def http_server(image_id, image_data):
+    server_address = ('127.0.0.1', 0)
+    handler_class = get_handler_class(image_data)
+    httpd = BaseHTTPServer.HTTPServer(server_address, handler_class)
+    port = httpd.socket.getsockname()[1]
+
+    pid = os.fork()
+    if pid == 0:
+        httpd.serve_forever()
+    else:
+        return pid, port
 
 
 class TestImages(functional.FunctionalTest):
@@ -247,7 +283,7 @@ class TestImages(functional.FunctionalTest):
         self.assertNotIn('size', image)
         self.assertNotIn('virtual_size', image)
         self.assertEqual('bar', image['foo'])
-        self.assertEqual(False, image['protected'])
+        self.assertFalse(image['protected'])
         self.assertEqual('kernel', image['type'])
         self.assertTrue(image['created_at'])
         self.assertTrue(image['updated_at'])
@@ -459,6 +495,41 @@ class TestImages(functional.FunctionalTest):
         self.assertEqual(200, response.status_code)
         images = jsonutils.loads(response.text)['images']
         self.assertEqual(0, len(images))
+
+        self.stop_servers()
+
+    def test_download_random_access(self):
+        self.start_servers(**self.__dict__.copy())
+        # Create another image (with two deployer-defined properties)
+        path = self._url('/v2/images')
+        headers = self._headers({'content-type': 'application/json'})
+        data = jsonutils.dumps({'name': 'image-2', 'type': 'kernel',
+                                'bar': 'foo', 'disk_format': 'aki',
+                                'container_format': 'aki', 'xyz': 'abc'})
+        response = requests.post(path, headers=headers, data=data)
+        self.assertEqual(201, response.status_code)
+        image = jsonutils.loads(response.text)
+        image_id = image['id']
+
+        # Upload data to image
+        image_data = 'Z' * 15
+        path = self._url('/v2/images/%s/file' % image_id)
+        headers = self._headers({'Content-Type': 'application/octet-stream'})
+        response = requests.put(path, headers=headers, data=image_data)
+        self.assertEqual(204, response.status_code)
+
+        result_body = ''
+        for x in range(15):
+            # NOTE(flaper87): Read just 1 byte. Content-Range is
+            # 0-indexed and it specifies the first byte to read
+            # and the last byte to read.
+            content_range = 'bytes %s-%s/15' % (x, x)
+            headers = self._headers({'Content-Range': content_range})
+            path = self._url('/v2/images/%s/file' % image_id)
+            response = requests.get(path, headers=headers)
+            result_body += response.text
+
+        self.assertEqual(result_body, image_data)
 
         self.stop_servers()
 
@@ -2289,7 +2360,7 @@ class TestImageLocationSelectionStrategy(functional.FunctionalTest):
         self.foo_image_file.write("foo image file")
         self.foo_image_file.flush()
         self.addCleanup(self.foo_image_file.close)
-        ret = test_http.http_server("foo_image_id", "foo_image")
+        ret = http_server("foo_image_id", "foo_image")
         self.http_server_pid, self.http_port = ret
 
     def tearDown(self):
