@@ -1,5 +1,6 @@
-glance (2014.2~b3-2) UNRELEASED; urgency=medium
+glance (2014.2~rc1-1) experimental; urgency=medium
 
+  * New upstream release.
   * Updated pt_BR.po thanks to Adriano Rafael Gomes (Closes: #762471).
 
  -- Thomas Goirand <zigo@debian.org>  Mon, 29 Sep 2014 16:23:59 +0800
