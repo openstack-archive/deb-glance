@@ -3,6 +3,7 @@ glance (2014.2~rc1-1) experimental; urgency=medium
   * New upstream release.
   * Updated pt_BR.po thanks to Adriano Rafael Gomes (Closes: #762471).
   * Updated (build-)depends for this release.
+  * Add patch to allow python-routes == 2.0.
 
  -- Thomas Goirand <zigo@debian.org>  Mon, 29 Sep 2014 16:23:59 +0800
 

@@ -1,0 +1,18 @@
+Description: Allow Routes == 2.0
+ The issue with Routes 2.0 is only the PyPi release, though the Debian
+ package is perfectly working. This patch is allowing it to be used.
+Author: Thomas Goirand <zigo@debian.org>
+Forwarded: not-needed
+Last-Update: 2014-09-30
+
+--- glance-2014.2~rc1.orig/requirements.txt
++++ glance-2014.2~rc1/requirements.txt
+@@ -14,7 +14,7 @@ SQLAlchemy>=0.8.4,<=0.8.99,>=0.9.7,<=0.9
+ anyjson>=0.3.3
+ eventlet>=0.15.1
+ PasteDeploy>=1.5.0
+-Routes>=1.12.3,!=2.0
++Routes>=1.12.3
+ WebOb>=1.2.3
+ argparse
+ boto>=2.32.1
