@@ -3,9 +3,11 @@ Author: Thomas Goirand <zigo@debian.org>
 Forwarded: not-needed
 Last-Update: 2014-09-20
 
---- glance-2014.2~b3.orig/etc/glance-api.conf
-+++ glance-2014.2~b3/etc/glance-api.conf
-@@ -679,7 +679,7 @@ admin_password = %SERVICE_PASSWORD%
+Index: glance/etc/glance-api.conf
+===================================================================
+--- glance.orig/etc/glance-api.conf	2014-09-30 23:17:07.000000000 +0800
++++ glance/etc/glance-api.conf	2014-09-30 23:18:48.000000000 +0800
+@@ -680,7 +680,7 @@
  # service name removed. For example, if your paste section name is
  # [pipeline:glance-api-keystone], you would configure the flavor below
  # as 'keystone'.
@@ -14,9 +16,11 @@ Last-Update: 2014-09-20
  
  [store_type_location_strategy]
  # The scheme list to use to get store preference order. The scheme must be
---- glance-2014.2~b3.orig/etc/glance-registry.conf
-+++ glance-2014.2~b3/etc/glance-registry.conf
-@@ -236,7 +236,7 @@ admin_password = %SERVICE_PASSWORD%
+Index: glance/etc/glance-registry.conf
+===================================================================
+--- glance.orig/etc/glance-registry.conf	2014-09-29 16:25:57.000000000 +0800
++++ glance/etc/glance-registry.conf	2014-09-30 23:18:48.000000000 +0800
+@@ -236,7 +236,7 @@
  # service name removed. For example, if your paste section name is
  # [pipeline:glance-registry-keystone], you would configure the flavor below
  # as 'keystone'.
