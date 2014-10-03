@@ -1,4 +1,4 @@
-/var/log/glance/api.log {
+/var/log/glance/glance-api.log {
     daily
     missingok
     compress
