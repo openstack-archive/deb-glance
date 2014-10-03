@@ -45,7 +45,6 @@ from glance.openstack.common import strutils
 import glance.registry.client.v1.api as registry
 from glance.store import get_from_backend
 from glance.store import get_known_schemes
-from glance.store import get_known_stores
 from glance.store import get_size_from_backend
 from glance.store import get_store_from_location
 from glance.store import get_store_from_scheme
@@ -489,7 +488,7 @@ class Controller(controller.BaseController):
         """
         location = self._external_source(image_meta, req)
         store = image_meta.get('store')
-        if store and store not in get_known_stores():
+        if store and store not in get_known_schemes():
             msg = _("Required store %s is invalid") % store
             LOG.debug(msg)
             raise HTTPBadRequest(explanation=msg,
@@ -565,7 +564,7 @@ class Controller(controller.BaseController):
                 image_data, image_size = self._get_from_store(req.context,
                                                               copy_from)
             except Exception as e:
-                upload_utils.safe_kill(req, image_meta['id'])
+                upload_utils.safe_kill(req, image_meta['id'], 'queued')
                 msg = _("Copy from external source failed: %s") % e
                 LOG.debug(msg)
                 return
@@ -574,7 +573,7 @@ class Controller(controller.BaseController):
             try:
                 req.get_content_type(('application/octet-stream',))
             except exception.InvalidContentType:
-                upload_utils.safe_kill(req, image_meta['id'])
+                upload_utils.safe_kill(req, image_meta['id'], 'queued')
                 msg = _("Content-Type must be application/octet-stream")
                 LOG.debug(msg)
                 raise HTTPBadRequest(explanation=msg)
