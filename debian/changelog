@@ -1,3 +1,9 @@
+glance (2014.1.3-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Thomas Goirand <zigo@debian.org>  Fri, 03 Oct 2014 20:43:52 +0800
+
 glance (2014.1.2-3) unstable; urgency=medium
 
   * Re-upload with the right translation file (Closes: #762470).
