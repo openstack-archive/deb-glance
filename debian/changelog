@@ -1,3 +1,9 @@
+glance (2014.1.3-2) UNRELEASED; urgency=medium
+
+  * Mangling upstream rc and beta versions in watch file.
+
+ -- Thomas Goirand <zigo@debian.org>  Sun, 05 Oct 2014 14:25:51 +0800
+
 glance (2014.1.3-1) unstable; urgency=medium
 
   * New upstream release.
