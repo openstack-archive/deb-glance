@@ -7,7 +7,7 @@ include /usr/share/openstack-pkg-tools/pkgos.make
 export OSLO_PACKAGE_VERSION=$(VERSION)
 
 %:
-	dh $@ --buildsystem=python_distutils --with python2,sphinxdoc
+	dh $@ --buildsystem=python_distutils --with python2,sphinxdoc,systemd
 
 ifeq (,$(findstring nocheck, $(DEB_BUILD_OPTIONS)))
 override_dh_auto_test:
@@ -50,5 +50,6 @@ override_dh_auto_clean:
 	rm -rf glance.sqlite
 	rm -f glance/versioninfo
 	rm -f debian/glance-common.config debian/glance-common.postinst
+	rm debian/*.init debian/*.service debian/*.upstart
 
 .PHONY: override_dh_auto_clean override_dh_auto_configure override_dh_builddeb override_dh_installman override_dh_auto_build
