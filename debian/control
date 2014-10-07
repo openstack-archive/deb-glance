@@ -59,7 +59,7 @@ Build-Depends-Indep: curl,
                      sqlite3,
                      subunit (>= 0.0.18),
                      testrepository (>= 0.0.18)
-Standards-Version: 3.9.4
+Standards-Version: 3.9.6
 Homepage: http://glance.openstack.org/
 Vcs-Browser: http://anonscm.debian.org/gitweb/?p=openstack/glance.git;a=summary
 Vcs-Git: git://anonscm.debian.org/openstack/glance.git
