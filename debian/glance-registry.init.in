@@ -18,3 +18,4 @@ PATH=/sbin:/usr/sbin:/bin:/usr/bin
 DESC="OpenStack Image Service Registry"
 PROJECT_NAME=glance
 NAME=glance-registry
+CONFIG_FILE=/etc/${PROJECT_NAME}/glance-registry.conf

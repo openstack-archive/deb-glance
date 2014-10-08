@@ -18,3 +18,4 @@ PATH=/sbin:/usr/sbin:/bin:/usr/bin
 DESC="OpenStack Image Service API"
 PROJECT_NAME=glance
 NAME=${PROJECT_NAME}-api
+CONFIG_FILE=/etc/${PROJECT_NAME}/glance-api.conf
