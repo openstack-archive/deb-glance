@@ -7,6 +7,7 @@ glance (2014.2~rc2-1) unstable; urgency=medium
   * Updated nl.po thanks to Frans Spiesschaert (Closes: #764201).
   * Fixed config file path for glance-api and glance-registry.
   * Now using a single logrotate file in glance-common for both daemons.
+  * Standards-Version is now 3.9.6 (no change).
 
  -- Thomas Goirand <zigo@debian.org>  Sun, 05 Oct 2014 14:27:25 +0800
 
