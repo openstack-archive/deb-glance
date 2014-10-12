@@ -15,6 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import contextlib
 import copy
 import datetime
 import hashlib
@@ -90,7 +91,6 @@ class TestGlanceAPI(base.IsolatedUnitTest):
                             'metadata': {}, 'status': 'active'}],
              'properties': {}}]
         self.context = glance.context.RequestContext(is_admin=True)
-        store.validate_location = mock.Mock()
         db_api.get_engine()
         self.destroy_fixtures()
         self.create_fixtures()
@@ -369,6 +369,39 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEqual(res.status_int, 400)
         self.assertIn('Required store bad is invalid', res.body)
+
+    def test_create_with_location_get_store_or_400_raises_exception(self):
+        location = 'bad+scheme://localhost:0/image.qcow2'
+        scheme = 'bad+scheme'
+        fixture_headers = {
+            'x-image-meta-name': 'bogus',
+            'x-image-meta-location': location,
+            'x-image-meta-disk-format': 'qcow2',
+            'x-image-meta-container-format': 'bare',
+        }
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in six.iteritems(fixture_headers):
+            req.headers[k] = v
+
+        ctlr = glance.api.v1.images.Controller
+
+        with contextlib.nested(
+                mock.patch.object(ctlr, '_external_source',
+                                  return_value=location),
+                mock.patch.object(store,
+                                  'get_store_from_location',
+                                  return_value=scheme)
+        ) as (
+            mock_external_source,
+            mock_get_store_from_location
+        ):
+            res = req.get_response(self.api)
+            self.assertEqual(400, res.status_int)
+            self.assertEqual(1, mock_external_source.call_count)
+            self.assertEqual(1, mock_get_store_from_location.call_count)
+            self.assertIn('Store for scheme %s not found' % scheme, res.body)
 
     def test_create_with_location_unknown_scheme(self):
         fixture_headers = {
@@ -975,11 +1008,6 @@ class TestGlanceAPI(base.IsolatedUnitTest):
 
     def test_add_location_with_invalid_location(self):
         """Tests creates an image from location and conflict image size"""
-
-        mock_validate_location = mock.Mock()
-        store.validate_location = mock_validate_location
-        mock_validate_location.side_effect = store.BadStoreUri()
-
         fixture_headers = {'x-image-meta-store': 'file',
                            'x-image-meta-disk-format': 'vhd',
                            'x-image-meta-location': 'http://a/b/c.tar.gz',
@@ -1499,6 +1527,45 @@ class TestGlanceAPI(base.IsolatedUnitTest):
                         "Did not find required property in headers. "
                         "Got headers: %r" % res.headers)
         self.assertEqual("active", res.headers['x-image-meta-status'])
+
+    def test_upload_image_raises_store_disabled(self):
+        """Test that uploading an image file returns HTTTP 410 response"""
+        # create image
+        fs = store.get_store_from_scheme('file')
+        fixture_headers = {'x-image-meta-store': 'file',
+                           'x-image-meta-disk-format': 'vhd',
+                           'x-image-meta-container-format': 'ovf',
+                           'x-image-meta-name': 'fake image #3',
+                           'x-image-meta-property-key1': 'value1'}
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in six.iteritems(fixture_headers):
+            req.headers[k] = v
+
+        res = req.get_response(self.api)
+        self.assertEqual(201, res.status_int)
+        res_body = jsonutils.loads(res.body)['image']
+
+        self.assertIn('id', res_body)
+
+        image_id = res_body['id']
+        self.assertIn('/images/%s' % image_id, res.headers['location'])
+
+        # Verify the status is queued
+        self.assertIn('status', res_body)
+        self.assertEqual('queued', res_body['status'])
+
+        # Now upload the image file
+        with mock.patch.object(fs, 'add') as mock_fsstore_add:
+            mock_fsstore_add.side_effect = store.StoreAddDisabled
+            req = webob.Request.blank("/images/%s" % image_id)
+            req.method = 'PUT'
+            req.headers['Content-Type'] = 'application/octet-stream'
+            req.body = "chunk00000remainder"
+            res = req.get_response(self.api)
+            self.assertEqual(410, res.status_int)
+            self._verify_image_status(image_id, 'killed')
 
     def _get_image_status(self, image_id):
         req = webob.Request.blank("/images/%s" % image_id)

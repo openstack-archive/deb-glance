@@ -47,17 +47,17 @@ class NamespacePropertiesController(object):
                                               policy_enforcer=self.policy)
 
     def _to_dict(self, model_property_type):
-        # Convert the model PropertyTypes dict to a JSON string
-        json_data = tojson(PropertyType, model_property_type)
+        # Convert the model PropertyTypes dict to a JSON encoding
         db_property_type_dict = dict()
-        db_property_type_dict['schema'] = json.dumps(json_data)
+        db_property_type_dict['schema'] = tojson(
+            PropertyType, model_property_type)
         db_property_type_dict['name'] = model_property_type.name
         return db_property_type_dict
 
     def _to_model(self, db_property_type):
         # Convert the persisted json schema to a dict of PropertyTypes
-        json_props = json.loads(db_property_type.schema)
-        property_type = fromjson(PropertyType, json_props)
+        property_type = fromjson(
+            PropertyType, db_property_type.schema)
         property_type.name = db_property_type.name
         return property_type
 
@@ -79,8 +79,24 @@ class NamespacePropertiesController(object):
             raise webob.exc.HTTPInternalServerError()
         return namespace_properties
 
-    def show(self, req, namespace, property_name):
+    def show(self, req, namespace, property_name, filters=None):
         try:
+            if filters and filters['resource_type']:
+                rs_repo = self.gateway.get_metadef_resource_type_repo(
+                    req.context)
+                db_resource_type = rs_repo.get(filters['resource_type'],
+                                               namespace)
+                prefix = db_resource_type.prefix
+                if prefix and property_name.startswith(prefix):
+                    property_name = property_name[len(prefix):]
+                else:
+                    msg = (_("Property %(property_name)s does not start "
+                             "with the expected resource type association "
+                             "prefix of '%(prefix)s'.")
+                           % {'property_name': property_name,
+                              'prefix': prefix})
+                    raise exception.NotFound(msg)
+
             prop_repo = self.gateway.get_metadef_property_repo(req.context)
             db_property = prop_repo.get(namespace, property_name)
             property = self._to_model(db_property)
@@ -184,6 +200,13 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
             raise webob.exc.HTTPBadRequest(explanation=e.msg)
         property_type = fromjson(PropertyType, body)
         return dict(property_type=property_type)
+
+    def show(self, request):
+        params = request.params.copy()
+        query_params = {
+            'filters': params
+        }
+        return query_params
 
 
 class ResponseSerializer(wsgi.JSONResponseSerializer):

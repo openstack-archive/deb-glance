@@ -52,6 +52,7 @@ import glance.registry.client.v1.api as registry
 
 LOG = logging.getLogger(__name__)
 _LI = gettextutils._LI
+_LW = gettextutils._LW
 SUPPORTED_PARAMS = glance.api.v1.SUPPORTED_PARAMS
 SUPPORTED_FILTERS = glance.api.v1.SUPPORTED_FILTERS
 ACTIVE_IMMUTABLE = glance.api.v1.ACTIVE_IMMUTABLE
@@ -416,17 +417,20 @@ class Controller(controller.BaseController):
         """
         External sources (as specified via the location or copy-from headers)
         are supported only over non-local store types, i.e. S3, Swift, HTTP.
-        Note the absence of file:// for security reasons, see LP bug #942118.
+        Note the absence of 'file://' for security reasons, see LP bug #942118.
+        'swift+config://' is also absent for security reasons, see LP bug
+        #1334196.
         If the above constraint is violated, we reject with 400 "Bad Request".
         """
         if source:
             pieces = urlparse.urlparse(source)
             schemes = [scheme for scheme in store.get_known_schemes()
-                       if scheme != 'file']
+                       if scheme != 'file' and scheme != 'swift+config']
             for scheme in schemes:
                 if pieces.scheme == scheme:
                     return source
-            msg = "External sourcing not supported for store %s" % source
+            msg = ("External sourcing not supported for "
+                   "store '%s'" % pieces.scheme)
             LOG.debug(msg)
             raise HTTPBadRequest(explanation=msg,
                                  request=req,
@@ -685,10 +689,32 @@ class Controller(controller.BaseController):
         :retval Mapping of updated image data
         """
         location_data = self._upload(req, image_meta)
-        return self._activate(req,
-                              image_meta['id'],
-                              location_data,
-                              from_state='saving') if location_data else None
+        image_id = image_meta['id']
+        LOG.info(_LI("Uploaded data of image %s from request "
+                     "payload successfully.") % image_id)
+
+        if location_data:
+            try:
+                image_meta = self._activate(req,
+                                            image_id,
+                                            location_data,
+                                            from_state='saving')
+            except Exception as e:
+                with excutils.save_and_reraise_exception():
+                    if not isinstance(e, exception.Duplicate):
+                        # NOTE(zhiyan): Delete image data since it has already
+                        # been added to store by above _upload() call.
+                        LOG.warn(_LW("Failed to activate image %s in "
+                                     "registry. About to delete image "
+                                     "bits from store and update status "
+                                     "to 'killed'.") % image_id)
+                        upload_utils.initiate_deletion(req, location_data,
+                                                       image_id)
+                        upload_utils.safe_kill(req, image_id, 'saving')
+        else:
+            image_meta = None
+
+        return image_meta
 
     def _get_size(self, context, image_meta, location):
         # retrieve the image size from remote store (if not provided)
@@ -720,18 +746,17 @@ class Controller(controller.BaseController):
             self.pool.spawn_n(self._upload_and_activate, req, image_meta)
         else:
             if location:
-                try:
-                    store.validate_location(location, context=req.context)
-                except store.BadStoreUri as bse:
-                    raise HTTPBadRequest(explanation=bse.msg,
-                                         request=req)
-
                 self._validate_image_for_activation(req, image_id, image_meta)
                 image_size_meta = image_meta.get('size')
                 if image_size_meta:
-                    image_size_store = store.get_size_from_backend(
-                        location,
-                        context=req.context)
+                    try:
+                        image_size_store = store.get_size_from_backend(
+                            location, req.context)
+                    except (store.BadStoreUri, store.UnknownScheme) as e:
+                        LOG.debug(utils.exception_to_str(e))
+                        raise HTTPBadRequest(explanation=e.msg,
+                                             request=req,
+                                             content_type="text/plain")
                     # NOTE(zhiyan): A returned size of zero usually means
                     # the driver encountered an error. In this case the
                     # size provided by the client will be used as-is.
@@ -1091,11 +1116,11 @@ class Controller(controller.BaseController):
         :param request: The WSGI/Webob Request object
         :param scheme: The backend store scheme
 
-        :raises HTTPNotFound if store does not exist
+        :raises HTTPBadRequest if store does not exist
         """
         try:
             return store.get_store_from_scheme(scheme)
-        except exception.UnknownScheme:
+        except store.UnknownScheme:
             msg = "Store for scheme %s not found" % scheme
             LOG.debug(msg)
             raise HTTPBadRequest(explanation=msg,

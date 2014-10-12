@@ -27,7 +27,6 @@ from glance.common import location_strategy
 import glance.domain
 import glance.domain.proxy
 from glance.openstack.common import importutils
-from glance.openstack.common import jsonutils as json
 
 CONF = cfg.CONF
 CONF.import_opt('image_size_cap', 'glance.common.config')
@@ -508,7 +507,7 @@ class MetadefObjectRepo(object):
 
         # Convert the persisted json schema to a dict of PropertyTypes
         property_types = {}
-        json_props = json.loads(metadata_object['schema'])
+        json_props = metadata_object['json_schema']
         for id in json_props:
             property_types[id] = fromjson(PropertyType, json_props[id])
 
@@ -535,13 +534,12 @@ class MetadefObjectRepo(object):
             for k, v in properties.items():
                 json_data = tojson(PropertyType, v)
                 db_schema[k] = json_data
-        property_schema = json.dumps(db_schema)
 
         db_metadata_object = {
             'name': metadata_object.name,
             'required': required_str,
             'description': metadata_object.description,
-            'schema': property_schema
+            'json_schema': db_schema
         }
         return db_metadata_object
 
@@ -628,6 +626,19 @@ class MetadefResourceTypeRepo(object):
             self._format_resource_type_to_db(resource_type)
         )
 
+    def get(self, resource_type, namespace):
+        namespace_entity = self.meta_namespace_repo.get(namespace)
+        db_resource_type = (
+            self.db_api.
+            metadef_resource_type_association_get(
+                self.context,
+                namespace,
+                resource_type
+            )
+        )
+        return self._format_resource_type_from_db(db_resource_type,
+                                                  namespace_entity)
+
     def list(self, filters=None):
         namespace = filters['namespace']
         if namespace:
@@ -683,14 +694,14 @@ class MetadefPropertyRepo(object):
             namespace=namespace_entity,
             property_id=property['id'],
             name=property['name'],
-            schema=property['schema']
+            schema=property['json_schema']
         )
 
     def _format_metadef_property_to_db(self, property):
 
         db_metadata_object = {
             'name': property.name,
-            'schema': property.schema
+            'json_schema': property.schema
         }
         return db_metadata_object
 
