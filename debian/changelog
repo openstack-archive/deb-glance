@@ -1,5 +1,6 @@
-glance (2014.2~rc1-2) unstable; urgency=medium
+glance (2014.2~rc2-1) unstable; urgency=medium
 
+  * New upstream release.
   * Now using templated init scripts from openstack-pkg-tools >= 13.
   * Mangling upstream rc and beta versions in watch file.
   * Updated nl.po thanks to Frans Spiesschaert (Closes: #764201).
