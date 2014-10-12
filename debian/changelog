@@ -5,6 +5,7 @@ glance (2014.2~rc2-1) unstable; urgency=medium
   * Mangling upstream rc and beta versions in watch file.
   * Updated nl.po thanks to Frans Spiesschaert (Closes: #764201).
   * Fixed config file path for glance-api and glance-registry.
+  * Now using a single logrotate file in glance-common for both daemons.
 
  -- Thomas Goirand <zigo@debian.org>  Sun, 05 Oct 2014 14:27:25 +0800
 
