@@ -2,3 +2,4 @@ pysendfile
 jsonschema
 argparse
 python_swiftclient
+ordereddict
