@@ -1,3 +1,9 @@
+glance (2014.2.1-1) experimental; urgency=medium
+
+  * New upstream release.
+
+ -- Thomas Goirand <zigo@debian.org>  Sat, 13 Dec 2014 00:30:44 +0800
+
 glance (2014.2-2) experimental; urgency=medium
 
   * Added ordereddict to debian/pydist-overrides.
