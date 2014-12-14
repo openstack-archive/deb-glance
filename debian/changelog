@@ -1,6 +1,8 @@
 glance (2014.2.1-1) experimental; urgency=medium
 
   * New upstream release.
+  * Now (build-)depends on python-glance-store >= 0.1.10 (otherwise unit tests
+    are failing). Thanks to James Page for the tip!
 
  -- Thomas Goirand <zigo@debian.org>  Sat, 13 Dec 2014 00:30:44 +0800
 
