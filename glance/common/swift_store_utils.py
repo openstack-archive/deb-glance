@@ -21,7 +21,10 @@ except ImportError:
 from oslo.config import cfg
 
 from glance.common import exception
+from glance import i18n
 from glance.openstack.common import log as logging
+
+_ = i18n._
 
 swift_opts = [
     cfg.StrOpt('default_swift_reference',
@@ -67,8 +70,8 @@ class SwiftParams(object):
 
     def _form_default_params(self):
         default = {}
-        if CONF.swift_store_user and CONF.swift_store_key \
-                and CONF.swift_store_auth_address:
+        if (CONF.swift_store_user and CONF.swift_store_key
+           and CONF.swift_store_auth_address):
             default['user'] = CONF.swift_store_user
             default['key'] = CONF.swift_store_key
             default['auth_address'] = CONF.swift_store_auth_address

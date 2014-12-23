@@ -78,9 +78,9 @@ class FakeRegistryConnection(object):
 
 
 def stub_out_registry_and_store_server(stubs, base_dir, **kwargs):
-    """
-    Mocks calls to 127.0.0.1 on 9191 and 9292 for testing so
-    that a real Glance server does not need to be up and
+    """Mocks calls to 127.0.0.1 on 9191 and 9292 for testing.
+
+    Done so that a real Glance server does not need to be up and
     running
     """
 
@@ -117,7 +117,7 @@ def stub_out_registry_and_store_server(stubs, base_dir, **kwargs):
             return True
 
         def _clean_url(self, url):
-            #TODO(bcwaldon): Fix the hack that strips off v1
+            # TODO(bcwaldon): Fix the hack that strips off v1
             return url.replace('/v1', '', 1) if url.startswith('/v1') else url
 
         def putrequest(self, method, url):
@@ -163,9 +163,7 @@ def stub_out_registry_and_store_server(stubs, base_dir, **kwargs):
             return res
 
     def fake_get_connection_type(client):
-        """
-        Returns the proper connection type
-        """
+        """Returns the proper connection type."""
         DEFAULT_REGISTRY_PORT = 9191
         DEFAULT_API_PORT = 9292
 
@@ -199,15 +197,13 @@ def stub_out_registry_and_store_server(stubs, base_dir, **kwargs):
 
 
 def stub_out_registry_server(stubs, **kwargs):
-    """
-    Mocks calls to 127.0.0.1 on 9191 for testing so
-    that a real Glance Registry server does not need to be up and
-    running
+    """Mocks calls to 127.0.0.1 on 9191 for testing.
+
+    Done so that a real Glance Registry server does not need to be up and
+    running.
     """
     def fake_get_connection_type(client):
-        """
-        Returns the proper connection type
-        """
+        """Returns the proper connection type."""
         DEFAULT_REGISTRY_PORT = 9191
 
         if (client.port == DEFAULT_REGISTRY_PORT and

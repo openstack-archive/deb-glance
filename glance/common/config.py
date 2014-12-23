@@ -23,11 +23,16 @@ import logging
 import logging.config
 import logging.handlers
 import os
+import tempfile
 
+from oslo.concurrency import lockutils
 from oslo.config import cfg
 from paste import deploy
 
+from glance import i18n
 from glance.version import version_info as version
+
+_ = i18n._
 
 paste_deploy_opts = [
     cfg.StrOpt('flavor',
@@ -124,7 +129,7 @@ common_opts = [
                       "all storage systems. A value of 0 means unlimited."
                       "Optional unit can be specified for the value. Accepted "
                       "units are B, KB, MB, GB and TB representing "
-                      "Bytes, KiloBytes, MegaBytes, GigaBytes and TeraBytes"
+                      "Bytes, KiloBytes, MegaBytes, GigaBytes and TeraBytes "
                       "respectively. If no unit is specified then Bytes is "
                       "assumed. Note that there should not be any space "
                       "between value and unit and units are case sensitive.")),
@@ -156,6 +161,9 @@ CONF.register_opts(common_opts)
 
 
 def parse_args(args=None, usage=None, default_config_files=None):
+    if "OSLO_LOCK_PATH" not in os.environ:
+        lockutils.set_defaults(tempfile.gettempdir())
+
     CONF(args=args,
          project='glance',
          version=version.cached_version_string(),

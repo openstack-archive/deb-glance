@@ -18,14 +18,18 @@ import copy
 import functools
 import uuid
 
+from oslo.utils import timeutils
 import six
 
 from glance.common import exception
+from glance.common import utils
+from glance import i18n
 import glance.openstack.common.log as logging
-from glance.openstack.common import timeutils
-
 
 LOG = logging.getLogger(__name__)
+_ = i18n._
+_LI = i18n._LI
+_LW = i18n._LW
 
 DATA = {
     'images': {},
@@ -35,6 +39,7 @@ DATA = {
     'metadef_objects': [],
     'metadef_properties': [],
     'metadef_resource_types': [],
+    'metadef_tags': [],
     'tags': {},
     'locations': [],
     'tasks': {},
@@ -47,12 +52,13 @@ INDEX = 0
 def log_call(func):
     @functools.wraps(func)
     def wrapped(*args, **kwargs):
-        LOG.info(_('Calling %(funcname)s: args=%(args)s, kwargs=%(kwargs)s') %
+        LOG.info(_LI('Calling %(funcname)s: args=%(args)s, '
+                     'kwargs=%(kwargs)s') %
                  {"funcname": func.__name__,
                   "args": args,
                   "kwargs": kwargs})
         output = func(*args, **kwargs)
-        LOG.info(_('Returning %(funcname)s: %(output)s') %
+        LOG.info(_LI('Returning %(funcname)s: %(output)s') %
                  {"funcname": func.__name__,
                   "output": output})
         return output
@@ -69,6 +75,7 @@ def reset():
         'metadef_objects': [],
         'metadef_properties': [],
         'metadef_resource_types': [],
+        'metadef_tags': [],
         'tags': {},
         'locations': [],
         'tasks': {},
@@ -89,6 +96,7 @@ def _get_session():
     return DATA
 
 
+@utils.no_4byte_params
 def _image_location_format(image_id, value, meta_data, status, deleted=False):
     dt = timeutils.utcnow()
     return {
@@ -174,6 +182,20 @@ def _task_info_format(task_id, **values):
     return task_info
 
 
+@utils.no_4byte_params
+def _image_update(image, values, properties):
+    # NOTE(bcwaldon): store properties as a list to match sqlalchemy driver
+    properties = [{'name': k,
+                   'value': v,
+                   'image_id': image['id'],
+                   'deleted': False} for k, v in properties.items()]
+    if 'properties' not in image.keys():
+        image['properties'] = []
+    image['properties'].extend(properties)
+    image.update(values)
+    return image
+
+
 def _image_format(image_id, **values):
     dt = timeutils.utcnow()
     image = {
@@ -209,16 +231,7 @@ def _image_format(image_id, **values):
             image['locations'].append(location_ref)
             DATA['locations'].append(location_ref)
 
-    #NOTE(bcwaldon): store properties as a list to match sqlalchemy driver
-    properties = values.pop('properties', {})
-    properties = [{'name': k,
-                   'value': v,
-                   'image_id': image_id,
-                   'deleted': False} for k, v in properties.items()]
-    image['properties'] = properties
-
-    image.update(values)
-    return image
+    return _image_update(image, values, values.pop('properties', {}))
 
 
 def _filter_images(images, filters, context,
@@ -341,15 +354,15 @@ def _image_get(context, image_id, force_show_deleted=False, status=None):
     try:
         image = DATA['images'][image_id]
     except KeyError:
-        LOG.info(_('Could not find image %s') % image_id)
+        LOG.warn(_LW('Could not find image %s') % image_id)
         raise exception.NotFound()
 
     if image['deleted'] and not (force_show_deleted or context.show_deleted):
-        LOG.info(_('Unable to get deleted image'))
+        LOG.warn(_LW('Unable to get deleted image'))
         raise exception.NotFound()
 
     if not is_image_visible(context, image):
-        LOG.info(_('Unable to get unowned image'))
+        LOG.warn(_LW('Unable to get unowned image'))
         raise exception.Forbidden("Image not visible to you")
 
     return image
@@ -483,6 +496,7 @@ def image_member_delete(context, member_id):
 
 
 @log_call
+@utils.no_4byte_params
 def image_location_add(context, image_id, location):
     deleted = location['status'] in ('deleted', 'pending_delete')
     location_ref = _image_location_format(image_id,
@@ -496,6 +510,7 @@ def image_location_add(context, image_id, location):
 
 
 @log_call
+@utils.no_4byte_params
 def image_location_update(context, image_id, location):
     loc_id = location.get('id')
     if loc_id is None:
@@ -654,13 +669,8 @@ def image_update(context, image_id, image_values, purge_props=False,
             # this matches weirdness in the sqlalchemy api
             prop['deleted'] = True
 
-    # add in any completely new properties
-    image['properties'].extend([{'name': k, 'value': v,
-                                 'image_id': image_id, 'deleted': False}
-                                for k, v in new_properties.items()])
-
     image['updated_at'] = timeutils.utcnow()
-    image.update(image_values)
+    _image_update(image, image_values, new_properties)
     DATA['images'][image_id] = image
     return _normalize_locations(copy.deepcopy(image))
 
@@ -719,6 +729,7 @@ def image_tag_set_all(context, image_id, values):
 
 
 @log_call
+@utils.no_4byte_params
 def image_tag_create(context, image_id, value):
     global DATA
     DATA['tags'][image_id].append(value)
@@ -858,18 +869,19 @@ def _task_get(context, task_id, force_show_deleted=False):
     try:
         task = DATA['tasks'][task_id]
     except KeyError:
-        msg = _('Could not find task %s') % task_id
-        LOG.info(msg)
+        msg = _LW('Could not find task %s') % task_id
+        LOG.warn(msg)
         raise exception.TaskNotFound(task_id=task_id)
 
     if task['deleted'] and not (force_show_deleted or context.show_deleted):
-        msg = _('Unable to get deleted task %s') % task_id
-        LOG.info(msg)
+        msg = _LW('Unable to get deleted task %s') % task_id
+        LOG.warn(msg)
         raise exception.TaskNotFound(task_id=task_id)
 
     if not _is_task_visible(context, task):
         msg = "Forbidding request, task %s is not visible" % task_id
         LOG.debug(msg)
+        msg = _("Forbidding request, task %s is not visible") % task_id
         raise exception.Forbidden(msg)
 
     task_info = _task_info_get(task_id)
@@ -1024,8 +1036,8 @@ def _task_info_get(task_id):
     try:
         task_info = DATA['task_info'][task_id]
     except KeyError:
-        msg = _('Could not find task info %s') % task_id
-        LOG.info(msg)
+        msg = _LW('Could not find task info %s') % task_id
+        LOG.warn(msg)
         raise exception.TaskNotFound(task_id=task_id)
 
     return task_info
@@ -1658,6 +1670,200 @@ def metadef_resource_type_association_delete(context, namespace_name,
     return resource_type
 
 
+@log_call
+def metadef_tag_get(context, namespace_name, name):
+    """Get a metadef tag"""
+    namespace = metadef_namespace_get(context, namespace_name)
+    _check_namespace_visibility(context, namespace, namespace_name)
+
+    for tag in DATA['metadef_tags']:
+        if (tag['namespace_id'] == namespace['id'] and
+                tag['name'] == name):
+            return tag
+    else:
+        msg = ("The metadata definition tag with name=%(name)s"
+               " was not found in namespace=%(namespace_name)s."
+               % {'name': name, 'namespace_name': namespace_name})
+        LOG.debug(msg)
+        raise exception.MetadefTagNotFound(name=name,
+                                           namespace_name=namespace_name)
+
+
+@log_call
+def metadef_tag_get_by_id(context, namespace_name, id):
+    """Get a metadef tag"""
+    namespace = metadef_namespace_get(context, namespace_name)
+    _check_namespace_visibility(context, namespace, namespace_name)
+
+    for tag in DATA['metadef_tags']:
+        if (tag['namespace_id'] == namespace['id'] and
+                tag['id'] == id):
+            return tag
+    else:
+        msg = (_("Metadata definition tag not found for id=%s") % id)
+        LOG.warn(msg)
+        raise exception.MetadefTagNotFound(msg)
+
+
+@log_call
+def metadef_tag_get_all(context, namespace_name, filters=None, marker=None,
+                        limit=None, sort_key='created_at', sort_dir=None,
+                        session=None):
+    """Get a metadef tags list"""
+
+    namespace = metadef_namespace_get(context, namespace_name)
+    _check_namespace_visibility(context, namespace, namespace_name)
+
+    tags = []
+    for tag in DATA['metadef_tags']:
+        if tag['namespace_id'] == namespace['id']:
+            tags.append(tag)
+
+    return tags
+
+
+@log_call
+def metadef_tag_create(context, namespace_name, values):
+    """Create a metadef tag"""
+    global DATA
+
+    tag_values = copy.deepcopy(values)
+    tag_name = tag_values['name']
+    required_attributes = ['name']
+    allowed_attributes = ['name']
+
+    namespace = metadef_namespace_get(context, namespace_name)
+
+    for tag in DATA['metadef_tags']:
+        if (tag['name'] == tag_name and
+                tag['namespace_id'] == namespace['id']):
+            msg = ("A metadata definition tag with name=%(name)s"
+                   " in namespace=%(namespace_name)s already exists."
+                   % {'name': tag_name, 'namespace_name': namespace_name})
+            LOG.debug(msg)
+            raise exception.MetadefDuplicateTag(
+                name=tag_name, namespace_name=namespace_name)
+
+    for key in required_attributes:
+        if key not in tag_values:
+            raise exception.Invalid('%s is a required attribute' % key)
+
+    incorrect_keys = set(tag_values.keys()) - set(allowed_attributes)
+    if incorrect_keys:
+        raise exception.Invalid(
+            'The keys %s are not valid' % str(incorrect_keys))
+
+    tag_values['namespace_id'] = namespace['id']
+
+    _check_namespace_visibility(context, namespace, namespace_name)
+
+    tag = _format_tag(tag_values)
+    DATA['metadef_tags'].append(tag)
+    return tag
+
+
+@log_call
+def metadef_tag_create_tags(context, namespace_name, tag_list):
+    """Create a metadef tag"""
+    global DATA
+
+    namespace = metadef_namespace_get(context, namespace_name)
+    _check_namespace_visibility(context, namespace, namespace_name)
+
+    required_attributes = ['name']
+    allowed_attributes = ['name']
+    data_tag_list = []
+    tag_name_list = []
+    for tag_value in tag_list:
+        tag_values = copy.deepcopy(tag_value)
+        tag_name = tag_values['name']
+
+        for key in required_attributes:
+            if key not in tag_values:
+                raise exception.Invalid('%s is a required attribute' % key)
+
+        incorrect_keys = set(tag_values.keys()) - set(allowed_attributes)
+        if incorrect_keys:
+            raise exception.Invalid(
+                'The keys %s are not valid' % str(incorrect_keys))
+
+        if tag_name in tag_name_list:
+            msg = ("A metadata definition tag with name=%(name)s"
+                   " in namespace=%(namespace_name)s already exists."
+                   % {'name': tag_name, 'namespace_name': namespace_name})
+            LOG.debug(msg)
+            raise exception.MetadefDuplicateTag(
+                name=tag_name, namespace_name=namespace_name)
+        else:
+            tag_name_list.append(tag_name)
+
+        tag_values['namespace_id'] = namespace['id']
+        data_tag_list.append(_format_tag(tag_values))
+
+    DATA['metadef_tags'] = []
+    for tag in data_tag_list:
+        DATA['metadef_tags'].append(tag)
+
+    return data_tag_list
+
+
+@log_call
+def metadef_tag_update(context, namespace_name, id, values):
+    """Update a metadef tag"""
+    global DATA
+
+    namespace = metadef_namespace_get(context, namespace_name)
+
+    _check_namespace_visibility(context, namespace, namespace_name)
+
+    tag = metadef_tag_get_by_id(context, namespace_name, id)
+    if tag['name'] != values['name']:
+        for db_tag in DATA['metadef_tags']:
+            if (db_tag['name'] == values['name'] and
+                    db_tag['namespace_id'] == namespace['id']):
+                msg = ("Invalid update. It would result in a duplicate"
+                       " metadata definition tag with same name=%(name)s "
+                       " in namespace=%(namespace_name)s."
+                       % {'name': tag['name'],
+                          'namespace_name': namespace_name})
+                LOG.debug(msg)
+                raise exception.MetadefDuplicateTag(
+                    name=tag['name'], namespace_name=namespace_name)
+
+    DATA['metadef_tags'].remove(tag)
+
+    tag.update(values)
+    tag['updated_at'] = timeutils.utcnow()
+    DATA['metadef_tags'].append(tag)
+    return tag
+
+
+@log_call
+def metadef_tag_delete(context, namespace_name, name):
+    """Delete a metadef tag"""
+    global DATA
+
+    tags = metadef_tag_get(context, namespace_name, name)
+    DATA['metadef_tags'].remove(tags)
+
+    return tags
+
+
+@log_call
+def metadef_tag_count(context, namespace_name):
+    """Get metadef tag count in a namespace"""
+    namespace = metadef_namespace_get(context, namespace_name)
+
+    _check_namespace_visibility(context, namespace, namespace_name)
+
+    count = 0
+    for tag in DATA['metadef_tags']:
+        if tag['namespace_id'] == namespace['id']:
+            count = count + 1
+
+    return count
+
+
 def _format_association(namespace, resource_type, association_values):
     association = {
         'namespace_id': namespace['id'],
@@ -1727,6 +1933,19 @@ def _format_object(values):
     }
     object.update(values)
     return object
+
+
+def _format_tag(values):
+    dt = timeutils.utcnow()
+    tag = {
+        'id': _get_metadef_id(),
+        'namespace_id': None,
+        'name': None,
+        'created_at': dt,
+        'updated_at': dt
+    }
+    tag.update(values)
+    return tag
 
 
 def _is_namespace_visible(context, namespace):

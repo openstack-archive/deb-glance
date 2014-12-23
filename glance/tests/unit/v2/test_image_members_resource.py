@@ -17,13 +17,12 @@ import datetime
 
 import glance_store
 from oslo.config import cfg
+from oslo.serialization import jsonutils
 import webob
 
 import glance.api.v2.image_members
-from glance.openstack.common import jsonutils
 import glance.tests.unit.utils as unit_test_utils
 import glance.tests.utils as test_utils
-
 
 DATETIME = datetime.datetime(2012, 5, 16, 15, 27, 36, 325355)
 ISOTIME = '2012-05-16T15:27:36Z'
@@ -97,11 +96,12 @@ class TestImageMembersController(test_utils.BaseTestCase):
         self.notifier = unit_test_utils.FakeNotifier()
         self._create_images()
         self._create_image_members()
-        self.controller = glance.api.v2.image_members\
-                                       .ImageMembersController(self.db,
-                                                               self.policy,
-                                                               self.notifier,
-                                                               self.store)
+        self.controller = glance.api.v2.image_members.ImageMembersController(
+            self.db,
+            self.policy,
+            self.notifier,
+            self.store)
+        glance_store.register_opts(CONF)
         glance_store.create_stores()
 
     def _create_images(self):
@@ -137,7 +137,7 @@ class TestImageMembersController(test_utils.BaseTestCase):
         actual = set([image_member.member_id
                       for image_member in output['members']])
         expected = set([TENANT4])
-        self.assertEqual(actual, expected)
+        self.assertEqual(expected, actual)
 
     def test_index_no_members(self):
         request = unit_test_utils.get_fake_request()
@@ -155,7 +155,7 @@ class TestImageMembersController(test_utils.BaseTestCase):
         actual = set([image_member.member_id
                       for image_member in output['members']])
         expected = set([TENANT4])
-        self.assertEqual(actual, expected)
+        self.assertEqual(expected, actual)
 
     def test_index_private_image(self):
         request = unit_test_utils.get_fake_request(tenant=TENANT2)
@@ -174,7 +174,7 @@ class TestImageMembersController(test_utils.BaseTestCase):
         actual = set([image_member.member_id
                       for image_member in output['members']])
         expected = set([TENANT1])
-        self.assertEqual(actual, expected)
+        self.assertEqual(expected, actual)
 
     def test_index_allowed_by_get_members_policy(self):
         rules = {"get_members": True}
@@ -194,17 +194,17 @@ class TestImageMembersController(test_utils.BaseTestCase):
         request = unit_test_utils.get_fake_request(tenant=TENANT1)
         output = self.controller.show(request, UUID2, TENANT4)
         expected = self.image_members[0]
-        self.assertEqual(output.image_id, expected['image_id'])
-        self.assertEqual(output.member_id, expected['member'])
-        self.assertEqual(output.status, expected['status'])
+        self.assertEqual(expected['image_id'], output.image_id)
+        self.assertEqual(expected['member'], output.member_id)
+        self.assertEqual(expected['status'], output.status)
 
     def test_show_by_member(self):
         request = unit_test_utils.get_fake_request(tenant=TENANT4)
         output = self.controller.show(request, UUID2, TENANT4)
         expected = self.image_members[0]
-        self.assertEqual(output.image_id, expected['image_id'])
-        self.assertEqual(output.member_id, expected['member'])
-        self.assertEqual(output.status, expected['status'])
+        self.assertEqual(expected['image_id'], output.image_id)
+        self.assertEqual(expected['member'], output.member_id)
+        self.assertEqual(expected['status'], output.status)
 
     def test_show_forbidden(self):
         request = unit_test_utils.get_fake_request(tenant=TENANT2)
@@ -341,11 +341,11 @@ class TestImageMembersController(test_utils.BaseTestCase):
         member_id = TENANT4
         image_id = UUID2
         res = self.controller.delete(request, image_id, member_id)
-        self.assertEqual(res.body, '')
-        self.assertEqual(res.status_code, 204)
+        self.assertEqual('', res.body)
+        self.assertEqual(204, res.status_code)
         found_member = self.db.image_member_find(
             request.context, image_id=image_id, member=member_id)
-        self.assertEqual(found_member, [])
+        self.assertEqual([], found_member)
 
     def test_delete_by_member(self):
         request = unit_test_utils.get_fake_request(tenant=TENANT4)
@@ -357,7 +357,7 @@ class TestImageMembersController(test_utils.BaseTestCase):
         actual = set([image_member.member_id
                       for image_member in output['members']])
         expected = set([TENANT4])
-        self.assertEqual(actual, expected)
+        self.assertEqual(expected, actual)
 
     def test_delete_allowed_by_policies(self):
         rules = {"get_member": True, "delete_member": True}
@@ -406,7 +406,7 @@ class TestImageMembersController(test_utils.BaseTestCase):
         image_id = UUID2
         found_member = self.db.image_member_find(
             request.context, image_id=image_id, member=member_id)
-        self.assertEqual(found_member, [])
+        self.assertEqual([], found_member)
         self.assertRaises(webob.exc.HTTPNotFound, self.controller.delete,
                           request, image_id, member_id)
 

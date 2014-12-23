@@ -25,6 +25,7 @@ import threading
 from oslo.config import cfg
 from oslo.db import exception as db_exception
 from oslo.db.sqlalchemy import session
+from oslo.utils import timeutils
 import osprofiler.sqlalchemy
 from retrying import retry
 import six
@@ -34,11 +35,7 @@ import sqlalchemy.orm as sa_orm
 import sqlalchemy.sql as sa_sql
 
 from glance.common import exception
-from glance.db.sqlalchemy import models
-from glance import i18n
-import glance.openstack.common.log as os_logging
-from glance.openstack.common import timeutils
-
+from glance.common import utils
 from glance.db.sqlalchemy.metadef_api import namespace as metadef_namespace_api
 from glance.db.sqlalchemy.metadef_api import object as metadef_object_api
 from glance.db.sqlalchemy.metadef_api import property as metadef_property_api
@@ -46,10 +43,15 @@ from glance.db.sqlalchemy.metadef_api\
     import resource_type as metadef_resource_type_api
 from glance.db.sqlalchemy.metadef_api\
     import resource_type_association as metadef_association_api
+from glance.db.sqlalchemy.metadef_api import tag as metadef_tag_api
+from glance.db.sqlalchemy import models
+from glance import i18n
+import glance.openstack.common.log as os_logging
 
 BASE = models.BASE
 sa_logger = None
 LOG = os_logging.getLogger(__name__)
+_ = i18n._
 _LI = i18n._LI
 _LW = i18n._LW
 
@@ -109,7 +111,7 @@ def clear_db_env():
 
 def _check_mutate_authorization(context, image_ref):
     if not is_image_mutable(context, image_ref):
-        LOG.info(_LI("Attempted to modify image user did not own."))
+        LOG.warn(_LW("Attempted to modify image user did not own."))
         msg = _("You do not own this image")
         if image_ref.is_public:
             exc_class = exception.ForbiddenPublicImage
@@ -203,8 +205,8 @@ def _check_image_id(image_id):
     :param image_id: The id of the image we want to check
     :return: Raise NoFound exception if given image id is invalid
     """
-    if image_id and \
-            len(image_id) > models.Image.id.property.columns[0].type.length:
+    if (image_id and
+       len(image_id) > models.Image.id.property.columns[0].type.length):
         raise exception.NotFound()
 
 
@@ -214,10 +216,10 @@ def _image_get(context, image_id, session=None, force_show_deleted=False):
     session = session or get_session()
 
     try:
-        query = session.query(models.Image)\
-                       .options(sa_orm.joinedload(models.Image.properties))\
-                       .options(sa_orm.joinedload(models.Image.locations))\
-                       .filter_by(id=image_id)
+        query = session.query(models.Image).options(
+            sa_orm.joinedload(models.Image.properties)).options(
+                sa_orm.joinedload(
+                    models.Image.locations)).filter_by(id=image_id)
 
         # filter out deleted images if context disallows it
         if not force_show_deleted and not _can_show_deleted(context):
@@ -398,7 +400,8 @@ def _paginate_query(query, model, limit, sort_keys, marker=None,
 
 
 def _make_conditions_from_filters(filters, is_public=None):
-    #NOTE(venkatesh) make copy of the filters are to be altered in this method.
+    # NOTE(venkatesh) make copy of the filters are to be altered in this
+    # method.
     filters = filters.copy()
 
     image_conditions = []
@@ -487,9 +490,8 @@ def _select_images_query(context, image_conditions, admin_as_user,
 
     regular_user = (not context.is_admin) or admin_as_user
 
-    query_member = session.query(models.Image) \
-        .join(models.Image.members) \
-        .filter(img_conditional_clause)
+    query_member = session.query(models.Image).join(
+        models.Image.members).filter(img_conditional_clause)
     if regular_user:
         member_filters = [models.ImageMember.deleted == False]
         if context.owner is not None:
@@ -499,27 +501,26 @@ def _select_images_query(context, image_conditions, admin_as_user,
                     models.ImageMember.status == member_status])
         query_member = query_member.filter(sa_sql.and_(*member_filters))
 
-    #NOTE(venkatesh) if the 'visibility' is set to 'shared', we just
+    # NOTE(venkatesh) if the 'visibility' is set to 'shared', we just
     # query the image members table. No union is required.
     if visibility is not None and visibility == 'shared':
         return query_member
 
-    query_image = session.query(models.Image)\
-        .filter(img_conditional_clause)
+    query_image = session.query(models.Image).filter(img_conditional_clause)
     if regular_user:
         query_image = query_image.filter(models.Image.is_public == True)
         query_image_owner = None
         if context.owner is not None:
-            query_image_owner = session.query(models.Image) \
-                .filter(models.Image.owner == context.owner) \
-                .filter(img_conditional_clause)
+            query_image_owner = session.query(models.Image).filter(
+                models.Image.owner == context.owner).filter(
+                    img_conditional_clause)
         if query_image_owner is not None:
             query = query_image.union(query_image_owner, query_member)
         else:
             query = query_image.union(query_member)
         return query
     else:
-        #Admin user
+        # Admin user
         return query_image
 
 
@@ -554,11 +555,11 @@ def image_get_all(context, filters=None, marker=None, limit=None,
     showing_deleted = 'changes-since' in filters or filters.get('deleted',
                                                                 False)
 
-    img_conditions, prop_conditions, tag_conditions = \
-        _make_conditions_from_filters(filters, is_public)
+    img_cond, prop_cond, tag_cond = _make_conditions_from_filters(
+        filters, is_public)
 
     query = _select_images_query(context,
-                                 img_conditions,
+                                 img_cond,
                                  admin_as_user,
                                  member_status,
                                  visibility)
@@ -569,15 +570,15 @@ def image_get_all(context, filters=None, marker=None, limit=None,
         elif visibility == 'private':
             query = query.filter(models.Image.is_public == False)
 
-    if prop_conditions:
-        for prop_condition in prop_conditions:
-            query = query.join(models.ImageProperty, aliased=True)\
-                .filter(sa_sql.and_(*prop_condition))
+    if prop_cond:
+        for prop_condition in prop_cond:
+            query = query.join(models.ImageProperty, aliased=True).filter(
+                sa_sql.and_(*prop_condition))
 
-    if tag_conditions:
-        for tag_condition in tag_conditions:
-            query = query.join(models.ImageTag, aliased=True)\
-                .filter(sa_sql.and_(*tag_condition))
+    if tag_cond:
+        for tag_condition in tag_cond:
+            query = query.join(models.ImageTag, aliased=True).filter(
+                sa_sql.and_(*tag_condition))
 
     marker_image = None
     if marker is not None:
@@ -593,8 +594,9 @@ def image_get_all(context, filters=None, marker=None, limit=None,
                             marker=marker_image,
                             sort_dir=sort_dir)
 
-    query = query.options(sa_orm.joinedload(models.Image.properties))\
-                 .options(sa_orm.joinedload(models.Image.locations))
+    query = query.options(sa_orm.joinedload(
+        models.Image.properties)).options(
+            sa_orm.joinedload(models.Image.locations))
     if return_tag:
         query = query.options(sa_orm.joinedload(models.Image.tags))
 
@@ -663,6 +665,7 @@ def _update_values(image_ref, values):
 
 @retry(retry_on_exception=_retry_on_deadlock, wait_fixed=500,
        stop_max_attempt_number=50)
+@utils.no_4byte_params
 def _image_update(context, values, image_id, purge_props=False,
                   from_state=None):
     """
@@ -673,7 +676,7 @@ def _image_update(context, values, image_id, purge_props=False,
     :param image_id: If None, create the image, otherwise, find and update it
     """
 
-    #NOTE(jbresnah) values is altered in this so a copy is needed
+    # NOTE(jbresnah) values is altered in this so a copy is needed
     values = values.copy()
 
     session = get_session()
@@ -716,7 +719,7 @@ def _image_update(context, values, image_id, purge_props=False,
         if image_id:
             # Don't drop created_at if we're passing it in...
             _drop_protected_attrs(models.Image, values)
-            #NOTE(iccha-sethi): updated_at must be explicitly set in case
+            # NOTE(iccha-sethi): updated_at must be explicitly set in case
             #                   only ImageProperty table was modifited
             values['updated_at'] = timeutils.utcnow()
 
@@ -773,6 +776,7 @@ def _image_update(context, values, image_id, purge_props=False,
     return image_get(context, image_ref.id)
 
 
+@utils.no_4byte_params
 def image_location_add(context, image_id, location, session=None):
     deleted = location['status'] in ('deleted', 'pending_delete')
     delete_time = timeutils.utcnow() if deleted else None
@@ -786,6 +790,7 @@ def image_location_add(context, image_id, location, session=None):
     location_ref.save(session=session)
 
 
+@utils.no_4byte_params
 def image_location_update(context, image_id, location, session=None):
     loc_id = location.get('id')
     if loc_id is None:
@@ -794,10 +799,8 @@ def image_location_update(context, image_id, location, session=None):
 
     try:
         session = session or get_session()
-        location_ref = session.query(models.ImageLocation)\
-            .filter_by(id=loc_id)\
-            .filter_by(image_id=image_id)\
-            .one()
+        location_ref = session.query(models.ImageLocation).filter_by(
+            id=loc_id).filter_by(image_id=image_id).one()
 
         deleted = location['status'] in ('deleted', 'pending_delete')
         updated_time = timeutils.utcnow()
@@ -826,10 +829,8 @@ def image_location_delete(context, image_id, location_id, status,
 
     try:
         session = session or get_session()
-        location_ref = session.query(models.ImageLocation)\
-            .filter_by(id=location_id)\
-            .filter_by(image_id=image_id)\
-            .one()
+        location_ref = session.query(models.ImageLocation).filter_by(
+            id=location_id).filter_by(image_id=image_id).one()
 
         delete_time = delete_time or timeutils.utcnow()
 
@@ -848,12 +849,12 @@ def image_location_delete(context, image_id, location_id, status,
 def _image_locations_set(context, image_id, locations, session=None):
     # NOTE(zhiyan): 1. Remove records from DB for deleted locations
     session = session or get_session()
-    query = session.query(models.ImageLocation) \
-        .filter_by(image_id=image_id) \
-        .filter_by(deleted=False) \
-        .filter(~models.ImageLocation.id.in_([loc['id']
-                                              for loc in locations
-                                              if loc.get('id')]))
+    query = session.query(models.ImageLocation).filter_by(
+        image_id=image_id).filter_by(
+            deleted=False).filter(~models.ImageLocation.id.in_(
+                [loc['id']
+                 for loc in locations
+                 if loc.get('id')]))
     for loc_id in [loc_ref.id for loc_ref in query.all()]:
         image_location_delete(context, image_id, loc_id, 'deleted',
                               session=session)
@@ -870,16 +871,15 @@ def _image_locations_delete_all(context, image_id,
                                 delete_time=None, session=None):
     """Delete all image locations for given image"""
     session = session or get_session()
-    location_refs = session.query(models.ImageLocation) \
-        .filter_by(image_id=image_id) \
-        .filter_by(deleted=False) \
-        .all()
+    location_refs = session.query(models.ImageLocation).filter_by(
+        image_id=image_id).filter_by(deleted=False).all()
 
     for loc_id in [loc_ref.id for loc_ref in location_refs]:
         image_location_delete(context, image_id, loc_id, 'deleted',
                               delete_time=delete_time, session=session)
 
 
+@utils.no_4byte_params
 def _set_properties_for_image(context, image_ref, properties,
                               purge_props=False, session=None):
     """
@@ -935,9 +935,8 @@ def _image_child_entry_delete_all(child_model_cls, image_id, delete_time=None,
     """
     session = session or get_session()
 
-    query = session.query(child_model_cls) \
-        .filter_by(image_id=image_id) \
-        .filter_by(deleted=False)
+    query = session.query(child_model_cls).filter_by(
+        image_id=image_id).filter_by(deleted=False)
 
     delete_time = delete_time or timeutils.utcnow()
 
@@ -1116,7 +1115,7 @@ def _can_show_deleted(context):
 
 
 def image_tag_set_all(context, image_id, tags):
-    #NOTE(kragniz): tag ordering should match exactly what was provided, so a
+    # NOTE(kragniz): tag ordering should match exactly what was provided, so a
     # subsequent call to image_tag_get_all returns them in the correct order
 
     session = get_session()
@@ -1133,6 +1132,7 @@ def image_tag_set_all(context, image_id, tags):
             image_tag_delete(context, image_id, tag, session)
 
 
+@utils.no_4byte_params
 def image_tag_create(context, image_id, value, session=None):
     """Create an image tag."""
     session = session or get_session()
@@ -1145,10 +1145,9 @@ def image_tag_delete(context, image_id, value, session=None):
     """Delete an image tag."""
     _check_image_id(image_id)
     session = session or get_session()
-    query = session.query(models.ImageTag)\
-                   .filter_by(image_id=image_id)\
-                   .filter_by(value=value)\
-                   .filter_by(deleted=False)
+    query = session.query(models.ImageTag).filter_by(
+        image_id=image_id).filter_by(
+            value=value).filter_by(deleted=False)
     try:
         tag_ref = query.one()
     except sa_orm.exc.NoResultFound:
@@ -1170,10 +1169,8 @@ def image_tag_get_all(context, image_id, session=None):
     """Get a list of tags for a specific image."""
     _check_image_id(image_id)
     session = session or get_session()
-    tags = session.query(models.ImageTag.value)\
-                  .filter_by(image_id=image_id)\
-                  .filter_by(deleted=False)\
-                  .all()
+    tags = session.query(models.ImageTag.value).filter_by(
+        image_id=image_id).filter_by(deleted=False).all()
     return [tag[0] for tag in tags]
 
 
@@ -1321,8 +1318,8 @@ def task_get_all(context, filters=None, marker=None, limit=None,
     session = get_session()
     query = session.query(models.Task)
 
-    if not (context.is_admin or admin_as_user == True) and \
-            context.owner is not None:
+    if (not (context.is_admin or admin_as_user == True)
+       and context.owner is not None):
         query = query.filter(models.Task.owner == context.owner)
 
     showing_deleted = False
@@ -1631,3 +1628,66 @@ def metadef_resource_type_association_get_all_by_namespace(
     session = session or get_session()
     return metadef_association_api.\
         get_all_by_namespace(context, namespace_name, session)
+
+
+def metadef_tag_get_all(
+        context, namespace_name, filters=None, marker=None, limit=None,
+        sort_key=None, sort_dir=None, session=None):
+    """Get metadata-schema tags or raise if none exist."""
+    session = session or get_session()
+    return metadef_tag_api.get_all(
+        context, namespace_name, session,
+        filters, marker, limit, sort_key, sort_dir)
+
+
+def metadef_tag_get(context, namespace_name, name, session=None):
+    """Get a metadata-schema tag or raise if it does not exist."""
+    session = session or get_session()
+    return metadef_tag_api.get(
+        context, namespace_name, name, session)
+
+
+def metadef_tag_create(context, namespace_name, tag_dict,
+                       session=None):
+    """Create a metadata-schema tag or raise if it already exists."""
+    session = session or get_session()
+    return metadef_tag_api.create(
+        context, namespace_name, tag_dict, session)
+
+
+def metadef_tag_create_tags(context, namespace_name, tag_list,
+                            session=None):
+    """Create a metadata-schema tag or raise if it already exists."""
+    session = get_session()
+    return metadef_tag_api.create_tags(
+        context, namespace_name, tag_list, session)
+
+
+def metadef_tag_update(context, namespace_name, id, tag_dict,
+                       session=None):
+    """Update an tag or raise if it does not exist or not visible."""
+    session = session or get_session()
+    return metadef_tag_api.update(
+        context, namespace_name, id, tag_dict, session)
+
+
+def metadef_tag_delete(context, namespace_name, name,
+                       session=None):
+    """Delete an tag or raise if namespace or tag doesn't exist."""
+    session = session or get_session()
+    return metadef_tag_api.delete(
+        context, namespace_name, name, session)
+
+
+def metadef_tag_delete_namespace_content(
+        context, namespace_name, session=None):
+    """Delete an tag or raise if namespace or tag doesn't exist."""
+    session = session or get_session()
+    return metadef_tag_api.delete_by_namespace_name(
+        context, namespace_name, session)
+
+
+def metadef_tag_count(context, namespace_name, session=None):
+    """Get count of tags for a namespace, raise if ns doesn't exist."""
+    session = session or get_session()
+    return metadef_tag_api.count(context, namespace_name, session)

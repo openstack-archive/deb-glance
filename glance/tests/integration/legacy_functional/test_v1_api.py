@@ -14,11 +14,12 @@ import datetime
 import hashlib
 import os
 import tempfile
+
+from oslo.serialization import jsonutils
+from oslo.utils import timeutils
+from oslo.utils import units
 import testtools
 
-from glance.openstack.common import jsonutils
-from glance.openstack.common import timeutils
-from glance.openstack.common import units
 from glance.tests.integration.legacy_functional import base
 from glance.tests.utils import minimal_headers
 
@@ -32,15 +33,15 @@ class TestApi(base.ApiTest):
         # Verify no public images
         path = "/v1/images"
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
-        self.assertEqual(content, '{"images": []}')
+        self.assertEqual(200, response.status)
+        self.assertEqual('{"images": []}', content)
 
         # 1. GET /images/detail
         # Verify no public images
         path = "/v1/images/detail"
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
-        self.assertEqual(content, '{"images": []}')
+        self.assertEqual(200, response.status)
+        self.assertEqual('{"images": []}', content)
 
         # 2. POST /images with public image named Image1
         # attribute and no custom properties. Verify a 200 OK is returned
@@ -49,27 +50,27 @@ class TestApi(base.ApiTest):
         path = "/v1/images"
         response, content = self.http.request(path, 'POST', headers=headers,
                                               body=image_data)
-        self.assertEqual(response.status, 201)
+        self.assertEqual(201, response.status)
         data = jsonutils.loads(content)
         image_id = data['image']['id']
-        self.assertEqual(data['image']['checksum'],
-                         hashlib.md5(image_data).hexdigest())
-        self.assertEqual(data['image']['size'], FIVE_KB)
-        self.assertEqual(data['image']['name'], "Image1")
+        self.assertEqual(hashlib.md5(image_data).hexdigest(),
+                         data['image']['checksum'])
+        self.assertEqual(FIVE_KB, data['image']['size'])
+        self.assertEqual("Image1", data['image']['name'])
         self.assertTrue(data['image']['is_public'])
 
         # 3. HEAD image
         # Verify image found now
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'HEAD')
-        self.assertEqual(response.status, 200)
-        self.assertEqual(response['x-image-meta-name'], "Image1")
+        self.assertEqual(200, response.status)
+        self.assertEqual("Image1", response['x-image-meta-name'])
 
         # 4. GET image
         # Verify all information on image we just added is correct
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
 
         expected_image_headers = {
             'x-image-meta-id': image_id,
@@ -85,28 +86,28 @@ class TestApi(base.ApiTest):
             'content-type': 'application/octet-stream'}
 
         for expected_key, expected_value in expected_image_headers.items():
-            self.assertEqual(response[expected_key], expected_value,
+            self.assertEqual(expected_value, response[expected_key],
                              "For key '%s' expected header value '%s'. "
                              "Got '%s'" % (expected_key,
                                            expected_value,
                                            response[expected_key]))
 
         for expected_key, expected_value in expected_std_headers.items():
-            self.assertEqual(response[expected_key], expected_value,
+            self.assertEqual(expected_value, response[expected_key],
                              "For key '%s' expected header value '%s'. "
                              "Got '%s'" % (expected_key,
                                            expected_value,
                                            response[expected_key]))
 
-        self.assertEqual(content, "*" * FIVE_KB)
-        self.assertEqual(hashlib.md5(content).hexdigest(),
-                         hashlib.md5("*" * FIVE_KB).hexdigest())
+        self.assertEqual("*" * FIVE_KB, content)
+        self.assertEqual(hashlib.md5("*" * FIVE_KB).hexdigest(),
+                         hashlib.md5(content).hexdigest())
 
         # 5. GET /images
         # Verify no public images
         path = "/v1/images"
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
 
         expected_result = {"images": [
             {"container_format": "ovf",
@@ -115,13 +116,13 @@ class TestApi(base.ApiTest):
              "name": "Image1",
              "checksum": "c2e5db72bd7fd153f53ede5da5a06de3",
              "size": 5120}]}
-        self.assertEqual(jsonutils.loads(content), expected_result)
+        self.assertEqual(expected_result, jsonutils.loads(content))
 
         # 6. GET /images/detail
         # Verify image and all its metadata
         path = "/v1/images/detail"
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
 
         expected_image = {
             "status": "active",
@@ -150,16 +151,16 @@ class TestApi(base.ApiTest):
                    'X-Image-Meta-Property-Arch': 'x86_64'}
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'PUT', headers=headers)
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(data['image']['properties']['arch'], "x86_64")
-        self.assertEqual(data['image']['properties']['distro'], "Ubuntu")
+        self.assertEqual("x86_64", data['image']['properties']['arch'])
+        self.assertEqual("Ubuntu", data['image']['properties']['distro'])
 
         # 8. GET /images/detail
         # Verify image and all its metadata
         path = "/v1/images/detail"
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
 
         expected_image = {
             "status": "active",
@@ -186,36 +187,36 @@ class TestApi(base.ApiTest):
         headers = {'X-Image-Meta-Property-Arch': 'x86_64'}
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'PUT', headers=headers)
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
 
         path = "/v1/images/detail"
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)['images'][0]
-        self.assertEqual(len(data['properties']), 1)
-        self.assertEqual(data['properties']['arch'], "x86_64")
+        self.assertEqual(1, len(data['properties']))
+        self.assertEqual("x86_64", data['properties']['arch'])
 
         # 10. PUT image and add a previously deleted property.
         headers = {'X-Image-Meta-Property-Distro': 'Ubuntu',
                    'X-Image-Meta-Property-Arch': 'x86_64'}
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'PUT', headers=headers)
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
 
         path = "/v1/images/detail"
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)['images'][0]
-        self.assertEqual(len(data['properties']), 2)
-        self.assertEqual(data['properties']['arch'], "x86_64")
-        self.assertEqual(data['properties']['distro'], "Ubuntu")
+        self.assertEqual(2, len(data['properties']))
+        self.assertEqual("x86_64", data['properties']['arch'])
+        self.assertEqual("Ubuntu", data['properties']['distro'])
         self.assertNotEqual(data['created_at'], data['updated_at'])
 
         # DELETE image
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'DELETE')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
 
     def test_queued_process_flow(self):
         """
@@ -245,21 +246,21 @@ class TestApi(base.ApiTest):
         # Verify no public images
         path = "/v1/images"
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
-        self.assertEqual(content, '{"images": []}')
+        self.assertEqual(200, response.status)
+        self.assertEqual('{"images": []}', content)
 
         # 1. POST /images with public image named Image1
         # with no location or image data
         headers = minimal_headers('Image1')
         path = "/v1/images"
         response, content = self.http.request(path, 'POST', headers=headers)
-        self.assertEqual(response.status, 201)
+        self.assertEqual(201, response.status)
         data = jsonutils.loads(content)
         self.assertIsNone(data['image']['checksum'])
-        self.assertEqual(data['image']['size'], 0)
-        self.assertEqual(data['image']['container_format'], 'ovf')
-        self.assertEqual(data['image']['disk_format'], 'raw')
-        self.assertEqual(data['image']['name'], "Image1")
+        self.assertEqual(0, data['image']['size'])
+        self.assertEqual('ovf', data['image']['container_format'])
+        self.assertEqual('raw', data['image']['disk_format'])
+        self.assertEqual("Image1", data['image']['name'])
         self.assertTrue(data['image']['is_public'])
 
         image_id = data['image']['id']
@@ -268,24 +269,24 @@ class TestApi(base.ApiTest):
         # Verify 1 public image
         path = "/v1/images"
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(data['images'][0]['id'], image_id)
+        self.assertEqual(image_id, data['images'][0]['id'])
         self.assertIsNone(data['images'][0]['checksum'])
-        self.assertEqual(data['images'][0]['size'], 0)
-        self.assertEqual(data['images'][0]['container_format'], 'ovf')
-        self.assertEqual(data['images'][0]['disk_format'], 'raw')
-        self.assertEqual(data['images'][0]['name'], "Image1")
+        self.assertEqual(0, data['images'][0]['size'])
+        self.assertEqual('ovf', data['images'][0]['container_format'])
+        self.assertEqual('raw', data['images'][0]['disk_format'])
+        self.assertEqual("Image1", data['images'][0]['name'])
 
         # 3. HEAD /images
         # Verify status is in queued
         path = "/v1/images/%s" % (image_id)
         response, content = self.http.request(path, 'HEAD')
-        self.assertEqual(response.status, 200)
-        self.assertEqual(response['x-image-meta-name'], "Image1")
-        self.assertEqual(response['x-image-meta-status'], "queued")
-        self.assertEqual(response['x-image-meta-size'], '0')
-        self.assertEqual(response['x-image-meta-id'], image_id)
+        self.assertEqual(200, response.status)
+        self.assertEqual("Image1", response['x-image-meta-name'])
+        self.assertEqual("queued", response['x-image-meta-status'])
+        self.assertEqual('0', response['x-image-meta-size'])
+        self.assertEqual(image_id, response['x-image-meta-id'])
 
         # 4. PUT image with image data, verify 200 returned
         image_data = "*" * FIVE_KB
@@ -293,52 +294,52 @@ class TestApi(base.ApiTest):
         path = "/v1/images/%s" % (image_id)
         response, content = self.http.request(path, 'PUT', headers=headers,
                                               body=image_data)
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(data['image']['checksum'],
-                         hashlib.md5(image_data).hexdigest())
-        self.assertEqual(data['image']['size'], FIVE_KB)
-        self.assertEqual(data['image']['name'], "Image1")
+        self.assertEqual(hashlib.md5(image_data).hexdigest(),
+                         data['image']['checksum'])
+        self.assertEqual(FIVE_KB, data['image']['size'])
+        self.assertEqual("Image1", data['image']['name'])
         self.assertTrue(data['image']['is_public'])
 
         # 5. HEAD /images
         # Verify status is in active
         path = "/v1/images/%s" % (image_id)
         response, content = self.http.request(path, 'HEAD')
-        self.assertEqual(response.status, 200)
-        self.assertEqual(response['x-image-meta-name'], "Image1")
-        self.assertEqual(response['x-image-meta-status'], "active")
+        self.assertEqual(200, response.status)
+        self.assertEqual("Image1", response['x-image-meta-name'])
+        self.assertEqual("active", response['x-image-meta-status'])
 
         # 6. GET /images
         # Verify 1 public image still...
         path = "/v1/images"
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(data['images'][0]['checksum'],
-                         hashlib.md5(image_data).hexdigest())
-        self.assertEqual(data['images'][0]['id'], image_id)
-        self.assertEqual(data['images'][0]['size'], FIVE_KB)
-        self.assertEqual(data['images'][0]['container_format'], 'ovf')
-        self.assertEqual(data['images'][0]['disk_format'], 'raw')
-        self.assertEqual(data['images'][0]['name'], "Image1")
+        self.assertEqual(hashlib.md5(image_data).hexdigest(),
+                         data['images'][0]['checksum'])
+        self.assertEqual(image_id, data['images'][0]['id'])
+        self.assertEqual(FIVE_KB, data['images'][0]['size'])
+        self.assertEqual('ovf', data['images'][0]['container_format'])
+        self.assertEqual('raw', data['images'][0]['disk_format'])
+        self.assertEqual("Image1", data['images'][0]['name'])
 
         # DELETE image
         path = "/v1/images/%s" % (image_id)
         response, content = self.http.request(path, 'DELETE')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
 
     def test_v1_not_enabled(self):
         self.config(enable_v1_api=False)
         path = "/v1/images"
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 300)
+        self.assertEqual(300, response.status)
 
     def test_v1_enabled(self):
         self.config(enable_v1_api=True)
         path = "/v1/images"
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
 
     def test_zero_initial_size(self):
         """
@@ -356,21 +357,21 @@ class TestApi(base.ApiTest):
                    'X-Image-Meta-Is-Public': 'True'}
         path = "/v1/images"
         response, content = self.http.request(path, 'POST', headers=headers)
-        self.assertEqual(response.status, 201)
+        self.assertEqual(201, response.status)
 
         # 2. HEAD image-location
         # Verify image size is zero and the status is active
         path = response.get('location')
         response, content = self.http.request(path, 'HEAD')
-        self.assertEqual(response.status, 200)
-        self.assertEqual(response['x-image-meta-size'], '0')
-        self.assertEqual(response['x-image-meta-status'], 'active')
+        self.assertEqual(200, response.status)
+        self.assertEqual('0', response['x-image-meta-size'])
+        self.assertEqual('active', response['x-image-meta-status'])
 
         # 3. GET  image-location
         # Verify image content is empty
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
-        self.assertEqual(len(content), 0)
+        self.assertEqual(200, response.status)
+        self.assertEqual(0, len(content))
 
     def test_traceback_not_consumed(self):
         """
@@ -392,7 +393,7 @@ class TestApi(base.ApiTest):
         response, content = self.http.request(path, 'POST',
                                               body=test_data_file.name,
                                               headers=headers)
-        self.assertEqual(response.status, 400)
+        self.assertEqual(400, response.status)
         expected = "Content-Type must be application/octet-stream"
         self.assertTrue(expected in content,
                         "Could not find '%s' in '%s'" % (expected, content))
@@ -406,8 +407,8 @@ class TestApi(base.ApiTest):
         # Verify no public images
         path = "/v1/images"
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
-        self.assertEqual(content, '{"images": []}')
+        self.assertEqual(200, response.status)
+        self.assertEqual('{"images": []}', content)
 
         image_ids = []
 
@@ -424,9 +425,9 @@ class TestApi(base.ApiTest):
                    'X-Image-Meta-Property-pants': 'are on'}
         path = "/v1/images"
         response, content = self.http.request(path, 'POST', headers=headers)
-        self.assertEqual(response.status, 201)
+        self.assertEqual(201, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(data['image']['properties']['pants'], "are on")
+        self.assertEqual("are on", data['image']['properties']['pants'])
         self.assertTrue(data['image']['is_public'])
         image_ids.append(data['image']['id'])
 
@@ -441,9 +442,9 @@ class TestApi(base.ApiTest):
                    'X-Image-Meta-Property-pants': 'are on'}
         path = "/v1/images"
         response, content = self.http.request(path, 'POST', headers=headers)
-        self.assertEqual(response.status, 201)
+        self.assertEqual(201, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(data['image']['properties']['pants'], "are on")
+        self.assertEqual("are on", data['image']['properties']['pants'])
         self.assertTrue(data['image']['is_public'])
         image_ids.append(data['image']['id'])
 
@@ -458,9 +459,9 @@ class TestApi(base.ApiTest):
                    'X-Image-Meta-Property-pants': 'are off'}
         path = "/v1/images"
         response, content = self.http.request(path, 'POST', headers=headers)
-        self.assertEqual(response.status, 201)
+        self.assertEqual(201, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(data['image']['properties']['pants'], "are off")
+        self.assertEqual("are off", data['image']['properties']['pants'])
         self.assertTrue(data['image']['is_public'])
         image_ids.append(data['image']['id'])
 
@@ -474,7 +475,7 @@ class TestApi(base.ApiTest):
                    'X-Image-Meta-Protected': 'False'}
         path = "/v1/images"
         response, content = self.http.request(path, 'POST', headers=headers)
-        self.assertEqual(response.status, 201)
+        self.assertEqual(201, response.status)
         data = jsonutils.loads(content)
         self.assertFalse(data['image']['is_public'])
         image_ids.append(data['image']['id'])
@@ -483,69 +484,69 @@ class TestApi(base.ApiTest):
         # Verify three public images
         path = "/v1/images"
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(len(data['images']), 3)
+        self.assertEqual(3, len(data['images']))
 
         # 3. GET /images with name filter
         # Verify correct images returned with name
         params = "name=My%20Image!"
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(len(data['images']), 2)
+        self.assertEqual(2, len(data['images']))
         for image in data['images']:
-            self.assertEqual(image['name'], "My Image!")
+            self.assertEqual("My Image!", image['name'])
 
         # 4. GET /images with status filter
         # Verify correct images returned with status
         params = "status=queued"
         path = "/v1/images/detail?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(len(data['images']), 3)
+        self.assertEqual(3, len(data['images']))
         for image in data['images']:
-            self.assertEqual(image['status'], "queued")
+            self.assertEqual("queued", image['status'])
 
         params = "status=active"
         path = "/v1/images/detail?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(len(data['images']), 0)
+        self.assertEqual(0, len(data['images']))
 
         # 5. GET /images with container_format filter
         # Verify correct images returned with container_format
         params = "container_format=ovf"
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(len(data['images']), 2)
+        self.assertEqual(2, len(data['images']))
         for image in data['images']:
-            self.assertEqual(image['container_format'], "ovf")
+            self.assertEqual("ovf", image['container_format'])
 
         # 6. GET /images with disk_format filter
         # Verify correct images returned with disk_format
         params = "disk_format=vdi"
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(len(data['images']), 1)
+        self.assertEqual(1, len(data['images']))
         for image in data['images']:
-            self.assertEqual(image['disk_format'], "vdi")
+            self.assertEqual("vdi", image['disk_format'])
 
         # 7. GET /images with size_max filter
         # Verify correct images returned with size <= expected
         params = "size_max=20"
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(len(data['images']), 2)
+        self.assertEqual(2, len(data['images']))
         for image in data['images']:
             self.assertTrue(image['size'] <= 20)
 
@@ -554,9 +555,9 @@ class TestApi(base.ApiTest):
         params = "size_min=20"
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(len(data['images']), 2)
+        self.assertEqual(2, len(data['images']))
         for image in data['images']:
             self.assertTrue(image['size'] >= 20)
 
@@ -566,9 +567,9 @@ class TestApi(base.ApiTest):
         params = "is_public=None"
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(len(data['images']), 4)
+        self.assertEqual(4, len(data['images']))
 
         # 10. Get /images with is_public=False filter
         # Verify correct images returned with property
@@ -576,11 +577,11 @@ class TestApi(base.ApiTest):
         params = "is_public=False"
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(len(data['images']), 1)
+        self.assertEqual(1, len(data['images']))
         for image in data['images']:
-            self.assertEqual(image['name'], "My Private Image")
+            self.assertEqual("My Private Image", image['name'])
 
         # 11. Get /images with is_public=True filter
         # Verify correct images returned with property
@@ -588,9 +589,9 @@ class TestApi(base.ApiTest):
         params = "is_public=True"
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(len(data['images']), 3)
+        self.assertEqual(3, len(data['images']))
         for image in data['images']:
             self.assertNotEqual(image['name'], "My Private Image")
 
@@ -599,9 +600,9 @@ class TestApi(base.ApiTest):
         params = "protected=False"
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(len(data['images']), 2)
+        self.assertEqual(2, len(data['images']))
         for image in data['images']:
             self.assertNotEqual(image['name'], "Image1")
 
@@ -610,22 +611,22 @@ class TestApi(base.ApiTest):
         params = "protected=True"
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(len(data['images']), 1)
+        self.assertEqual(1, len(data['images']))
         for image in data['images']:
-            self.assertEqual(image['name'], "Image1")
+            self.assertEqual("Image1", image['name'])
 
         # 14. GET /images with property filter
         # Verify correct images returned with property
         params = "property-pants=are%20on"
         path = "/v1/images/detail?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(len(data['images']), 2)
+        self.assertEqual(2, len(data['images']))
         for image in data['images']:
-            self.assertEqual(image['properties']['pants'], "are on")
+            self.assertEqual("are on", image['properties']['pants'])
 
         # 15. GET /images with property filter and name filter
         # Verify correct images returned with property and name
@@ -633,12 +634,12 @@ class TestApi(base.ApiTest):
         params = "name=My%20Image!&property-pants=are%20on"
         path = "/v1/images/detail?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(len(data['images']), 1)
+        self.assertEqual(1, len(data['images']))
         for image in data['images']:
-            self.assertEqual(image['properties']['pants'], "are on")
-            self.assertEqual(image['name'], "My Image!")
+            self.assertEqual("are on", image['properties']['pants'])
+            self.assertEqual("My Image!", image['name'])
 
         # 16. GET /images with past changes-since filter
         yesterday = timeutils.isotime(timeutils.utcnow() -
@@ -646,9 +647,9 @@ class TestApi(base.ApiTest):
         params = "changes-since=%s" % yesterday
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(len(data['images']), 3)
+        self.assertEqual(3, len(data['images']))
 
         # one timezone west of Greenwich equates to an hour ago
         # taking care to pre-urlencode '+' as '%2B', otherwise the timezone
@@ -660,9 +661,9 @@ class TestApi(base.ApiTest):
         params = "changes-since=%s" % hour_ago
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(len(data['images']), 3)
+        self.assertEqual(3, len(data['images']))
 
         # 17. GET /images with future changes-since filter
         tomorrow = timeutils.isotime(timeutils.utcnow() +
@@ -670,9 +671,9 @@ class TestApi(base.ApiTest):
         params = "changes-since=%s" % tomorrow
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(len(data['images']), 0)
+        self.assertEqual(0, len(data['images']))
 
         # one timezone east of Greenwich equates to an hour from now
         now = timeutils.utcnow()
@@ -680,16 +681,16 @@ class TestApi(base.ApiTest):
         params = "changes-since=%s" % hour_hence
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(len(data['images']), 0)
+        self.assertEqual(0, len(data['images']))
 
         # 18. GET /images with size_min filter
         # Verify correct images returned with size >= expected
         params = "size_min=-1"
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 400)
+        self.assertEqual(400, response.status)
         self.assertTrue("filter size_min got -1" in content)
 
         # 19. GET /images with size_min filter
@@ -697,7 +698,7 @@ class TestApi(base.ApiTest):
         params = "size_max=-1"
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 400)
+        self.assertEqual(400, response.status)
         self.assertTrue("filter size_max got -1" in content)
 
         # 20. GET /images with size_min filter
@@ -705,7 +706,7 @@ class TestApi(base.ApiTest):
         params = "min_ram=-1"
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 400)
+        self.assertEqual(400, response.status)
         self.assertTrue("Bad value passed to filter min_ram got -1" in content)
 
         # 21. GET /images with size_min filter
@@ -713,7 +714,7 @@ class TestApi(base.ApiTest):
         params = "protected=imalittleteapot"
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 400)
+        self.assertEqual(400, response.status)
         self.assertTrue("protected got imalittleteapot" in content)
 
         # 22. GET /images with size_min filter
@@ -721,7 +722,7 @@ class TestApi(base.ApiTest):
         params = "is_public=imalittleteapot"
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 400)
+        self.assertEqual(400, response.status)
         self.assertTrue("is_public got imalittleteapot" in content)
 
     def test_limited_images(self):
@@ -733,8 +734,8 @@ class TestApi(base.ApiTest):
         # Verify no public images
         path = "/v1/images"
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
-        self.assertEqual(content, '{"images": []}')
+        self.assertEqual(200, response.status)
+        self.assertEqual('{"images": []}', content)
 
         image_ids = []
 
@@ -742,75 +743,75 @@ class TestApi(base.ApiTest):
         headers = minimal_headers('Image1')
         path = "/v1/images"
         response, content = self.http.request(path, 'POST', headers=headers)
-        self.assertEqual(response.status, 201)
+        self.assertEqual(201, response.status)
         image_ids.append(jsonutils.loads(content)['image']['id'])
 
         headers = minimal_headers('Image2')
         path = "/v1/images"
         response, content = self.http.request(path, 'POST', headers=headers)
-        self.assertEqual(response.status, 201)
+        self.assertEqual(201, response.status)
         image_ids.append(jsonutils.loads(content)['image']['id'])
 
         headers = minimal_headers('Image3')
         path = "/v1/images"
         response, content = self.http.request(path, 'POST', headers=headers)
-        self.assertEqual(response.status, 201)
+        self.assertEqual(201, response.status)
         image_ids.append(jsonutils.loads(content)['image']['id'])
 
         # 2. GET /images with all images
         path = "/v1/images"
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         images = jsonutils.loads(content)['images']
-        self.assertEqual(len(images), 3)
+        self.assertEqual(3, len(images))
 
         # 3. GET /images with limit of 2
         # Verify only two images were returned
         params = "limit=2"
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)['images']
-        self.assertEqual(len(data), 2)
-        self.assertEqual(data[0]['id'], images[0]['id'])
-        self.assertEqual(data[1]['id'], images[1]['id'])
+        self.assertEqual(2, len(data))
+        self.assertEqual(images[0]['id'], data[0]['id'])
+        self.assertEqual(images[1]['id'], data[1]['id'])
 
         # 4. GET /images with marker
         # Verify only two images were returned
         params = "marker=%s" % images[0]['id']
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)['images']
-        self.assertEqual(len(data), 2)
-        self.assertEqual(data[0]['id'], images[1]['id'])
-        self.assertEqual(data[1]['id'], images[2]['id'])
+        self.assertEqual(2, len(data))
+        self.assertEqual(images[1]['id'], data[0]['id'])
+        self.assertEqual(images[2]['id'], data[1]['id'])
 
         # 5. GET /images with marker and limit
         # Verify only one image was returned with the correct id
         params = "limit=1&marker=%s" % images[1]['id']
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)['images']
-        self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]['id'], images[2]['id'])
+        self.assertEqual(1, len(data))
+        self.assertEqual(images[2]['id'], data[0]['id'])
 
         # 6. GET /images/detail with marker and limit
         # Verify only one image was returned with the correct id
         params = "limit=1&marker=%s" % images[1]['id']
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)['images']
-        self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]['id'], images[2]['id'])
+        self.assertEqual(1, len(data))
+        self.assertEqual(images[2]['id'], data[0]['id'])
 
         # DELETE images
         for image_id in image_ids:
             path = "/v1/images/%s" % (image_id)
             response, content = self.http.request(path, 'DELETE')
-            self.assertEqual(response.status, 200)
+            self.assertEqual(200, response.status)
 
     def test_ordered_images(self):
         """
@@ -820,8 +821,8 @@ class TestApi(base.ApiTest):
         # Verify no public images
         path = "/v1/images"
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
-        self.assertEqual(content, '{"images": []}')
+        self.assertEqual(200, response.status)
+        self.assertEqual('{"images": []}', content)
 
         # 1. POST /images with three public images with various attributes
         image_ids = []
@@ -834,7 +835,7 @@ class TestApi(base.ApiTest):
                    'X-Image-Meta-Is-Public': 'True'}
         path = "/v1/images"
         response, content = self.http.request(path, 'POST', headers=headers)
-        self.assertEqual(response.status, 201)
+        self.assertEqual(201, response.status)
         image_ids.append(jsonutils.loads(content)['image']['id'])
 
         headers = {'Content-Type': 'application/octet-stream',
@@ -846,7 +847,7 @@ class TestApi(base.ApiTest):
                    'X-Image-Meta-Is-Public': 'True'}
         path = "/v1/images"
         response, content = self.http.request(path, 'POST', headers=headers)
-        self.assertEqual(response.status, 201)
+        self.assertEqual(201, response.status)
         image_ids.append(jsonutils.loads(content)['image']['id'])
 
         headers = {'Content-Type': 'application/octet-stream',
@@ -858,65 +859,65 @@ class TestApi(base.ApiTest):
                    'X-Image-Meta-Is-Public': 'True'}
         path = "/v1/images"
         response, content = self.http.request(path, 'POST', headers=headers)
-        self.assertEqual(response.status, 201)
+        self.assertEqual(201, response.status)
         image_ids.append(jsonutils.loads(content)['image']['id'])
 
         # 2. GET /images with no query params
         # Verify three public images sorted by created_at desc
         path = "/v1/images"
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(len(data['images']), 3)
-        self.assertEqual(data['images'][0]['id'], image_ids[2])
-        self.assertEqual(data['images'][1]['id'], image_ids[1])
-        self.assertEqual(data['images'][2]['id'], image_ids[0])
+        self.assertEqual(3, len(data['images']))
+        self.assertEqual(image_ids[2], data['images'][0]['id'])
+        self.assertEqual(image_ids[1], data['images'][1]['id'])
+        self.assertEqual(image_ids[0], data['images'][2]['id'])
 
         # 3. GET /images sorted by name asc
         params = 'sort_key=name&sort_dir=asc'
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(len(data['images']), 3)
-        self.assertEqual(data['images'][0]['id'], image_ids[1])
-        self.assertEqual(data['images'][1]['id'], image_ids[0])
-        self.assertEqual(data['images'][2]['id'], image_ids[2])
+        self.assertEqual(3, len(data['images']))
+        self.assertEqual(image_ids[1], data['images'][0]['id'])
+        self.assertEqual(image_ids[0], data['images'][1]['id'])
+        self.assertEqual(image_ids[2], data['images'][2]['id'])
 
         # 4. GET /images sorted by size desc
         params = 'sort_key=size&sort_dir=desc'
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(len(data['images']), 3)
-        self.assertEqual(data['images'][0]['id'], image_ids[0])
-        self.assertEqual(data['images'][1]['id'], image_ids[2])
-        self.assertEqual(data['images'][2]['id'], image_ids[1])
+        self.assertEqual(3, len(data['images']))
+        self.assertEqual(image_ids[0], data['images'][0]['id'])
+        self.assertEqual(image_ids[2], data['images'][1]['id'])
+        self.assertEqual(image_ids[1], data['images'][2]['id'])
 
         # 5. GET /images sorted by size desc with a marker
         params = 'sort_key=size&sort_dir=desc&marker=%s' % image_ids[0]
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(len(data['images']), 2)
-        self.assertEqual(data['images'][0]['id'], image_ids[2])
-        self.assertEqual(data['images'][1]['id'], image_ids[1])
+        self.assertEqual(2, len(data['images']))
+        self.assertEqual(image_ids[2], data['images'][0]['id'])
+        self.assertEqual(image_ids[1], data['images'][1]['id'])
 
         # 6. GET /images sorted by name asc with a marker
         params = 'sort_key=name&sort_dir=asc&marker=%s' % image_ids[2]
         path = "/v1/images?%s" % (params)
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(len(data['images']), 0)
+        self.assertEqual(0, len(data['images']))
 
         # DELETE images
         for image_id in image_ids:
             path = "/v1/images/%s" % (image_id)
             response, content = self.http.request(path, 'DELETE')
-            self.assertEqual(response.status, 200)
+            self.assertEqual(200, response.status)
 
     def test_duplicate_image_upload(self):
         """
@@ -926,8 +927,8 @@ class TestApi(base.ApiTest):
         # Verify no public images
         path = "/v1/images"
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
-        self.assertEqual(content, '{"images": []}')
+        self.assertEqual(200, response.status)
+        self.assertEqual('{"images": []}', content)
 
         # 1. POST /images with public image named Image1
         headers = {'Content-Type': 'application/octet-stream',
@@ -939,7 +940,7 @@ class TestApi(base.ApiTest):
                    'X-Image-Meta-Is-Public': 'True'}
         path = "/v1/images"
         response, content = self.http.request(path, 'POST', headers=headers)
-        self.assertEqual(response.status, 201)
+        self.assertEqual(201, response.status)
 
         image = jsonutils.loads(content)['image']
 
@@ -954,7 +955,7 @@ class TestApi(base.ApiTest):
                    'X-Image-Meta-Is-Public': 'True'}
         path = "/v1/images"
         response, content = self.http.request(path, 'POST', headers=headers)
-        self.assertEqual(response.status, 409)
+        self.assertEqual(409, response.status)
 
     def test_delete_not_existing(self):
         """
@@ -970,14 +971,14 @@ class TestApi(base.ApiTest):
         # Verify no public images
         path = "/v1/images"
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
-        self.assertEqual(content, '{"images": []}')
+        self.assertEqual(200, response.status)
+        self.assertEqual('{"images": []}', content)
 
         # 1. DELETE /images/1
         # Verify 404 returned
         path = "/v1/images/1"
         response, content = self.http.request(path, 'DELETE')
-        self.assertEqual(response.status, 404)
+        self.assertEqual(404, response.status)
 
     def _do_test_post_image_content_bad_format(self, format):
         """
@@ -989,9 +990,9 @@ class TestApi(base.ApiTest):
         # Verify no public images
         path = "/v1/images"
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         images = jsonutils.loads(content)['images']
-        self.assertEqual(len(images), 0)
+        self.assertEqual(0, len(images))
 
         path = "/v1/images"
 
@@ -1004,7 +1005,7 @@ class TestApi(base.ApiTest):
         response, content = self.http.request(path, 'POST',
                                               headers=headers,
                                               body=test_data_file.name)
-        self.assertEqual(response.status, 400)
+        self.assertEqual(400, response.status)
         type = format.replace('_format', '')
         expected = "Invalid %s format 'bad_value' for image" % type
         self.assertTrue(expected in content,
@@ -1014,9 +1015,9 @@ class TestApi(base.ApiTest):
         # Verify no public images
         path = "/v1/images"
         response, content = self.http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         images = jsonutils.loads(content)['images']
-        self.assertEqual(len(images), 0)
+        self.assertEqual(0, len(images))
 
     def test_post_image_content_bad_container_format(self):
         self._do_test_post_image_content_bad_format('container_format')
@@ -1040,7 +1041,7 @@ class TestApi(base.ApiTest):
             'X-Image-Meta-Is-Public': 'True',
         }
         response, content = self.http.request(path, 'POST', headers=headers)
-        self.assertEqual(response.status, 201)
+        self.assertEqual(201, response.status)
         data = jsonutils.loads(content)
         image_id = data['image']['id']
         self.addDetail('image_data', testtools.content.json_content(data))
@@ -1055,7 +1056,7 @@ class TestApi(base.ApiTest):
         response, content = self.http.request(path, 'PUT',
                                               headers=headers,
                                               body=test_data_file.name)
-        self.assertEqual(response.status, 400)
+        self.assertEqual(400, response.status)
         type = format.replace('_format', '')
         expected = "Invalid %s format 'None' for image" % type
         self.assertTrue(expected in content,
@@ -1078,12 +1079,12 @@ class TestApi(base.ApiTest):
         path = "/v1/images"
         response, content = self.http.request(path, 'POST', headers=headers,
                                               body=image_data)
-        self.assertEqual(response.status, 400)
+        self.assertEqual(400, response.status)
 
         images_dir = os.path.join(self.test_dir, 'images')
         image_count = len([name for name in os.listdir(images_dir)
                            if os.path.isfile(os.path.join(images_dir, name))])
-        self.assertEqual(image_count, 0)
+        self.assertEqual(0, image_count)
 
     def test_mismatched_size(self):
         """
@@ -1125,14 +1126,14 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images"
         response, content = self.http.request(path, 'POST',
                                               headers=create_headers)
-        self.assertEqual(response.status, 201)
+        self.assertEqual(201, response.status)
         data = jsonutils.loads(content)
         image_id = data['image']['id']
 
         path = "/v1/images/%s" % (image_id)
         response, content = self.http.request(path, 'HEAD',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         self.assertEqual('tenant2', response['x-image-meta-owner'])
 
         # Now add an image without admin privileges and ensure the owner
@@ -1145,7 +1146,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images"
         response, content = self.http.request(path, 'POST',
                                               headers=create_headers)
-        self.assertEqual(response.status, 201)
+        self.assertEqual(201, response.status)
         data = jsonutils.loads(content)
         image_id = data['image']['id']
 
@@ -1158,7 +1159,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images/%s" % (image_id)
         response, content = self.http.request(path, 'HEAD',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         self.assertEqual('tenant1', response['x-image-meta-owner'])
 
         # Make sure the non-privileged user can't update their owner either
@@ -1171,7 +1172,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images/%s" % (image_id)
         response, content = self.http.request(path, 'PUT',
                                               headers=update_headers)
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
 
         # We have to be admin to see the owner
         auth_headers = {
@@ -1181,7 +1182,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images/%s" % (image_id)
         response, content = self.http.request(path, 'HEAD',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         self.assertEqual('tenant1', response['x-image-meta-owner'])
 
         # An admin user should be able to update the owner
@@ -1198,12 +1199,12 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images/%s" % (image_id)
         response, content = self.http.request(path, 'PUT',
                                               headers=update_headers)
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
 
         path = "/v1/images/%s" % (image_id)
         response, content = self.http.request(path, 'HEAD',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         self.assertEqual('tenant2', response['x-image-meta-owner'])
 
     def test_image_visibility_to_different_users(self):
@@ -1225,7 +1226,7 @@ class TestApiWithFakeAuth(base.ApiTest):
                 path = "/v1/images"
                 response, content = self.http.request(path, 'POST',
                                                       headers=headers)
-                self.assertEqual(response.status, 201)
+                self.assertEqual(201, response.status)
                 data = jsonutils.loads(content)
                 image_ids[name] = data['image']['id']
 
@@ -1236,62 +1237,62 @@ class TestApiWithFakeAuth(base.ApiTest):
             if is_public is not None:
                 path += '?is_public=%s' % is_public
             response, content = self.http.request(path, 'GET', headers=headers)
-            self.assertEqual(response.status, 200)
+            self.assertEqual(200, response.status)
             return jsonutils.loads(content)['images']
 
         # 1. Known user sees public and their own images
         images = list_images('tenant1')
-        self.assertEqual(len(images), 5)
+        self.assertEqual(5, len(images))
         for image in images:
             self.assertTrue(image['is_public'] or image['owner'] == 'tenant1')
 
         # 2. Unknown user sees only public images
         images = list_images('none')
-        self.assertEqual(len(images), 4)
+        self.assertEqual(4, len(images))
         for image in images:
             self.assertTrue(image['is_public'])
 
         # 3. Unknown admin sees only public images
         images = list_images('none', role='admin')
-        self.assertEqual(len(images), 4)
+        self.assertEqual(4, len(images))
         for image in images:
             self.assertTrue(image['is_public'])
 
         # 4. Unknown admin, is_public=none, shows all images
         images = list_images('none', role='admin', is_public='none')
-        self.assertEqual(len(images), 8)
+        self.assertEqual(8, len(images))
 
         # 5. Unknown admin, is_public=true, shows only public images
         images = list_images('none', role='admin', is_public='true')
-        self.assertEqual(len(images), 4)
+        self.assertEqual(4, len(images))
         for image in images:
             self.assertTrue(image['is_public'])
 
         # 6. Unknown admin, is_public=false, sees only private images
         images = list_images('none', role='admin', is_public='false')
-        self.assertEqual(len(images), 4)
+        self.assertEqual(4, len(images))
         for image in images:
             self.assertFalse(image['is_public'])
 
         # 7. Known admin sees public and their own images
         images = list_images('admin', role='admin')
-        self.assertEqual(len(images), 5)
+        self.assertEqual(5, len(images))
         for image in images:
             self.assertTrue(image['is_public'] or image['owner'] == 'admin')
 
         # 8. Known admin, is_public=none, shows all images
         images = list_images('admin', role='admin', is_public='none')
-        self.assertEqual(len(images), 8)
+        self.assertEqual(8, len(images))
 
         # 9. Known admin, is_public=true, sees all public and their images
         images = list_images('admin', role='admin', is_public='true')
-        self.assertEqual(len(images), 5)
+        self.assertEqual(5, len(images))
         for image in images:
             self.assertTrue(image['is_public'] or image['owner'] == 'admin')
 
         # 10. Known admin, is_public=false, sees all private images
         images = list_images('admin', role='admin', is_public='false')
-        self.assertEqual(len(images), 4)
+        self.assertEqual(4, len(images))
         for image in images:
             self.assertFalse(image['is_public'])
 
@@ -1321,7 +1322,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images"
         response, content = self.http.request(path, 'POST',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 403)
+        self.assertEqual(403, response.status)
 
         # Create an image for role member without 'foo'
         auth_headers = {
@@ -1335,12 +1336,12 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images"
         response, content = self.http.request(path, 'POST',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 201)
+        self.assertEqual(201, response.status)
 
         # Returned image entity should have 'x_owner_foo'
         data = jsonutils.loads(content)
-        self.assertEqual(data['image']['properties']['x_owner_foo'],
-                         'o_s_bar')
+        self.assertEqual('o_s_bar',
+                         data['image']['properties']['x_owner_foo'])
 
         # Create an image for role spl_role with extra properties
         auth_headers = {
@@ -1357,7 +1358,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images"
         response, content = self.http.request(path, 'POST',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 201)
+        self.assertEqual(201, response.status)
         data = jsonutils.loads(content)
         image_id = data['image']['id']
 
@@ -1376,7 +1377,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'PUT',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 403)
+        self.assertEqual(403, response.status)
 
         # Attempt to create properties which are forbidden
         auth_headers = {
@@ -1391,7 +1392,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'PUT',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 403)
+        self.assertEqual(403, response.status)
 
         # Attempt to update, create and delete properties
         auth_headers = {
@@ -1408,7 +1409,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'PUT',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
 
         # Returned image entity should reflect the changes
         image = jsonutils.loads(content)
@@ -1433,7 +1434,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'DELETE',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
 
         # This image should be no longer be directly accessible
         auth_headers = {
@@ -1442,7 +1443,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'HEAD',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 404)
+        self.assertEqual(404, response.status)
 
     def test_property_protections_special_chars(self):
         # Enable property protection
@@ -1466,7 +1467,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images"
         response, content = self.http.request(path, 'POST',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 201)
+        self.assertEqual(201, response.status)
         data = jsonutils.loads(content)
         image_id = data['image']['id']
 
@@ -1482,7 +1483,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'PUT',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         image = jsonutils.loads(content)
         self.assertEqual('1',
                          image['image']['properties']['x_all_permitted_admin'])
@@ -1497,7 +1498,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'PUT',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         image = jsonutils.loads(content)
         self.assertEqual(
             '1', image['image']['properties']['x_all_permitted_joe_soap'])
@@ -1510,7 +1511,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'HEAD',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         self.assertEqual('1', response.get(
             'x-image-meta-property-x_all_permitted_admin'))
         self.assertEqual('1', response.get(
@@ -1521,7 +1522,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'HEAD',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         self.assertEqual('1', response.get(
             'x-image-meta-property-x_all_permitted_admin'))
         self.assertEqual('1', response.get(
@@ -1540,7 +1541,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'PUT',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         image = jsonutils.loads(content)
         self.assertEqual('2',
                          image['image']['properties']['x_all_permitted_admin'])
@@ -1555,7 +1556,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'PUT',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         image = jsonutils.loads(content)
         self.assertEqual(
             '2', image['image']['properties']['x_all_permitted_joe_soap'])
@@ -1573,7 +1574,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'PUT',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         image = jsonutils.loads(content)
         self.assertNotIn('x_all_permitted_admin', image['image']['properties'])
         auth_headers = {
@@ -1586,7 +1587,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'PUT',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         image = jsonutils.loads(content)
         self.assertNotIn('x_all_permitted_joe_soap',
                          image['image']['properties'])
@@ -1603,7 +1604,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'PUT',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 403)
+        self.assertEqual(403, response.status)
         auth_headers = {
             'X-Auth-Token': 'user1:tenant1:joe_soap',
         }
@@ -1614,7 +1615,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'PUT',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 403)
+        self.assertEqual(403, response.status)
 
         # Verify neither admin nor unknown role can read properties marked with
         # '!'
@@ -1629,7 +1630,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images"
         response, content = self.http.request(path, 'POST',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 201)
+        self.assertEqual(201, response.status)
         data = jsonutils.loads(content)
         image_id = data['image']['id']
         auth_headers = {
@@ -1638,7 +1639,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'HEAD',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         self.assertRaises(KeyError,
                           response.get, 'X-Image-Meta-Property-x_none_read')
         auth_headers = {
@@ -1647,7 +1648,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'HEAD',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
         self.assertRaises(KeyError,
                           response.get, 'X-Image-Meta-Property-x_none_read')
 
@@ -1664,7 +1665,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images"
         response, content = self.http.request(path, 'POST',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 201)
+        self.assertEqual(201, response.status)
         data = jsonutils.loads(content)
         image_id = data['image']['id']
         auth_headers = {
@@ -1677,7 +1678,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'PUT',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 403)
+        self.assertEqual(403, response.status)
         auth_headers = {
             'X-Auth-Token': 'user1:tenant1:joe_soap',
         }
@@ -1688,7 +1689,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'PUT',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 403)
+        self.assertEqual(403, response.status)
 
         # Verify neither admin nor unknown role can delete properties marked
         # with '!'
@@ -1703,7 +1704,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images"
         response, content = self.http.request(path, 'POST',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 201)
+        self.assertEqual(201, response.status)
         data = jsonutils.loads(content)
         image_id = data['image']['id']
         auth_headers = {
@@ -1716,7 +1717,7 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'PUT',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 403)
+        self.assertEqual(403, response.status)
         auth_headers = {
             'X-Auth-Token': 'user1:tenant1:joe_soap',
         }
@@ -1727,4 +1728,4 @@ class TestApiWithFakeAuth(base.ApiTest):
         path = "/v1/images/%s" % image_id
         response, content = self.http.request(path, 'PUT',
                                               headers=auth_headers)
-        self.assertEqual(response.status, 403)
+        self.assertEqual(403, response.status)

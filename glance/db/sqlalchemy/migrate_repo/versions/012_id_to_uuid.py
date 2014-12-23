@@ -26,7 +26,6 @@ import migrate
 import sqlalchemy
 
 
-meta = sqlalchemy.MetaData()
 and_ = sqlalchemy.and_
 or_ = sqlalchemy.or_
 
@@ -35,19 +34,21 @@ def upgrade(migrate_engine):
     """
     Call the correct dialect-specific upgrade.
     """
+    meta = sqlalchemy.MetaData()
     meta.bind = migrate_engine
 
     t_images = _get_table('images', meta)
     t_image_members = _get_table('image_members', meta)
     t_image_properties = _get_table('image_properties', meta)
+
     dialect = migrate_engine.url.get_dialect().name
     if dialect == "sqlite":
-        _upgrade_sqlite(t_images, t_image_members, t_image_properties)
+        _upgrade_sqlite(meta, t_images, t_image_members, t_image_properties)
         _update_all_ids_to_uuids(t_images, t_image_members, t_image_properties)
     elif dialect == "ibm_db_sa":
-        _upgrade_db2(t_images, t_image_members, t_image_properties)
+        _upgrade_db2(meta, t_images, t_image_members, t_image_properties)
         _update_all_ids_to_uuids(t_images, t_image_members, t_image_properties)
-        _add_db2_constraints()
+        _add_db2_constraints(meta)
     else:
         _upgrade_other(t_images, t_image_members, t_image_properties, dialect)
 
@@ -56,6 +57,7 @@ def downgrade(migrate_engine):
     """
     Call the correct dialect-specific downgrade.
     """
+    meta = sqlalchemy.MetaData()
     meta.bind = migrate_engine
 
     t_images = _get_table('images', meta)
@@ -64,17 +66,17 @@ def downgrade(migrate_engine):
     dialect = migrate_engine.url.get_dialect().name
     if dialect == "sqlite":
         _update_all_uuids_to_ids(t_images, t_image_members, t_image_properties)
-        _downgrade_sqlite(t_images, t_image_members, t_image_properties)
+        _downgrade_sqlite(meta, t_images, t_image_members, t_image_properties)
     elif dialect == "ibm_db_sa":
-        _remove_db2_constraints()
+        _remove_db2_constraints(meta)
         _update_all_uuids_to_ids(t_images, t_image_members, t_image_properties)
-        _downgrade_db2(t_images, t_image_members, t_image_properties)
+        _downgrade_db2(meta, t_images, t_image_members, t_image_properties)
     else:
         _downgrade_other(t_images, t_image_members, t_image_properties,
                          dialect)
 
 
-def _upgrade_sqlite(t_images, t_image_members, t_image_properties):
+def _upgrade_sqlite(meta, t_images, t_image_members, t_image_properties):
     """
     Upgrade 011 -> 012 with special SQLite-compatible logic.
     """
@@ -141,10 +143,10 @@ def _upgrade_sqlite(t_images, t_image_members, t_image_properties):
     for command in sql_commands:
         meta.bind.execute(command)
 
-    _sqlite_table_swap(t_image_members, t_image_properties, t_images)
+    _sqlite_table_swap(meta, t_image_members, t_image_properties, t_images)
 
 
-def _upgrade_db2(t_images, t_image_members, t_image_properties):
+def _upgrade_db2(meta, t_images, t_image_members, t_image_properties):
     """
     Upgrade for DB2.
     """
@@ -236,8 +238,8 @@ def _upgrade_db2(t_images, t_image_members, t_image_properties):
     image_properties_backup.rename(name='image_properties')
 
 
-def _add_db2_constraints():
-    #Create the foreign keys
+def _add_db2_constraints(meta):
+    # Create the foreign keys
     sql_commands = [
         """ALTER TABLE image_members ADD CONSTRAINT member_image_id
             FOREIGN KEY (image_id)
@@ -250,8 +252,8 @@ def _add_db2_constraints():
         meta.bind.execute(command)
 
 
-def _remove_db2_constraints():
-    #remove the foreign keys constraints
+def _remove_db2_constraints(meta):
+    # Remove the foreign keys constraints
     sql_commands = [
         """ALTER TABLE image_members DROP CONSTRAINT member_image_id;""",
         """ALTER TABLE image_properties DROP CONSTRAINT property_image_id;"""
@@ -260,7 +262,7 @@ def _remove_db2_constraints():
         meta.bind.execute(command)
 
 
-def _downgrade_db2(t_images, t_image_members, t_image_properties):
+def _downgrade_db2(meta, t_images, t_image_members, t_image_properties):
     """
     Downgrade for DB2.
     """
@@ -352,7 +354,7 @@ def _downgrade_db2(t_images, t_image_members, t_image_properties):
     image_properties_old.rename(name='image_properties')
 
 
-def _downgrade_sqlite(t_images, t_image_members, t_image_properties):
+def _downgrade_sqlite(meta, t_images, t_image_members, t_image_properties):
     """
     Downgrade 012 -> 011 with special SQLite-compatible logic.
     """
@@ -419,7 +421,7 @@ def _downgrade_sqlite(t_images, t_image_members, t_image_properties):
     for command in sql_commands:
         meta.bind.execute(command)
 
-    _sqlite_table_swap(t_image_members, t_image_properties, t_images)
+    _sqlite_table_swap(meta, t_image_members, t_image_properties, t_images)
 
 
 def _upgrade_other(t_images, t_image_members, t_image_properties, dialect):
@@ -456,15 +458,29 @@ def _downgrade_other(t_images, t_image_members, t_image_properties, dialect):
 
     _update_all_uuids_to_ids(t_images, t_image_members, t_image_properties)
 
-    t_images.c.id.alter(sqlalchemy.Integer(), primary_key=True)
-    t_image_members.c.image_id.alter(sqlalchemy.Integer())
-    t_image_properties.c.image_id.alter(sqlalchemy.Integer())
+    t_images.c.id.alter(primary_key=True)
+    # we have to use raw sql for postgresql as we have errors
+    # if we use alter type on sqlalchemy
+    if dialect == 'postgresql':
+        t_images.bind.execute('''ALTER TABLE images
+                                 ALTER COLUMN id TYPE INTEGER
+                                 USING (id::INTEGER)''')
+        t_images.bind.execute('''ALTER TABLE image_members
+                                 ALTER COLUMN image_id TYPE INTEGER
+                                 USING (image_id::INTEGER)''')
+        t_images.bind.execute('''ALTER TABLE image_properties
+                                 ALTER COLUMN image_id TYPE INTEGER
+                                 USING (image_id::INTEGER)''')
+    else:
+        t_images.c.id.alter(sqlalchemy.Integer())
+        t_image_members.c.image_id.alter(sqlalchemy.Integer())
+        t_image_properties.c.image_id.alter(sqlalchemy.Integer())
 
     for fk in foreign_keys:
         fk.create()
 
 
-def _sqlite_table_swap(t_image_members, t_image_properties, t_images):
+def _sqlite_table_swap(meta, t_image_members, t_image_properties, t_images):
     t_image_members.drop()
     t_image_properties.drop()
     t_images.drop()
@@ -522,23 +538,22 @@ def _update_all_ids_to_uuids(t_images, t_image_members, t_image_properties):
         old_id = image["id"]
         new_id = str(uuid.uuid4())
 
-        t_images.update().\
-            where(t_images.c.id == old_id).\
-            values(id=new_id).execute()
+        t_images.update().where(
+            t_images.c.id == old_id).values(id=new_id).execute()
 
-        t_image_members.update().\
-            where(t_image_members.c.image_id == old_id).\
-            values(image_id=new_id).execute()
+        t_image_members.update().where(
+            t_image_members.c.image_id == old_id).values(
+                image_id=new_id).execute()
 
-        t_image_properties.update().\
-            where(t_image_properties.c.image_id == old_id).\
-            values(image_id=new_id).execute()
+        t_image_properties.update().where(
+            t_image_properties.c.image_id == old_id).values(
+                image_id=new_id).execute()
 
-        t_image_properties.update().\
-            where(and_(or_(t_image_properties.c.name == 'kernel_id',
-                           t_image_properties.c.name == 'ramdisk_id'),
-                       t_image_properties.c.value == old_id)).\
-            values(value=new_id).execute()
+        t_image_properties.update().where(
+            and_(or_(t_image_properties.c.name == 'kernel_id',
+                     t_image_properties.c.name == 'ramdisk_id'),
+                 t_image_properties.c.value == old_id)).values(
+                     value=new_id).execute()
 
 
 def _update_all_uuids_to_ids(t_images, t_image_members, t_image_properties):
@@ -549,22 +564,22 @@ def _update_all_uuids_to_ids(t_images, t_image_members, t_image_properties):
     for image in images:
         old_id = image["id"]
 
-        t_images.update().\
-            where(t_images.c.id == old_id).\
-            values(id=str(new_id)).execute()
+        t_images.update().where(
+            t_images.c.id == old_id).values(
+                id=str(new_id)).execute()
 
-        t_image_members.update().\
-            where(t_image_members.c.image_id == old_id).\
-            values(image_id=str(new_id)).execute()
+        t_image_members.update().where(
+            t_image_members.c.image_id == old_id).values(
+                image_id=str(new_id)).execute()
 
-        t_image_properties.update().\
-            where(t_image_properties.c.image_id == old_id).\
-            values(image_id=str(new_id)).execute()
+        t_image_properties.update().where(
+            t_image_properties.c.image_id == old_id).values(
+                image_id=str(new_id)).execute()
 
-        t_image_properties.update().\
-            where(and_(or_(t_image_properties.c.name == 'kernel_id',
-                           t_image_properties.c.name == 'ramdisk_id'),
-                       t_image_properties.c.value == old_id)).\
-            values(value=str(new_id)).execute()
+        t_image_properties.update().where(
+            and_(or_(t_image_properties.c.name == 'kernel_id',
+                     t_image_properties.c.name == 'ramdisk_id'),
+                 t_image_properties.c.value == old_id)).values(
+                     value=str(new_id)).execute()
 
         new_id += 1

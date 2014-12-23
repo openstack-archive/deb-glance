@@ -25,3 +25,8 @@ doc/source/api
 # IDE files
 .project
 .pydevproject
+.idea
+.e4p
+.eric5project/
+.issues/
+.ropeproject

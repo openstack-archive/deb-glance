@@ -12,10 +12,9 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-
-import webob.exc
-
 import glance_store
+from oslo.utils import excutils
+import webob.exc
 
 import glance.api.policy
 from glance.common import exception
@@ -23,14 +22,14 @@ from glance.common import utils
 from glance.common import wsgi
 import glance.db
 import glance.gateway
+from glance import i18n
 import glance.notifier
-from glance.openstack.common import excutils
-from glance.openstack.common import gettextutils
 import glance.openstack.common.log as logging
 
 
 LOG = logging.getLogger(__name__)
-_LE = gettextutils._LE
+_ = i18n._
+_LE = i18n._LE
 
 
 class ImageDataController(object):
@@ -76,8 +75,9 @@ class ImageDataController(object):
                 image_repo.save(image)
             except exception.NotFound as e:
                 msg = (_("Image %(id)s could not be found after upload."
-                         "The image may have been deleted during the upload: "
-                         "%(error)s Cleaning up the chunks uploaded") %
+                         "The image may have been deleted during the "
+                         "upload: %(error)s Cleaning up the chunks "
+                         "uploaded") %
                        {'id': image_id,
                         'error': utils.exception_to_str(e)})
                 LOG.warn(msg)
@@ -95,8 +95,8 @@ class ImageDataController(object):
             LOG.debug("Cannot save data for image %(id)s: %(e)s",
                       {'id': image_id, 'e': utils.exception_to_str(e)})
             self._restore(image_repo, image)
-            raise webob.exc.HTTPBadRequest(explanation=
-                                           utils.exception_to_str(e))
+            raise webob.exc.HTTPBadRequest(
+                explanation=utils.exception_to_str(e))
 
         except glance_store.StoreAddDisabled:
             msg = _("Error in store configuration. Adding images to store "
@@ -108,7 +108,7 @@ class ImageDataController(object):
 
         except exception.InvalidImageStatusTransition as e:
             msg = utils.exception_to_str(e)
-            LOG.debug(msg)
+            LOG.exception(msg)
             raise webob.exc.HTTPConflict(explanation=e.msg, request=req)
 
         except exception.Forbidden as e:
@@ -218,12 +218,12 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
             raise webob.exc.HTTPNotFound(explanation=e.msg)
         except exception.Forbidden as e:
             raise webob.exc.HTTPForbidden(explanation=e.msg)
-        #NOTE(saschpe): "response.app_iter = ..." currently resets Content-MD5
+        # NOTE(saschpe): "response.app_iter = ..." currently resets Content-MD5
         # (https://github.com/Pylons/webob/issues/86), so it should be set
         # afterwards for the time being.
         if image.checksum:
             response.headers['Content-MD5'] = image.checksum
-        #NOTE(markwash): "response.app_iter = ..." also erroneously resets the
+        # NOTE(markwash): "response.app_iter = ..." also erroneously resets the
         # content-length
         response.headers['Content-Length'] = str(image.size)
 

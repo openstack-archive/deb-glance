@@ -23,16 +23,20 @@ import optparse
 import os
 import sys
 
+from oslo.serialization import jsonutils
 import six.moves.urllib.parse as urlparse
+from webob import exc
 
+from glance.common import exception
 from glance.common import utils
-from glance.openstack.common import gettextutils
-from glance.openstack.common import jsonutils
+from glance import i18n
 from glance.openstack.common import log
 
 LOG = log.getLogger(__name__)
-_LI = gettextutils._LI
-_LE = gettextutils._LE
+_ = i18n._
+_LI = i18n._LI
+_LE = i18n._LE
+_LW = i18n._LW
 
 # If ../glance/__init__.py exists, add ../ to Python search path, so that
 # it will override what happens to be installed in /usr/(local/)lib/python...
@@ -60,22 +64,6 @@ IMAGE_ALREADY_PRESENT_MESSAGE = _('The image %s is already present on '
                                   'not find it. This indicates that we '
                                   'do not have permissions to see all '
                                   'the images on the slave server.')
-
-
-class AuthenticationException(Exception):
-    pass
-
-
-class ImageAlreadyPresentException(Exception):
-    pass
-
-
-class ServerErrorException(Exception):
-    pass
-
-
-class UploadException(Exception):
-    pass
 
 
 class ImageService(object):
@@ -121,14 +109,25 @@ class ImageService(object):
                      'status': code_description,
                      'headers': repr(headers)})
 
-        if code in [400, 500]:
-            raise ServerErrorException(response.read())
+        if code == 400:
+            raise exc.HTTPBadRequest(
+                explanation=response.read())
 
-        if code in [401, 403]:
-            raise AuthenticationException(response.read())
+        if code == 500:
+            raise exc.HTTPInternalServerError(
+                explanation=response.read())
+
+        if code == 401:
+            raise exc.HTTPUnauthorized(
+                explanation=response.read())
+
+        if code == 403:
+            raise exc.HTTPForbidden(
+                explanation=response.read())
 
         if code == 409:
-            raise ImageAlreadyPresentException(response.read())
+            raise exc.HTTPConflict(
+                explanation=response.read())
 
         if ignore_result_body:
             # NOTE: because we are pipelining requests through a single HTTP
@@ -442,9 +441,9 @@ def replication_load(options, args):
                         headers, body = client.add_image(meta, img_file)
                         _check_upload_response_headers(headers, body)
                         updated.append(meta['id'])
-                    except ImageAlreadyPresentException:
+                    except exc.HTTPConflict:
                         LOG.error(_LE(IMAGE_ALREADY_PRESENT_MESSAGE)
-                                  % image_uuid)
+                                  % image_uuid)  # noqa
 
     return updated
 
@@ -514,8 +513,8 @@ def replication_livecopy(options, args):
                                                            image_response)
                     _check_upload_response_headers(headers, body)
                     updated.append(image['id'])
-                except ImageAlreadyPresentException:
-                    LOG.error(_LE(IMAGE_ALREADY_PRESENT_MESSAGE) % image['id'])
+                except exc.HTTPConflict:
+                    LOG.error(_LE(IMAGE_ALREADY_PRESENT_MESSAGE) % image['id'])  # noqa
 
     return updated
 
@@ -560,7 +559,7 @@ def replication_compare(options, args):
 
             for key in image:
                 if image[key] != headers.get(key, None):
-                    LOG.info(_LI('%(image_id)s: field %(key)s differs '
+                    LOG.warn(_LW('%(image_id)s: field %(key)s differs '
                                  '(source is %(master_value)s, destination '
                                  'is %(slave_value)s)')
                              % {'image_id': image['id'],
@@ -573,7 +572,7 @@ def replication_compare(options, args):
                               % {'image_id': image['id']})
 
         elif image['status'] == 'active':
-            LOG.info(_LI('Image %s entirely missing from the destination')
+            LOG.warn(_LW('Image %s entirely missing from the destination')
                      % image['id'])
             differences[image['id']] = 'missing'
 
@@ -594,7 +593,7 @@ def _check_upload_response_headers(headers, body):
                 return
 
         except Exception:
-            raise UploadException('Image upload problem: %s' % body)
+            raise exception.UploadException(body)
 
 
 def _image_present(client, image_uuid):
@@ -736,10 +735,10 @@ def main():
     try:
         command(options, args)
     except TypeError as e:
-        LOG.error(_LE(command.__doc__) % {'prog': command.__name__})
+        LOG.error(_LE(command.__doc__) % {'prog': command.__name__})  # noqa
         sys.exit("ERROR: %s" % e)
     except ValueError as e:
-        LOG.error(_LE(command.__doc__) % {'prog': command.__name__})
+        LOG.error(_LE(command.__doc__) % {'prog': command.__name__})  # noqa
         sys.exit("ERROR: %s" % e)
 
 

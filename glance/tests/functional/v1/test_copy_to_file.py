@@ -20,14 +20,14 @@ based storage backend.
 """
 
 import hashlib
-import httplib2
 import tempfile
 import time
 
+import httplib2
+from oslo.serialization import jsonutils
+from oslo.utils import units
 from six.moves import xrange
 
-from glance.openstack.common import jsonutils
-from glance.openstack.common import units
 from glance.tests import functional
 from glance.tests.functional.store_utils import get_http_uri
 from glance.tests.functional.store_utils import setup_http
@@ -65,7 +65,7 @@ class TestCopyToFile(functional.FunctionalTest):
         http = httplib2.Http()
         response, content = http.request(path, 'POST', headers=headers,
                                          body=image_data)
-        self.assertEqual(response.status, 201, content)
+        self.assertEqual(201, response.status, content)
         data = jsonutils.loads(content)
 
         original_image_id = data['image']['id']
@@ -81,7 +81,7 @@ class TestCopyToFile(functional.FunctionalTest):
         path = "http://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
         http = httplib2.Http()
         response, content = http.request(path, 'POST', headers=headers)
-        self.assertEqual(response.status, 201, content)
+        self.assertEqual(201, response.status, content)
         data = jsonutils.loads(content)
 
         copy_image_id = data['image']['id']
@@ -96,7 +96,7 @@ class TestCopyToFile(functional.FunctionalTest):
                 time.sleep(0.01)
                 http = httplib2.Http()
                 response, content = http.request(path, 'HEAD')
-                self.assertEqual(response.status, 200)
+                self.assertEqual(200, response.status)
                 if response['x-image-meta-status'] == expected_status:
                     return
             self.fail('unexpected image status %s' %
@@ -105,21 +105,21 @@ class TestCopyToFile(functional.FunctionalTest):
 
         http = httplib2.Http()
         response, content = http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
-        self.assertEqual(response['content-length'], str(FIVE_KB))
+        self.assertEqual(200, response.status)
+        self.assertEqual(str(FIVE_KB), response['content-length'])
 
-        self.assertEqual(content, "*" * FIVE_KB)
-        self.assertEqual(hashlib.md5(content).hexdigest(),
-                         hashlib.md5("*" * FIVE_KB).hexdigest())
-        self.assertEqual(data['image']['size'], FIVE_KB)
-        self.assertEqual(data['image']['name'], "copied")
+        self.assertEqual("*" * FIVE_KB, content)
+        self.assertEqual(hashlib.md5("*" * FIVE_KB).hexdigest(),
+                         hashlib.md5(content).hexdigest())
+        self.assertEqual(FIVE_KB, data['image']['size'])
+        self.assertEqual("copied", data['image']['name'])
 
         # DELETE original image
         path = "http://%s:%d/v1/images/%s" % ("127.0.0.1", self.api_port,
                                               original_image_id)
         http = httplib2.Http()
         response, content = http.request(path, 'DELETE')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
 
         # GET image again to make sure the existence of the original
         # image in from_store is not depended on
@@ -127,21 +127,21 @@ class TestCopyToFile(functional.FunctionalTest):
                                               copy_image_id)
         http = httplib2.Http()
         response, content = http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
-        self.assertEqual(response['content-length'], str(FIVE_KB))
+        self.assertEqual(200, response.status)
+        self.assertEqual(str(FIVE_KB), response['content-length'])
 
-        self.assertEqual(content, "*" * FIVE_KB)
-        self.assertEqual(hashlib.md5(content).hexdigest(),
-                         hashlib.md5("*" * FIVE_KB).hexdigest())
-        self.assertEqual(data['image']['size'], FIVE_KB)
-        self.assertEqual(data['image']['name'], "copied")
+        self.assertEqual("*" * FIVE_KB, content)
+        self.assertEqual(hashlib.md5("*" * FIVE_KB).hexdigest(),
+                         hashlib.md5(content).hexdigest())
+        self.assertEqual(FIVE_KB, data['image']['size'])
+        self.assertEqual("copied", data['image']['name'])
 
         # DELETE copied image
         path = "http://%s:%d/v1/images/%s" % ("127.0.0.1", self.api_port,
                                               copy_image_id)
         http = httplib2.Http()
         response, content = http.request(path, 'DELETE')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
 
         self.stop_servers()
 
@@ -177,11 +177,11 @@ class TestCopyToFile(functional.FunctionalTest):
         path = "http://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
         http = httplib2.Http()
         response, content = http.request(path, 'POST', headers=headers)
-        self.assertEqual(response.status, 201, content)
+        self.assertEqual(201, response.status, content)
         data = jsonutils.loads(content)
 
         copy_image_id = data['image']['id']
-        self.assertEqual(data['image']['status'], 'queued', content)
+        self.assertEqual('queued', data['image']['status'], content)
 
         path = "http://%s:%d/v1/images/%s" % ("127.0.0.1", self.api_port,
                                               copy_image_id)
@@ -191,7 +191,7 @@ class TestCopyToFile(functional.FunctionalTest):
                 time.sleep(0.01)
                 http = httplib2.Http()
                 response, content = http.request(path, 'HEAD')
-                self.assertEqual(response.status, 200)
+                self.assertEqual(200, response.status)
                 if response['x-image-meta-status'] == expected_status:
                     return
             self.fail('unexpected image status %s' %
@@ -202,18 +202,18 @@ class TestCopyToFile(functional.FunctionalTest):
         # GET image and make sure image content is as expected
         http = httplib2.Http()
         response, content = http.request(path, 'GET')
-        self.assertEqual(response.status, 200 if exists else 404)
+        self.assertEqual(200 if exists else 404, response.status)
 
         if exists:
-            self.assertEqual(response['content-length'], str(FIVE_KB))
-            self.assertEqual(content, "*" * FIVE_KB)
-            self.assertEqual(hashlib.md5(content).hexdigest(),
-                             hashlib.md5("*" * FIVE_KB).hexdigest())
+            self.assertEqual(str(FIVE_KB), response['content-length'])
+            self.assertEqual("*" * FIVE_KB, content)
+            self.assertEqual(hashlib.md5("*" * FIVE_KB).hexdigest(),
+                             hashlib.md5(content).hexdigest())
 
         # DELETE copied image
         http = httplib2.Http()
         response, content = http.request(path, 'DELETE')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
 
         self.stop_servers()
 
@@ -248,9 +248,9 @@ class TestCopyToFile(functional.FunctionalTest):
         path = "http://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
         http = httplib2.Http()
         response, content = http.request(path, 'POST', headers=headers)
-        self.assertEqual(response.status, 400, content)
+        self.assertEqual(400, response.status, content)
 
-        expected = 'External sourcing not supported for store \'file\''
+        expected = 'External source are not supported: \'%s\'' % copy_from
         msg = 'expected "%s" in "%s"' % (expected, content)
         self.assertTrue(expected in content, msg)
 
@@ -274,9 +274,9 @@ class TestCopyToFile(functional.FunctionalTest):
         path = "http://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
         http = httplib2.Http()
         response, content = http.request(path, 'POST', headers=headers)
-        self.assertEqual(response.status, 400, content)
+        self.assertEqual(400, response.status, content)
 
-        expected = 'External sourcing not supported for store \'swift+config\''
+        expected = 'External source are not supported: \'swift+config://xxx\''
         msg = 'expected "%s" in "%s"' % (expected, content)
         self.assertTrue(expected in content, msg)
 

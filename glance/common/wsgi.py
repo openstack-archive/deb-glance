@@ -34,7 +34,9 @@ from eventlet.green import socket
 from eventlet.green import ssl
 import eventlet.greenio
 import eventlet.wsgi
+from oslo.concurrency import processutils
 from oslo.config import cfg
+from oslo.serialization import jsonutils
 import routes
 import routes.middleware
 import six
@@ -45,10 +47,10 @@ from webob import multidict
 from glance.common import exception
 from glance.common import utils
 from glance import i18n
-from glance.openstack.common import jsonutils
 import glance.openstack.common.log as logging
-from glance.openstack.common import processutils
 
+
+_ = i18n._
 
 bind_opts = [
     cfg.StrOpt('bind_host', default='0.0.0.0',
@@ -79,11 +81,6 @@ eventlet_opts = [
                help=_('The number of child process workers that will be '
                       'created to service requests. The default will be '
                       'equal to the number of CPUs available.')),
-    cfg.StrOpt('eventlet_hub', default='poll',
-               help=_('Name of eventlet hub to use. Traditionally, we have '
-                      'only supported \'poll\', however \'selects\' may be '
-                      'appropriate for some platforms. See '
-                      'http://eventlet.net/doc/hubs.html for more details.')),
     cfg.IntOpt('max_header_line', default=16384,
                help=_('Maximum line size of message headers to be accepted. '
                       'max_header_line may need to be increased when using '
@@ -197,11 +194,15 @@ def get_socket(default_port):
 
 def set_eventlet_hub():
     try:
-        eventlet.hubs.use_hub(cfg.CONF.eventlet_hub)
+        eventlet.hubs.use_hub('poll')
     except Exception:
-        msg = _("eventlet '%s' hub is not available on this platform")
-        raise exception.WorkerCreationFailure(
-            reason=msg % cfg.CONF.eventlet_hub)
+        try:
+            eventlet.hubs.use_hub('selects')
+        except Exception:
+            msg = _("eventlet 'poll' nor 'selects' hubs are available "
+                    "on this platform")
+            raise exception.WorkerCreationFailure(
+                reason=msg)
 
 
 class Server(object):
@@ -255,7 +256,8 @@ class Server(object):
         self.sock = get_socket(default_port)
 
         os.umask(0o27)  # ensure files are created with the correct privileges
-        self.logger = logging.getLogger('glance.wsgi.server')
+        self._logger = logging.getLogger("eventlet.wsgi.server")
+        self._wsgi_logger = logging.WritableLogger(self._logger)
 
         if CONF.workers == 0:
             # Useful for profiling, test, debug etc.
@@ -263,7 +265,7 @@ class Server(object):
             self.pool.spawn_n(self._single_run, self.application, self.sock)
             return
         else:
-            self.logger.info(_("Starting %d workers") % CONF.workers)
+            LOG.info(_("Starting %d workers") % CONF.workers)
             signal.signal(signal.SIGTERM, kill_children)
             signal.signal(signal.SIGINT, kill_children)
             signal.signal(signal.SIGHUP, hup)
@@ -278,14 +280,13 @@ class Server(object):
             try:
                 pid, status = os.wait()
                 if os.WIFEXITED(status) or os.WIFSIGNALED(status):
-                    self.logger.info(_('Removing dead child %s') % pid)
+                    LOG.info(_('Removing dead child %s') % pid)
                     self.children.remove(pid)
                     if os.WIFEXITED(status) and os.WEXITSTATUS(status) != 0:
-                        self.logger.error(_('Not respawning child %d, cannot '
-                                            'recover from termination') % pid)
+                        LOG.error(_('Not respawning child %d, cannot '
+                                    'recover from termination') % pid)
                         if not self.children:
-                            self.logger.info(
-                                _('All workers have terminated. Exiting'))
+                            LOG.info(_('All workers have terminated. Exiting'))
                             self.running = False
                     else:
                         self.run_child()
@@ -293,11 +294,11 @@ class Server(object):
                 if err.errno not in (errno.EINTR, errno.ECHILD):
                     raise
             except KeyboardInterrupt:
-                self.logger.info(_('Caught keyboard interrupt. Exiting.'))
+                LOG.info(_('Caught keyboard interrupt. Exiting.'))
                 break
         eventlet.greenio.shutdown_safe(self.sock)
         self.sock.close()
-        self.logger.debug('Exited')
+        LOG.debug('Exited')
 
     def wait(self):
         """Wait until all servers have completed running."""
@@ -319,12 +320,12 @@ class Server(object):
             # and is respawned unnecessarily as a result
             signal.signal(signal.SIGINT, signal.SIG_IGN)
             self.run_server()
-            self.logger.info(_('Child %d exiting normally') % os.getpid())
+            LOG.info(_('Child %d exiting normally') % os.getpid())
             # self.pool.waitall() has been called by run_server, so
             # its safe to exit here
             sys.exit(0)
         else:
-            self.logger.info(_('Started child %s') % pid)
+            LOG.info(_('Started child %s') % pid)
             self.children.append(pid)
 
     def run_server(self):
@@ -338,7 +339,7 @@ class Server(object):
         try:
             eventlet.wsgi.server(self.sock,
                                  self.application,
-                                 log=logging.WritableLogger(self.logger),
+                                 log=self._wsgi_logger,
                                  custom_pool=self.pool,
                                  debug=False)
         except socket.error as err:
@@ -348,9 +349,9 @@ class Server(object):
 
     def _single_run(self, application, sock):
         """Start a WSGI server in a new green thread."""
-        self.logger.info(_("Starting single process server"))
+        LOG.info(_("Starting single process server"))
         eventlet.wsgi.server(sock, application, custom_pool=self.pool,
-                             log=logging.WritableLogger(self.logger),
+                             log=self._wsgi_logger,
                              debug=False)
 
 
@@ -433,7 +434,7 @@ class Debug(Middleware):
             sys.stdout.write(part)
             sys.stdout.flush()
             yield part
-        print
+        print()
 
 
 class APIMapper(routes.Mapper):

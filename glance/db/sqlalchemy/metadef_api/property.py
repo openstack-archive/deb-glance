@@ -25,6 +25,7 @@ from glance import i18n
 import glance.openstack.common.log as os_logging
 
 LOG = os_logging.getLogger(__name__)
+_ = i18n._
 _LW = i18n._LW
 
 
@@ -36,10 +37,10 @@ def _get(context, property_id, session):
         property_rec = query.one()
 
     except sa_orm.exc.NoResultFound:
-        LOG.warn(_LW("Metadata definition property not found for id=%s",
-                     property_id))
-        raise exc.MetadefRecordNotFound(
-            record_type='property', id=property_id)
+        msg = (_("Metadata definition property not found for id=%s")
+               % property_id)
+        LOG.warn(msg)
+        raise exc.MetadefPropertyNotFound(msg)
 
     return property_rec
 
@@ -68,7 +69,7 @@ def get(context, namespace_name, name, session):
     """get a property; raise if ns not found/visible or property not found"""
 
     property_rec = _get_by_name(context, namespace_name, name, session)
-    return property_rec.as_dict()
+    return property_rec.to_dict()
 
 
 def get_all(context, namespace_name, session):
@@ -79,7 +80,7 @@ def get_all(context, namespace_name, session):
 
     properties_list = []
     for prop in properties:
-        properties_list.append(prop.as_dict())
+        properties_list.append(prop.to_dict())
     return properties_list
 
 
@@ -104,7 +105,7 @@ def create(context, namespace_name, values, session):
             property_name=property_rec.name,
             namespace_name=namespace_name)
 
-    return property_rec.as_dict()
+    return property_rec.to_dict()
 
 
 def update(context, namespace_name, property_id, values, session):
@@ -131,7 +132,7 @@ def update(context, namespace_name, property_id, values, session):
                    'namespace_name': namespace_name})
         raise exc.MetadefDuplicateProperty(emsg)
 
-    return property_rec.as_dict()
+    return property_rec.to_dict()
 
 
 def delete(context, namespace_name, property_name, session):
@@ -141,7 +142,7 @@ def delete(context, namespace_name, property_name, session):
         session.delete(property_rec)
         session.flush()
 
-    return property_rec.as_dict()
+    return property_rec.to_dict()
 
 
 def delete_namespace_content(context, namespace_id, session):

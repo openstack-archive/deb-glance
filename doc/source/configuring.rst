@@ -127,6 +127,20 @@ The numeric prefixes in the example above are only necessary if a specific
 parse ordering is required (i.e. if an individual config option set in an
 earlier fragment is overridden in a later fragment).
 
+Note that ``glance-manage`` currently loads configuration from three files:
+
+* ``glance-registry.conf``
+* ``glance-api.conf``
+* and the newly created ``glance-manage.conf``
+
+By default ``glance-manage.conf`` only specifies a custom logging file but
+other configuration options for ``glance-manage`` should be migrated in there.
+**Warning**: Options set in ``glance-manage.conf`` will override options of
+the same section and name set in the other two. Similarly, options in
+``glance-api.conf`` will override options set in ``glance-registry.conf``.
+This tool is planning to stop loading ``glance-registry.conf`` and
+``glance-api.conf`` in a future cycle.
+
 Configuring Server Startup Options
 ----------------------------------
 
@@ -366,7 +380,7 @@ Optional. Default: ``file``
 Can only be specified in configuration files.
 
 Sets the storage backend to use by default when storing images in Glance.
-Available options for this option are (``file``, ``swift``, ``s3``, ``rbd``, ``sheepdog``, 
+Available options for this option are (``file``, ``swift``, ``s3``, ``rbd``, ``sheepdog``,
 ``cinder`` or ``vsphere``).
 
 Configuring Glance Image Size Limit
@@ -564,6 +578,41 @@ Can only be specified in configuration files.
 If set to True enables multi-tenant storage mode which causes Glance images
 to be stored in tenant specific Swift accounts. When set to False Glance
 stores all images in a single Swift account.
+
+* ``swift_store_multiple_containers_seed``
+
+Optional. Default: ``0``
+
+Can only be specified in configuration files.
+
+`This option is specific to the Swift storage backend.`
+
+When set to 0, a single-tenant store will only use one container to store all
+images. When set to an integer value between 1 and 32, a single-tenant store
+will use multiple containers to store images, and this value will determine
+how many characters from an image UUID are checked when determining what
+container to place the image in. The maximum number of containers that will be
+created is approximately equal to 16^N. This setting is used only when
+swift_store_multi_tentant is disabled.
+
+Example: if this config option is set to 3 and
+swift_store_container = 'glance', then an image with UUID
+'fdae39a1-bac5-4238-aba4-69bcc726e848' would be placed in the container
+'glance_fda'. All dashes in the UUID are included when creating the container
+name but do not count toward the character limit, so in this example with N=10
+the container name would be 'glance_fdae39a1-ba'.
+
+When choosing the value for swift_store_multiple_containers_seed, deployers
+should discuss a suitable value with their swift operations team. The authors
+of this option recommend that large scale deployments use a value of '2',
+which will create a maximum of ~256 containers. Choosing a higher number than
+this, even in extremely large scale deployments, may not have any positive
+impact on performance and could lead to a large number of empty, unused
+containers. The largest of deployments could notice an increase in performance
+if swift rate limits are throttling on single container. Note: If dynamic
+container creation is turned off, any value for this configuration option
+higher than '1' may be unreasonable as the deployer would have to manually
+create each container.
 
 * ``swift_store_admin_tenants``
 
@@ -1164,7 +1213,7 @@ to be run via cron on a regular basis. See more about this executable in
 Configuring the Glance Registry
 -------------------------------
 
-There are a number of configuration options in Glance that control how 
+There are a number of configuration options in Glance that control how
 this registry server operates. These configuration options are specified in the
 ``glance-registry.conf`` config file in the section ``[DEFAULT]``.
 
@@ -1331,3 +1380,15 @@ glance-registry service separately, by default they place at
 to make profiling work as designed operator needs to make those values of HMAC
 key be consistent for all services in your deployment. Without HMAC key the
 profiling will not be triggered even profiling feature is enabled.
+
+Configuring Glance public endpoint
+----------------------------------
+
+When Glance API service is ran dehind a proxy, operator probably need to
+configure a proper public endpoint to versions URL instead of use host owned
+which run service really. Glance allows configure a public endpoint URL to
+represent the proxy's URL.
+
+* ``public_endpoint=<None|URL>``
+
+Optional. Default: ``None``

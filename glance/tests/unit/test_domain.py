@@ -19,11 +19,12 @@ import uuid
 
 import mock
 from oslo.config import cfg
+import oslo.utils.importutils
+from oslo.utils import timeutils
 
 import glance.async
 from glance.common import exception
 from glance import domain
-from glance.openstack.common import timeutils
 import glance.tests.utils as test_utils
 
 
@@ -45,38 +46,38 @@ class TestImageFactory(test_utils.BaseTestCase):
         self.assertIsNotNone(image.image_id)
         self.assertIsNotNone(image.created_at)
         self.assertEqual(image.created_at, image.updated_at)
-        self.assertEqual(image.status, 'queued')
-        self.assertEqual(image.visibility, 'private')
+        self.assertEqual('queued', image.status)
+        self.assertEqual('private', image.visibility)
         self.assertIsNone(image.owner)
         self.assertIsNone(image.name)
         self.assertIsNone(image.size)
-        self.assertEqual(image.min_disk, 0)
-        self.assertEqual(image.min_ram, 0)
+        self.assertEqual(0, image.min_disk)
+        self.assertEqual(0, image.min_ram)
         self.assertFalse(image.protected)
         self.assertIsNone(image.disk_format)
         self.assertIsNone(image.container_format)
-        self.assertEqual(image.extra_properties, {})
-        self.assertEqual(image.tags, set([]))
+        self.assertEqual({}, image.extra_properties)
+        self.assertEqual(set([]), image.tags)
 
     def test_new_image(self):
         image = self.image_factory.new_image(
             image_id=UUID1, name='image-1', min_disk=256,
             owner=TENANT1)
-        self.assertEqual(image.image_id, UUID1)
+        self.assertEqual(UUID1, image.image_id)
         self.assertIsNotNone(image.created_at)
         self.assertEqual(image.created_at, image.updated_at)
-        self.assertEqual(image.status, 'queued')
-        self.assertEqual(image.visibility, 'private')
-        self.assertEqual(image.owner, TENANT1)
-        self.assertEqual(image.name, 'image-1')
+        self.assertEqual('queued', image.status)
+        self.assertEqual('private', image.visibility)
+        self.assertEqual(TENANT1, image.owner)
+        self.assertEqual('image-1', image.name)
         self.assertIsNone(image.size)
-        self.assertEqual(image.min_disk, 256)
-        self.assertEqual(image.min_ram, 0)
+        self.assertEqual(256, image.min_disk)
+        self.assertEqual(0, image.min_ram)
         self.assertFalse(image.protected)
         self.assertIsNone(image.disk_format)
         self.assertIsNone(image.container_format)
-        self.assertEqual(image.extra_properties, {})
-        self.assertEqual(image.tags, set([]))
+        self.assertEqual({}, image.extra_properties)
+        self.assertEqual(set([]), image.tags)
 
     def test_new_image_with_extra_properties_and_tags(self):
         extra_properties = {'foo': 'bar'}
@@ -85,21 +86,21 @@ class TestImageFactory(test_utils.BaseTestCase):
             image_id=UUID1, name='image-1',
             extra_properties=extra_properties, tags=tags)
 
-        self.assertEqual(image.image_id, UUID1)
+        self.assertEqual(UUID1, image.image_id, UUID1)
         self.assertIsNotNone(image.created_at)
         self.assertEqual(image.created_at, image.updated_at)
-        self.assertEqual(image.status, 'queued')
-        self.assertEqual(image.visibility, 'private')
+        self.assertEqual('queued', image.status)
+        self.assertEqual('private', image.visibility)
         self.assertIsNone(image.owner)
-        self.assertEqual(image.name, 'image-1')
+        self.assertEqual('image-1', image.name)
         self.assertIsNone(image.size)
-        self.assertEqual(image.min_disk, 0)
-        self.assertEqual(image.min_ram, 0)
+        self.assertEqual(0, image.min_disk)
+        self.assertEqual(0, image.min_ram)
         self.assertFalse(image.protected)
         self.assertIsNone(image.disk_format)
         self.assertIsNone(image.container_format)
-        self.assertEqual(image.extra_properties, {'foo': 'bar'})
-        self.assertEqual(image.tags, set(['one', 'two']))
+        self.assertEqual({'foo': 'bar'}, image.extra_properties)
+        self.assertEqual(set(['one', 'two']), image.tags)
 
     def test_new_image_read_only_property(self):
         self.assertRaises(exception.ReadonlyProperty,
@@ -128,17 +129,17 @@ class TestImage(test_utils.BaseTestCase):
 
     def test_extra_properties(self):
         self.image.extra_properties = {'foo': 'bar'}
-        self.assertEqual(self.image.extra_properties, {'foo': 'bar'})
+        self.assertEqual({'foo': 'bar'}, self.image.extra_properties)
 
     def test_extra_properties_assign(self):
         self.image.extra_properties['foo'] = 'bar'
-        self.assertEqual(self.image.extra_properties, {'foo': 'bar'})
+        self.assertEqual({'foo': 'bar'}, self.image.extra_properties)
 
     def test_delete_extra_properties(self):
         self.image.extra_properties = {'foo': 'bar'}
-        self.assertEqual(self.image.extra_properties, {'foo': 'bar'})
+        self.assertEqual({'foo': 'bar'}, self.image.extra_properties)
         del self.image.extra_properties['foo']
-        self.assertEqual(self.image.extra_properties, {})
+        self.assertEqual({}, self.image.extra_properties)
 
     def test_visibility_enumerated(self):
         self.image.visibility = 'public'
@@ -148,7 +149,7 @@ class TestImage(test_utils.BaseTestCase):
 
     def test_tags_always_a_set(self):
         self.image.tags = ['a', 'b', 'c']
-        self.assertEqual(self.image.tags, set(['a', 'b', 'c']))
+        self.assertEqual(set(['a', 'b', 'c']), self.image.tags)
 
     def test_delete_protected_image(self):
         self.image.protected = True
@@ -156,7 +157,14 @@ class TestImage(test_utils.BaseTestCase):
 
     def test_status_saving(self):
         self.image.status = 'saving'
-        self.assertEqual(self.image.status, 'saving')
+        self.assertEqual('saving', self.image.status)
+
+    def test_set_incorrect_status(self):
+        self.image.status = 'saving'
+        self.image.status = 'killed'
+        self.assertRaises(
+            exception.InvalidImageStatusTransition,
+            setattr, self.image, 'status', 'delet')
 
     def test_status_saving_without_disk_format(self):
         self.image.disk_format = None
@@ -183,9 +191,9 @@ class TestImage(test_utils.BaseTestCase):
         self.image.status = 'active'
         self.image.locations = [{'url': 'http://foo.bar/not.exists',
                                  'metadata': {}}]
-        self.assertEqual(self.image.status, 'active')
+        self.assertEqual('active', self.image.status)
         self.image.delete()
-        self.assertEqual(self.image.status, 'pending_delete')
+        self.assertEqual('pending_delete', self.image.status)
 
 
 class TestImageMember(test_utils.BaseTestCase):
@@ -195,9 +203,9 @@ class TestImageMember(test_utils.BaseTestCase):
         self.image_member_factory = domain.ImageMemberFactory()
         self.image_factory = domain.ImageFactory()
         self.image = self.image_factory.new_image()
-        self.image_member = self.image_member_factory\
-                                .new_image_member(image=self.image,
-                                                  member_id=TENANT1)
+        self.image_member = self.image_member_factory.new_image_member(
+            image=self.image,
+            member_id=TENANT1)
 
     def test_status_enumerated(self):
         self.image_member.status = 'pending'
@@ -224,7 +232,7 @@ class TestImageMemberFactory(test_utils.BaseTestCase):
         self.assertEqual(image_member.image_id, image.image_id)
         self.assertIsNotNone(image_member.created_at)
         self.assertEqual(image_member.created_at, image_member.updated_at)
-        self.assertEqual(image_member.status, 'pending')
+        self.assertEqual('pending', image_member.status)
         self.assertIsNotNone(image_member.member_id)
 
 
@@ -233,8 +241,8 @@ class TestExtraProperties(test_utils.BaseTestCase):
     def test_getitem(self):
         a_dict = {'foo': 'bar', 'snitch': 'golden'}
         extra_properties = domain.ExtraProperties(a_dict)
-        self.assertEqual(extra_properties['foo'], 'bar')
-        self.assertEqual(extra_properties['snitch'], 'golden')
+        self.assertEqual('bar', extra_properties['foo'])
+        self.assertEqual('golden', extra_properties['snitch'])
 
     def test_getitem_with_no_items(self):
         extra_properties = domain.ExtraProperties()
@@ -244,30 +252,30 @@ class TestExtraProperties(test_utils.BaseTestCase):
         a_dict = {'foo': 'bar', 'snitch': 'golden'}
         extra_properties = domain.ExtraProperties(a_dict)
         extra_properties['foo'] = 'baz'
-        self.assertEqual(extra_properties['foo'], 'baz')
+        self.assertEqual('baz', extra_properties['foo'])
 
     def test_delitem(self):
         a_dict = {'foo': 'bar', 'snitch': 'golden'}
         extra_properties = domain.ExtraProperties(a_dict)
         del extra_properties['foo']
         self.assertRaises(KeyError, extra_properties.__getitem__, 'foo')
-        self.assertEqual(extra_properties['snitch'], 'golden')
+        self.assertEqual('golden', extra_properties['snitch'])
 
     def test_len_with_zero_items(self):
         extra_properties = domain.ExtraProperties()
-        self.assertEqual(len(extra_properties), 0)
+        self.assertEqual(0, len(extra_properties))
 
     def test_len_with_non_zero_items(self):
         extra_properties = domain.ExtraProperties()
         extra_properties['foo'] = 'bar'
         extra_properties['snitch'] = 'golden'
-        self.assertEqual(len(extra_properties), 2)
+        self.assertEqual(2, len(extra_properties))
 
     def test_eq_with_a_dict(self):
         a_dict = {'foo': 'bar', 'snitch': 'golden'}
         extra_properties = domain.ExtraProperties(a_dict)
         ref_extra_properties = {'foo': 'bar', 'snitch': 'golden'}
-        self.assertEqual(extra_properties, ref_extra_properties)
+        self.assertEqual(ref_extra_properties, extra_properties)
 
     def test_eq_with_an_object_of_ExtraProperties(self):
         a_dict = {'foo': 'bar', 'snitch': 'golden'}
@@ -275,7 +283,7 @@ class TestExtraProperties(test_utils.BaseTestCase):
         ref_extra_properties = domain.ExtraProperties()
         ref_extra_properties['snitch'] = 'golden'
         ref_extra_properties['foo'] = 'bar'
-        self.assertEqual(extra_properties, ref_extra_properties)
+        self.assertEqual(ref_extra_properties, extra_properties)
 
     def test_eq_with_uneqal_dict(self):
         a_dict = {'foo': 'bar', 'snitch': 'golden'}
@@ -318,7 +326,7 @@ class TestTaskFactory(test_utils.BaseTestCase):
         self.assertIsNone(task.expires_at)
         self.assertEqual(owner, task.owner)
         self.assertEqual(task_input, task.task_input)
-        self.assertEqual(task.message, u'')
+        self.assertEqual(u'', task.message)
         self.assertIsNone(task.result)
 
     def test_new_task_invalid_type(self):
@@ -364,20 +372,20 @@ class TestTask(test_utils.BaseTestCase):
 
     def test_validate_status_transition_from_pending(self):
         self.task.begin_processing()
-        self.assertEqual(self.task.status, 'processing')
+        self.assertEqual('processing', self.task.status)
 
     def test_validate_status_transition_from_processing_to_success(self):
         self.task.begin_processing()
         self.task.succeed('')
-        self.assertEqual(self.task.status, 'success')
+        self.assertEqual('success', self.task.status)
 
     def test_validate_status_transition_from_processing_to_failure(self):
         self.task.begin_processing()
         self.task.fail('')
-        self.assertEqual(self.task.status, 'failure')
+        self.assertEqual('failure', self.task.status)
 
     def test_invalid_status_transitions_from_pending(self):
-        #test do not allow transition from pending to success
+        # test do not allow transition from pending to success
         self.assertRaises(
             exception.InvalidTaskStatusTransition,
             self.task.succeed,
@@ -385,14 +393,14 @@ class TestTask(test_utils.BaseTestCase):
         )
 
     def test_invalid_status_transitions_from_success(self):
-        #test do not allow transition from success to processing
+        # test do not allow transition from success to processing
         self.task.begin_processing()
         self.task.succeed('')
         self.assertRaises(
             exception.InvalidTaskStatusTransition,
             self.task.begin_processing
         )
-        #test do not allow transition from success to failure
+        # test do not allow transition from success to failure
         self.assertRaises(
             exception.InvalidTaskStatusTransition,
             self.task.fail,
@@ -400,14 +408,14 @@ class TestTask(test_utils.BaseTestCase):
         )
 
     def test_invalid_status_transitions_from_failure(self):
-        #test do not allow transition from failure to processing
+        # test do not allow transition from failure to processing
         self.task.begin_processing()
         self.task.fail('')
         self.assertRaises(
             exception.InvalidTaskStatusTransition,
             self.task.begin_processing
         )
-        #test do not allow transition from failure to success
+        # test do not allow transition from failure to success
         self.assertRaises(
             exception.InvalidTaskStatusTransition,
             self.task.succeed,
@@ -416,21 +424,21 @@ class TestTask(test_utils.BaseTestCase):
 
     def test_begin_processing(self):
         self.task.begin_processing()
-        self.assertEqual(self.task.status, 'processing')
+        self.assertEqual('processing', self.task.status)
 
     @mock.patch.object(timeutils, 'utcnow')
     def test_succeed(self, mock_utcnow):
         mock_utcnow.return_value = datetime.datetime.utcnow()
         self.task.begin_processing()
         self.task.succeed('{"location": "file://home"}')
-        self.assertEqual(self.task.status, 'success')
-        self.assertEqual(self.task.result, '{"location": "file://home"}')
-        self.assertEqual(self.task.message, u'')
+        self.assertEqual('success', self.task.status)
+        self.assertEqual('{"location": "file://home"}', self.task.result)
+        self.assertEqual(u'', self.task.message)
         expected = (timeutils.utcnow() +
                     datetime.timedelta(hours=CONF.task.task_time_to_live))
         self.assertEqual(
-            self.task.expires_at,
-            expected
+            expected,
+            self.task.expires_at
         )
 
     @mock.patch.object(timeutils, 'utcnow')
@@ -438,14 +446,14 @@ class TestTask(test_utils.BaseTestCase):
         mock_utcnow.return_value = datetime.datetime.utcnow()
         self.task.begin_processing()
         self.task.fail('{"message": "connection failed"}')
-        self.assertEqual(self.task.status, 'failure')
-        self.assertEqual(self.task.message, '{"message": "connection failed"}')
+        self.assertEqual('failure', self.task.status)
+        self.assertEqual('{"message": "connection failed"}', self.task.message)
         self.assertIsNone(self.task.result)
         expected = (timeutils.utcnow() +
                     datetime.timedelta(hours=CONF.task.task_time_to_live))
         self.assertEqual(
-            self.task.expires_at,
-            expected
+            expected,
+            self.task.expires_at
         )
 
     @mock.patch.object(glance.async.TaskExecutor, 'begin_processing')
@@ -518,7 +526,7 @@ class TestTaskExecutorFactory(test_utils.BaseTestCase):
                                                            self.image_repo,
                                                            self.image_factory)
         context = mock.Mock()
-        with mock.patch.object(glance.openstack.common.importutils,
+        with mock.patch.object(oslo.utils.importutils,
                                'import_class') as mock_import_class:
             mock_executor = mock.Mock()
             mock_import_class.return_value = mock_executor
@@ -534,7 +542,7 @@ class TestTaskExecutorFactory(test_utils.BaseTestCase):
                                                            self.image_repo,
                                                            self.image_factory)
         context = mock.Mock()
-        with mock.patch.object(glance.openstack.common.importutils,
+        with mock.patch.object(oslo.utils.importutils,
                                'import_class') as mock_import_class:
             mock_import_class.side_effect = ImportError
 

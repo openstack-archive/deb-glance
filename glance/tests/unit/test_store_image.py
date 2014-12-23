@@ -12,12 +12,12 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-import mox
-
 import glance_store
+import mox
 
 from glance.common import exception
 import glance.location
+from glance.tests.unit import base as unit_test_base
 from glance.tests.unit import utils as unit_test_utils
 from glance.tests import utils
 
@@ -93,17 +93,17 @@ class TestStoreImage(utils.BaseTestCase):
         image = glance.location.ImageProxy(self.image_stub, {},
                                            self.store_api, self.store_utils)
         location = image.locations[0]
-        self.assertEqual(image.status, 'active')
+        self.assertEqual('active', image.status)
         self.store_api.get_from_backend(location['url'], context={})
         image.delete()
-        self.assertEqual(image.status, 'deleted')
+        self.assertEqual('deleted', image.status)
         self.assertRaises(glance_store.NotFound,
                           self.store_api.get_from_backend, location['url'], {})
 
     def test_image_get_data(self):
         image = glance.location.ImageProxy(self.image_stub, {},
                                            self.store_api, self.store_utils)
-        self.assertEqual(image.get_data(), 'XXX')
+        self.assertEqual('XXX', image.get_data())
 
     def test_image_get_data_from_second_location(self):
         def fake_get_from_backend(self, location, offset=0,
@@ -115,23 +115,24 @@ class TestStoreImage(utils.BaseTestCase):
 
         image1 = glance.location.ImageProxy(self.image_stub, {},
                                             self.store_api, self.store_utils)
-        self.assertEqual(image1.get_data(), 'XXX')
+        self.assertEqual('XXX', image1.get_data())
         # Multiple location support
         context = glance.context.RequestContext(user=USER1)
         (image2, image_stub2) = self._add_image(context, UUID2, 'ZZZ', 3)
         location_data = image2.locations[0]
         image1.locations.append(location_data)
-        self.assertEqual(len(image1.locations), 2)
-        self.assertEqual(location_data['url'], UUID2)
+        self.assertEqual(2, len(image1.locations))
+        self.assertEqual(UUID2, location_data['url'])
 
         self.stubs.Set(unit_test_utils.FakeStoreAPI, 'get_from_backend',
                        fake_get_from_backend)
         # This time, image1.get_data() returns the data wrapped in a
         # LimitingReader|CooperativeReader pipeline, so peeking under
         # the hood of those objects to get at the underlying string.
-        self.assertEqual(image1.get_data().data.fd, 'ZZZ')
+        self.assertEqual('ZZZ', image1.get_data().data.fd)
+
         image1.locations.pop(0)
-        self.assertEqual(len(image1.locations), 1)
+        self.assertEqual(1, len(image1.locations))
         image2.delete()
 
     def test_image_set_data(self):
@@ -140,11 +141,11 @@ class TestStoreImage(utils.BaseTestCase):
         image = glance.location.ImageProxy(image_stub, context,
                                            self.store_api, self.store_utils)
         image.set_data('YYYY', 4)
-        self.assertEqual(image.size, 4)
-        #NOTE(markwash): FakeStore returns image_id for location
-        self.assertEqual(image.locations[0]['url'], UUID2)
-        self.assertEqual(image.checksum, 'Z')
-        self.assertEqual(image.status, 'active')
+        self.assertEqual(4, image.size)
+        # NOTE(markwash): FakeStore returns image_id for location
+        self.assertEqual(UUID2, image.locations[0]['url'])
+        self.assertEqual('Z', image.checksum)
+        self.assertEqual('active', image.status)
 
     def test_image_set_data_location_metadata(self):
         context = glance.context.RequestContext(user=USER1)
@@ -155,12 +156,12 @@ class TestStoreImage(utils.BaseTestCase):
         image = glance.location.ImageProxy(image_stub, context,
                                            store_api, store_utils)
         image.set_data('YYYY', 4)
-        self.assertEqual(image.size, 4)
+        self.assertEqual(4, image.size)
         location_data = image.locations[0]
-        self.assertEqual(location_data['url'], UUID2)
-        self.assertEqual(location_data['metadata'], loc_meta)
-        self.assertEqual(image.checksum, 'Z')
-        self.assertEqual(image.status, 'active')
+        self.assertEqual(UUID2, location_data['url'])
+        self.assertEqual(loc_meta, location_data['metadata'])
+        self.assertEqual('Z', image.checksum)
+        self.assertEqual('active', image.status)
         image.delete()
         self.assertEqual(image.status, 'deleted')
         self.assertRaises(glance_store.NotFound,
@@ -173,11 +174,11 @@ class TestStoreImage(utils.BaseTestCase):
         image = glance.location.ImageProxy(image_stub, context,
                                            self.store_api, self.store_utils)
         image.set_data('YYYY', None)
-        self.assertEqual(image.size, 4)
-        #NOTE(markwash): FakeStore returns image_id for location
-        self.assertEqual(image.locations[0]['url'], UUID2)
-        self.assertEqual(image.checksum, 'Z')
-        self.assertEqual(image.status, 'active')
+        self.assertEqual(4, image.size)
+        # NOTE(markwash): FakeStore returns image_id for location
+        self.assertEqual(UUID2, image.locations[0]['url'])
+        self.assertEqual('Z', image.checksum)
+        self.assertEqual('active', image.status)
         image.delete()
         self.assertEqual(image.status, 'deleted')
         self.assertRaises(glance_store.NotFound,
@@ -189,16 +190,16 @@ class TestStoreImage(utils.BaseTestCase):
         image = glance.location.ImageProxy(image_stub, context,
                                            self.store_api, self.store_utils)
         image.set_data(data, len)
-        self.assertEqual(image.size, len)
-        #NOTE(markwash): FakeStore returns image_id for location
+        self.assertEqual(len, image.size)
+        # NOTE(markwash): FakeStore returns image_id for location
         location = {'url': image_id, 'metadata': {}, 'status': 'active'}
-        self.assertEqual(image.locations, [location])
-        self.assertEqual(image_stub.locations, [location])
-        self.assertEqual(image.status, 'active')
+        self.assertEqual([location], image.locations)
+        self.assertEqual([location], image_stub.locations)
+        self.assertEqual('active', image.status)
         return (image, image_stub)
 
     def test_image_change_append_invalid_location_uri(self):
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
 
         context = glance.context.RequestContext(user=USER1)
         (image1, image_stub1) = self._add_image(context, UUID2, 'XXXX', 4)
@@ -209,12 +210,12 @@ class TestStoreImage(utils.BaseTestCase):
 
         image1.delete()
 
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
         self.assertNotIn(UUID2, self.store_api.data.keys())
 
     def test_image_change_append_invalid_location_metatdata(self):
         UUID3 = 'a8a61ec4-d7a3-11e2-8c28-000c29c27581'
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
 
         context = glance.context.RequestContext(user=USER1)
         (image1, image_stub1) = self._add_image(context, UUID2, 'XXXX', 4)
@@ -233,13 +234,13 @@ class TestStoreImage(utils.BaseTestCase):
         image1.delete()
         image2.delete()
 
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
         self.assertNotIn(UUID2, self.store_api.data.keys())
         self.assertNotIn(UUID3, self.store_api.data.keys())
 
     def test_image_change_append_locations(self):
         UUID3 = 'a8a61ec4-d7a3-11e2-8c28-000c29c27581'
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
 
         context = glance.context.RequestContext(user=USER1)
         (image1, image_stub1) = self._add_image(context, UUID2, 'XXXX', 4)
@@ -250,12 +251,12 @@ class TestStoreImage(utils.BaseTestCase):
 
         image1.locations.append(location3)
 
-        self.assertEqual(image_stub1.locations, [location2, location3])
-        self.assertEqual(image1.locations, [location2, location3])
+        self.assertEqual([location2, location3], image_stub1.locations)
+        self.assertEqual([location2, location3], image1.locations)
 
         image1.delete()
 
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
         self.assertNotIn(UUID2, self.store_api.data.keys())
         self.assertNotIn(UUID3, self.store_api.data.keys())
 
@@ -263,7 +264,7 @@ class TestStoreImage(utils.BaseTestCase):
 
     def test_image_change_pop_location(self):
         UUID3 = 'a8a61ec4-d7a3-11e2-8c28-000c29c27581'
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
 
         context = glance.context.RequestContext(user=USER1)
         (image1, image_stub1) = self._add_image(context, UUID2, 'XXXX', 4)
@@ -274,24 +275,24 @@ class TestStoreImage(utils.BaseTestCase):
 
         image1.locations.append(location3)
 
-        self.assertEqual(image_stub1.locations, [location2, location3])
-        self.assertEqual(image1.locations, [location2, location3])
+        self.assertEqual([location2, location3], image_stub1.locations)
+        self.assertEqual([location2, location3], image1.locations)
 
         image1.locations.pop()
 
-        self.assertEqual(image_stub1.locations, [location2])
-        self.assertEqual(image1.locations, [location2])
+        self.assertEqual([location2], image_stub1.locations)
+        self.assertEqual([location2], image1.locations)
 
         image1.delete()
 
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
         self.assertNotIn(UUID2, self.store_api.data.keys())
         self.assertNotIn(UUID3, self.store_api.data.keys())
 
         image2.delete()
 
     def test_image_change_extend_invalid_locations_uri(self):
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
 
         context = glance.context.RequestContext(user=USER1)
         (image1, image_stub1) = self._add_image(context, UUID2, 'XXXX', 4)
@@ -303,12 +304,12 @@ class TestStoreImage(utils.BaseTestCase):
 
         image1.delete()
 
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
         self.assertNotIn(UUID2, self.store_api.data.keys())
 
     def test_image_change_extend_invalid_locations_metadata(self):
         UUID3 = 'a8a61ec4-d7a3-11e2-8c28-000c29c27581'
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
 
         context = glance.context.RequestContext(user=USER1)
         (image1, image_stub1) = self._add_image(context, UUID2, 'XXXX', 4)
@@ -322,13 +323,13 @@ class TestStoreImage(utils.BaseTestCase):
         image1.delete()
         image2.delete()
 
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
         self.assertNotIn(UUID2, self.store_api.data.keys())
         self.assertNotIn(UUID3, self.store_api.data.keys())
 
     def test_image_change_extend_locations(self):
         UUID3 = 'a8a61ec4-d7a3-11e2-8c28-000c29c27581'
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
 
         context = glance.context.RequestContext(user=USER1)
         (image1, image_stub1) = self._add_image(context, UUID2, 'XXXX', 4)
@@ -339,12 +340,12 @@ class TestStoreImage(utils.BaseTestCase):
 
         image1.locations.extend([location3])
 
-        self.assertEqual(image_stub1.locations, [location2, location3])
-        self.assertEqual(image1.locations, [location2, location3])
+        self.assertEqual([location2, location3], image_stub1.locations)
+        self.assertEqual([location2, location3], image1.locations)
 
         image1.delete()
 
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
         self.assertNotIn(UUID2, self.store_api.data.keys())
         self.assertNotIn(UUID3, self.store_api.data.keys())
 
@@ -352,7 +353,7 @@ class TestStoreImage(utils.BaseTestCase):
 
     def test_image_change_remove_location(self):
         UUID3 = 'a8a61ec4-d7a3-11e2-8c28-000c29c27581'
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
 
         context = glance.context.RequestContext(user=USER1)
         (image1, image_stub1) = self._add_image(context, UUID2, 'XXXX', 4)
@@ -365,36 +366,36 @@ class TestStoreImage(utils.BaseTestCase):
         image1.locations.extend([location3])
         image1.locations.remove(location2)
 
-        self.assertEqual(image_stub1.locations, [location3])
-        self.assertEqual(image1.locations, [location3])
+        self.assertEqual([location3], image_stub1.locations)
+        self.assertEqual([location3], image1.locations)
         self.assertRaises(ValueError,
                           image1.locations.remove, location_bad)
 
         image1.delete()
         image2.delete()
 
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
         self.assertNotIn(UUID2, self.store_api.data.keys())
         self.assertNotIn(UUID3, self.store_api.data.keys())
 
     def test_image_change_delete_location(self):
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
 
         context = glance.context.RequestContext(user=USER1)
         (image1, image_stub1) = self._add_image(context, UUID2, 'XXXX', 4)
 
         del image1.locations[0]
 
-        self.assertEqual(image_stub1.locations, [])
-        self.assertEqual(len(image1.locations), 0)
+        self.assertEqual([], image_stub1.locations)
+        self.assertEqual(0, len(image1.locations))
 
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
         self.assertNotIn(UUID2, self.store_api.data.keys())
 
         image1.delete()
 
     def test_image_change_insert_invalid_location_uri(self):
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
 
         context = glance.context.RequestContext(user=USER1)
         (image1, image_stub1) = self._add_image(context, UUID2, 'XXXX', 4)
@@ -405,12 +406,12 @@ class TestStoreImage(utils.BaseTestCase):
 
         image1.delete()
 
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
         self.assertNotIn(UUID2, self.store_api.data.keys())
 
     def test_image_change_insert_invalid_location_metadata(self):
         UUID3 = 'a8a61ec4-d7a3-11e2-8c28-000c29c27581'
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
 
         context = glance.context.RequestContext(user=USER1)
         (image1, image_stub1) = self._add_image(context, UUID2, 'XXXX', 4)
@@ -424,13 +425,13 @@ class TestStoreImage(utils.BaseTestCase):
         image1.delete()
         image2.delete()
 
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
         self.assertNotIn(UUID2, self.store_api.data.keys())
         self.assertNotIn(UUID3, self.store_api.data.keys())
 
     def test_image_change_insert_location(self):
         UUID3 = 'a8a61ec4-d7a3-11e2-8c28-000c29c27581'
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
 
         context = glance.context.RequestContext(user=USER1)
         (image1, image_stub1) = self._add_image(context, UUID2, 'XXXX', 4)
@@ -441,12 +442,12 @@ class TestStoreImage(utils.BaseTestCase):
 
         image1.locations.insert(0, location3)
 
-        self.assertEqual(image_stub1.locations, [location3, location2])
-        self.assertEqual(image1.locations, [location3, location2])
+        self.assertEqual([location3, location2], image_stub1.locations)
+        self.assertEqual([location3, location2], image1.locations)
 
         image1.delete()
 
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
         self.assertNotIn(UUID2, self.store_api.data.keys())
         self.assertNotIn(UUID3, self.store_api.data.keys())
 
@@ -454,7 +455,7 @@ class TestStoreImage(utils.BaseTestCase):
 
     def test_image_change_delete_locations(self):
         UUID3 = 'a8a61ec4-d7a3-11e2-8c28-000c29c27581'
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
 
         context = glance.context.RequestContext(user=USER1)
         (image1, image_stub1) = self._add_image(context, UUID2, 'XXXX', 4)
@@ -466,8 +467,8 @@ class TestStoreImage(utils.BaseTestCase):
         image1.locations.insert(0, location3)
         del image1.locations[0:100]
 
-        self.assertEqual(image_stub1.locations, [])
-        self.assertEqual(len(image1.locations), 0)
+        self.assertEqual([], image_stub1.locations)
+        self.assertEqual(0, len(image1.locations))
         self.assertRaises(exception.BadStoreUri,
                           image1.locations.insert, 0, location2)
         self.assertRaises(exception.BadStoreUri,
@@ -476,12 +477,12 @@ class TestStoreImage(utils.BaseTestCase):
         image1.delete()
         image2.delete()
 
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
         self.assertNotIn(UUID2, self.store_api.data.keys())
         self.assertNotIn(UUID3, self.store_api.data.keys())
 
     def test_image_change_adding_invalid_location_uri(self):
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
 
         context = glance.context.RequestContext(user=USER1)
         image_stub1 = ImageStub('fake_image_id', status='queued', locations=[])
@@ -492,16 +493,16 @@ class TestStoreImage(utils.BaseTestCase):
 
         self.assertRaises(exception.BadStoreUri,
                           image1.locations.__iadd__, [location_bad])
-        self.assertEqual(image_stub1.locations, [])
-        self.assertEqual(image1.locations, [])
+        self.assertEqual([], image_stub1.locations)
+        self.assertEqual([], image1.locations)
 
         image1.delete()
 
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
         self.assertNotIn(UUID2, self.store_api.data.keys())
 
     def test_image_change_adding_invalid_location_metadata(self):
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
 
         context = glance.context.RequestContext(user=USER1)
         (image1, image_stub1) = self._add_image(context, UUID2, 'XXXX', 4)
@@ -514,18 +515,18 @@ class TestStoreImage(utils.BaseTestCase):
 
         self.assertRaises(glance_store.BackendException,
                           image2.locations.__iadd__, [location_bad])
-        self.assertEqual(image_stub2.locations, [])
-        self.assertEqual(image2.locations, [])
+        self.assertEqual([], image_stub2.locations)
+        self.assertEqual([], image2.locations)
 
         image1.delete()
         image2.delete()
 
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
         self.assertNotIn(UUID2, self.store_api.data.keys())
 
     def test_image_change_adding_locations(self):
         UUID3 = 'a8a61ec4-d7a3-11e2-8c28-000c29c27581'
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
 
         context = glance.context.RequestContext(user=USER1)
         (image1, image_stub1) = self._add_image(context, UUID2, 'XXXX', 4)
@@ -540,12 +541,12 @@ class TestStoreImage(utils.BaseTestCase):
 
         image3.locations += [location2, location3]
 
-        self.assertEqual(image_stub3.locations, [location2, location3])
-        self.assertEqual(image3.locations, [location2, location3])
+        self.assertEqual([location2, location3], image_stub3.locations)
+        self.assertEqual([location2, location3], image3.locations)
 
         image3.delete()
 
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
         self.assertNotIn(UUID2, self.store_api.data.keys())
         self.assertNotIn(UUID3, self.store_api.data.keys())
 
@@ -554,7 +555,7 @@ class TestStoreImage(utils.BaseTestCase):
 
     def test_image_get_location_index(self):
         UUID3 = 'a8a61ec4-d7a3-11e2-8c28-000c29c27581'
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
 
         context = glance.context.RequestContext(user=USER1)
         (image1, image_stub1) = self._add_image(context, UUID2, 'XXXX', 4)
@@ -569,11 +570,11 @@ class TestStoreImage(utils.BaseTestCase):
 
         image3.locations += [location2, location3]
 
-        self.assertEqual(image_stub3.locations.index(location3), 1)
+        self.assertEqual(1, image_stub3.locations.index(location3))
 
         image3.delete()
 
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
         self.assertNotIn(UUID2, self.store_api.data.keys())
         self.assertNotIn(UUID3, self.store_api.data.keys())
 
@@ -582,7 +583,7 @@ class TestStoreImage(utils.BaseTestCase):
 
     def test_image_get_location_by_index(self):
         UUID3 = 'a8a61ec4-d7a3-11e2-8c28-000c29c27581'
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
 
         context = glance.context.RequestContext(user=USER1)
         (image1, image_stub1) = self._add_image(context, UUID2, 'XXXX', 4)
@@ -596,12 +597,12 @@ class TestStoreImage(utils.BaseTestCase):
 
         image3.locations += [location2, location3]
 
-        self.assertEqual(image_stub3.locations.index(location3), 1)
-        self.assertEqual(image_stub3.locations[0], location2)
+        self.assertEqual(1, image_stub3.locations.index(location3))
+        self.assertEqual(location2, image_stub3.locations[0])
 
         image3.delete()
 
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
         self.assertNotIn(UUID2, self.store_api.data.keys())
         self.assertNotIn(UUID3, self.store_api.data.keys())
 
@@ -610,7 +611,7 @@ class TestStoreImage(utils.BaseTestCase):
 
     def test_image_checking_location_exists(self):
         UUID3 = 'a8a61ec4-d7a3-11e2-8c28-000c29c27581'
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
 
         context = glance.context.RequestContext(user=USER1)
         (image1, image_stub1) = self._add_image(context, UUID2, 'XXXX', 4)
@@ -631,7 +632,7 @@ class TestStoreImage(utils.BaseTestCase):
 
         image3.delete()
 
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
         self.assertNotIn(UUID2, self.store_api.data.keys())
         self.assertNotIn(UUID3, self.store_api.data.keys())
 
@@ -640,7 +641,7 @@ class TestStoreImage(utils.BaseTestCase):
 
     def test_image_reverse_locations_order(self):
         UUID3 = 'a8a61ec4-d7a3-11e2-8c28-000c29c27581'
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
 
         context = glance.context.RequestContext(user=USER1)
         (image1, image_stub1) = self._add_image(context, UUID2, 'XXXX', 4)
@@ -656,12 +657,12 @@ class TestStoreImage(utils.BaseTestCase):
 
         image_stub3.locations.reverse()
 
-        self.assertEqual(image_stub3.locations, [location3, location2])
-        self.assertEqual(image3.locations, [location3, location2])
+        self.assertEqual([location3, location2], image_stub3.locations)
+        self.assertEqual([location3, location2], image3.locations)
 
         image3.delete()
 
-        self.assertEqual(len(self.store_api.data.keys()), 2)
+        self.assertEqual(2, len(self.store_api.data.keys()))
         self.assertNotIn(UUID2, self.store_api.data.keys())
         self.assertNotIn(UUID3, self.store_api.data.keys())
 
@@ -690,17 +691,17 @@ class TestStoreImageRepo(utils.BaseTestCase):
         self.image_stub.visibility = 'public'
         self.image_repo.add(self.image)
         self.assertTrue(self.store_api.acls['foo']['public'])
-        self.assertEqual(self.store_api.acls['foo']['read'], [])
-        self.assertEqual(self.store_api.acls['foo']['write'], [])
+        self.assertEqual([], self.store_api.acls['foo']['read'])
+        self.assertEqual([], self.store_api.acls['foo']['write'])
         self.assertTrue(self.store_api.acls['bar']['public'])
-        self.assertEqual(self.store_api.acls['bar']['read'], [])
-        self.assertEqual(self.store_api.acls['bar']['write'], [])
+        self.assertEqual([], self.store_api.acls['bar']['read'])
+        self.assertEqual([], self.store_api.acls['bar']['write'])
 
     def test_add_ignores_acls_if_no_locations(self):
         self.image_stub.locations = []
         self.image_stub.visibility = 'public'
         self.image_repo.add(self.image)
-        self.assertEqual(len(self.store_api.acls), 0)
+        self.assertEqual(0, len(self.store_api.acls))
 
     def test_save_updates_acls(self):
         self.image_stub.locations = [{'url': 'foo', 'metadata': {},
@@ -716,8 +717,8 @@ class TestStoreImageRepo(utils.BaseTestCase):
         self.assertIn('glue', self.store_api.acls)
         acls = self.store_api.acls['glue']
         self.assertFalse(acls['public'])
-        self.assertEqual(acls['write'], [])
-        self.assertEqual(acls['read'], [TENANT1, TENANT2])
+        self.assertEqual([], acls['write'])
+        self.assertEqual([TENANT1, TENANT2], acls['read'])
 
     def test_save_fetches_members_if_private(self):
         self.image_stub.locations = [{'url': 'glue', 'metadata': {},
@@ -727,8 +728,8 @@ class TestStoreImageRepo(utils.BaseTestCase):
         self.assertIn('glue', self.store_api.acls)
         acls = self.store_api.acls['glue']
         self.assertFalse(acls['public'])
-        self.assertEqual(acls['write'], [])
-        self.assertEqual(acls['read'], [TENANT1, TENANT2])
+        self.assertEqual([], acls['write'])
+        self.assertEqual([TENANT1, TENANT2], acls['read'])
 
     def test_member_addition_updates_acls(self):
         self.image_stub.locations = [{'url': 'glug', 'metadata': {},
@@ -741,8 +742,8 @@ class TestStoreImageRepo(utils.BaseTestCase):
         self.assertIn('glug', self.store_api.acls)
         acls = self.store_api.acls['glug']
         self.assertFalse(acls['public'])
-        self.assertEqual(acls['write'], [])
-        self.assertEqual(acls['read'], [TENANT1, TENANT2, TENANT3])
+        self.assertEqual([], acls['write'])
+        self.assertEqual([TENANT1, TENANT2, TENANT3], acls['read'])
 
     def test_member_removal_updates_acls(self):
         self.image_stub.locations = [{'url': 'glug', 'metadata': {},
@@ -755,11 +756,11 @@ class TestStoreImageRepo(utils.BaseTestCase):
         self.assertIn('glug', self.store_api.acls)
         acls = self.store_api.acls['glug']
         self.assertFalse(acls['public'])
-        self.assertEqual(acls['write'], [])
-        self.assertEqual(acls['read'], [TENANT2])
+        self.assertEqual([], acls['write'])
+        self.assertEqual([TENANT2], acls['read'])
 
 
-class TestImageFactory(utils.BaseTestCase):
+class TestImageFactory(unit_test_base.StoreClearingUnitTest):
 
     def setUp(self):
         super(TestImageFactory, self).setUp()
@@ -775,14 +776,14 @@ class TestImageFactory(utils.BaseTestCase):
         image = self.image_factory.new_image()
         self.assertIsNone(image.image_id)
         self.assertIsNone(image.status)
-        self.assertEqual(image.visibility, 'private')
-        self.assertEqual(image.locations, [])
+        self.assertEqual('private', image.visibility)
+        self.assertEqual([], image.locations)
 
     def test_new_image_with_location(self):
         locations = [{'url': '%s/%s' % (BASE_URI, UUID1),
                       'metadata': {}}]
         image = self.image_factory.new_image(locations=locations)
-        self.assertEqual(image.locations, locations)
+        self.assertEqual(locations, image.locations)
         location_bad = {'url': 'unknown://location', 'metadata': {}}
         self.assertRaises(exception.BadStoreUri,
                           self.image_factory.new_image,

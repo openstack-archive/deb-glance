@@ -17,28 +17,18 @@
 """Policy Engine For Glance"""
 
 import copy
-import os.path
 
 from oslo.config import cfg
 
 from glance.common import exception
 import glance.domain.proxy
-from glance.openstack.common import jsonutils
+from glance import i18n
 import glance.openstack.common.log as logging
 from glance.openstack.common import policy
 
+
 LOG = logging.getLogger(__name__)
-
-policy_opts = [
-    cfg.StrOpt('policy_file', default='policy.json',
-               help=_('The location of the policy file.')),
-    cfg.StrOpt('policy_default_rule', default='default',
-               help=_('The default policy to use.')),
-]
-
 CONF = cfg.CONF
-CONF.register_opts(policy_opts)
-
 
 DEFAULT_RULES = {
     'context_is_admin': policy.RoleCheck('role', 'admin'),
@@ -46,89 +36,24 @@ DEFAULT_RULES = {
     'manage_image_cache': policy.RoleCheck('role', 'admin'),
 }
 
+_ = i18n._
+_LI = i18n._LI
+_LW = i18n._LW
 
-class Enforcer(object):
+
+class Enforcer(policy.Enforcer):
     """Responsible for loading and enforcing rules"""
 
     def __init__(self):
-        self.default_rule = CONF.policy_default_rule
-        self.policy_path = self._find_policy_file()
-        self.policy_file_mtime = None
-        self.policy_file_contents = None
-        self.load_rules()
-
-    def set_rules(self, rules):
-        """Create a new Rules object based on the provided dict of rules"""
-        rules_obj = policy.Rules(rules, self.default_rule)
-        policy.set_rules(rules_obj)
+        if CONF.find_file(CONF.policy_file):
+            kwargs = dict(rules=None, use_conf=True)
+        else:
+            kwargs = dict(rules=DEFAULT_RULES, use_conf=False)
+        super(Enforcer, self).__init__(overwrite=False, **kwargs)
 
     def add_rules(self, rules):
         """Add new rules to the Rules object"""
-        if policy._rules:
-            rules_obj = policy.Rules(rules)
-            policy._rules.update(rules_obj)
-        else:
-            self.set_rules(rules)
-
-    def load_rules(self):
-        """Set the rules found in the json file on disk"""
-        if self.policy_path:
-            rules = self._read_policy_file()
-            rule_type = ""
-        else:
-            rules = DEFAULT_RULES
-            rule_type = "default "
-
-        text_rules = dict((k, str(v)) for k, v in rules.items())
-        msg = ('Loaded %(rule_type)spolicy rules: %(text_rules)s' %
-               {'rule_type': rule_type, 'text_rules': text_rules})
-        LOG.debug(msg)
-
-        self.set_rules(rules)
-
-    @staticmethod
-    def _find_policy_file():
-        """Locate the policy json data file"""
-        policy_file = CONF.find_file(CONF.policy_file)
-        if policy_file:
-            return policy_file
-        else:
-            LOG.warn(_('Unable to find policy file'))
-            return None
-
-    def _read_policy_file(self):
-        """Read contents of the policy file
-
-        This re-caches policy data if the file has been changed.
-        """
-        mtime = os.path.getmtime(self.policy_path)
-        if not self.policy_file_contents or mtime != self.policy_file_mtime:
-            LOG.debug("Loading policy from %s" % self.policy_path)
-            with open(self.policy_path) as fap:
-                raw_contents = fap.read()
-                rules_dict = jsonutils.loads(raw_contents)
-                self.policy_file_contents = dict(
-                    (k, policy.parse_rule(v))
-                    for k, v in rules_dict.items())
-            self.policy_file_mtime = mtime
-        return self.policy_file_contents
-
-    def _check(self, context, rule, target, *args, **kwargs):
-        """Verifies that the action is valid on the target in this context.
-
-           :param context: Glance request context
-           :param rule: String representing the action to be checked
-           :param object: Dictionary representing the object of the action.
-           :raises: `glance.common.exception.Forbidden`
-           :returns: A non-False value if access is allowed.
-        """
-        credentials = {
-            'roles': context.roles,
-            'user': context.user,
-            'tenant': context.tenant,
-        }
-
-        return policy.check(rule, target, credentials, *args, **kwargs)
+        self.set_rules(rules, overwrite=False, use_conf=self.use_conf)
 
     def enforce(self, context, action, target):
         """Verifies that the action is valid on the target in this context.
@@ -139,8 +64,15 @@ class Enforcer(object):
            :raises: `glance.common.exception.Forbidden`
            :returns: A non-False value if access is allowed.
         """
-        return self._check(context, action, target,
-                           exception.Forbidden, action=action)
+        credentials = {
+            'roles': context.roles,
+            'user': context.user,
+            'tenant': context.tenant,
+        }
+        return super(Enforcer, self).enforce(action, target, credentials,
+                                             do_raise=True,
+                                             exc=exception.Forbidden,
+                                             action=action)
 
     def check(self, context, action, target):
         """Verifies that the action is valid on the target in this context.
@@ -150,7 +82,12 @@ class Enforcer(object):
            :param target: Dictionary representing the object of the action.
            :returns: A non-False value if access is allowed.
         """
-        return self._check(context, action, target)
+        credentials = {
+            'roles': context.roles,
+            'user': context.user,
+            'tenant': context.tenant,
+        }
+        return super(Enforcer, self).enforce(action, target, credentials)
 
     def check_is_admin(self, context):
         """Check if the given context is associated with an admin role,
@@ -159,8 +96,7 @@ class Enforcer(object):
            :param context: Glance request context
            :returns: A non-False value if context role is admin.
         """
-        target = context.to_dict()
-        return self.check(context, 'context_is_admin', target)
+        return self.check(context, 'context_is_admin', context.to_dict())
 
 
 class ImageRepoProxy(glance.domain.proxy.Repo):
@@ -448,7 +384,7 @@ class ImageTarget(object):
             return self.image.extra_properties[key]
 
 
-#Metadef Namespace classes
+# Metadef Namespace classes
 class MetadefNamespaceProxy(glance.domain.proxy.MetadefNamespace):
 
     def __init__(self, namespace, context, policy):
@@ -501,7 +437,7 @@ class MetadefNamespaceFactoryProxy(
             meta_namespace_proxy_kwargs=proxy_kwargs)
 
 
-#Metadef Object classes
+# Metadef Object classes
 class MetadefObjectProxy(glance.domain.proxy.MetadefObject):
 
     def __init__(self, meta_object, context, policy):
@@ -553,7 +489,7 @@ class MetadefObjectFactoryProxy(glance.domain.proxy.MetadefObjectFactory):
             meta_object_proxy_kwargs=proxy_kwargs)
 
 
-#Metadef ResourceType classes
+# Metadef ResourceType classes
 class MetadefResourceTypeProxy(glance.domain.proxy.MetadefResourceType):
 
     def __init__(self, meta_resource_type, context, policy):
@@ -604,7 +540,7 @@ class MetadefResourceTypeFactoryProxy(
             resource_type_proxy_kwargs=proxy_kwargs)
 
 
-#Metadef namespace properties classes
+# Metadef namespace properties classes
 class MetadefPropertyProxy(glance.domain.proxy.MetadefProperty):
 
     def __init__(self, namespace_property, context, policy):
@@ -658,3 +594,58 @@ class MetadefPropertyFactoryProxy(glance.domain.proxy.MetadefPropertyFactory):
             namespace_property_factory,
             property_proxy_class=MetadefPropertyProxy,
             property_proxy_kwargs=proxy_kwargs)
+
+
+# Metadef Tag classes
+class MetadefTagProxy(glance.domain.proxy.MetadefTag):
+
+    def __init__(self, meta_tag, context, policy):
+        self.context = context
+        self.policy = policy
+        super(MetadefTagProxy, self).__init__(meta_tag)
+
+
+class MetadefTagRepoProxy(glance.domain.proxy.MetadefTagRepo):
+
+    def __init__(self, tag_repo, context, tag_policy):
+        self.context = context
+        self.policy = tag_policy
+        self.tag_repo = tag_repo
+        proxy_kwargs = {'context': self.context, 'policy': self.policy}
+        super(MetadefTagRepoProxy,
+              self).__init__(tag_repo,
+                             tag_proxy_class=MetadefTagProxy,
+                             tag_proxy_kwargs=proxy_kwargs)
+
+    def get(self, namespace, tag_name):
+        self.policy.enforce(self.context, 'get_metadef_tag', {})
+        return super(MetadefTagRepoProxy, self).get(namespace, tag_name)
+
+    def list(self, *args, **kwargs):
+        self.policy.enforce(self.context, 'get_metadef_tags', {})
+        return super(MetadefTagRepoProxy, self).list(*args, **kwargs)
+
+    def save(self, meta_tag):
+        self.policy.enforce(self.context, 'modify_metadef_tag', {})
+        return super(MetadefTagRepoProxy, self).save(meta_tag)
+
+    def add(self, meta_tag):
+        self.policy.enforce(self.context, 'add_metadef_tag', {})
+        return super(MetadefTagRepoProxy, self).add(meta_tag)
+
+    def add_tags(self, meta_tags):
+        self.policy.enforce(self.context, 'add_metadef_tags', {})
+        return super(MetadefTagRepoProxy, self).add_tags(meta_tags)
+
+
+class MetadefTagFactoryProxy(glance.domain.proxy.MetadefTagFactory):
+
+    def __init__(self, meta_tag_factory, context, policy):
+        self.meta_tag_factory = meta_tag_factory
+        self.context = context
+        self.policy = policy
+        proxy_kwargs = {'context': self.context, 'policy': self.policy}
+        super(MetadefTagFactoryProxy, self).__init__(
+            meta_tag_factory,
+            meta_tag_proxy_class=MetadefTagProxy,
+            meta_tag_proxy_kwargs=proxy_kwargs)

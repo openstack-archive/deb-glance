@@ -33,12 +33,12 @@ import tempfile
 import time
 
 import fixtures
+from oslo.serialization import jsonutils
 import six.moves.urllib.parse as urlparse
 import testtools
 
 from glance.common import utils
 from glance.db.sqlalchemy import api as db_api
-from glance.openstack.common import jsonutils
 from glance import tests as glance_tests
 from glance.tests import utils as test_utils
 
@@ -82,6 +82,7 @@ class Server(object):
         self.process_pid = None
         self.server_module = None
         self.stop_kill = False
+        self.use_user_token = False
 
     def write_conf(self, **kwargs):
         """
@@ -317,6 +318,7 @@ cert_file = %(cert_file)s
 metadata_encryption_key = %(metadata_encryption_key)s
 registry_host = 127.0.0.1
 registry_port = %(registry_port)s
+use_user_token = %(use_user_token)s
 log_file = %(log_file)s
 image_size_cap = %(image_size_cap)d
 delayed_delete = %(delayed_delete)s
@@ -420,7 +422,7 @@ class RegistryServer(Server):
     Server object that starts/stops/manages the Registry server
     """
 
-    def __init__(self, test_dir, port, sock=None):
+    def __init__(self, test_dir, port, policy_file, sock=None):
         super(RegistryServer, self).__init__(test_dir, port, sock=sock)
         self.server_name = 'registry'
         self.server_module = 'glance.cmd.%s' % self.server_name
@@ -437,6 +439,8 @@ class RegistryServer(Server):
         self.api_version = 1
         self.user_storage_quota = '0'
         self.metadata_encryption_key = "012345678901234567890123456789ab"
+        self.policy_file = policy_file
+        self.policy_default_rule = 'default'
 
         self.conf_base = """[DEFAULT]
 verbose = %(verbose)s
@@ -454,6 +458,8 @@ enable_v2_registry = %(enable_v2_registry)s
 workers = %(workers)s
 user_storage_quota = %(user_storage_quota)s
 metadata_encryption_key = %(metadata_encryption_key)s
+policy_file = %(policy_file)s
+policy_default_rule = %(policy_default_rule)s
 [paste_deploy]
 flavor = %(deployment_flavor)s
 """
@@ -486,7 +492,7 @@ class ScrubberDaemon(Server):
     Server object that starts/stops/manages the Scrubber server
     """
 
-    def __init__(self, test_dir, daemon=False, **kwargs):
+    def __init__(self, test_dir, policy_file, daemon=False, **kwargs):
         # NOTE(jkoelker): Set the port to 0 since we actually don't listen
         super(ScrubberDaemon, self).__init__(test_dir, 0)
         self.server_name = 'scrubber'
@@ -505,6 +511,8 @@ class ScrubberDaemon(Server):
         default_sql_connection = 'sqlite:////%s/tests.sqlite' % self.test_dir
         self.sql_connection = os.environ.get('GLANCE_TEST_SQL_CONNECTION',
                                              default_sql_connection)
+        self.policy_file = policy_file
+        self.policy_default_rule = 'default'
 
         self.conf_base = """[DEFAULT]
 verbose = %(verbose)s
@@ -518,6 +526,8 @@ scrubber_datadir = %(scrubber_datadir)s
 registry_host = 127.0.0.1
 registry_port = %(registry_port)s
 metadata_encryption_key = %(metadata_encryption_key)s
+policy_file = %(policy_file)s
+policy_default_rule = %(policy_default_rule)s
 lock_path = %(lock_path)s
 sql_connection = %(sql_connection)s
 sql_idle_timeout = 3600
@@ -549,8 +559,7 @@ class FunctionalTest(test_utils.BaseTestCase):
 
         self.api_protocol = 'http'
         self.api_port, api_sock = test_utils.get_unused_port_and_socket()
-        self.registry_port, registry_sock = \
-            test_utils.get_unused_port_and_socket()
+        self.registry_port, reg_sock = test_utils.get_unused_port_and_socket()
 
         conf_dir = os.path.join(self.test_dir, 'etc')
         utils.safe_mkdirs(conf_dir)
@@ -572,9 +581,10 @@ class FunctionalTest(test_utils.BaseTestCase):
 
         self.registry_server = RegistryServer(self.test_dir,
                                               self.registry_port,
-                                              sock=registry_sock)
+                                              self.policy_file,
+                                              sock=reg_sock)
 
-        self.scrubber_daemon = ScrubberDaemon(self.test_dir)
+        self.scrubber_daemon = ScrubberDaemon(self.test_dir, self.policy_file)
 
         self.pid_files = [self.api_server.pid_file,
                           self.registry_server.pid_file,

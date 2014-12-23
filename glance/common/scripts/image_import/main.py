@@ -17,22 +17,24 @@ __all__ = [
     'run',
 ]
 
+from oslo.concurrency import lockutils
+from oslo.utils import excutils
 import six
 
 from glance.api.v2 import images as v2_api
 from glance.common import exception
 from glance.common.scripts import utils as script_utils
+from glance.common import store_utils
 from glance.common import utils as common_utils
 from glance import i18n
-from glance.openstack.common import excutils
-from glance.openstack.common import lockutils
 import glance.openstack.common.log as logging
 
 
+LOG = logging.getLogger(__name__)
+_ = i18n._
 _LE = i18n._LE
 _LI = i18n._LI
 _LW = i18n._LW
-LOG = logging.getLogger(__name__)
 
 
 def run(t_id, context, task_repo, image_repo, image_factory):
@@ -66,14 +68,14 @@ def _execute(t_id, task_repo, image_repo, image_factory):
         # Note: The message string contains Error in it to indicate
         # in the task.message that it's a error message for the user.
 
-        #TODO(nikhil): need to bring back save_and_reraise_exception when
+        # TODO(nikhil): need to bring back save_and_reraise_exception when
         # necessary
         err_msg = ("Error: " + six.text_type(type(e)) + ': ' +
                    common_utils.exception_to_str(e))
-        log_msg = _LE(err_msg + ("Task ID %s" % task.task_id))
+        log_msg = _LE(err_msg + ("Task ID %s" % task.task_id))  # noqa
         LOG.exception(log_msg)
 
-        task.fail(_LE(err_msg))
+        task.fail(_LE(err_msg))  # noqa
     finally:
         task_repo.save(task)
 
@@ -92,21 +94,30 @@ def import_image(image_repo, image_factory, task_input, task_id, uri):
     # Image object returned from create_image method does not have appropriate
     # factories wrapped around it.
     image_id = original_image.image_id
-    new_image = image_repo.get(image_id)
-    if new_image.status in ['saving']:
-        new_image.status = 'active'
-        new_image.size = original_image.size
-        new_image.virtual_size = original_image.virtual_size
-        new_image.checksum = original_image.checksum
-    else:
-        msg = _LE("The Image %(image_id)s object being created by this task "
-                  "%(task_id)s, is no longer in valid status for further "
-                  "processing." % {"image_id": new_image.image_id,
-                                   "task_id": task_id})
-        raise exception.Conflict(msg)
-    image_repo.save(new_image)
+    try:
+        new_image = image_repo.get(image_id)
+        if new_image.status == 'saving':
+            new_image.status = 'active'
+            new_image.size = original_image.size
+            new_image.virtual_size = original_image.virtual_size
+            new_image.checksum = original_image.checksum
+        else:
+            msg = _("The Image %(image_id)s object being created by this task "
+                    "%(task_id)s, is no longer in valid status for further "
+                    "processing.") % {"image_id": new_image.image_id,
+                                      "task_id": task_id}
+            raise exception.Conflict(msg)
+        image_repo.save(new_image)
 
-    return image_id
+        return image_id
+    except (exception.Conflict, exception.NotFound):
+        with excutils.save_and_reraise_exception():
+            if original_image.locations:
+                for location in original_image.locations:
+                    store_utils.delete_image_location_from_backend(
+                        original_image.context,
+                        original_image.image_id,
+                        location)
 
 
 def create_image(image_repo, image_factory, image_properties, task_id):
@@ -120,9 +131,9 @@ def create_image(image_repo, image_factory, image_properties, task_id):
         try:
             properties[key] = image_properties.pop(key)
         except KeyError:
-            msg = _("Task ID %(task_id)s: Ignoring property %(k)s for setting "
-                    "base properties while creating "
-                    "Image.") % {'task_id': task_id, 'k': key}
+            msg = ("Task ID %(task_id)s: Ignoring property %(k)s for setting "
+                   "base properties while creating "
+                   "Image.") % {'task_id': task_id, 'k': key}
             LOG.debug(msg)
 
     # NOTE: get the rest of the properties and pass them as

@@ -13,10 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from oslo.serialization import jsonutils
 import six
 import webob.exc
-from wsme.rest.json import fromjson
-from wsme.rest.json import tojson
+from wsme.rest import json
 
 from glance.api import policy
 from glance.api.v2.model.metadef_resource_type import ResourceType
@@ -30,11 +30,11 @@ import glance.db
 import glance.gateway
 from glance import i18n
 import glance.notifier
-from glance.openstack.common import jsonutils as json
 import glance.openstack.common.log as logging
 import glance.schema
 
 LOG = logging.getLogger(__name__)
+_ = i18n._
 _LE = i18n._LE
 _LI = i18n._LI
 
@@ -123,8 +123,8 @@ class ResourceTypeController(object):
         except exception.Forbidden as e:
             raise webob.exc.HTTPForbidden(explanation=e.msg)
         except exception.NotFound as e:
-            msg = (_LE("Failed to find resource type %(resourcetype)s to "
-                       "delete") % {'resourcetype': resource_type})
+            msg = (_("Failed to find resource type %(resourcetype)s to "
+                     "delete") % {'resourcetype': resource_type})
             LOG.error(msg)
             raise webob.exc.HTTPNotFound(explanation=msg)
         except Exception as e:
@@ -160,7 +160,7 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
             self.schema.validate(body)
         except exception.InvalidObject as e:
             raise webob.exc.HTTPBadRequest(explanation=e.msg)
-        resource_type = fromjson(ResourceTypeAssociation, body)
+        resource_type = json.fromjson(ResourceTypeAssociation, body)
         return dict(resource_type=resource_type)
 
 
@@ -170,21 +170,21 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
         self.schema = schema
 
     def show(self, response, result):
-        resource_type_json = tojson(ResourceTypeAssociations, result)
-        body = json.dumps(resource_type_json, ensure_ascii=False)
+        resource_type_json = json.tojson(ResourceTypeAssociations, result)
+        body = jsonutils.dumps(resource_type_json, ensure_ascii=False)
         response.unicode_body = six.text_type(body)
         response.content_type = 'application/json'
 
     def index(self, response, result):
-        resource_type_json = tojson(ResourceTypes, result)
-        body = json.dumps(resource_type_json, ensure_ascii=False)
+        resource_type_json = json.tojson(ResourceTypes, result)
+        body = jsonutils.dumps(resource_type_json, ensure_ascii=False)
         response.unicode_body = six.text_type(body)
         response.content_type = 'application/json'
 
     def create(self, response, result):
-        resource_type_json = tojson(ResourceTypeAssociation, result)
+        resource_type_json = json.tojson(ResourceTypeAssociation, result)
         response.status_int = 201
-        body = json.dumps(resource_type_json, ensure_ascii=False)
+        body = jsonutils.dumps(resource_type_json, ensure_ascii=False)
         response.unicode_body = six.text_type(body)
         response.content_type = 'application/json'
 

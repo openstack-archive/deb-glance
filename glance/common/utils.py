@@ -38,19 +38,21 @@ import uuid
 import netaddr
 from OpenSSL import crypto
 from oslo.config import cfg
+from oslo.utils import encodeutils
+from oslo.utils import excutils
+from oslo.utils import netutils
+from oslo.utils import strutils
+import six
 from webob import exc
 
-import six
-
 from glance.common import exception
-from glance.openstack.common import excutils
+from glance import i18n
 import glance.openstack.common.log as logging
-from glance.openstack.common import network_utils
-from glance.openstack.common import strutils
 
 CONF = cfg.CONF
 
 LOG = logging.getLogger(__name__)
+_ = i18n._
 
 FEATURE_BLACKLIST = ['content-length', 'content-type', 'x-image-meta-size']
 
@@ -64,7 +66,8 @@ IMAGE_META_HEADERS = ['x-image-meta-location', 'x-image-meta-size',
                       'x-image-meta-deleted_at', 'x-image-meta-min_ram',
                       'x-image-meta-min_disk', 'x-image-meta-owner',
                       'x-image-meta-store', 'x-image-meta-id',
-                      'x-image-meta-protected', 'x-image-meta-deleted']
+                      'x-image-meta-protected', 'x-image-meta-deleted',
+                      'x-image-meta-virtual_size']
 
 GLANCE_TEST_SOCKET_FD_STR = 'GLANCE_TEST_SOCKET_FD'
 
@@ -245,18 +248,22 @@ def get_image_meta_from_headers(response):
             result[field_name] = value or None
     result['properties'] = properties
 
-    for key in ('size', 'min_disk', 'min_ram'):
+    for key, nullable in [('size', False), ('min_disk', False),
+                          ('min_ram', False), ('virtual_size', True)]:
         if key in result:
             try:
                 result[key] = int(result[key])
             except ValueError:
-                extra = (_("Cannot convert image %(key)s '%(value)s' "
-                           "to an integer.")
-                         % {'key': key, 'value': result[key]})
-                raise exception.InvalidParameterValue(value=result[key],
-                                                      param=key,
-                                                      extra_msg=extra)
-            if result[key] < 0:
+                if nullable and result[key] == str(None):
+                    result[key] = None
+                else:
+                    extra = (_("Cannot convert image %(key)s '%(value)s' "
+                               "to an integer.")
+                             % {'key': key, 'value': result[key]})
+                    raise exception.InvalidParameterValue(value=result[key],
+                                                          param=key,
+                                                          extra_msg=extra)
+            if result[key] < 0 and result[key] is not None:
                 extra = (_("Image %(key)s must be >= 0 "
                            "('%(value)s' specified).")
                          % {'key': key, 'value': result[key]})
@@ -472,41 +479,6 @@ def setup_remote_pydev_debug(host, port):
             LOG.exception(error_msg)
 
 
-class LazyPluggable(object):
-    """A pluggable backend loaded lazily based on some value."""
-
-    def __init__(self, pivot, config_group=None, **backends):
-        self.__backends = backends
-        self.__pivot = pivot
-        self.__backend = None
-        self.__config_group = config_group
-
-    def __get_backend(self):
-        if not self.__backend:
-            if self.__config_group is None:
-                backend_name = CONF[self.__pivot]
-            else:
-                backend_name = CONF[self.__config_group][self.__pivot]
-            if backend_name not in self.__backends:
-                msg = _('Invalid backend: %s') % backend_name
-                raise exception.GlanceException(msg)
-
-            backend = self.__backends[backend_name]
-            if isinstance(backend, tuple):
-                name = backend[0]
-                fromlist = backend[1]
-            else:
-                name = backend
-                fromlist = backend
-
-            self.__backend = __import__(name, None, None, fromlist)
-        return self.__backend
-
-    def __getattr__(self, key):
-        backend = self.__get_backend()
-        return getattr(backend, key)
-
-
 def validate_key_cert(key_file, cert_file):
     try:
         error_key_name = "private key"
@@ -618,7 +590,7 @@ def parse_valid_host_port(host_port):
 
     try:
         try:
-            host, port = network_utils.parse_host_port(host_port)
+            host, port = netutils.parse_host_port(host_port)
         except Exception:
             raise ValueError(_('Host and port "%s" is not valid.') % host_port)
 
@@ -654,4 +626,50 @@ def exception_to_str(exc):
         except UnicodeError:
             error = ("Caught '%(exception)s' exception." %
                      {"exception": exc.__class__.__name__})
-    return strutils.safe_encode(error, errors='ignore')
+    return encodeutils.safe_encode(error, errors='ignore')
+
+
+try:
+    REGEX_4BYTE_UNICODE = re.compile(u'[\U00010000-\U0010ffff]')
+except re.error:
+    # UCS-2 build case
+    REGEX_4BYTE_UNICODE = re.compile(u'[\uD800-\uDBFF][\uDC00-\uDFFF]')
+
+
+def no_4byte_params(f):
+    """
+    Checks that no 4 byte unicode characters are allowed
+    in dicts' keys/values and string's parameters
+    """
+    def wrapper(*args, **kwargs):
+
+        def _is_match(some_str):
+            return (isinstance(some_str, unicode) and
+                    REGEX_4BYTE_UNICODE.findall(some_str) != [])
+
+        def _check_dict(data_dict):
+            # a dict of dicts has to be checked recursively
+            for key, value in data_dict.iteritems():
+                if isinstance(value, dict):
+                    _check_dict(value)
+                else:
+                    if _is_match(key):
+                        msg = _("Property names can't contain 4 byte unicode.")
+                        raise exception.Invalid(msg)
+                    if _is_match(value):
+                        msg = (_("%s can't contain 4 byte unicode characters.")
+                               % key.title())
+                        raise exception.Invalid(msg)
+
+        for data_dict in [arg for arg in args if isinstance(arg, dict)]:
+            _check_dict(data_dict)
+        # now check args for str values
+        for arg in args:
+            if _is_match(arg):
+                msg = _("Param values can't contain 4 byte unicode.")
+                raise exception.Invalid(msg)
+        # check kwargs as well, as params are passed as kwargs via
+        # registry calls
+        _check_dict(kwargs)
+        return f(*args, **kwargs)
+    return wrapper

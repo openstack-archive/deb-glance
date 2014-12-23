@@ -17,6 +17,8 @@ import re
 
 import glance_store
 from oslo.config import cfg
+from oslo.serialization import jsonutils as json
+from oslo.utils import timeutils
 import six
 import six.moves.urllib.parse as urlparse
 import webob.exc
@@ -28,16 +30,14 @@ from glance.common import utils
 from glance.common import wsgi
 import glance.db
 import glance.gateway
+from glance import i18n
 import glance.notifier
-from glance.openstack.common import gettextutils
-from glance.openstack.common import jsonutils as json
 import glance.openstack.common.log as logging
-from glance.openstack.common import timeutils
 import glance.schema
 
 LOG = logging.getLogger(__name__)
-_LI = gettextutils._LI
-_LW = gettextutils._LW
+_ = i18n._
+_LW = i18n._LW
 
 CONF = cfg.CONF
 CONF.import_opt('disk_formats', 'glance.common.config', group='image_format')
@@ -65,16 +65,26 @@ class ImagesController(object):
             image_repo.add(image)
         except exception.DuplicateLocation as dup:
             raise webob.exc.HTTPBadRequest(explanation=dup.msg)
+        except exception.Invalid as e:
+            raise webob.exc.HTTPBadRequest(explanation=e.msg)
         except exception.Forbidden as e:
             raise webob.exc.HTTPForbidden(explanation=e.msg)
         except exception.InvalidParameterValue as e:
             raise webob.exc.HTTPBadRequest(explanation=e.msg)
         except exception.LimitExceeded as e:
-            LOG.info(utils.exception_to_str(e))
+            LOG.warn(utils.exception_to_str(e))
             raise webob.exc.HTTPRequestEntityTooLarge(
                 explanation=e.msg, request=req, content_type='text/plain')
         except exception.Duplicate as dupex:
             raise webob.exc.HTTPConflict(explanation=dupex.msg)
+        except exception.ReservedProperty as e:
+            raise webob.exc.HTTPForbidden(explanation=e.msg)
+        except exception.ReadonlyProperty as e:
+            raise webob.exc.HTTPForbidden(explanation=e.msg)
+        except TypeError as e:
+            LOG.debug(utils.exception_to_str(e))
+            raise webob.exc.HTTPBadRequest(
+                explanation=utils.exception_to_str(e))
 
         return image
 
@@ -130,18 +140,20 @@ class ImagesController(object):
                 image_repo.save(image)
         except exception.NotFound as e:
             raise webob.exc.HTTPNotFound(explanation=e.msg)
+        except exception.Invalid as e:
+            raise webob.exc.HTTPBadRequest(explanation=e.msg)
         except exception.Forbidden as e:
             raise webob.exc.HTTPForbidden(explanation=e.msg)
         except exception.InvalidParameterValue as e:
             raise webob.exc.HTTPBadRequest(explanation=e.msg)
         except exception.StorageQuotaFull as e:
-            msg = (_LI("Denying attempt to upload image because it exceeds the"
-                       " .quota: %s") % utils.exception_to_str(e))
-            LOG.info(msg)
+            msg = (_("Denying attempt to upload image because it exceeds the"
+                     " .quota: %s") % utils.exception_to_str(e))
+            LOG.warn(msg)
             raise webob.exc.HTTPRequestEntityTooLarge(
                 explanation=msg, request=req, content_type='text/plain')
         except exception.LimitExceeded as e:
-            LOG.info(utils.exception_to_str(e))
+            LOG.exception(utils.exception_to_str(e))
             raise webob.exc.HTTPRequestEntityTooLarge(
                 explanation=e.msg, request=req, content_type='text/plain')
 
@@ -166,14 +178,19 @@ class ImagesController(object):
         path = change['path']
         path_root = path[0]
         value = change['value']
+        json_schema_version = change.get('json_schema_version', 10)
         if path_root == 'locations':
             self._do_add_locations(image, path[1], value)
         else:
-            if (hasattr(image, path_root) or
-                    path_root in image.extra_properties):
+            if ((hasattr(image, path_root) or
+                    path_root in image.extra_properties)
+                    and json_schema_version == 4):
                 msg = _("Property %s already present.")
                 raise webob.exc.HTTPConflict(msg % path_root)
-            image.extra_properties[path_root] = value
+            if hasattr(image, path_root):
+                setattr(image, path_root, value)
+            else:
+                image.extra_properties[path_root] = value
 
     def _do_remove(self, req, image, change):
         path = change['path']
@@ -202,12 +219,14 @@ class ImagesController(object):
         except exception.NotFound as e:
             msg = (_("Failed to find image %(image_id)s to delete") %
                    {'image_id': image_id})
-            LOG.info(msg)
+            LOG.warn(msg)
             raise webob.exc.HTTPNotFound(explanation=msg)
         except exception.InUseByStore as e:
-            msg = (_LI("Image %s could not be deleted "
-                       "because it is in use: %s") % (image_id, e.msg))
-            LOG.info(msg)
+            msg = (_("Image %(id)s could not be deleted "
+                     "because it is in use: %(exc)s") %
+                   {"id": image_id,
+                    "exc": e.msg})
+            LOG.warn(msg)
             raise webob.exc.HTTPConflict(explanation=msg)
 
     def _get_locations_op_pos(self, path_pos, max_pos, allow_max):
@@ -241,8 +260,8 @@ class ImagesController(object):
             except (exception.BadStoreUri, exception.DuplicateLocation) as bse:
                 raise webob.exc.HTTPBadRequest(explanation=bse.msg)
             except ValueError as ve:    # update image status failed.
-                raise webob.exc.HTTPBadRequest(explanation=
-                                               utils.exception_to_str(ve))
+                raise webob.exc.HTTPBadRequest(
+                    explanation=utils.exception_to_str(ve))
 
     def _do_add_locations(self, image, path_pos, value):
         pos = self._get_locations_op_pos(path_pos,
@@ -257,8 +276,8 @@ class ImagesController(object):
         except (exception.BadStoreUri, exception.DuplicateLocation) as bse:
             raise webob.exc.HTTPBadRequest(explanation=bse.msg)
         except ValueError as ve:    # update image status failed.
-            raise webob.exc.HTTPBadRequest(explanation=
-                                           utils.exception_to_str(ve))
+            raise webob.exc.HTTPBadRequest(
+                explanation=utils.exception_to_str(ve))
 
     def _do_remove_locations(self, image, path_pos):
         pos = self._get_locations_op_pos(path_pos,
@@ -271,8 +290,8 @@ class ImagesController(object):
             # from the backend store.
             image.locations.pop(pos)
         except Exception as e:
-            raise webob.exc.HTTPInternalServerError(explanation=
-                                                    utils.exception_to_str(e))
+            raise webob.exc.HTTPInternalServerError(
+                explanation=utils.exception_to_str(e))
         if (len(image.locations) == 0) and (image.status == 'active'):
             image.status = 'queued'
 
@@ -307,8 +326,8 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
         for key in cls._disallowed_properties:
             if key in image:
                 msg = _("Attribute '%s' is read-only.") % key
-                raise webob.exc.HTTPForbidden(explanation=
-                                              utils.exception_to_str(msg))
+                raise webob.exc.HTTPForbidden(
+                    explanation=utils.exception_to_str(msg))
 
     def create(self, request):
         body = self._get_request_body(request)
@@ -319,7 +338,7 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
             raise webob.exc.HTTPBadRequest(explanation=e.msg)
         image = {}
         properties = body
-        tags = properties.pop('tags', None)
+        tags = properties.pop('tags', [])
         for key in self._base_properties:
             try:
                 # NOTE(flwang): Instead of changing the _check_unexpected
@@ -492,7 +511,8 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
 
             # NOTE(zhiyan): the 'path' is a list.
             self._validate_path(op, path)
-            change = {'op': op, 'path': path}
+            change = {'op': op, 'path': path,
+                      'json_schema_version': json_schema_version}
 
             if not op == 'remove':
                 change['value'] = self._get_change_value(raw_change, op)
@@ -684,7 +704,7 @@ def get_base_properties():
                         '-([0-9a-fA-F]){4}-([0-9a-fA-F]){12}$'),
         },
         'name': {
-            'type': 'string',
+            'type': ['null', 'string'],
             'description': _('Descriptive name for the image'),
             'maxLength': 255,
         },
@@ -704,46 +724,46 @@ def get_base_properties():
             'description': _('If true, image will not be deletable.'),
         },
         'checksum': {
-            'type': 'string',
+            'type': ['null', 'string'],
             'description': _('md5 hash of image contents. (READ-ONLY)'),
             'maxLength': 32,
         },
         'owner': {
-            'type': 'string',
+            'type': ['null', 'string'],
             'description': _('Owner of the image'),
             'maxLength': 255,
         },
         'size': {
-            'type': 'integer',
+            'type': ['null', 'integer'],
             'description': _('Size of image file in bytes (READ-ONLY)'),
         },
         'virtual_size': {
-            'type': 'integer',
+            'type': ['null', 'integer'],
             'description': _('Virtual size of image in bytes (READ-ONLY)'),
         },
         'container_format': {
-            'type': 'string',
+            'type': ['null', 'string'],
             'description': _('Format of the container'),
-            'enum': CONF.image_format.container_formats,
+            'enum': [None] + CONF.image_format.container_formats,
         },
         'disk_format': {
-            'type': 'string',
+            'type': ['null', 'string'],
             'description': _('Format of the disk'),
-            'enum': CONF.image_format.disk_formats,
+            'enum': [None] + CONF.image_format.disk_formats,
         },
         'created_at': {
             'type': 'string',
             'description': _('Date and time of image registration'
                              ' (READ-ONLY)'),
-            #TODO(bcwaldon): our jsonschema library doesn't seem to like the
+            # TODO(bcwaldon): our jsonschema library doesn't seem to like the
             # format attribute, figure out why!
-            #'format': 'date-time',
+            # 'format': 'date-time',
         },
         'updated_at': {
             'type': 'string',
             'description': _('Date and time of the last image modification'
                              ' (READ-ONLY)'),
-            #'format': 'date-time',
+            # 'format': 'date-time',
         },
         'tags': {
             'type': 'array',

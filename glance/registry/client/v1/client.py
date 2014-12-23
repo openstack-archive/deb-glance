@@ -18,16 +18,18 @@ Simple client class to speak with any RESTful service that implements
 the Glance Registry API
 """
 
+from oslo.serialization import jsonutils
+from oslo.utils import excutils
+
 from glance.common.client import BaseClient
 from glance.common import crypt
-from glance.openstack.common import excutils
-from glance.openstack.common import gettextutils
-from glance.openstack.common import jsonutils
+from glance import i18n
 import glance.openstack.common.log as logging
 from glance.registry.api.v1 import images
 
 LOG = logging.getLogger(__name__)
-_LI = gettextutils._LI
+_LE = i18n._LE
+_LI = i18n._LI
 
 
 class RegistryClient(BaseClient):
@@ -124,10 +126,10 @@ class RegistryClient(BaseClient):
         except Exception as exc:
             with excutils.save_and_reraise_exception():
                 exc_name = exc.__class__.__name__
-                LOG.info(_LI("Registry client request %(method)s %(action)s "
-                             "raised %(exc_name)s"),
-                         {'method': method, 'action': action,
-                          'exc_name': exc_name})
+                LOG.exception(_LE("Registry client request %(method)s "
+                                  "%(action)s raised %(exc_name)s"),
+                              {'method': method, 'action': action,
+                               'exc_name': exc_name})
         return res
 
     def get_images_detailed(self, **kwargs):

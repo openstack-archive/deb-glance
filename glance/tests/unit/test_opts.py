@@ -76,6 +76,7 @@ class OptsTestCase(utils.BaseTestCase):
             'allow_anonymous_access',
             'policy_file',
             'policy_default_rule',
+            'policy_dirs',
             'allow_additional_image_properties',
             'image_member_quota',
             'image_property_quota',
@@ -102,7 +103,6 @@ class OptsTestCase(utils.BaseTestCase):
             'bind_host',
             'bind_port',
             'workers',
-            'eventlet_hub',
             'max_header_line',
             'backlog',
             'tcp_keepidle',
@@ -131,8 +131,6 @@ class OptsTestCase(utils.BaseTestCase):
             'registry_client_insecure',
             'registry_client_timeout',
             'send_identity_headers',
-            'disable_process_locking',
-            'lock_path',
             'scrubber_datadir',
             'scrub_time',
             'cleanup_scrubber',
@@ -145,7 +143,8 @@ class OptsTestCase(utils.BaseTestCase):
             'eventlet_executor_pool_size',
             'store_type_preference',
             'flavor',
-            'config_file'
+            'config_file',
+            'public_endpoint'
         ]
 
         self._check_opt_groups(opt_list, expected_opt_groups)
@@ -175,6 +174,7 @@ class OptsTestCase(utils.BaseTestCase):
             'allow_anonymous_access',
             'policy_file',
             'policy_default_rule',
+            'policy_dirs',
             'allow_additional_image_properties',
             'image_member_quota',
             'image_property_quota',
@@ -202,7 +202,6 @@ class OptsTestCase(utils.BaseTestCase):
             'cert_file',
             'key_file',
             'workers',
-            'eventlet_hub',
             'max_header_line',
             'flavor',
             'config_file'
@@ -231,6 +230,7 @@ class OptsTestCase(utils.BaseTestCase):
             'syslog-log-facility',
             'policy_file',
             'policy_default_rule',
+            'policy_dirs',
             'allow_additional_image_properties',
             'image_member_quota',
             'image_property_quota',
@@ -250,8 +250,6 @@ class OptsTestCase(utils.BaseTestCase):
             'pydev_worker_debug_host',
             'pydev_worker_debug_port',
             'metadata_encryption_key',
-            'disable_process_locking',
-            'lock_path',
             'scrubber_datadir',
             'scrub_time',
             'cleanup_scrubber',
@@ -293,6 +291,7 @@ class OptsTestCase(utils.BaseTestCase):
             'syslog-log-facility',
             'policy_file',
             'policy_default_rule',
+            'policy_dirs',
             'allow_additional_image_properties',
             'image_member_quota',
             'image_property_quota',

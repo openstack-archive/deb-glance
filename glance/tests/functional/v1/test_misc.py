@@ -12,13 +12,13 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-
 import hashlib
-import httplib2
 import os
 
-from glance.openstack.common import jsonutils
-from glance.openstack.common import units
+import httplib2
+from oslo.serialization import jsonutils
+from oslo.utils import units
+
 from glance.tests import functional
 from glance.tests.utils import execute
 from glance.tests.utils import minimal_headers
@@ -58,12 +58,12 @@ class TestMiscellaneous(functional.FunctionalTest):
         http = httplib2.Http()
         response, content = http.request(path, 'POST', headers=headers,
                                          body=image_data)
-        self.assertEqual(response.status, 201)
+        self.assertEqual(201, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(data['image']['checksum'],
-                         hashlib.md5(image_data).hexdigest())
-        self.assertEqual(data['image']['size'], FIVE_KB)
-        self.assertEqual(data['image']['name'], "Image1")
+        self.assertEqual(hashlib.md5(image_data).hexdigest(),
+                         data['image']['checksum'])
+        self.assertEqual(FIVE_KB, data['image']['size'])
+        self.assertEqual("Image1", data['image']['name'])
         self.assertTrue(data['image']['is_public'])
 
         # 2. REMOVE the image from the filesystem
@@ -76,15 +76,15 @@ class TestMiscellaneous(functional.FunctionalTest):
                                               data['image']['id'])
         http = httplib2.Http()
         response, content = http.request(path, 'HEAD')
-        self.assertEqual(response.status, 200)
-        self.assertEqual(response['x-image-meta-name'], "Image1")
+        self.assertEqual(200, response.status)
+        self.assertEqual("Image1", response['x-image-meta-name'])
 
         # 4. GET /images/1
         # Verify the api throws the appropriate 404 error
         path = "http://%s:%d/v1/images/1" % ("127.0.0.1", self.api_port)
         http = httplib2.Http()
         response, content = http.request(path, 'GET')
-        self.assertEqual(response.status, 404)
+        self.assertEqual(404, response.status)
 
         self.stop_servers()
 

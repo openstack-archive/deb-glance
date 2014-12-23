@@ -17,14 +17,17 @@
 import glance_store
 from oslo.config import cfg
 from oslo import messaging
+from oslo.utils import excutils
+from oslo.utils import timeutils
 import webob
 
 from glance.common import exception
 from glance.common import utils
 import glance.domain.proxy
-from glance.openstack.common import excutils
+from glance import i18n
 import glance.openstack.common.log as logging
-from glance.openstack.common import timeutils
+
+_ = i18n._
 
 notifier_opts = [
     cfg.StrOpt('default_publisher_id', default="image.localhost",
@@ -211,8 +214,8 @@ class ImageProxy(glance.domain.proxy.Image):
                    {'image_id': self.image.image_id,
                     'error': utils.exception_to_str(e)})
             self.notifier.error('image.upload', msg)
-            raise webob.exc.HTTPBadRequest(explanation=
-                                           utils.exception_to_str(e))
+            raise webob.exc.HTTPBadRequest(
+                explanation=utils.exception_to_str(e))
         except exception.Duplicate as e:
             msg = (_("Unable to upload duplicate image data for image"
                      "%(image_id)s: %(error)s") %
@@ -260,10 +263,9 @@ class TaskRepoProxy(glance.domain.proxy.TaskRepo):
         self.context = context
         self.notifier = notifier
         proxy_kwargs = {'context': self.context, 'notifier': self.notifier}
-        super(TaskRepoProxy, self) \
-            .__init__(task_repo,
-                      task_proxy_class=TaskProxy,
-                      task_proxy_kwargs=proxy_kwargs)
+        super(TaskRepoProxy, self).__init__(task_repo,
+                                            task_proxy_class=TaskProxy,
+                                            task_proxy_kwargs=proxy_kwargs)
 
     def add(self, task):
         self.notifier.info('task.create',
@@ -285,10 +287,10 @@ class TaskStubRepoProxy(glance.domain.proxy.TaskStubRepo):
         self.context = context
         self.notifier = notifier
         proxy_kwargs = {'context': self.context, 'notifier': self.notifier}
-        super(TaskStubRepoProxy, self) \
-            .__init__(task_stub_repo,
-                      task_stub_proxy_class=TaskStubProxy,
-                      task_stub_proxy_kwargs=proxy_kwargs)
+        super(TaskStubRepoProxy, self).__init__(
+            task_stub_repo,
+            task_stub_proxy_class=TaskStubProxy,
+            task_stub_proxy_kwargs=proxy_kwargs)
 
 
 class TaskFactoryProxy(glance.domain.proxy.TaskFactory):

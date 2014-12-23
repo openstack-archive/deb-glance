@@ -14,18 +14,19 @@
 # limitations under the License.
 
 import wsme
-from wsme.rest.json import fromjson
+from wsme.rest import json
 from wsme import types
 
 from glance.api.v2.model.metadef_object import MetadefObject
 from glance.api.v2.model.metadef_property_type import PropertyType
 from glance.api.v2.model.metadef_resource_type import ResourceTypeAssociation
+from glance.api.v2.model.metadef_tag import MetadefTag
 from glance.common.wsme_utils import WSMEModelTransformer
 
 
 class Namespace(types.Base, WSMEModelTransformer):
 
-    #Base fields
+    # Base fields
     namespace = wsme.wsattr(types.text, mandatory=True)
     display_name = wsme.wsattr(types.text, mandatory=False)
     description = wsme.wsattr(types.text, mandatory=False)
@@ -33,18 +34,19 @@ class Namespace(types.Base, WSMEModelTransformer):
     protected = wsme.wsattr(bool, mandatory=False)
     owner = wsme.wsattr(types.text, mandatory=False)
 
-    #Not using datetime since time format has to be
-    #in glance.openstack.common.timeutils.isotime() format
+    # Not using datetime since time format has to be
+    # in oslo.utils.timeutils.isotime() format
     created_at = wsme.wsattr(types.text, mandatory=False)
     updated_at = wsme.wsattr(types.text, mandatory=False)
 
-    #Contained fields
+    # Contained fields
     resource_type_associations = wsme.wsattr([ResourceTypeAssociation],
                                              mandatory=False)
     properties = wsme.wsattr({types.text: PropertyType}, mandatory=False)
     objects = wsme.wsattr([MetadefObject], mandatory=False)
+    tags = wsme.wsattr([MetadefTag], mandatory=False)
 
-    #Generated fields
+    # Generated fields
     self = wsme.wsattr(types.text, mandatory=False)
     schema = wsme.wsattr(types.text, mandatory=False)
 
@@ -56,7 +58,7 @@ class Namespace(types.Base, WSMEModelTransformer):
         property_types = {}
         for db_property_type in db_property_types:
             # Convert the persisted json schema to a dict of PropertyTypes
-            property_type = fromjson(
+            property_type = json.fromjson(
                 PropertyType, db_property_type.schema)
             property_type_name = db_property_type.name
             property_types[property_type_name] = property_type
@@ -68,7 +70,7 @@ class Namespaces(types.Base, WSMEModelTransformer):
 
     namespaces = wsme.wsattr([Namespace], mandatory=False)
 
-    #Pagination
+    # Pagination
     next = wsme.wsattr(types.text, mandatory=False)
     schema = wsme.wsattr(types.text, mandatory=True)
     first = wsme.wsattr(types.text, mandatory=True)

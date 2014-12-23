@@ -19,6 +19,8 @@ import datetime
 import uuid
 
 from oslo.config import cfg
+from oslo.serialization import jsonutils
+from oslo.utils import timeutils
 import routes
 import six
 import webob
@@ -28,9 +30,6 @@ import glance.common.config
 import glance.context
 from glance.db.sqlalchemy import api as db_api
 from glance.db.sqlalchemy import models as db_models
-from glance.openstack.common import jsonutils
-from glance.openstack.common import timeutils
-
 from glance.registry.api import v2 as rserver
 from glance.tests.unit import base
 from glance.tests import utils as test_utils
@@ -114,10 +113,7 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         db_models.register_models(db_api.get_engine())
 
     def test_show(self):
-        """
-        Tests that registry API endpoint
-        returns the expected image
-        """
+        """Tests that registry API endpoint returns the expected image."""
         fixture = {'id': UUID2,
                    'name': 'fake image #2',
                    'size': 19,
@@ -132,17 +128,14 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         }]
         req.body = jsonutils.dumps(cmd)
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
         res_dict = jsonutils.loads(res.body)[0]
         image = res_dict
         for k, v in six.iteritems(fixture):
             self.assertEqual(v, image[k])
 
     def test_show_unknown(self):
-        """
-        Tests that the registry API endpoint
-        returns a 404 for an unknown image id
-        """
+        """Tests the registry API endpoint returns 404 for an unknown id."""
         req = webob.Request.blank('/rpc')
         req.method = "POST"
         cmd = [{
@@ -152,14 +145,11 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         req.body = jsonutils.dumps(cmd)
         res = req.get_response(self.api)
         res_dict = jsonutils.loads(res.body)[0]
-        self.assertEqual(res_dict["_error"]["cls"],
-                         'glance.common.exception.NotFound')
+        self.assertEqual('glance.common.exception.NotFound',
+                         res_dict["_error"]["cls"])
 
     def test_get_index(self):
-        """
-        Tests that the image_get_all command returns list of
-        images
-        """
+        """Tests that the image_get_all command returns list of images."""
         fixture = {'id': UUID2,
                    'name': 'fake image #2',
                    'size': 19,
@@ -174,18 +164,18 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         req.body = jsonutils.dumps(cmd)
 
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
 
         images = jsonutils.loads(res.body)[0]
-        self.assertEqual(len(images), 1)
+        self.assertEqual(1, len(images))
 
         for k, v in six.iteritems(fixture):
             self.assertEqual(v, images[0][k])
 
     def test_get_index_marker(self):
-        """
-        Tests that the registry API returns list of
-        public images that conforms to a marker query param
+        """Tests that the registry API returns list of public images.
+
+        Must conforms to a marker query param.
         """
         uuid5_time = timeutils.utcnow() + datetime.timedelta(seconds=10)
         uuid4_time = uuid5_time + datetime.timedelta(seconds=5)
@@ -242,14 +232,14 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         req.body = jsonutils.dumps(cmd)
 
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
 
         images = jsonutils.loads(res.body)[0]
         # should be sorted by created_at desc, id desc
         # page should start after marker 4
-        self.assertEqual(len(images), 2)
-        self.assertEqual(images[0]['id'], UUID5)
-        self.assertEqual(images[1]['id'], UUID2)
+        self.assertEqual(2, len(images))
+        self.assertEqual(UUID5, images[0]['id'])
+        self.assertEqual(UUID2, images[1]['id'])
 
     def test_get_index_marker_and_name_asc(self):
         """Test marker and null name ascending
@@ -280,9 +270,9 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         req.body = jsonutils.dumps(cmd)
 
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
         images = jsonutils.loads(res.body)[0]
-        self.assertEqual(len(images), 2)
+        self.assertEqual(2, len(images))
 
     def test_get_index_marker_and_name_desc(self):
         """Test marker and null name descending
@@ -313,9 +303,9 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         req.body = jsonutils.dumps(cmd)
 
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
         images = jsonutils.loads(res.body)[0]
-        self.assertEqual(len(images), 0)
+        self.assertEqual(0, len(images))
 
     def test_get_index_marker_and_disk_format_asc(self):
         """Test marker and null disk format ascending
@@ -346,9 +336,9 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         req.body = jsonutils.dumps(cmd)
 
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
         images = jsonutils.loads(res.body)[0]
-        self.assertEqual(len(images), 2)
+        self.assertEqual(2, len(images))
 
     def test_get_index_marker_and_disk_format_desc(self):
         """Test marker and null disk format descending
@@ -379,9 +369,9 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         req.body = jsonutils.dumps(cmd)
 
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
         images = jsonutils.loads(res.body)[0]
-        self.assertEqual(len(images), 0)
+        self.assertEqual(0, len(images))
 
     def test_get_index_marker_and_container_format_asc(self):
         """Test marker and null container format ascending
@@ -412,9 +402,9 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         req.body = jsonutils.dumps(cmd)
 
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
         images = jsonutils.loads(res.body)[0]
-        self.assertEqual(len(images), 2)
+        self.assertEqual(2, len(images))
 
     def test_get_index_marker_and_container_format_desc(self):
         """Test marker and null container format descending
@@ -445,15 +435,12 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         req.body = jsonutils.dumps(cmd)
 
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
         images = jsonutils.loads(res.body)[0]
-        self.assertEqual(len(images), 0)
+        self.assertEqual(0, len(images))
 
     def test_get_index_unknown_marker(self):
-        """
-        Tests that the registry API returns a NotFound
-        when an unknown marker is provided
-        """
+        """Tests the registry API returns a NotFound with unknown marker."""
         req = webob.Request.blank('/rpc')
         req.method = "POST"
         cmd = [{
@@ -468,9 +455,9 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         self.assertIn("NotFound", result["_error"]["cls"])
 
     def test_get_index_limit(self):
-        """
-        Tests that the registry API returns list of
-        public images that conforms to a limit query param
+        """Tests that the registry API returns list of public images.
+
+        Must conforms to a limit query param.
         """
         uuid3_time = timeutils.utcnow() + datetime.timedelta(seconds=10)
         uuid4_time = uuid3_time + datetime.timedelta(seconds=5)
@@ -512,18 +499,18 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         req.body = jsonutils.dumps(cmd)
         res = req.get_response(self.api)
         res_dict = jsonutils.loads(res.body)[0]
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
 
         images = res_dict
-        self.assertEqual(len(images), 1)
+        self.assertEqual(1, len(images))
 
         # expect list to be sorted by created_at desc
-        self.assertEqual(images[0]['id'], UUID4)
+        self.assertEqual(UUID4, images[0]['id'])
 
     def test_get_index_limit_marker(self):
-        """
-        Tests that the registry API returns list of
-        public images that conforms to limit and marker query params
+        """Tests that the registry API returns list of public images.
+
+        Must conforms to limit and marker query params.
         """
         uuid3_time = timeutils.utcnow() + datetime.timedelta(seconds=10)
         uuid4_time = uuid3_time + datetime.timedelta(seconds=5)
@@ -564,19 +551,20 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         req.body = jsonutils.dumps(cmd)
         res = req.get_response(self.api)
         res_dict = jsonutils.loads(res.body)[0]
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
 
         images = res_dict
-        self.assertEqual(len(images), 1)
+        self.assertEqual(1, len(images))
 
         # expect list to be sorted by created_at desc
-        self.assertEqual(images[0]['id'], UUID2)
+        self.assertEqual(UUID2, images[0]['id'])
 
     def test_get_index_filter_name(self):
-        """
-        Tests that the registry API returns list of
-        public images that have a specific name. This is really a sanity
-        check, filtering is tested more in-depth using /images/detail
+        """Tests that the registry API returns list of public images.
+
+        Use a specific name. This is really a sanity check, filtering is
+        tested more in-depth using /images/detail
+
         """
         extra_fixture = {'id': _gen_uuid(),
                          'status': 'active',
@@ -609,18 +597,18 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         req.body = jsonutils.dumps(cmd)
         res = req.get_response(self.api)
         res_dict = jsonutils.loads(res.body)[0]
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
 
         images = res_dict
-        self.assertEqual(len(images), 2)
+        self.assertEqual(2, len(images))
 
         for image in images:
             self.assertEqual('new name! #123', image['name'])
 
     def test_get_index_filter_on_user_defined_properties(self):
-        """
-        Tests that the registry API returns list of
-        public images that have a specific user-defined properties.
+        """Tests that the registry API returns list of public images.
+
+        Use a specific user-defined properties.
         """
         properties = {'distro': 'ubuntu', 'arch': 'i386', 'type': 'kernel'}
         extra_id = _gen_uuid()
@@ -643,11 +631,11 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         }]
         req.body = jsonutils.dumps(cmd)
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
         images = jsonutils.loads(res.body)[0]
-        self.assertEqual(len(images), 2)
-        self.assertEqual(images[0]['id'], extra_id)
-        self.assertEqual(images[1]['id'], UUID1)
+        self.assertEqual(2, len(images))
+        self.assertEqual(extra_id, images[0]['id'])
+        self.assertEqual(UUID1, images[1]['id'])
 
         # testing with a non-existent value for a common property.
         cmd = [{
@@ -656,9 +644,9 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         }]
         req.body = jsonutils.dumps(cmd)
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
         images = jsonutils.loads(res.body)[0]
-        self.assertEqual(len(images), 0)
+        self.assertEqual(0, len(images))
 
         # testing with a non-existent value for a common property.
         cmd = [{
@@ -667,9 +655,9 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         }]
         req.body = jsonutils.dumps(cmd)
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
         images = jsonutils.loads(res.body)[0]
-        self.assertEqual(len(images), 0)
+        self.assertEqual(0, len(images))
 
         # testing with a non-existent property.
         cmd = [{
@@ -678,9 +666,9 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         }]
         req.body = jsonutils.dumps(cmd)
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
         images = jsonutils.loads(res.body)[0]
-        self.assertEqual(len(images), 0)
+        self.assertEqual(0, len(images))
 
         # testing with multiple existing properties.
         cmd = [{
@@ -689,10 +677,10 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         }]
         req.body = jsonutils.dumps(cmd)
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
         images = jsonutils.loads(res.body)[0]
-        self.assertEqual(len(images), 1)
-        self.assertEqual(images[0]['id'], extra_id)
+        self.assertEqual(1, len(images))
+        self.assertEqual(extra_id, images[0]['id'])
 
         # testing with multiple existing properties but non-existent values.
         cmd = [{
@@ -701,9 +689,9 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         }]
         req.body = jsonutils.dumps(cmd)
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
         images = jsonutils.loads(res.body)[0]
-        self.assertEqual(len(images), 0)
+        self.assertEqual(0, len(images))
 
         # testing with multiple non-existing properties.
         cmd = [{
@@ -712,9 +700,9 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         }]
         req.body = jsonutils.dumps(cmd)
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
         images = jsonutils.loads(res.body)[0]
-        self.assertEqual(len(images), 0)
+        self.assertEqual(0, len(images))
 
         # testing with one existing property and the other non-existing.
         cmd = [{
@@ -723,14 +711,14 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         }]
         req.body = jsonutils.dumps(cmd)
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
         images = jsonutils.loads(res.body)[0]
-        self.assertEqual(len(images), 0)
+        self.assertEqual(0, len(images))
 
     def test_get_index_sort_default_created_at_desc(self):
-        """
-        Tests that the registry API returns list of
-        public images that conforms to a default sort key/dir
+        """Tests that the registry API returns list of public images.
+
+        Must conforms to a default sort key/dir.
         """
         uuid5_time = timeutils.utcnow() + datetime.timedelta(seconds=10)
         uuid4_time = uuid5_time + datetime.timedelta(seconds=5)
@@ -786,24 +774,23 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         req.body = jsonutils.dumps(cmd)
         res = req.get_response(self.api)
         res_dict = jsonutils.loads(res.body)[0]
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
 
         images = res_dict
         # (flaper87)registry's v1 forced is_public to True
         # when no value was specified. This is not
         # the default behaviour anymore.
-        self.assertEqual(len(images), 5)
-        self.assertEqual(images[0]['id'], UUID3)
-        self.assertEqual(images[1]['id'], UUID4)
-        self.assertEqual(images[2]['id'], UUID5)
-        self.assertEqual(images[3]['id'], UUID2)
-        self.assertEqual(images[4]['id'], UUID1)
+        self.assertEqual(5, len(images))
+        self.assertEqual(UUID3, images[0]['id'])
+        self.assertEqual(UUID4, images[1]['id'])
+        self.assertEqual(UUID5, images[2]['id'])
+        self.assertEqual(UUID2, images[3]['id'])
+        self.assertEqual(UUID1, images[4]['id'])
 
     def test_get_index_sort_name_asc(self):
-        """
-        Tests that the registry API returns list of
-        public images sorted alphabetically by name in
-        ascending order.
+        """Tests that the registry API returns list of public images.
+
+        Must be  sorted alphabetically by name in ascending order.
         """
         UUID3 = _gen_uuid()
         extra_fixture = {'id': UUID3,
@@ -848,22 +835,21 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         }]
         req.body = jsonutils.dumps(cmd)
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
         res_dict = jsonutils.loads(res.body)[0]
 
         images = res_dict
-        self.assertEqual(len(images), 5)
-        self.assertEqual(images[0]['id'], UUID5)
-        self.assertEqual(images[1]['id'], UUID3)
-        self.assertEqual(images[2]['id'], UUID1)
-        self.assertEqual(images[3]['id'], UUID2)
-        self.assertEqual(images[4]['id'], UUID4)
+        self.assertEqual(5, len(images))
+        self.assertEqual(UUID5, images[0]['id'])
+        self.assertEqual(UUID3, images[1]['id'])
+        self.assertEqual(UUID1, images[2]['id'])
+        self.assertEqual(UUID2, images[3]['id'])
+        self.assertEqual(UUID4, images[4]['id'])
 
     def test_get_index_sort_status_desc(self):
-        """
-        Tests that the registry API returns list of
-        public images sorted alphabetically by status in
-        descending order.
+        """Tests that the registry API returns list of public images.
+
+        Must be sorted alphabetically by status in descending order.
         """
         uuid4_time = timeutils.utcnow() + datetime.timedelta(seconds=10)
 
@@ -901,21 +887,20 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         }]
         req.body = jsonutils.dumps(cmd)
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
         res_dict = jsonutils.loads(res.body)[0]
 
         images = res_dict
-        self.assertEqual(len(images), 4)
-        self.assertEqual(images[0]['id'], UUID1)
-        self.assertEqual(images[1]['id'], UUID2)
-        self.assertEqual(images[2]['id'], UUID4)
-        self.assertEqual(images[3]['id'], UUID3)
+        self.assertEqual(4, len(images))
+        self.assertEqual(UUID1, images[0]['id'])
+        self.assertEqual(UUID2, images[1]['id'])
+        self.assertEqual(UUID4, images[2]['id'])
+        self.assertEqual(UUID3, images[3]['id'])
 
     def test_get_index_sort_disk_format_asc(self):
-        """
-        Tests that the registry API returns list of
-        public images sorted alphabetically by disk_format in
-        ascending order.
+        """Tests that the registry API returns list of public images.
+
+        Must be sorted alphabetically by disk_format in ascending order.
         """
         uuid3_time = timeutils.utcnow() + datetime.timedelta(seconds=5)
 
@@ -953,21 +938,20 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         }]
         req.body = jsonutils.dumps(cmd)
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
         res_dict = jsonutils.loads(res.body)[0]
 
         images = res_dict
-        self.assertEqual(len(images), 4)
-        self.assertEqual(images[0]['id'], UUID1)
-        self.assertEqual(images[1]['id'], UUID3)
-        self.assertEqual(images[2]['id'], UUID4)
-        self.assertEqual(images[3]['id'], UUID2)
+        self.assertEqual(4, len(images))
+        self.assertEqual(UUID1, images[0]['id'])
+        self.assertEqual(UUID3, images[1]['id'])
+        self.assertEqual(UUID4, images[2]['id'])
+        self.assertEqual(UUID2, images[3]['id'])
 
     def test_get_index_sort_container_format_desc(self):
-        """
-        Tests that the registry API returns list of
-        public images sorted alphabetically by container_format in
-        descending order.
+        """Tests that the registry API returns list of public images.
+
+        Must be sorted alphabetically by container_format in descending order.
         """
         uuid3_time = timeutils.utcnow() + datetime.timedelta(seconds=5)
 
@@ -1006,20 +990,20 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         }]
         req.body = jsonutils.dumps(cmd)
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
         res_dict = jsonutils.loads(res.body)[0]
 
         images = res_dict
-        self.assertEqual(len(images), 4)
-        self.assertEqual(images[0]['id'], UUID2)
-        self.assertEqual(images[1]['id'], UUID4)
-        self.assertEqual(images[2]['id'], UUID3)
-        self.assertEqual(images[3]['id'], UUID1)
+        self.assertEqual(4, len(images))
+        self.assertEqual(UUID2, images[0]['id'])
+        self.assertEqual(UUID4, images[1]['id'])
+        self.assertEqual(UUID3, images[2]['id'])
+        self.assertEqual(UUID1, images[3]['id'])
 
     def test_get_index_sort_size_asc(self):
-        """
-        Tests that the registry API returns list of
-        public images sorted by size in ascending order.
+        """Tests that the registry API returns list of public images.
+
+        Must be sorted by size in ascending order.
         """
         UUID3 = _gen_uuid()
         extra_fixture = {'id': UUID3,
@@ -1054,20 +1038,20 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         }]
         req.body = jsonutils.dumps(cmd)
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
         res_dict = jsonutils.loads(res.body)[0]
 
         images = res_dict
-        self.assertEqual(len(images), 4)
-        self.assertEqual(images[0]['id'], UUID4)
-        self.assertEqual(images[1]['id'], UUID1)
-        self.assertEqual(images[2]['id'], UUID2)
-        self.assertEqual(images[3]['id'], UUID3)
+        self.assertEqual(4, len(images))
+        self.assertEqual(UUID4, images[0]['id'])
+        self.assertEqual(UUID1, images[1]['id'])
+        self.assertEqual(UUID2, images[2]['id'])
+        self.assertEqual(UUID3, images[3]['id'])
 
     def test_get_index_sort_created_at_asc(self):
-        """
-        Tests that the registry API returns list of
-        public images sorted by created_at in ascending order.
+        """Tests that the registry API returns list of public images.
+
+        Must be sorted by created_at in ascending order.
         """
         uuid4_time = timeutils.utcnow() + datetime.timedelta(seconds=10)
         uuid3_time = uuid4_time + datetime.timedelta(seconds=5)
@@ -1109,20 +1093,20 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         }]
         req.body = jsonutils.dumps(cmd)
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
         res_dict = jsonutils.loads(res.body)[0]
 
         images = res_dict
-        self.assertEqual(len(images), 4)
-        self.assertEqual(images[0]['id'], UUID1)
-        self.assertEqual(images[1]['id'], UUID2)
-        self.assertEqual(images[2]['id'], UUID4)
-        self.assertEqual(images[3]['id'], UUID3)
+        self.assertEqual(4, len(images))
+        self.assertEqual(UUID1, images[0]['id'])
+        self.assertEqual(UUID2, images[1]['id'])
+        self.assertEqual(UUID4, images[2]['id'])
+        self.assertEqual(UUID3, images[3]['id'])
 
     def test_get_index_sort_updated_at_desc(self):
-        """
-        Tests that the registry API returns list of
-        public images sorted by updated_at in descending order.
+        """Tests that the registry API returns list of public images.
+
+        Must be sorted by updated_at in descending order.
         """
         uuid4_time = timeutils.utcnow() + datetime.timedelta(seconds=10)
         uuid3_time = uuid4_time + datetime.timedelta(seconds=5)
@@ -1164,15 +1148,15 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         }]
         req.body = jsonutils.dumps(cmd)
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
         res_dict = jsonutils.loads(res.body)[0]
 
         images = res_dict
-        self.assertEqual(len(images), 4)
-        self.assertEqual(images[0]['id'], UUID3)
-        self.assertEqual(images[1]['id'], UUID4)
-        self.assertEqual(images[2]['id'], UUID2)
-        self.assertEqual(images[3]['id'], UUID1)
+        self.assertEqual(4, len(images))
+        self.assertEqual(UUID3, images[0]['id'])
+        self.assertEqual(UUID4, images[1]['id'])
+        self.assertEqual(UUID2, images[2]['id'])
+        self.assertEqual(UUID1, images[3]['id'])
 
     def test_create_image(self):
         """Tests that the registry API creates the image"""
@@ -1191,7 +1175,7 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         req.body = jsonutils.dumps(cmd)
         res = req.get_response(self.api)
 
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
 
         res_dict = jsonutils.loads(res.body)[0]
 
@@ -1219,7 +1203,7 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         req.body = jsonutils.dumps(cmd)
 
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
 
         res_dict = jsonutils.loads(res.body)[0]
 
@@ -1243,7 +1227,7 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         req.body = jsonutils.dumps(cmd)
 
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
 
         res_dict = jsonutils.loads(res.body)[0]
 
@@ -1266,7 +1250,7 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         req.body = jsonutils.dumps(cmd)
 
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
 
         res_dict = jsonutils.loads(res.body)[0]
 
@@ -1289,7 +1273,7 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         req.body = jsonutils.dumps(cmd)
 
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
 
         res_dict = jsonutils.loads(res.body)[0]
 
@@ -1312,7 +1296,7 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         req.body = jsonutils.dumps(cmd)
 
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
 
         res_dict = jsonutils.loads(res.body)[0]
 
@@ -1321,6 +1305,85 @@ class TestRegistryRPC(base.IsolatedUnitTest):
 
         for k, v in six.iteritems(fixture):
             self.assertEqual(v, res_dict[k])
+
+    def _send_request(self, command, kwargs, method):
+        req = webob.Request.blank('/rpc')
+        req.method = method
+        cmd = [{'command': command, 'kwargs': kwargs}]
+        req.body = jsonutils.dumps(cmd)
+        res = req.get_response(self.api)
+        res_dict = jsonutils.loads(res.body)[0]
+        return res.status_int, res_dict
+
+    def _expect_fail(self, command, kwargs, error_cls, method='POST'):
+        # on any exception status_int is always 200, so have to check _error
+        # dict
+        code, res_dict = self._send_request(command, kwargs, method)
+        self.assertTrue('_error' in res_dict)
+        self.assertEqual(error_cls, res_dict['_error']['cls'])
+        return res_dict
+
+    def _expect_ok(self, command, kwargs, method, expected_status=200):
+        code, res_dict = self._send_request(command, kwargs)
+        self.assertEqual(expected_status, code)
+        return res_dict
+
+    def test_create_image_bad_name(self):
+        fixture = {'name': u'A bad name \U0001fff2', 'status': 'queued'}
+        self._expect_fail('image_create',
+                          {'values': fixture},
+                          'glance.common.exception.Invalid')
+
+    def test_create_image_bad_location(self):
+        fixture = {'status': 'queued',
+                   'locations': [{'url': u'file:///tmp/tests/\U0001fee2',
+                                  'metadata': {},
+                                  'status': 'active'}]}
+        self._expect_fail('image_create',
+                          {'values': fixture},
+                          'glance.common.exception.Invalid')
+
+    def test_create_image_bad_property(self):
+        fixture = {'status': 'queued',
+                   'properties': {'ok key': u' bad value \U0001f2aa'}}
+        self._expect_fail('image_create',
+                          {'values': fixture},
+                          'glance.common.exception.Invalid')
+        fixture = {'status': 'queued',
+                   'properties': {u'invalid key \U00010020': 'ok value'}}
+        self._expect_fail('image_create',
+                          {'values': fixture},
+                          'glance.common.exception.Invalid')
+
+    def test_update_image_bad_tag(self):
+        self._expect_fail('image_tag_create',
+                          {'value': u'\U0001fff2', 'image_id': UUID2},
+                          'glance.common.exception.Invalid')
+
+    def test_update_image_bad_name(self):
+        fixture = {'name': u'A bad name \U0001fff2'}
+        self._expect_fail('image_update',
+                          {'values': fixture, 'image_id': UUID1},
+                          'glance.common.exception.Invalid')
+
+    def test_update_image_bad_location(self):
+        fixture = {'locations':
+                   [{'url': u'file:///tmp/glance-tests/\U0001fee2',
+                     'metadata': {},
+                     'status': 'active'}]}
+        self._expect_fail('image_update',
+                          {'values': fixture, 'image_id': UUID1},
+                          'glance.common.exception.Invalid')
+
+    def test_update_bad_property(self):
+        fixture = {'properties': {'ok key': u' bad value \U0001f2aa'}}
+        self._expect_fail('image_update',
+                          {'values': fixture, 'image_id': UUID2},
+                          'glance.common.exception.Invalid')
+        fixture = {'properties': {u'invalid key \U00010020': 'ok value'}}
+        self._expect_fail('image_update',
+                          {'values': fixture, 'image_id': UUID2},
+                          'glance.common.exception.Invalid')
 
     def test_delete_image(self):
         """Tests that the registry API deletes the image"""
@@ -1335,7 +1398,7 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         req.body = jsonutils.dumps(cmd)
         res = req.get_response(self.api)
         res_dict = jsonutils.loads(res.body)[0]
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
 
         orig_num_images = len(res_dict)
 
@@ -1347,7 +1410,7 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         req.body = jsonutils.dumps(cmd)
 
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
 
         # Verify one less image
         cmd = [{
@@ -1357,7 +1420,7 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         req.body = jsonutils.dumps(cmd)
         res = req.get_response(self.api)
         res_dict = jsonutils.loads(res.body)[0]
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
 
         new_num_images = len(res_dict)
         self.assertEqual(new_num_images, orig_num_images - 1)
@@ -1375,7 +1438,7 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         req.body = jsonutils.dumps(cmd)
         res = req.get_response(self.api)
 
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
         deleted_image = jsonutils.loads(res.body)[0]
 
         self.assertEqual(image['id'], deleted_image['id'])
@@ -1383,9 +1446,7 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         self.assertTrue(deleted_image['deleted_at'])
 
     def test_get_image_members(self):
-        """
-        Tests members listing for existing images
-        """
+        """Tests members listing for existing images."""
         req = webob.Request.blank('/rpc')
         req.method = 'POST'
         cmd = [{
@@ -1395,7 +1456,7 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         req.body = jsonutils.dumps(cmd)
 
         res = req.get_response(self.api)
-        self.assertEqual(res.status_int, 200)
+        self.assertEqual(200, res.status_int)
 
         memb_list = jsonutils.loads(res.body)[0]
-        self.assertEqual(len(memb_list), 0)
+        self.assertEqual(0, len(memb_list))

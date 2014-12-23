@@ -21,6 +21,8 @@ SQLAlchemy models for glance data
 import uuid
 
 from oslo.db.sqlalchemy import models
+from oslo.serialization import jsonutils
+from oslo.utils import timeutils
 from sqlalchemy import BigInteger
 from sqlalchemy import Boolean
 from sqlalchemy import Column
@@ -31,13 +33,11 @@ from sqlalchemy import ForeignKey
 from sqlalchemy import Index
 from sqlalchemy import Integer
 from sqlalchemy.orm import backref, relationship
+from sqlalchemy import sql
 from sqlalchemy import String
 from sqlalchemy import Text
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy import UniqueConstraint
-
-from glance.openstack.common import jsonutils
-from glance.openstack.common import timeutils
 
 
 BASE = declarative_base()
@@ -83,7 +83,7 @@ class GlanceBase(models.ModelBase, models.TimestampMixin):
     #                  required and make changes in oslo (if required) or
     #                  in glance (if not).
     updated_at = Column(DateTime, default=lambda: timeutils.utcnow(),
-                        nullable=False, onupdate=lambda: timeutils.utcnow())
+                        nullable=True, onupdate=lambda: timeutils.utcnow())
     # TODO(boris-42): Use SoftDeleteMixin instead of deleted Column after
     #                 migration that provides UniqueConstraints and change
     #                 type of this column.
@@ -136,7 +136,8 @@ class Image(BASE, GlanceBase):
     min_disk = Column(Integer, nullable=False, default=0)
     min_ram = Column(Integer, nullable=False, default=0)
     owner = Column(String(255))
-    protected = Column(Boolean, nullable=False, default=False)
+    protected = Column(Boolean, nullable=False, default=False,
+                       server_default=sql.expression.false())
 
 
 class ImageProperty(BASE, GlanceBase):
@@ -183,7 +184,7 @@ class ImageLocation(BASE, GlanceBase):
     image = relationship(Image, backref=backref('locations'))
     value = Column(Text(), nullable=False)
     meta_data = Column(JSONEncodedDict(), default={})
-    status = Column(String(30), default='active', nullable=False)
+    status = Column(String(30), server_default='active', nullable=False)
 
 
 class ImageMember(BASE, GlanceBase):
@@ -207,7 +208,8 @@ class ImageMember(BASE, GlanceBase):
 
     member = Column(String(255), nullable=False)
     can_share = Column(Boolean, nullable=False, default=False)
-    status = Column(String(20), nullable=False, default="pending")
+    status = Column(String(20), nullable=False, default="pending",
+                    server_default='pending')
 
 
 class Task(BASE, GlanceBase):
@@ -221,8 +223,8 @@ class Task(BASE, GlanceBase):
 
     id = Column(String(36), primary_key=True,
                 default=lambda: str(uuid.uuid4()))
-    type = Column(String(30))
-    status = Column(String(30))
+    type = Column(String(30), nullable=False)
+    status = Column(String(30), nullable=False)
     owner = Column(String(255), nullable=False)
     expires_at = Column(DateTime, nullable=True)
 
@@ -238,7 +240,7 @@ class TaskInfo(BASE, models.ModelBase):
 
     task = relationship(Task, backref=backref('info', uselist=False))
 
-    #NOTE(nikhil): input and result are stored as text in the DB.
+    # NOTE(nikhil): input and result are stored as text in the DB.
     # SQLAlchemy marshals the data to/from JSON using custom type
     # JSONEncodedDict. It uses simplejson underneath.
     input = Column(JSONEncodedDict())

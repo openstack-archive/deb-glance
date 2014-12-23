@@ -13,11 +13,11 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from oslo.serialization import jsonutils
 import webob
 
 from glance.api.middleware import version_negotiation
 from glance.api import versions
-from glance.openstack.common import jsonutils
 from glance.tests.unit import base
 
 
@@ -30,8 +30,8 @@ class VersionsTest(base.IsolatedUnitTest):
         req.accept = 'application/json'
         self.config(bind_host='127.0.0.1', bind_port=9292)
         res = versions.Controller().index(req)
-        self.assertEqual(res.status_int, 300)
-        self.assertEqual(res.content_type, 'application/json')
+        self.assertEqual(300, res.status_int)
+        self.assertEqual('application/json', res.content_type)
         results = jsonutils.loads(res.body)['versions']
         expected = [
             {
@@ -65,7 +65,50 @@ class VersionsTest(base.IsolatedUnitTest):
                            'href': 'http://127.0.0.1:9292/v1/'}],
             },
         ]
-        self.assertEqual(results, expected)
+        self.assertEqual(expected, results)
+
+    def test_get_version_list_public_endpoint(self):
+        req = webob.Request.blank('/', base_url='http://127.0.0.1:9292/')
+        req.accept = 'application/json'
+        self.config(bind_host='127.0.0.1', bind_port=9292,
+                    public_endpoint='https://example.com:9292')
+        res = versions.Controller().index(req)
+        self.assertEqual(300, res.status_int)
+        self.assertEqual('application/json', res.content_type)
+        results = jsonutils.loads(res.body)['versions']
+        expected = [
+            {
+                'id': 'v2.2',
+                'status': 'CURRENT',
+                'links': [{'rel': 'self',
+                           'href': 'https://example.com:9292/v2/'}],
+            },
+            {
+                'id': 'v2.1',
+                'status': 'SUPPORTED',
+                'links': [{'rel': 'self',
+                           'href': 'https://example.com:9292/v2/'}],
+            },
+            {
+                'id': 'v2.0',
+                'status': 'SUPPORTED',
+                'links': [{'rel': 'self',
+                           'href': 'https://example.com:9292/v2/'}],
+            },
+            {
+                'id': 'v1.1',
+                'status': 'CURRENT',
+                'links': [{'rel': 'self',
+                           'href': 'https://example.com:9292/v1/'}],
+            },
+            {
+                'id': 'v1.0',
+                'status': 'SUPPORTED',
+                'links': [{'rel': 'self',
+                           'href': 'https://example.com:9292/v1/'}],
+            },
+        ]
+        self.assertEqual(expected, results)
 
 
 class VersionNegotiationTest(base.IsolatedUnitTest):

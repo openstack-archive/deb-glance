@@ -19,15 +19,16 @@ import datetime
 import uuid
 
 from oslo.config import cfg
+from oslo.utils import excutils
+from oslo.utils import importutils
+from oslo.utils import timeutils
 import six
 
 from glance.common import exception
 from glance import i18n
-from glance.openstack.common import excutils
-from glance.openstack.common import importutils
 import glance.openstack.common.log as logging
-from glance.openstack.common import timeutils
 
+_ = i18n._
 _LE = i18n._LE
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
@@ -74,6 +75,7 @@ class ImageFactory(object):
                   min_disk=0, min_ram=0, protected=False, owner=None,
                   disk_format=None, container_format=None,
                   extra_properties=None, tags=None, **other_args):
+        extra_properties = extra_properties or {}
         self._check_readonly(other_args)
         self._check_unexpected(other_args)
         self._check_reserved(extra_properties)
@@ -90,7 +92,7 @@ class ImageFactory(object):
                      min_ram=min_ram, protected=protected,
                      owner=owner, disk_format=disk_format,
                      container_format=container_format,
-                     extra_properties=extra_properties, tags=tags)
+                     extra_properties=extra_properties, tags=tags or [])
 
 
 class Image(object):
@@ -105,8 +107,8 @@ class Image(object):
         'queued': ('saving', 'active', 'deleted'),
         'saving': ('active', 'killed', 'deleted', 'queued'),
         'active': ('queued', 'pending_delete', 'deleted'),
-        'killed': ('deleted'),
-        'pending_delete': ('deleted'),
+        'killed': ('deleted',),
+        'pending_delete': ('deleted',),
         'deleted': (),
     }
 
@@ -127,9 +129,9 @@ class Image(object):
         self._container_format = kwargs.pop('container_format', None)
         self.size = kwargs.pop('size', None)
         self.virtual_size = kwargs.pop('virtual_size', None)
-        extra_properties = kwargs.pop('extra_properties', None) or {}
+        extra_properties = kwargs.pop('extra_properties', {})
         self.extra_properties = ExtraProperties(extra_properties)
-        self.tags = kwargs.pop('tags', None) or []
+        self.tags = kwargs.pop('tags', [])
         if kwargs:
             message = _("__init__() got unexpected keyword argument '%s'")
             raise TypeError(message % kwargs.keys()[0])
@@ -603,4 +605,33 @@ class MetadefPropertyFactory(object):
             property_id,
             name,
             schema
+        )
+
+
+class MetadefTag(object):
+
+    def __init__(self, namespace, tag_id, name, created_at, updated_at):
+        self.namespace = namespace
+        self.tag_id = tag_id
+        self.name = name
+        self.created_at = created_at
+        self.updated_at = updated_at
+
+    def delete(self):
+        if self.namespace.protected:
+            raise exception.ProtectedMetadefTagDelete(tag_name=self.name)
+
+
+class MetadefTagFactory(object):
+
+    def new_tag(self, namespace, name, **kwargs):
+        tag_id = str(uuid.uuid4())
+        created_at = timeutils.utcnow()
+        updated_at = created_at
+        return MetadefTag(
+            namespace,
+            tag_id,
+            name,
+            created_at,
+            updated_at
         )

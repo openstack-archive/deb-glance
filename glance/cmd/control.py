@@ -40,11 +40,13 @@ if os.path.exists(os.path.join(possible_topdir, 'glance', '__init__.py')):
     sys.path.insert(0, possible_topdir)
 
 from oslo.config import cfg
+from oslo.utils import units
 from six.moves import xrange
 
 from glance.common import config
-from glance.openstack.common import units
+from glance import i18n
 
+_ = i18n._
 
 CONF = cfg.CONF
 
@@ -65,8 +67,8 @@ And command is one of:
 
     {1}
 
-And CONFPATH is the optional configuration file to use.""".\
-    format(', '.join(ALL_SERVERS), ', '.join(ALL_COMMANDS))
+And CONFPATH is the optional configuration file to use.""".format(
+    ', '.join(ALL_SERVERS), ', '.join(ALL_COMMANDS))
 
 exitcode = 0
 
@@ -157,10 +159,12 @@ def do_start(verb, pid_file, server, args):
 
     def launch(pid_file, conf_file=None, capture_output=False, await_time=0):
         args = [server]
-        msg = (_('%(verb)sing %(serv)s') % {'verb': verb, 'serv': server})
         if conf_file:
             args += ['--config-file', conf_file]
-            msg += 'with %s' % conf_file
+            msg = (_('%(verb)sing %(serv)s with %(conf)s') %
+                   {'verb': verb, 'serv': server, 'conf': conf_file})
+        else:
+            msg = (_('%(verb)sing %(serv)s') % {'verb': verb, 'serv': server})
         print(msg)
 
         close_stdio_on_exec()

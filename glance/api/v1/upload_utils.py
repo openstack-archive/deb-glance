@@ -12,26 +12,26 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-
-from oslo.config import cfg
-import webob.exc
-
 import glance_store as store_api
+from oslo.config import cfg
+from oslo.utils import excutils
+import webob.exc
 
 from glance.common import exception
 from glance.common import store_utils
 from glance.common import utils
 import glance.db
-from glance.openstack.common import excutils
-from glance.openstack.common import gettextutils
+from glance import i18n
 import glance.openstack.common.log as logging
 import glance.registry.client.v1.api as registry
 
 
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
-_LE = gettextutils._LE
-_LI = gettextutils._LI
+_ = i18n._
+_LE = i18n._LE
+_LI = i18n._LI
+_LW = i18n._LW
 
 
 def initiate_deletion(req, location_data, id):
@@ -204,7 +204,8 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
                                       content_type="text/plain")
 
     except store_api.StorageFull as e:
-        msg = _("Image storage media is full: %s") % utils.exception_to_str(e)
+        msg = (_("Image storage media is full: %s") %
+               utils.exception_to_str(e))
         LOG.error(msg)
         safe_kill(req, image_id, 'saving')
         notifier.error('image.upload', msg)
@@ -225,7 +226,7 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
     except exception.ImageSizeLimitExceeded as e:
         msg = (_("Denying attempt to upload image larger than %d bytes.")
                % CONF.image_size_cap)
-        LOG.info(msg)
+        LOG.warn(msg)
         safe_kill(req, image_id, 'saving')
         notifier.error('image.upload', msg)
         raise webob.exc.HTTPRequestEntityTooLarge(explanation=msg,
@@ -235,7 +236,7 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
     except exception.StorageQuotaFull as e:
         msg = (_("Denying attempt to upload image because it exceeds the ."
                  "quota: %s") % utils.exception_to_str(e))
-        LOG.info(msg)
+        LOG.warn(msg)
         safe_kill(req, image_id, 'saving')
         notifier.error('image.upload', msg)
         raise webob.exc.HTTPRequestEntityTooLarge(explanation=msg,
@@ -243,7 +244,7 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
                                                   content_type='text/plain')
 
     except webob.exc.HTTPError:
-        #NOTE(bcwaldon): Ideally, we would just call 'raise' here,
+        # NOTE(bcwaldon): Ideally, we would just call 'raise' here,
         # but something in the above function calls is affecting the
         # exception context and we must explicitly re-raise the
         # caught exception.
@@ -254,8 +255,8 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
             safe_kill(req, image_id, 'saving')
 
     except (ValueError, IOError) as e:
-        msg = "Client disconnected before sending all data to backend"
-        LOG.debug(msg)
+        msg = _("Client disconnected before sending all data to backend")
+        LOG.warn(msg)
         safe_kill(req, image_id, 'saving')
         raise webob.exc.HTTPBadRequest(explanation=msg,
                                        content_type="text/plain",

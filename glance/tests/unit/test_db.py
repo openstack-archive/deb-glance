@@ -29,12 +29,11 @@ from glance.db.sqlalchemy import api
 import glance.tests.unit.utils as unit_test_utils
 import glance.tests.utils as test_utils
 
-
 CONF = cfg.CONF
 CONF.import_opt('metadata_encryption_key', 'glance.common.config')
 
 
-@mock.patch('glance.openstack.common.importutils.import_module')
+@mock.patch('oslo.utils.importutils.import_module')
 class TestDbUtilities(test_utils.BaseTestCase):
     def setUp(self):
         super(TestDbUtilities, self).setUp()
@@ -167,27 +166,27 @@ class TestImageRepo(test_utils.BaseTestCase):
 
     def test_get(self):
         image = self.image_repo.get(UUID1)
-        self.assertEqual(image.image_id, UUID1)
-        self.assertEqual(image.name, '1')
-        self.assertEqual(image.tags, set(['ping', 'pong']))
-        self.assertEqual(image.visibility, 'public')
-        self.assertEqual(image.status, 'active')
-        self.assertEqual(image.size, 256)
-        self.assertEqual(image.owner, TENANT1)
+        self.assertEqual(UUID1, image.image_id)
+        self.assertEqual('1', image.name)
+        self.assertEqual(set(['ping', 'pong']), image.tags)
+        self.assertEqual('public', image.visibility)
+        self.assertEqual('active', image.status)
+        self.assertEqual(256, image.size)
+        self.assertEqual(TENANT1, image.owner)
 
     def test_location_value(self):
         image = self.image_repo.get(UUID3)
-        self.assertEqual(image.locations[0]['url'], UUID3_LOCATION)
+        self.assertEqual(UUID3_LOCATION, image.locations[0]['url'])
 
     def test_location_data_value(self):
         image = self.image_repo.get(UUID1)
-        self.assertEqual(image.locations[0]['url'], UUID1_LOCATION)
-        self.assertEqual(image.locations[0]['metadata'],
-                         UUID1_LOCATION_METADATA)
+        self.assertEqual(UUID1_LOCATION, image.locations[0]['url'])
+        self.assertEqual(UUID1_LOCATION_METADATA,
+                         image.locations[0]['metadata'])
 
     def test_location_data_exists(self):
         image = self.image_repo.get(UUID2)
-        self.assertEqual(image.locations, [])
+        self.assertEqual([], image.locations)
 
     def test_get_not_found(self):
         fake_uuid = str(uuid.uuid4())
@@ -227,23 +226,23 @@ class TestImageRepo(test_utils.BaseTestCase):
         full_ids = [i.image_id for i in full_images]
         marked_images = self.image_repo.list(marker=full_ids[0])
         actual_ids = [i.image_id for i in marked_images]
-        self.assertEqual(actual_ids, full_ids[1:])
+        self.assertEqual(full_ids[1:], actual_ids)
 
     def test_list_with_last_marker(self):
         images = self.image_repo.list()
         marked_images = self.image_repo.list(marker=images[-1].image_id)
-        self.assertEqual(len(marked_images), 0)
+        self.assertEqual(0, len(marked_images))
 
     def test_limited_list(self):
         limited_images = self.image_repo.list(limit=2)
-        self.assertEqual(len(limited_images), 2)
+        self.assertEqual(2, len(limited_images))
 
     def test_list_with_marker_and_limit(self):
         full_images = self.image_repo.list()
         full_ids = [i.image_id for i in full_images]
         marked_images = self.image_repo.list(marker=full_ids[0], limit=1)
         actual_ids = [i.image_id for i in marked_images]
-        self.assertEqual(actual_ids, full_ids[1:2])
+        self.assertEqual(full_ids[1:2], actual_ids)
 
     def test_list_private_images(self):
         filters = {'visibility': 'private'}
@@ -312,8 +311,8 @@ class TestImageRepo(test_utils.BaseTestCase):
         self.assertEqual(image.updated_at, image.created_at)
         self.image_repo.add(image)
         retreived_image = self.image_repo.get(image.image_id)
-        self.assertEqual(retreived_image.name, 'added image')
-        self.assertEqual(retreived_image.updated_at, image.updated_at)
+        self.assertEqual('added image', retreived_image.name)
+        self.assertEqual(image.updated_at, retreived_image.updated_at)
 
     def test_save_image(self):
         image = self.image_repo.get(UUID1)
@@ -324,9 +323,9 @@ class TestImageRepo(test_utils.BaseTestCase):
         current_update_time = image.updated_at
         self.assertTrue(current_update_time > original_update_time)
         image = self.image_repo.get(UUID1)
-        self.assertEqual(image.name, 'foo')
-        self.assertEqual(image.tags, set(['king', 'kong']))
-        self.assertEqual(image.updated_at, current_update_time)
+        self.assertEqual('foo', image.name)
+        self.assertEqual(set(['king', 'kong']), image.tags)
+        self.assertEqual(current_update_time, image.updated_at)
 
     def test_save_image_not_found(self):
         fake_uuid = str(uuid.uuid4())
@@ -376,8 +375,8 @@ class TestEncryptedLocations(test_utils.BaseTestCase):
         self.assertNotEqual(db_data['locations'], ['foo', 'bar'])
         decrypted_locations = [crypt.urlsafe_decrypt(self.crypt_key, l['url'])
                                for l in db_data['locations']]
-        self.assertEqual(decrypted_locations,
-                         [l['url'] for l in self.foo_bar_location])
+        self.assertEqual([l['url'] for l in self.foo_bar_location],
+                         decrypted_locations)
 
     def test_encrypt_locations_on_save(self):
         image = self.image_factory.new_image(UUID1)
@@ -388,8 +387,8 @@ class TestEncryptedLocations(test_utils.BaseTestCase):
         self.assertNotEqual(db_data['locations'], ['foo', 'bar'])
         decrypted_locations = [crypt.urlsafe_decrypt(self.crypt_key, l['url'])
                                for l in db_data['locations']]
-        self.assertEqual(decrypted_locations,
-                         [l['url'] for l in self.foo_bar_location])
+        self.assertEqual([l['url'] for l in self.foo_bar_location],
+                         decrypted_locations)
 
     def test_decrypt_locations_on_get(self):
         url_loc = ['ping', 'pong']
@@ -408,7 +407,7 @@ class TestEncryptedLocations(test_utils.BaseTestCase):
         self.assertIn('id', image.locations[1])
         image.locations[0].pop('id')
         image.locations[1].pop('id')
-        self.assertEqual(image.locations, orig_locations)
+        self.assertEqual(orig_locations, image.locations)
 
     def test_decrypt_locations_on_list(self):
         url_loc = ['ping', 'pong']
@@ -427,7 +426,7 @@ class TestEncryptedLocations(test_utils.BaseTestCase):
         self.assertIn('id', image.locations[1])
         image.locations[0].pop('id')
         image.locations[1].pop('id')
-        self.assertEqual(image.locations, orig_locations)
+        self.assertEqual(orig_locations, image.locations)
 
 
 class TestImageMemberRepo(test_utils.BaseTestCase):
@@ -484,7 +483,7 @@ class TestImageMemberRepo(test_utils.BaseTestCase):
         self.image_member_repo.save(image_member)
         image_member_updated = self.image_member_repo.get(TENANT2)
         self.assertEqual(image_member.id, image_member_updated.id)
-        self.assertEqual(image_member_updated.status, 'accepted')
+        self.assertEqual('accepted', image_member_updated.status)
 
     def test_add_image_member(self):
         image = self.image_repo.get(UUID1)
@@ -494,12 +493,11 @@ class TestImageMemberRepo(test_utils.BaseTestCase):
         self.image_member_repo.add(image_member)
         retreived_image_member = self.image_member_repo.get(TENANT4)
         self.assertIsNotNone(retreived_image_member.id)
-        self.assertEqual(retreived_image_member.image_id,
-                         image_member.image_id)
-        self.assertEqual(retreived_image_member.member_id,
-                         image_member.member_id)
-        self.assertEqual(retreived_image_member.status,
-                         'pending')
+        self.assertEqual(image_member.image_id,
+                         retreived_image_member.image_id)
+        self.assertEqual(image_member.member_id,
+                         retreived_image_member.member_id)
+        self.assertEqual('pending', retreived_image_member.status)
 
     def test_add_duplicate_image_member(self):
         image = self.image_repo.get(UUID1)
@@ -509,12 +507,11 @@ class TestImageMemberRepo(test_utils.BaseTestCase):
         self.image_member_repo.add(image_member)
         retreived_image_member = self.image_member_repo.get(TENANT4)
         self.assertIsNotNone(retreived_image_member.id)
-        self.assertEqual(retreived_image_member.image_id,
-                         image_member.image_id)
-        self.assertEqual(retreived_image_member.member_id,
-                         image_member.member_id)
-        self.assertEqual(retreived_image_member.status,
-                         'pending')
+        self.assertEqual(image_member.image_id,
+                         retreived_image_member.image_id)
+        self.assertEqual(image_member.member_id,
+                         retreived_image_member.member_id)
+        self.assertEqual('pending', retreived_image_member.status)
 
         self.assertRaises(exception.Duplicate, self.image_member_repo.add,
                           image_member)
@@ -531,7 +528,7 @@ class TestImageMemberRepo(test_utils.BaseTestCase):
         self.assertEqual(member.id, image_member.id)
         self.assertEqual(member.image_id, image_member.image_id)
         self.assertEqual(member.member_id, image_member.member_id)
-        self.assertEqual(member.status, 'pending')
+        self.assertEqual('pending', member.status)
 
     def test_get_nonexistent_image_member(self):
         fake_image_member_id = 'fake'
@@ -547,8 +544,8 @@ class TestImageMemberRepo(test_utils.BaseTestCase):
     def test_remove_image_member_does_not_exist(self):
         fake_uuid = str(uuid.uuid4())
         image = self.image_repo.get(UUID2)
-        fake_member = glance.domain.ImageMemberFactory()\
-                                   .new_image_member(image, TENANT4)
+        fake_member = glance.domain.ImageMemberFactory().new_image_member(
+            image, TENANT4)
         fake_member.id = fake_uuid
         exc = self.assertRaises(exception.NotFound,
                                 self.image_member_repo.remove,
@@ -604,11 +601,11 @@ class TestTaskRepo(test_utils.BaseTestCase):
     def test_get(self):
         task = self.task_repo.get(UUID1)
         self.assertEqual(task.task_id, UUID1)
-        self.assertEqual(task.type, 'import')
-        self.assertEqual(task.status, 'pending')
+        self.assertEqual('import', task.type)
+        self.assertEqual('pending', task.status)
         self.assertEqual(task.task_input, self.fake_task_input)
-        self.assertEqual(task.result, '')
-        self.assertEqual(task.message, '')
+        self.assertEqual('', task.result)
+        self.assertEqual('', task.message)
         self.assertEqual(task.owner, TENANT1)
 
     def test_get_not_found(self):
@@ -643,23 +640,23 @@ class TestTaskRepo(test_utils.BaseTestCase):
         full_ids = [i.task_id for i in full_tasks]
         marked_tasks = self.task_repo.list(marker=full_ids[0])
         actual_ids = [i.task_id for i in marked_tasks]
-        self.assertEqual(actual_ids, full_ids[1:])
+        self.assertEqual(full_ids[1:], actual_ids)
 
     def test_list_with_last_marker(self):
         tasks = self.task_repo.list()
         marked_tasks = self.task_repo.list(marker=tasks[-1].task_id)
-        self.assertEqual(len(marked_tasks), 0)
+        self.assertEqual(0, len(marked_tasks))
 
     def test_limited_list(self):
         limited_tasks = self.task_repo.list(limit=2)
-        self.assertEqual(len(limited_tasks), 2)
+        self.assertEqual(2, len(limited_tasks))
 
     def test_list_with_marker_and_limit(self):
         full_tasks = self.task_repo.list()
         full_ids = [i.task_id for i in full_tasks]
         marked_tasks = self.task_repo.list(marker=full_ids[0], limit=1)
         actual_ids = [i.task_id for i in marked_tasks]
-        self.assertEqual(actual_ids, full_ids[1:2])
+        self.assertEqual(full_ids[1:2], actual_ids)
 
     def test_sorted_list(self):
         tasks = self.task_repo.list(sort_key='status', sort_dir='desc')
@@ -683,7 +680,7 @@ class TestTaskRepo(test_utils.BaseTestCase):
         current_update_time = task.updated_at
         self.assertTrue(current_update_time > original_update_time)
         task = self.task_repo.get(UUID1)
-        self.assertEqual(task.updated_at, current_update_time)
+        self.assertEqual(current_update_time, task.updated_at)
 
     def test_remove_task(self):
         task = self.task_repo.get(UUID1)
@@ -716,7 +713,7 @@ class RetryOnDeadlockTestCase(test_utils.BaseTestCase):
             try:
                 api._image_update(None, {}, 'fake-id')
             except TestException:
-                self.assertEqual(sess.call_count, 3)
+                self.assertEqual(3, sess.call_count)
 
         # Test retry on image destroy if db deadlock occurs
         self.attempts = 3
@@ -726,4 +723,4 @@ class RetryOnDeadlockTestCase(test_utils.BaseTestCase):
             try:
                 api.image_destroy(None, 'fake-id')
             except TestException:
-                self.assertEqual(sess.call_count, 3)
+                self.assertEqual(3, sess.call_count)

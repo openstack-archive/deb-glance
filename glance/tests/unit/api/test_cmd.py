@@ -9,11 +9,10 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-
-import mock
 import sys
 
 import glance_store as store
+import mock
 from oslo.config import cfg
 import six
 
@@ -71,14 +70,14 @@ class TestGlanceApiCmd(test_utils.BaseTestCase):
     def test_unsupported_default_store(self):
         self.config(group='glance_store', default_store='shouldnotexist')
         exit = self.assertRaises(SystemExit, glance.cmd.api.main)
-        self.assertEqual(exit.code, 1)
+        self.assertEqual(1, exit.code)
 
     def test_worker_creation_failure(self):
         failure = exc.WorkerCreationFailure(reason='test')
         self.stubs.Set(glance.common.wsgi.Server, 'start',
                        self._raise(failure))
         exit = self.assertRaises(SystemExit, glance.cmd.api.main)
-        self.assertEqual(exit.code, 2)
+        self.assertEqual(2, exit.code)
 
     @mock.patch.object(glance.common.config, 'parse_cache_args')
     @mock.patch.object(glance.openstack.common.log, 'setup')

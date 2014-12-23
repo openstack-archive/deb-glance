@@ -18,6 +18,9 @@ import copy
 
 from glance.common import exception
 import glance.domain.proxy
+from glance import i18n
+
+_ = i18n._
 
 
 def is_image_mutable(context, image):
@@ -422,7 +425,7 @@ class TaskFactoryProxy(glance.domain.proxy.TaskFactory):
     def new_task(self, **kwargs):
         owner = kwargs.get('owner', self.context.owner)
 
-        #NOTE(nikhil): Unlike Images, Tasks are expected to have owner.
+        # NOTE(nikhil): Unlike Images, Tasks are expected to have owner.
         # We currently do not allow even admins to set the owner to None.
         if owner is not None and (owner == self.context.owner
                                   or self.context.is_admin):
@@ -457,7 +460,7 @@ class TaskStubRepoProxy(glance.domain.proxy.TaskStubRepo):
         return [proxy_task_stub(self.context, t) for t in task_stubs]
 
 
-#Metadef Namespace classes
+# Metadef Namespace classes
 def is_namespace_mutable(context, namespace):
     """Return True if the namespace is mutable in this context."""
     if context.is_admin:
@@ -548,7 +551,7 @@ class MetadefNamespaceRepoProxy(glance.domain.proxy.MetadefNamespaceRepo):
                 namespace in namespaces]
 
 
-#Metadef Object classes
+# Metadef Object classes
 def is_object_mutable(context, object):
     """Return True if the object is mutable in this context."""
     if context.is_admin:
@@ -635,7 +638,7 @@ class MetadefObjectRepoProxy(glance.domain.proxy.MetadefObjectRepo):
                 meta_object in objects]
 
 
-#Metadef ResourceType classes
+# Metadef ResourceType classes
 def is_meta_resource_type_mutable(context, meta_resource_type):
     """Return True if the meta_resource_type is mutable in this context."""
     if context.is_admin:
@@ -644,7 +647,7 @@ def is_meta_resource_type_mutable(context, meta_resource_type):
     if context.owner is None:
         return False
 
-    #(lakshmiS): resource type can exist without an association with
+    # (lakshmiS): resource type can exist without an association with
     # namespace and resource type cannot be created/update/deleted directly(
     # they have to be associated/de-associated from namespace)
     if meta_resource_type.namespace:
@@ -728,7 +731,7 @@ class MetadefResourceTypeRepoProxy(
         return proxy_meta_resource_type(self.context, meta_resource_type)
 
 
-#Metadef namespace properties classes
+# Metadef namespace properties classes
 def is_namespace_property_mutable(context, namespace_property):
     """Return True if the object is mutable in this context."""
     if context.is_admin:
@@ -791,8 +794,8 @@ class MetadefPropertyFactoryProxy(glance.domain.proxy.MetadefPropertyFactory):
                             "owned by '%s'")
                 raise exception.Forbidden(message % (owner))
 
-        return super(MetadefPropertyFactoryProxy, self).\
-            new_namespace_property(**kwargs)
+        return super(MetadefPropertyFactoryProxy, self).new_namespace_property(
+            **kwargs)
 
 
 class MetadefPropertyRepoProxy(glance.domain.proxy.MetadefPropertyRepo):
@@ -812,3 +815,88 @@ class MetadefPropertyRepoProxy(glance.domain.proxy.MetadefPropertyRepo):
             *args, **kwargs)
         return [proxy_namespace_property(self.context, namespace_property) for
                 namespace_property in namespace_properties]
+
+
+# Metadef Tag classes
+def is_tag_mutable(context, tag):
+    """Return True if the tag is mutable in this context."""
+    if context.is_admin:
+        return True
+
+    if context.owner is None:
+        return False
+
+    return tag.namespace.owner == context.owner
+
+
+def proxy_tag(context, tag):
+    if is_tag_mutable(context, tag):
+        return tag
+    else:
+        return ImmutableMetadefTagProxy(tag)
+
+
+class ImmutableMetadefTagProxy(object):
+
+    def __init__(self, base):
+        self.base = base
+        self.resource_name = 'tag'
+
+    tag_id = _immutable_attr('base', 'tag_id')
+    name = _immutable_attr('base', 'name')
+    created_at = _immutable_attr('base', 'created_at')
+    updated_at = _immutable_attr('base', 'updated_at')
+
+    def delete(self):
+        message = _("You are not permitted to delete this tag.")
+        raise exception.Forbidden(message)
+
+    def save(self):
+        message = _("You are not permitted to update this tag.")
+        raise exception.Forbidden(message)
+
+
+class MetadefTagProxy(glance.domain.proxy.MetadefTag):
+
+    def __init__(self, meta_tag):
+        super(MetadefTagProxy, self).__init__(meta_tag)
+
+
+class MetadefTagFactoryProxy(glance.domain.proxy.MetadefTagFactory):
+
+    def __init__(self, meta_tag_factory, context):
+        self.meta_tag_factory = meta_tag_factory
+        self.context = context
+        super(MetadefTagFactoryProxy, self).__init__(
+            meta_tag_factory,
+            meta_tag_proxy_class=MetadefTagProxy)
+
+    def new_tag(self, **kwargs):
+        owner = kwargs.pop('owner', self.context.owner)
+        if not self.context.is_admin:
+            if owner is None:
+                message = _("Owner must be specified to create a tag.")
+                raise exception.Forbidden(message)
+            elif owner != self.context.owner:
+                message = _("You are not permitted to create a tag"
+                            " in the namespace owned by '%s'")
+                raise exception.Forbidden(message % (owner))
+
+        return super(MetadefTagFactoryProxy, self).new_tag(**kwargs)
+
+
+class MetadefTagRepoProxy(glance.domain.proxy.MetadefTagRepo):
+
+    def __init__(self, tag_repo, context):
+        self.tag_repo = tag_repo
+        self.context = context
+        super(MetadefTagRepoProxy, self).__init__(tag_repo)
+
+    def get(self, namespace, tag_name):
+        meta_tag = self.tag_repo.get(namespace, tag_name)
+        return proxy_tag(self.context, meta_tag)
+
+    def list(self, *args, **kwargs):
+        tags = self.tag_repo.list(*args, **kwargs)
+        return [proxy_tag(self.context, meta_tag) for
+                meta_tag in tags]

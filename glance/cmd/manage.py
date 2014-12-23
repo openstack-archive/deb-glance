@@ -40,6 +40,7 @@ if os.path.exists(os.path.join(possible_topdir, 'glance', '__init__.py')):
 
 from oslo.config import cfg
 from oslo.db.sqlalchemy import migration
+from oslo.utils import encodeutils
 
 from glance.common import config
 from glance.common import exception
@@ -47,14 +48,13 @@ from glance.common import utils
 from glance.db import migration as db_migration
 from glance.db.sqlalchemy import api as db_api
 from glance.db.sqlalchemy import metadata
-from glance.openstack.common import gettextutils
+from glance import i18n
 from glance.openstack.common import log
-from glance.openstack.common import strutils
 
 
 CONF = cfg.CONF
 LOG = log.getLogger(__name__)
-_LW = gettextutils._LW
+_LW = i18n._LW
 
 
 # Decorators for actions
@@ -268,6 +268,8 @@ def main():
                                           prog='glance-registry')
         cfg_files.extend(cfg.find_config_files(project='glance',
                                                prog='glance-api'))
+        cfg_files.extend(cfg.find_config_files(project='glance',
+                                               prog='glance-manage'))
         config.parse_args(default_config_files=cfg_files,
                           usage="%(prog)s [options] <cmd>")
         log.setup('glance')
@@ -283,9 +285,9 @@ def main():
                 v = getattr(CONF.command, 'action_kwarg_' + k)
                 if v is None:
                     continue
-                func_kwargs[k] = strutils.safe_decode(v)
+                func_kwargs[k] = encodeutils.safe_decode(v)
 
-            func_args = [strutils.safe_decode(arg)
+            func_args = [encodeutils.safe_decode(arg)
                          for arg in CONF.command.action_args]
             return CONF.command.action_fn(*func_args, **func_kwargs)
     except exception.GlanceException as e:

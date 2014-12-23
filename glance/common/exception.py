@@ -19,6 +19,10 @@
 import six
 import six.moves.urllib.parse as urlparse
 
+from glance import i18n
+
+_ = i18n._
+
 _FATAL_EXCEPTION_FORMAT_ERRORS = False
 
 
@@ -106,6 +110,10 @@ class NotAuthenticated(GlanceException):
     message = _("You are not authenticated.")
 
 
+class UploadException(GlanceException):
+    message = _('Image upload problem: %s')
+
+
 class Forbidden(GlanceException):
     message = _("You are not authorized to complete this action.")
 
@@ -143,6 +151,11 @@ class ProtectedMetadefResourceTypeSystemDelete(Forbidden):
                 " a seeded-system type and cannot be deleted.")
 
 
+class ProtectedMetadefTagDelete(Forbidden):
+    message = _("Metadata definition tag %(tag_name)s is protected"
+                " and cannot be deleted.")
+
+
 class Invalid(GlanceException):
     message = _("Data supplied was not valid.")
 
@@ -161,6 +174,10 @@ class InvalidSwiftStoreConfiguration(Invalid):
 
 class InvalidFilterRangeValue(Invalid):
     message = _("Unable to filter using the specified range.")
+
+
+class InvalidOptionValue(Invalid):
+    message = _("Invalid value for option %(option)s: %(value)s")
 
 
 class ReadonlyProperty(Forbidden):
@@ -369,6 +386,11 @@ class MetadefDuplicateResourceTypeAssociation(Duplicate):
                 " already exists.")
 
 
+class MetadefDuplicateTag(Duplicate):
+    message = _("A metadata tag with name=%(name)s"
+                " already exists in namespace=%(namespace_name)s.")
+
+
 class MetadefForbidden(Forbidden):
     message = _("You are not authorized to complete this action.")
 
@@ -408,6 +430,7 @@ class MetadefResourceTypeAssociationNotFound(NotFound):
                 " was not found.")
 
 
-class MetadefRecordNotFound(NotFound):
-    message = _("Metadata definition %(record_type)s record not found"
-                " for id %(id)s.")
+class MetadefTagNotFound(NotFound):
+    message = _("The metadata definition tag with"
+                " name=%(name)s was not found in"
+                " namespace=%(namespace_name)s.")

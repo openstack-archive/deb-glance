@@ -17,14 +17,14 @@
 
 import datetime
 import hashlib
-import httplib2
 import os
 import sys
 
+import httplib2
+from oslo.serialization import jsonutils
+from oslo.utils import units
 from six.moves import xrange
 
-from glance.openstack.common import jsonutils
-from glance.openstack.common import units
 from glance.tests import functional
 from glance.tests.utils import execute
 from glance.tests.utils import minimal_headers
@@ -60,12 +60,12 @@ class TestBinGlanceCacheManage(functional.FunctionalTest):
         http = httplib2.Http()
         response, content = http.request(path, 'POST', headers=headers,
                                          body=image_data)
-        self.assertEqual(response.status, 201)
+        self.assertEqual(201, response.status)
         data = jsonutils.loads(content)
-        self.assertEqual(data['image']['checksum'],
-                         hashlib.md5(image_data).hexdigest())
-        self.assertEqual(data['image']['size'], FIVE_KB)
-        self.assertEqual(data['image']['name'], name)
+        self.assertEqual(hashlib.md5(image_data).hexdigest(),
+                         data['image']['checksum'])
+        self.assertEqual(FIVE_KB, data['image']['size'])
+        self.assertEqual(name, data['image']['name'])
         self.assertTrue(data['image']['is_public'])
         return data['image']['id']
 
@@ -143,7 +143,7 @@ class TestBinGlanceCacheManage(functional.FunctionalTest):
                                               ids[1])
         http = httplib2.Http()
         response, content = http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
+        self.assertEqual(200, response.status)
 
         self.assertTrue(self.is_image_cached(ids[1]),
                         "%s is not cached." % ids[1])

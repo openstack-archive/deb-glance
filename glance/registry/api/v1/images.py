@@ -18,21 +18,23 @@ Reference implementation registry server WSGI controller
 """
 
 from oslo.config import cfg
+from oslo.utils import strutils
+from oslo.utils import timeutils
 from webob import exc
 
 from glance.common import exception
 from glance.common import utils
 from glance.common import wsgi
 import glance.db
-from glance.openstack.common import gettextutils
+from glance import i18n
 import glance.openstack.common.log as logging
-from glance.openstack.common import strutils
-from glance.openstack.common import timeutils
 
 
 LOG = logging.getLogger(__name__)
-_LE = gettextutils._LE
-_LI = gettextutils._LI
+_ = i18n._
+_LE = i18n._LE
+_LI = i18n._LI
+_LW = i18n._LW
 
 CONF = cfg.CONF
 
@@ -121,12 +123,12 @@ class Controller(object):
             return self.db_api.image_get_all(context, filters=filters,
                                              **params)
         except exception.NotFound:
-            LOG.info(_LI("Invalid marker. Image %(id)s could not be "
+            LOG.warn(_LW("Invalid marker. Image %(id)s could not be "
                          "found.") % {'id': params.get('marker')})
             msg = _("Invalid marker. Image could not be found.")
             raise exc.HTTPBadRequest(explanation=msg)
         except exception.Forbidden:
-            LOG.info(_LI("Access denied to image %(id)s but returning "
+            LOG.warn(_LW("Access denied to image %(id)s but returning "
                          "'not found'") % {'id': params.get('marker')})
             msg = _("Invalid marker. Image could not be found.")
             raise exc.HTTPBadRequest(explanation=msg)

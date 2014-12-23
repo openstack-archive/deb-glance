@@ -20,13 +20,15 @@ Registry's Client API
 import os
 
 from oslo.config import cfg
+from oslo.serialization import jsonutils
 
 from glance.common import exception
-from glance.openstack.common import jsonutils
+from glance import i18n
 import glance.openstack.common.log as logging
 from glance.registry.client.v1 import client
 
 LOG = logging.getLogger(__name__)
+_ = i18n._
 
 registry_client_ctx_opts = [
     cfg.BoolOpt('send_identity_headers', default=False,

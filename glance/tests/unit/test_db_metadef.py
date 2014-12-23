@@ -41,6 +41,12 @@ OBJECT1 = 'Object1'
 OBJECT2 = 'Object2'
 OBJECT3 = 'Object3'
 
+TAG1 = 'Tag1'
+TAG2 = 'Tag2'
+TAG3 = 'Tag3'
+TAG4 = 'Tag4'
+TAG5 = 'Tag5'
+
 RESOURCE_TYPE1 = 'ResourceType1'
 RESOURCE_TYPE2 = 'ResourceType2'
 RESOURCE_TYPE3 = 'ResourceType3'
@@ -79,6 +85,26 @@ def _db_object_fixture(name, **kwargs):
     return obj
 
 
+def _db_tag_fixture(name, **kwargs):
+    obj = {
+        'name': name
+    }
+    obj.update(kwargs)
+    return obj
+
+
+def _db_tags_fixture(names=None):
+    tags = []
+    if names:
+        tag_name_list = names
+    else:
+        tag_name_list = [TAG1, TAG2, TAG3]
+
+    for tag_name in tag_name_list:
+        tags.append(_db_tag_fixture(tag_name))
+    return tags
+
+
 def _db_resource_type_fixture(name, **kwargs):
     obj = {
         'name': name,
@@ -112,15 +138,19 @@ class TestMetadefRepo(test_utils.BaseTestCase):
                                                            self.db)
         self.object_repo = glance.db.MetadefObjectRepo(self.context,
                                                        self.db)
+        self.tag_repo = glance.db.MetadefTagRepo(self.context,
+                                                 self.db)
         self.resource_type_repo = glance.db.\
             MetadefResourceTypeRepo(self.context, self.db)
         self.namespace_factory = glance.domain.MetadefNamespaceFactory()
         self.property_factory = glance.domain.MetadefPropertyFactory()
         self.object_factory = glance.domain.MetadefObjectFactory()
+        self.tag_factory = glance.domain.MetadefTagFactory()
         self.resource_type_factory = glance.domain.MetadefResourceTypeFactory()
         self._create_namespaces()
         self._create_properties()
         self._create_objects()
+        self._create_tags()
         self._create_resource_types()
 
     def _create_namespaces(self):
@@ -179,6 +209,17 @@ class TestMetadefRepo(test_utils.BaseTestCase):
         [self.db.metadef_object_create(self.context, NAMESPACE4, object)
          for object in self.objects]
 
+    def _create_tags(self):
+        self.tags = [
+            _db_tag_fixture(name=TAG1),
+            _db_tag_fixture(name=TAG2),
+            _db_tag_fixture(name=TAG3),
+        ]
+        [self.db.metadef_tag_create(self.context, NAMESPACE1, tag)
+         for tag in self.tags]
+        [self.db.metadef_tag_create(self.context, NAMESPACE4, tag)
+         for tag in self.tags]
+
     def _create_resource_types(self):
         self.resource_types = [
             _db_resource_type_fixture(name=RESOURCE_TYPE1,
@@ -193,12 +234,12 @@ class TestMetadefRepo(test_utils.BaseTestCase):
 
     def test_get_namespace(self):
         namespace = self.namespace_repo.get(NAMESPACE1)
-        self.assertEqual(namespace.namespace, NAMESPACE1)
-        self.assertEqual(namespace.description, 'desc1')
-        self.assertEqual(namespace.display_name, '1')
-        self.assertEqual(namespace.owner, TENANT1)
+        self.assertEqual(NAMESPACE1, namespace.namespace)
+        self.assertEqual('desc1', namespace.description)
+        self.assertEqual('1', namespace.display_name)
+        self.assertEqual(TENANT1, namespace.owner)
         self.assertTrue(namespace.protected)
-        self.assertEqual(namespace.visibility, 'private')
+        self.assertEqual('private', namespace.visibility)
 
     def test_get_namespace_not_found(self):
         fake_namespace = "fake_namespace"
@@ -234,10 +275,10 @@ class TestMetadefRepo(test_utils.BaseTestCase):
                                           visibility='public',
                                           protected=True,
                                           owner=TENANT1)
-        self.assertEqual(namespace['namespace'], 'added_namespace')
+        self.assertEqual('added_namespace', namespace['namespace'])
         self.db.metadef_namespace_create(None, namespace)
         retrieved_namespace = self.namespace_repo.get(namespace['namespace'])
-        self.assertEqual(retrieved_namespace.namespace, 'added_namespace')
+        self.assertEqual('added_namespace', retrieved_namespace.namespace)
 
     def test_save_namespace(self):
         namespace = self.namespace_repo.get(NAMESPACE1)
@@ -245,8 +286,8 @@ class TestMetadefRepo(test_utils.BaseTestCase):
         namespace.description = 'save_desc'
         self.namespace_repo.save(namespace)
         namespace = self.namespace_repo.get(NAMESPACE1)
-        self.assertEqual(namespace.display_name, 'save_name')
-        self.assertEqual(namespace.description, 'save_desc')
+        self.assertEqual('save_name', namespace.display_name)
+        self.assertEqual('save_desc', namespace.description)
 
     def test_remove_namespace(self):
         namespace = self.namespace_repo.get(NAMESPACE1)
@@ -265,8 +306,8 @@ class TestMetadefRepo(test_utils.BaseTestCase):
     def test_get_property(self):
         property = self.property_repo.get(NAMESPACE1, PROPERTY1)
         namespace = self.namespace_repo.get(NAMESPACE1)
-        self.assertEqual(property.name, PROPERTY1)
-        self.assertEqual(property.namespace.namespace, namespace.namespace)
+        self.assertEqual(PROPERTY1, property.name)
+        self.assertEqual(namespace.namespace, property.namespace.namespace)
 
     def test_get_property_not_found(self):
         exc = self.assertRaises(exception.NotFound,
@@ -296,18 +337,18 @@ class TestMetadefRepo(test_utils.BaseTestCase):
         # property_factory when property primary key in DB
         # will be changed from Integer to UUID
         property = _db_property_fixture(name='added_property')
-        self.assertEqual(property['name'], 'added_property')
+        self.assertEqual('added_property', property['name'])
         self.db.metadef_property_create(self.context, NAMESPACE1, property)
         retrieved_property = self.property_repo.get(NAMESPACE1,
                                                     'added_property')
-        self.assertEqual(retrieved_property.name, 'added_property')
+        self.assertEqual('added_property', retrieved_property.name)
 
     def test_add_property_namespace_forbidden(self):
         # NOTE(pawel-koniszewski): Change db_property_fixture to
         # property_factory when property primary key in DB
         # will be changed from Integer to UUID
         property = _db_property_fixture(name='added_property')
-        self.assertEqual(property['name'], 'added_property')
+        self.assertEqual('added_property', property['name'])
         self.assertRaises(exception.Forbidden, self.db.metadef_property_create,
                           self.context, NAMESPACE3, property)
 
@@ -316,7 +357,7 @@ class TestMetadefRepo(test_utils.BaseTestCase):
         # property_factory when property primary key in DB
         # will be changed from Integer to UUID
         property = _db_property_fixture(name='added_property')
-        self.assertEqual(property['name'], 'added_property')
+        self.assertEqual('added_property', property['name'])
         self.assertRaises(exception.NotFound, self.db.metadef_property_create,
                           self.context, 'not_a_namespace', property)
 
@@ -325,8 +366,8 @@ class TestMetadefRepo(test_utils.BaseTestCase):
         property.schema = '{"save": "schema"}'
         self.property_repo.save(property)
         property = self.property_repo.get(NAMESPACE1, PROPERTY1)
-        self.assertEqual(property.name, PROPERTY1)
-        self.assertEqual(property.schema, '{"save": "schema"}')
+        self.assertEqual(PROPERTY1, property.name)
+        self.assertEqual('{"save": "schema"}', property.schema)
 
     def test_remove_property(self):
         property = self.property_repo.get(NAMESPACE1, PROPERTY1)
@@ -344,11 +385,11 @@ class TestMetadefRepo(test_utils.BaseTestCase):
     def test_get_object(self):
         object = self.object_repo.get(NAMESPACE1, OBJECT1)
         namespace = self.namespace_repo.get(NAMESPACE1)
-        self.assertEqual(object.name, OBJECT1)
-        self.assertEqual(object.description, 'desc1')
-        self.assertEqual(object.required, ['[]'])
-        self.assertEqual(object.properties, {})
-        self.assertEqual(object.namespace.namespace, namespace.namespace)
+        self.assertEqual(OBJECT1, object.name)
+        self.assertEqual('desc1', object.description)
+        self.assertEqual(['[]'], object.required)
+        self.assertEqual({}, object.properties)
+        self.assertEqual(namespace.namespace, object.namespace.namespace)
 
     def test_get_object_not_found(self):
         exc = self.assertRaises(exception.NotFound, self.object_repo.get,
@@ -375,18 +416,18 @@ class TestMetadefRepo(test_utils.BaseTestCase):
         # object_factory when object primary key in DB
         # will be changed from Integer to UUID
         object = _db_object_fixture(name='added_object')
-        self.assertEqual(object['name'], 'added_object')
+        self.assertEqual('added_object', object['name'])
         self.db.metadef_object_create(self.context, NAMESPACE1, object)
         retrieved_object = self.object_repo.get(NAMESPACE1,
                                                 'added_object')
-        self.assertEqual(retrieved_object.name, 'added_object')
+        self.assertEqual('added_object', retrieved_object.name)
 
     def test_add_object_namespace_forbidden(self):
         # NOTE(pawel-koniszewski): Change db_object_fixture to
         # object_factory when object primary key in DB
         # will be changed from Integer to UUID
         object = _db_object_fixture(name='added_object')
-        self.assertEqual(object['name'], 'added_object')
+        self.assertEqual('added_object', object['name'])
         self.assertRaises(exception.Forbidden, self.db.metadef_object_create,
                           self.context, NAMESPACE3, object)
 
@@ -395,7 +436,7 @@ class TestMetadefRepo(test_utils.BaseTestCase):
         # object_factory when object primary key in DB
         # will be changed from Integer to UUID
         object = _db_object_fixture(name='added_object')
-        self.assertEqual(object['name'], 'added_object')
+        self.assertEqual('added_object', object['name'])
         self.assertRaises(exception.NotFound, self.db.metadef_object_create,
                           self.context, 'not-a-namespace', object)
 
@@ -405,9 +446,9 @@ class TestMetadefRepo(test_utils.BaseTestCase):
         object.description = 'save_desc'
         self.object_repo.save(object)
         object = self.object_repo.get(NAMESPACE1, OBJECT1)
-        self.assertEqual(object.name, OBJECT1)
-        self.assertEqual(object.required, ['save_req'])
-        self.assertEqual(object.description, 'save_desc')
+        self.assertEqual(OBJECT1, object.name)
+        self.assertEqual(['save_req'], object.required)
+        self.assertEqual('save_desc', object.description)
 
     def test_remove_object(self):
         object = self.object_repo.get(NAMESPACE1, OBJECT1)
@@ -423,6 +464,104 @@ class TestMetadefRepo(test_utils.BaseTestCase):
                           object)
 
     def test_list_resource_type(self):
-        resource_type = self.resource_type_repo.list(filters=
-                                                     {'namespace': NAMESPACE1})
-        self.assertEqual(len(resource_type), 0)
+        resource_type = self.resource_type_repo.list(
+            filters={'namespace': NAMESPACE1})
+        self.assertEqual(0, len(resource_type))
+
+    def test_get_tag(self):
+        tag = self.tag_repo.get(NAMESPACE1, TAG1)
+        namespace = self.namespace_repo.get(NAMESPACE1)
+        self.assertEqual(TAG1, tag.name)
+        self.assertEqual(namespace.namespace, tag.namespace.namespace)
+
+    def test_get_tag_not_found(self):
+        exc = self.assertRaises(exception.NotFound, self.tag_repo.get,
+                                NAMESPACE2, TAG1)
+        self.assertIn(TAG1, utils.exception_to_str(exc))
+
+    def test_list_tag(self):
+        tags = self.tag_repo.list(filters={'namespace': NAMESPACE1})
+        tag_names = set([t.name for t in tags])
+        self.assertEqual(set([TAG1, TAG2, TAG3]), tag_names)
+
+    def test_list_tag_empty_result(self):
+        tags = self.tag_repo.list(filters={'namespace': NAMESPACE2})
+        tag_names = set([t.name for t in tags])
+        self.assertEqual(set([]), tag_names)
+
+    def test_list_tag_namespace_not_found(self):
+        exc = self.assertRaises(exception.NotFound, self.tag_repo.list,
+                                filters={'namespace': 'not-a-namespace'})
+        self.assertIn('not-a-namespace', utils.exception_to_str(exc))
+
+    def test_add_tag(self):
+        # NOTE(pawel-koniszewski): Change db_tag_fixture to
+        # tag_factory when tag primary key in DB
+        # will be changed from Integer to UUID
+        tag = _db_tag_fixture(name='added_tag')
+        self.assertEqual('added_tag', tag['name'])
+        self.db.metadef_tag_create(self.context, NAMESPACE1, tag)
+        retrieved_tag = self.tag_repo.get(NAMESPACE1, 'added_tag')
+        self.assertEqual('added_tag', retrieved_tag.name)
+
+    def test_add_tags(self):
+        tags = self.tag_repo.list(filters={'namespace': NAMESPACE1})
+        tag_names = set([t.name for t in tags])
+        self.assertEqual(set([TAG1, TAG2, TAG3]), tag_names)
+
+        tags = _db_tags_fixture([TAG3, TAG4, TAG5])
+        self.db.metadef_tag_create_tags(self.context, NAMESPACE1, tags)
+
+        tags = self.tag_repo.list(filters={'namespace': NAMESPACE1})
+        tag_names = set([t.name for t in tags])
+        self.assertEqual(set([TAG3, TAG4, TAG5]), tag_names)
+
+    def test_add_duplicate_tags_with_pre_existing_tags(self):
+        tags = self.tag_repo.list(filters={'namespace': NAMESPACE1})
+        tag_names = set([t.name for t in tags])
+        self.assertEqual(set([TAG1, TAG2, TAG3]), tag_names)
+
+        tags = _db_tags_fixture([TAG5, TAG4, TAG5])
+        self.assertRaises(exception.Duplicate,
+                          self.db.metadef_tag_create_tags,
+                          self.context, NAMESPACE1, tags)
+
+        tags = self.tag_repo.list(filters={'namespace': NAMESPACE1})
+        tag_names = set([t.name for t in tags])
+        self.assertEqual(set([TAG1, TAG2, TAG3]), tag_names)
+
+    def test_add_tag_namespace_forbidden(self):
+        # NOTE(pawel-koniszewski): Change db_tag_fixture to
+        # tag_factory when tag primary key in DB
+        # will be changed from Integer to UUID
+        tag = _db_tag_fixture(name='added_tag')
+        self.assertEqual('added_tag', tag['name'])
+        self.assertRaises(exception.Forbidden, self.db.metadef_tag_create,
+                          self.context, NAMESPACE3, tag)
+
+    def test_add_tag_namespace_not_found(self):
+        # NOTE(pawel-koniszewski): Change db_tag_fixture to
+        # tag_factory when tag primary key in DB
+        # will be changed from Integer to UUID
+        tag = _db_tag_fixture(name='added_tag')
+        self.assertEqual('added_tag', tag['name'])
+        self.assertRaises(exception.NotFound, self.db.metadef_tag_create,
+                          self.context, 'not-a-namespace', tag)
+
+    def test_save_tag(self):
+        tag = self.tag_repo.get(NAMESPACE1, TAG1)
+        self.tag_repo.save(tag)
+        tag = self.tag_repo.get(NAMESPACE1, TAG1)
+        self.assertEqual(TAG1, tag.name)
+
+    def test_remove_tag(self):
+        tag = self.tag_repo.get(NAMESPACE1, TAG1)
+        self.tag_repo.remove(tag)
+        self.assertRaises(exception.NotFound, self.tag_repo.get,
+                          NAMESPACE1, TAG1)
+
+    def test_remove_tag_not_found(self):
+        fake_name = 'fake_name'
+        tag = self.tag_repo.get(NAMESPACE1, TAG1)
+        tag.name = fake_name
+        self.assertRaises(exception.NotFound, self.tag_repo.remove, tag)

@@ -20,19 +20,20 @@ LRU Cache for Image Data
 import hashlib
 
 from oslo.config import cfg
+from oslo.utils import excutils
+from oslo.utils import importutils
+from oslo.utils import units
 
 from glance.common import exception
 from glance.common import utils
-from glance.openstack.common import excutils
-from glance.openstack.common import gettextutils
-from glance.openstack.common import importutils
+from glance import i18n
 import glance.openstack.common.log as logging
-from glance.openstack.common import units
 
 LOG = logging.getLogger(__name__)
-_LE = gettextutils._LE
-_LI = gettextutils._LI
-_LW = gettextutils._LW
+_ = i18n._
+_LE = i18n._LE
+_LI = i18n._LI
+_LW = i18n._LW
 
 image_cache_opts = [
     cfg.StrOpt('image_cache_driver', default='sqlite',

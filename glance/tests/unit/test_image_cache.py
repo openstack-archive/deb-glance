@@ -20,14 +20,14 @@ import os
 import time
 
 import fixtures
+from oslo.utils import units
 import six
 from six.moves import xrange
 import stubout
 
 from glance.common import exception
 from glance import image_cache
-from glance.openstack.common import units
-#NOTE(bcwaldon): This is imported to load the registry config options
+# NOTE(bcwaldon): This is imported to load the registry config options
 import glance.registry  # noqa
 from glance.tests import utils as test_utils
 from glance.tests.utils import skip_if_disabled
@@ -152,8 +152,8 @@ class ImageCacheTestCase(object):
             incomplete_file.close()
 
         mtime = os.path.getmtime(incomplete_file_path_1)
-        pastday = datetime.datetime.fromtimestamp(mtime) - \
-            datetime.timedelta(days=1)
+        pastday = (datetime.datetime.fromtimestamp(mtime) -
+                   datetime.timedelta(days=1))
         atime = int(time.mktime(pastday.timetuple()))
         mtime = atime
         os.utime(incomplete_file_path_1, (atime, mtime))
@@ -267,8 +267,8 @@ class ImageCacheTestCase(object):
         for x in xrange(3):
             self.assertTrue(self.cache.queue_image(x))
 
-        self.assertEqual(self.cache.get_queued_images(),
-                         ['0', '1', '2'])
+        self.assertEqual(['0', '1', '2'],
+                         self.cache.get_queued_images())
 
     def test_open_for_write_good(self):
         """
@@ -326,7 +326,7 @@ class ImageCacheTestCase(object):
             checksum = None
             caching_iter = self.cache.get_caching_iter(image_id, checksum,
                                                        iter(data))
-            self.assertEqual(list(caching_iter), data)
+            self.assertEqual(data, list(caching_iter))
 
         image_id = '1'
         self.assertFalse(self.cache.is_cached(image_id))
@@ -377,7 +377,7 @@ class ImageCacheTestCase(object):
             checksum = None
             caching_iter = self.cache.get_caching_iter(image_id, checksum,
                                                        iter(data))
-            self.assertEqual(caching_iter.next(), 'a')
+            self.assertEqual('a', caching_iter.next())
 
         image_id = '1'
         self.assertFalse(self.cache.is_cached(image_id))
@@ -532,7 +532,7 @@ class TestImageCacheNoDep(test_utils.BaseTestCase):
         data = ['a', 'b', 'c', 'Fail', 'd', 'e', 'f']
 
         caching_iter = cache.get_caching_iter('dummy_id', None, iter(data))
-        self.assertEqual(list(caching_iter), data)
+        self.assertEqual(data, list(caching_iter))
 
     def test_get_caching_iter_when_open_fails(self):
 
@@ -550,4 +550,4 @@ class TestImageCacheNoDep(test_utils.BaseTestCase):
         data = ['a', 'b', 'c', 'd', 'e', 'f']
 
         caching_iter = cache.get_caching_iter('dummy_id', None, iter(data))
-        self.assertEqual(list(caching_iter), data)
+        self.assertEqual(data, list(caching_iter))

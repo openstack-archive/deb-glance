@@ -16,9 +16,9 @@
 
 import uuid
 
+from oslo.serialization import jsonutils
 import requests
 
-from glance.openstack.common import jsonutils
 from glance.tests import functional
 
 
@@ -92,6 +92,7 @@ class TestTasks(functional.FunctionalTest):
                             u'self',
                             u'status',
                             u'type',
+                            u'result',
                             u'updated_at'])
         self.assertEqual(checked_keys, set(task.keys()))
         expected_task = {
@@ -107,20 +108,20 @@ class TestTasks(functional.FunctionalTest):
             'schema': '/v2/schemas/task',
         }
         for key, value in expected_task.items():
-            self.assertEqual(task[key], value, key)
+            self.assertEqual(value, task[key], key)
 
         # Tasks list should now have one entry
         path = self._url('/v2/tasks')
         response = requests.get(path, headers=self._headers())
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(200, response.status_code)
         tasks = jsonutils.loads(response.text)['tasks']
-        self.assertEqual(len(tasks), 1)
-        self.assertEqual(tasks[0]['id'], task_id)
+        self.assertEqual(1, len(tasks))
+        self.assertEqual(task_id, tasks[0]['id'])
 
         # Attempt to delete a task
         path = self._url('/v2/tasks/%s' % tasks[0]['id'])
         response = requests.delete(path, headers=self._headers())
-        self.assertEqual(response.status_code, 405)
+        self.assertEqual(405, response.status_code)
         self.assertIsNotNone(response.headers.get('Allow'))
         self.assertEqual('GET', response.headers.get('Allow'))
 

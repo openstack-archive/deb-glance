@@ -15,10 +15,11 @@
 
 import abc
 import calendar
-import eventlet
 import os
 import time
 
+import eventlet
+from oslo.concurrency import lockutils
 from oslo.config import cfg
 import six
 
@@ -28,12 +29,12 @@ from glance.common import utils
 from glance import context
 import glance.db as db_api
 from glance import i18n
-from glance.openstack.common import lockutils
 import glance.openstack.common.log as logging
 import glance.registry.client.v1.api as registry
 
 LOG = logging.getLogger(__name__)
 
+_ = i18n._
 _LI = i18n._LI
 _LW = i18n._LW
 _LE = i18n._LE
@@ -125,6 +126,7 @@ class ScrubQueue(object):
     @abc.abstractmethod
     def has_image(self, image_id):
         """Returns whether the queue contains an image or not.
+
         :param image_id: The opaque image identifier
 
         :retval a boolean value to inform including or not
@@ -253,7 +255,7 @@ class ScrubFileQueue(ScrubQueue):
         :retval a list of image id, location id and uri tuple from scrub queue
         """
         if not os.path.exists(self.scrubber_datadir):
-            LOG.info(_LI("%s directory does not exist.") %
+            LOG.warn(_LW("%s directory does not exist.") %
                      self.scrubber_datadir)
             return []
 
@@ -343,6 +345,30 @@ class ScrubDBQueue(ScrubQueue):
         else:
             return False
 
+    def _get_images_page(self, marker):
+        filters = {'deleted': True,
+                   'is_public': 'none',
+                   'status': 'pending_delete'}
+
+        if marker:
+            return self.registry.get_images_detailed(filters=filters,
+                                                     marker=marker)
+        else:
+            return self.registry.get_images_detailed(filters=filters)
+
+    def _get_all_images(self):
+        """Generator to fetch all appropriate images, paging as needed."""
+
+        marker = None
+        while True:
+            images = self._get_images_page(marker)
+            if len(images) == 0:
+                break
+            marker = images[-1]['id']
+
+            for image in images:
+                yield image
+
     def _walk_all_locations(self, remove=False):
         """Returns a list of image id and location tuple from scrub queue.
 
@@ -350,11 +376,9 @@ class ScrubDBQueue(ScrubQueue):
 
         :retval a list of image id, location id and uri tuple from scrub queue
         """
-        filters = {'deleted': True,
-                   'is_public': 'none',
-                   'status': 'pending_delete'}
         ret = []
-        for image in self.registry.get_images_detailed(filters=filters):
+
+        for image in self._get_all_images():
             deleted_at = image.get('deleted_at')
             if not deleted_at:
                 continue
@@ -548,7 +572,7 @@ class Scrubber(object):
 
         try:
             LOG.debug("Deleting URI from image %s." % image_id)
-            self.store_api.delete_from_backend(self.admin_context, uri)
+            self.store_api.delete_from_backend(uri, self.admin_context)
             if loc_id != '-':
                 db_api.get_api().image_location_delete(self.admin_context,
                                                        image_id,

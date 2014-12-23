@@ -23,7 +23,8 @@ import eventlet
 import glance_store as store
 import glance_store.location
 from oslo.config import cfg
-import six.moves.urllib.parse as urlparse
+from oslo.utils import excutils
+from oslo.utils import strutils
 from webob.exc import HTTPBadRequest
 from webob.exc import HTTPConflict
 from webob.exc import HTTPForbidden
@@ -40,19 +41,19 @@ from glance.api.v1 import filters
 from glance.api.v1 import upload_utils
 from glance.common import exception
 from glance.common import property_utils
+from glance.common import store_utils
 from glance.common import utils
 from glance.common import wsgi
-from glance.i18n import _LE
+from glance import i18n
 from glance import notifier
-from glance.openstack.common import excutils
-from glance.openstack.common import gettextutils
 import glance.openstack.common.log as logging
-from glance.openstack.common import strutils
 import glance.registry.client.v1.api as registry
 
 LOG = logging.getLogger(__name__)
-_LI = gettextutils._LI
-_LW = gettextutils._LW
+_ = i18n._
+_LE = i18n._LE
+_LI = i18n._LI
+_LW = i18n._LW
 SUPPORTED_PARAMS = glance.api.v1.SUPPORTED_PARAMS
 SUPPORTED_FILTERS = glance.api.v1.SUPPORTED_FILTERS
 ACTIVE_IMMUTABLE = glance.api.v1.ACTIVE_IMMUTABLE
@@ -177,7 +178,7 @@ class Controller(controller.BaseController):
                      "image properties. Attempted: %(num)s, Maximum: "
                      "%(quota)s") % {'num': len(props),
                                      'quota': CONF.image_property_quota})
-            LOG.info(msg)
+            LOG.warn(msg)
             raise HTTPRequestEntityTooLarge(explanation=msg,
                                             request=req,
                                             content_type="text/plain")
@@ -195,8 +196,8 @@ class Controller(controller.BaseController):
             for key in create_props:
                 if (self.prop_enforcer.check_property_rules(
                         key, 'create', req.context) is False):
-                    msg = "Property '%s' is protected" % key
-                    LOG.debug(msg)
+                    msg = _("Property '%s' is protected") % key
+                    LOG.warn(msg)
                     raise HTTPForbidden(explanation=msg,
                                         request=req,
                                         content_type="text/plain")
@@ -239,8 +240,8 @@ class Controller(controller.BaseController):
                         key, 'update', req.context) is False and
                         image_meta['properties'][key] !=
                         orig_meta['properties'][key]) or not has_read):
-                    msg = "Property '%s' is protected" % key
-                    LOG.debug(msg)
+                    msg = _("Property '%s' is protected") % key
+                    LOG.warn(msg)
                     raise HTTPForbidden(explanation=msg,
                                         request=req,
                                         content_type="text/plain")
@@ -269,12 +270,12 @@ class Controller(controller.BaseController):
                         key, 'read', req.context) is False):
                     # NOTE(bourke): if read protected, re-add to image_meta to
                     # prevent deletion
-                    image_meta['properties'][key] = \
-                        orig_meta['properties'][key]
+                    image_meta['properties'][key] = orig_meta[
+                        'properties'][key]
                 elif (self.prop_enforcer.check_property_rules(
                         key, 'delete', req.context) is False):
-                    msg = "Property '%s' is protected" % key
-                    LOG.debug(msg)
+                    msg = _("Property '%s' is protected") % key
+                    LOG.warn(msg)
                     raise HTTPForbidden(explanation=msg,
                                         request=req,
                                         content_type="text/plain")
@@ -415,26 +416,19 @@ class Controller(controller.BaseController):
     @staticmethod
     def _validate_source(source, req):
         """
-        External sources (as specified via the location or copy-from headers)
-        are supported only over non-local store types, i.e. S3, Swift, HTTP.
-        Note the absence of 'file://' for security reasons, see LP bug #942118.
-        'swift+config://' is also absent for security reasons, see LP bug
-        #1334196.
-        If the above constraint is violated, we reject with 400 "Bad Request".
+        To validate if external sources (as specified via the location
+        or copy-from headers) are supported. Otherwise we reject
+        with 400 "Bad Request".
         """
         if source:
-            pieces = urlparse.urlparse(source)
-            schemes = [scheme for scheme in store.get_known_schemes()
-                       if scheme != 'file' and scheme != 'swift+config']
-            for scheme in schemes:
-                if pieces.scheme == scheme:
-                    return source
-            msg = ("External sourcing not supported for "
-                   "store '%s'" % pieces.scheme)
-            LOG.debug(msg)
-            raise HTTPBadRequest(explanation=msg,
-                                 request=req,
-                                 content_type="text/plain")
+            if store_utils.validate_external_location(source):
+                return source
+            else:
+                msg = _("External source are not supported: '%s'") % source
+                LOG.debug(msg)
+                raise HTTPBadRequest(explanation=msg,
+                                     request=req,
+                                     content_type="text/plain")
 
     @staticmethod
     def _copy_from(req):
@@ -564,8 +558,7 @@ class Controller(controller.BaseController):
         except exception.Invalid as e:
             msg = (_("Failed to reserve image. Got error: %s") %
                    utils.exception_to_str(e))
-            for line in msg.split('\n'):
-                LOG.debug(line)
+            LOG.exception(msg)
             raise HTTPBadRequest(explanation=msg,
                                  request=req,
                                  content_type="text/plain")
@@ -762,12 +755,12 @@ class Controller(controller.BaseController):
                     # size provided by the client will be used as-is.
                     if (image_size_store and
                             image_size_store != image_size_meta):
-                        msg = ("Provided image size must match the stored "
-                               "image size. (provided size: %(ps)d, "
-                               "stored size: %(ss)d)" % {
-                                   "ps": image_size_meta,
-                                   "ss": image_size_store})
-                        LOG.debug(msg)
+                        msg = (_("Provided image size must match the stored"
+                                 " image size. (provided size: %(ps)d, "
+                                 "stored size: %(ss)d)") %
+                               {"ps": image_size_meta,
+                                "ss": image_size_store})
+                        LOG.warn(msg)
                         raise HTTPConflict(explanation=msg,
                                            request=req,
                                            content_type="text/plain")
@@ -986,23 +979,23 @@ class Controller(controller.BaseController):
                                  request=req,
                                  content_type="text/plain")
         except exception.NotFound as e:
-            msg = (_("Failed to find image to update: %s") %
-                   utils.exception_to_str(e))
-            for line in msg.split('\n'):
-                LOG.info(line)
-            raise HTTPNotFound(explanation=msg,
+            msg = _("Failed to find image to update: %s")
+            lmsg = "Failed to find image to update: %s"
+            e_str = utils.exception_to_str(e)
+            LOG.debug(lmsg % e_str)
+            raise HTTPNotFound(explanation=msg % e_str,
                                request=req,
                                content_type="text/plain")
         except exception.Forbidden as e:
-            msg = (_("Forbidden to update image: %s") %
-                   utils.exception_to_str(e))
-            for line in msg.split('\n'):
-                LOG.info(line)
-            raise HTTPForbidden(explanation=msg,
+            msg = _("Forbidden to update image: %s")
+            lmsg = "Forbidden to update image: %s"
+            e_str = utils.exception_to_str(e)
+            LOG.debug(lmsg % e_str)
+            raise HTTPForbidden(explanation=msg % e_str,
                                 request=req,
                                 content_type="text/plain")
         except (exception.Conflict, exception.Duplicate) as e:
-            LOG.info(utils.exception_to_str(e))
+            LOG.warn(utils.exception_to_str(e))
             raise HTTPConflict(body='Image operation conflicts',
                                request=req,
                                content_type='text/plain')
@@ -1083,24 +1076,21 @@ class Controller(controller.BaseController):
         except exception.NotFound as e:
             msg = (_("Failed to find image to delete: %s") %
                    utils.exception_to_str(e))
-            for line in msg.split('\n'):
-                LOG.info(line)
+            LOG.warn(msg)
             raise HTTPNotFound(explanation=msg,
                                request=req,
                                content_type="text/plain")
         except exception.Forbidden as e:
             msg = (_("Forbidden to delete image: %s") %
                    utils.exception_to_str(e))
-            for line in msg.split('\n'):
-                LOG.info(line)
+            LOG.warn(msg)
             raise HTTPForbidden(explanation=msg,
                                 request=req,
                                 content_type="text/plain")
         except exception.InUseByStore as e:
-            msg = (_LI("Image %s could not be deleted because it is in use: "
-                       "%s") % (id, utils.exception_to_str(e)))
-            for line in msg.split('\n'):
-                LOG.info(line)
+            msg = (_("Image %(id)s could not be deleted because it is in use: "
+                     "%(exc)s") % {"id": id, "exc": utils.exception_to_str(e)})
+            LOG.warn(msg)
             raise HTTPConflict(explanation=msg,
                                request=req,
                                content_type="text/plain")

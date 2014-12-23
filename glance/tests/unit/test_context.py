@@ -48,7 +48,7 @@ class TestContext(utils.BaseTestCase):
         img = _fake_image(img_owner, img_public)
         ctx = context.RequestContext(**kwargs)
 
-        self.assertEqual(self.db_api.is_image_visible(ctx, img), exp_res)
+        self.assertEqual(exp_res, self.db_api.is_image_visible(ctx, img))
 
     def test_empty_public(self):
         """
@@ -166,7 +166,7 @@ class TestContext(utils.BaseTestCase):
             del local.store.context
         ctx = context.RequestContext()
         self.assertTrue(hasattr(local.store, 'context'))
-        self.assertEqual(ctx, local.store.context)
+        self.assertEqual(local.store.context, ctx)
 
     def test_user_identity(self):
         ctx = context.RequestContext(user="user",

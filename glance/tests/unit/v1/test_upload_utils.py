@@ -14,10 +14,10 @@
 #    under the License.
 
 from contextlib import contextmanager
-import mock
-from mock import patch
 
 import glance_store
+import mock
+from mock import patch
 import webob.exc
 
 from glance.api.v1 import upload_utils
@@ -124,8 +124,8 @@ class TestUploadUtils(base.StoreClearingUnitTest):
                 actual_meta, location_data = upload_utils.upload_data_to_store(
                     req, image_meta, image_data, store, notifier)
 
-                self.assertEqual(location_data['url'], location)
-                self.assertEqual(actual_meta, image_meta.update(update_data))
+                self.assertEqual(location, location_data['url'])
+                self.assertEqual(image_meta.update(update_data), actual_meta)
                 mock_update_image_metadata.assert_called_once_with(
                     req.context, image_meta['id'], update_data,
                     from_state='saving')

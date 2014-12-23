@@ -21,6 +21,7 @@ from glance.api.v2 import metadef_namespaces as namespaces
 from glance.api.v2 import metadef_objects as objects
 from glance.api.v2 import metadef_properties as properties
 from glance.api.v2 import metadef_resource_types as resource_types
+from glance.api.v2 import metadef_tags as tags
 import glance.api.v2.model.metadef_namespace
 from glance.tests.unit import base
 import glance.tests.unit.utils as unit_test_utils
@@ -48,6 +49,12 @@ RESOURCE_TYPE1 = 'ResourceType1'
 RESOURCE_TYPE2 = 'ResourceType2'
 RESOURCE_TYPE3 = 'ResourceType3'
 RESOURCE_TYPE4 = 'ResourceType4'
+
+TAG1 = 'Tag1'
+TAG2 = 'Tag2'
+TAG3 = 'Tag3'
+TAG4 = 'Tag4'
+TAG5 = 'Tag5'
 
 TENANT1 = '6838eb7b-6ded-434a-882c-b344c77fe8df'
 TENANT2 = '2c014f32-55eb-467d-8fcb-4bd706012f81'
@@ -99,6 +106,26 @@ def _db_resource_type_fixture(name, **kwargs):
     return obj
 
 
+def _db_tag_fixture(name, **kwargs):
+    obj = {
+        'name': name
+    }
+    obj.update(kwargs)
+    return obj
+
+
+def _db_tags_fixture(tag_names=None):
+    tag_list = []
+    if not tag_names:
+        tag_names = [TAG1, TAG2, TAG3]
+
+    for tag_name in tag_names:
+        tag = glance.api.v2.model.metadef_tag.MetadefTag()
+        tag.name = tag_name
+        tag_list.append(tag)
+    return tag_list
+
+
 def _db_namespace_resource_type_fixture(name, **kwargs):
     obj = {
         'name': name,
@@ -120,6 +147,7 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         self._create_objects()
         self._create_resource_types()
         self._create_namespaces_resource_types()
+        self._create_tags()
         self.namespace_controller = namespaces.NamespaceController(self.db,
                                                                    self.policy)
         self.property_controller = \
@@ -128,6 +156,7 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
                                                                   self.policy)
         self.rt_controller = resource_types.ResourceTypeController(self.db,
                                                                    self.policy)
+        self.tag_controller = tags.TagsController(self.db, self.policy)
 
     def _create_namespaces(self):
         self.db.reset()
@@ -175,6 +204,16 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         [self.db.metadef_resource_type_create(req.context, resource_type)
          for resource_type in self.resource_types]
 
+    def _create_tags(self):
+        req = unit_test_utils.get_fake_request()
+        self.tags = [
+            (NAMESPACE3, _db_tag_fixture(TAG1)),
+            (NAMESPACE3, _db_tag_fixture(TAG2)),
+            (NAMESPACE1, _db_tag_fixture(TAG1)),
+        ]
+        [self.db.metadef_tag_create(req.context, namespace, tag)
+         for namespace, tag in self.tags]
+
     def _create_namespaces_resource_types(self):
         req = unit_test_utils.get_fake_request(is_admin=True)
         self.ns_resource_types = [
@@ -209,7 +248,7 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
                       namespace in output['namespaces']])
         expected = set([NAMESPACE1, NAMESPACE2, NAMESPACE3, NAMESPACE5,
                         NAMESPACE6])
-        self.assertEqual(actual, expected)
+        self.assertEqual(expected, actual)
 
     def test_namespace_index_visibility_public(self):
         request = unit_test_utils.get_fake_request(tenant=TENANT3)
@@ -220,7 +259,7 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         actual = set([namespace.namespace for namespace
                       in output['namespaces']])
         expected = set([NAMESPACE3, NAMESPACE5, NAMESPACE6])
-        self.assertEqual(actual, expected)
+        self.assertEqual(expected, actual)
 
     def test_namespace_index_resource_type(self):
         request = unit_test_utils.get_fake_request()
@@ -231,40 +270,40 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         actual = set([namespace.namespace for namespace
                       in output['namespaces']])
         expected = set([NAMESPACE1, NAMESPACE3])
-        self.assertEqual(actual, expected)
+        self.assertEqual(expected, actual)
 
     def test_namespace_show(self):
         request = unit_test_utils.get_fake_request()
         output = self.namespace_controller.show(request, NAMESPACE1)
         output = output.to_dict()
-        self.assertEqual(output['namespace'], NAMESPACE1)
-        self.assertEqual(output['owner'], TENANT1)
+        self.assertEqual(NAMESPACE1, output['namespace'])
+        self.assertEqual(TENANT1, output['owner'])
         self.assertTrue(output['protected'])
-        self.assertEqual(output['visibility'], 'private')
+        self.assertEqual('private', output['visibility'])
 
     def test_namespace_show_with_related_resources(self):
         request = unit_test_utils.get_fake_request()
         output = self.namespace_controller.show(request, NAMESPACE3)
         output = output.to_dict()
-        self.assertEqual(output['namespace'], NAMESPACE3)
-        self.assertEqual(output['owner'], TENANT3)
+        self.assertEqual(NAMESPACE3, output['namespace'])
+        self.assertEqual(TENANT3, output['owner'])
         self.assertFalse(output['protected'])
-        self.assertEqual(output['visibility'], 'public')
+        self.assertEqual('public', output['visibility'])
 
         self.assertEqual(2, len(output['properties']))
         actual = set([property for property in output['properties']])
         expected = set([PROPERTY1, PROPERTY2])
-        self.assertEqual(actual, expected)
+        self.assertEqual(expected, actual)
 
         self.assertEqual(2, len(output['objects']))
         actual = set([object.name for object in output['objects']])
         expected = set([OBJECT1, OBJECT2])
-        self.assertEqual(actual, expected)
+        self.assertEqual(expected, actual)
 
         self.assertEqual(1, len(output['resource_type_associations']))
         actual = set([rt.name for rt in output['resource_type_associations']])
         expected = set([RESOURCE_TYPE1])
-        self.assertEqual(actual, expected)
+        self.assertEqual(expected, actual)
 
     def test_namespace_show_with_property_prefix(self):
         request = unit_test_utils.get_fake_request()
@@ -359,10 +398,10 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         namespace = glance.api.v2.model.metadef_namespace.Namespace()
         namespace.namespace = NAMESPACE4
         namespace = self.namespace_controller.create(request, namespace)
-        self.assertEqual(namespace.namespace, NAMESPACE4)
+        self.assertEqual(NAMESPACE4, namespace.namespace)
 
         namespace = self.namespace_controller.show(request, NAMESPACE4)
-        self.assertEqual(namespace.namespace, NAMESPACE4)
+        self.assertEqual(NAMESPACE4, namespace.namespace)
 
     def test_namespace_create_different_owner(self):
         request = unit_test_utils.get_fake_request()
@@ -380,10 +419,10 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         namespace.namespace = NAMESPACE4
         namespace.owner = TENANT4
         namespace = self.namespace_controller.create(request, namespace)
-        self.assertEqual(namespace.namespace, NAMESPACE4)
+        self.assertEqual(NAMESPACE4, namespace.namespace)
 
         namespace = self.namespace_controller.show(request, NAMESPACE4)
-        self.assertEqual(namespace.namespace, NAMESPACE4)
+        self.assertEqual(NAMESPACE4, namespace.namespace)
 
     def test_namespace_create_with_related_resources(self):
         request = unit_test_utils.get_fake_request()
@@ -410,32 +449,32 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         namespace.objects = [object1, object2]
 
         output = self.namespace_controller.create(request, namespace)
-        self.assertEqual(namespace.namespace, NAMESPACE4)
+        self.assertEqual(NAMESPACE4, namespace.namespace)
         output = output.to_dict()
 
         self.assertEqual(2, len(output['properties']))
         actual = set([property for property in output['properties']])
         expected = set([PROPERTY1, PROPERTY2])
-        self.assertEqual(actual, expected)
+        self.assertEqual(expected, actual)
 
         self.assertEqual(2, len(output['objects']))
         actual = set([object.name for object in output['objects']])
         expected = set([OBJECT1, OBJECT2])
-        self.assertEqual(actual, expected)
+        self.assertEqual(expected, actual)
 
         output = self.namespace_controller.show(request, NAMESPACE4)
-        self.assertEqual(namespace.namespace, NAMESPACE4)
+        self.assertEqual(NAMESPACE4, namespace.namespace)
         output = output.to_dict()
 
         self.assertEqual(2, len(output['properties']))
         actual = set([property for property in output['properties']])
         expected = set([PROPERTY1, PROPERTY2])
-        self.assertEqual(actual, expected)
+        self.assertEqual(expected, actual)
 
         self.assertEqual(2, len(output['objects']))
         actual = set([object.name for object in output['objects']])
         expected = set([OBJECT1, OBJECT2])
-        self.assertEqual(actual, expected)
+        self.assertEqual(expected, actual)
 
     def test_namespace_create_conflict(self):
         request = unit_test_utils.get_fake_request()
@@ -495,10 +534,10 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         namespace.namespace = NAMESPACE4
         namespace = self.namespace_controller.update(request, namespace,
                                                      NAMESPACE1)
-        self.assertEqual(namespace.namespace, NAMESPACE4)
+        self.assertEqual(NAMESPACE4, namespace.namespace)
 
         namespace = self.namespace_controller.show(request, NAMESPACE4)
-        self.assertEqual(namespace.namespace, NAMESPACE4)
+        self.assertEqual(NAMESPACE4, namespace.namespace)
 
         self.assertRaises(webob.exc.HTTPNotFound,
                           self.namespace_controller.show, request, NAMESPACE1)
@@ -517,7 +556,7 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         self.assertEqual(2, len(output.properties))
         actual = set([property for property in output.properties])
         expected = set([PROPERTY1, PROPERTY2])
-        self.assertEqual(actual, expected)
+        self.assertEqual(expected, actual)
 
     def test_property_index_empty(self):
         request = unit_test_utils.get_fake_request(tenant=TENANT2)
@@ -532,7 +571,7 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
     def test_property_show(self):
         request = unit_test_utils.get_fake_request()
         output = self.property_controller.show(request, NAMESPACE3, PROPERTY1)
-        self.assertEqual(output.name, PROPERTY1)
+        self.assertEqual(PROPERTY1, output.name)
 
     def test_property_show_specific_resource_type(self):
         request = unit_test_utils.get_fake_request()
@@ -569,7 +608,7 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         request = unit_test_utils.get_fake_request(tenant=TENANT2,
                                                    is_admin=True)
         output = self.property_controller.show(request, NAMESPACE1, PROPERTY1)
-        self.assertEqual(output.name, PROPERTY1)
+        self.assertEqual(PROPERTY1, output.name)
 
     def test_property_delete(self):
         request = unit_test_utils.get_fake_request(tenant=TENANT3)
@@ -624,15 +663,15 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         property.title = 'title'
         property = self.property_controller.create(request, NAMESPACE1,
                                                    property)
-        self.assertEqual(property.name, PROPERTY2)
-        self.assertEqual(property.type, 'string')
-        self.assertEqual(property.title, 'title')
+        self.assertEqual(PROPERTY2, property.name)
+        self.assertEqual('string', property.type)
+        self.assertEqual('title', property.title)
 
         property = self.property_controller.show(request, NAMESPACE1,
                                                  PROPERTY2)
-        self.assertEqual(property.name, PROPERTY2)
-        self.assertEqual(property.type, 'string')
-        self.assertEqual(property.title, 'title')
+        self.assertEqual(PROPERTY2, property.name)
+        self.assertEqual('string', property.type)
+        self.assertEqual('title', property.title)
 
     def test_property_create_conflict(self):
         request = unit_test_utils.get_fake_request()
@@ -668,15 +707,15 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         property.title = 'title'
         property = self.property_controller.create(request, NAMESPACE1,
                                                    property)
-        self.assertEqual(property.name, PROPERTY2)
-        self.assertEqual(property.type, 'string')
-        self.assertEqual(property.title, 'title')
+        self.assertEqual(PROPERTY2, property.name)
+        self.assertEqual('string', property.type)
+        self.assertEqual('title', property.title)
 
         property = self.property_controller.show(request, NAMESPACE1,
                                                  PROPERTY2)
-        self.assertEqual(property.name, PROPERTY2)
-        self.assertEqual(property.type, 'string')
-        self.assertEqual(property.title, 'title')
+        self.assertEqual(PROPERTY2, property.name)
+        self.assertEqual('string', property.type)
+        self.assertEqual('title', property.title)
 
     def test_property_create_non_existing_namespace(self):
         request = unit_test_utils.get_fake_request()
@@ -700,15 +739,15 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         property.title = 'title123'
         property = self.property_controller.update(request, NAMESPACE3,
                                                    PROPERTY1, property)
-        self.assertEqual(property.name, PROPERTY1)
-        self.assertEqual(property.type, 'string123')
-        self.assertEqual(property.title, 'title123')
+        self.assertEqual(PROPERTY1, property.name)
+        self.assertEqual('string123', property.type)
+        self.assertEqual('title123', property.title)
 
         property = self.property_controller.show(request, NAMESPACE3,
                                                  PROPERTY1)
-        self.assertEqual(property.name, PROPERTY1)
-        self.assertEqual(property.type, 'string123')
-        self.assertEqual(property.title, 'title123')
+        self.assertEqual(PROPERTY1, property.name)
+        self.assertEqual('string123', property.type)
+        self.assertEqual('title123', property.title)
 
     def test_property_update_name(self):
         request = unit_test_utils.get_fake_request(tenant=TENANT3)
@@ -720,15 +759,15 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         property.title = 'title'
         property = self.property_controller.update(request, NAMESPACE3,
                                                    PROPERTY1, property)
-        self.assertEqual(property.name, PROPERTY3)
-        self.assertEqual(property.type, 'string')
-        self.assertEqual(property.title, 'title')
+        self.assertEqual(PROPERTY3, property.name)
+        self.assertEqual('string', property.type)
+        self.assertEqual('title', property.title)
 
         property = self.property_controller.show(request, NAMESPACE3,
                                                  PROPERTY2)
-        self.assertEqual(property.name, PROPERTY2)
-        self.assertEqual(property.type, 'string')
-        self.assertEqual(property.title, 'title')
+        self.assertEqual(PROPERTY2, property.name)
+        self.assertEqual('string', property.type)
+        self.assertEqual('title', property.title)
 
     def test_property_update_conflict(self):
         request = unit_test_utils.get_fake_request(tenant=TENANT3)
@@ -773,7 +812,7 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         self.assertEqual(2, len(output['objects']))
         actual = set([object.name for object in output['objects']])
         expected = set([OBJECT1, OBJECT2])
-        self.assertEqual(actual, expected)
+        self.assertEqual(expected, actual)
 
     def test_object_index_empty(self):
         request = unit_test_utils.get_fake_request()
@@ -789,7 +828,7 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
     def test_object_show(self):
         request = unit_test_utils.get_fake_request()
         output = self.object_controller.show(request, NAMESPACE3, OBJECT1)
-        self.assertEqual(output.name, OBJECT1)
+        self.assertEqual(OBJECT1, output.name)
 
     def test_object_show_non_existing(self):
         request = unit_test_utils.get_fake_request()
@@ -806,7 +845,7 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
                                                    is_admin=True)
 
         output = self.object_controller.show(request, NAMESPACE1, OBJECT1)
-        self.assertEqual(output.name, OBJECT1)
+        self.assertEqual(OBJECT1, output.name)
 
     def test_object_delete(self):
         request = unit_test_utils.get_fake_request(tenant=TENANT3)
@@ -858,14 +897,14 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         object.required = []
         object.properties = {}
         object = self.object_controller.create(request, object, NAMESPACE1)
-        self.assertEqual(object.name, OBJECT2)
-        self.assertEqual(object.required, [])
-        self.assertEqual(object.properties, {})
+        self.assertEqual(OBJECT2, object.name)
+        self.assertEqual([], object.required)
+        self.assertEqual({}, object.properties)
 
         object = self.object_controller.show(request, NAMESPACE1, OBJECT2)
-        self.assertEqual(object.name, OBJECT2)
-        self.assertEqual(object.required, [])
-        self.assertEqual(object.properties, {})
+        self.assertEqual(OBJECT2, object.name)
+        self.assertEqual([], object.required)
+        self.assertEqual({}, object.properties)
 
     def test_object_create_conflict(self):
         request = unit_test_utils.get_fake_request()
@@ -912,14 +951,14 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         object.required = []
         object.properties = {}
         object = self.object_controller.create(request, object, NAMESPACE1)
-        self.assertEqual(object.name, OBJECT2)
-        self.assertEqual(object.required, [])
-        self.assertEqual(object.properties, {})
+        self.assertEqual(OBJECT2, object.name)
+        self.assertEqual([], object.required)
+        self.assertEqual({}, object.properties)
 
         object = self.object_controller.show(request, NAMESPACE1, OBJECT2)
-        self.assertEqual(object.name, OBJECT2)
-        self.assertEqual(object.required, [])
-        self.assertEqual(object.properties, {})
+        self.assertEqual(OBJECT2, object.name)
+        self.assertEqual([], object.required)
+        self.assertEqual({}, object.properties)
 
     def test_object_update(self):
         request = unit_test_utils.get_fake_request(tenant=TENANT3)
@@ -929,12 +968,12 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         object.description = 'description'
         object = self.object_controller.update(request, object, NAMESPACE3,
                                                OBJECT1)
-        self.assertEqual(object.name, OBJECT1)
-        self.assertEqual(object.description, 'description')
+        self.assertEqual(OBJECT1, object.name)
+        self.assertEqual('description', object.description)
 
         property = self.object_controller.show(request, NAMESPACE3, OBJECT1)
-        self.assertEqual(property.name, OBJECT1)
-        self.assertEqual(object.description, 'description')
+        self.assertEqual(OBJECT1, property.name)
+        self.assertEqual('description', object.description)
 
     def test_object_update_name(self):
         request = unit_test_utils.get_fake_request()
@@ -943,10 +982,10 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         object.name = OBJECT2
         object = self.object_controller.update(request, object, NAMESPACE1,
                                                OBJECT1)
-        self.assertEqual(object.name, OBJECT2)
+        self.assertEqual(OBJECT2, object.name)
 
         object = self.object_controller.show(request, NAMESPACE1, OBJECT2)
-        self.assertEqual(object.name, OBJECT2)
+        self.assertEqual(OBJECT2, object.name)
 
     def test_object_update_conflict(self):
         request = unit_test_utils.get_fake_request(tenant=TENANT3)
@@ -989,7 +1028,7 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         actual = set([type.name for type in
                       output.resource_types])
         expected = set([RESOURCE_TYPE1, RESOURCE_TYPE2, RESOURCE_TYPE4])
-        self.assertEqual(actual, expected)
+        self.assertEqual(expected, actual)
 
     def test_resource_type_show(self):
         request = unit_test_utils.get_fake_request()
@@ -998,7 +1037,7 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         self.assertEqual(1, len(output.resource_type_associations))
         actual = set([rt.name for rt in output.resource_type_associations])
         expected = set([RESOURCE_TYPE1])
-        self.assertEqual(actual, expected)
+        self.assertEqual(expected, actual)
 
     def test_resource_type_show_empty(self):
         request = unit_test_utils.get_fake_request()
@@ -1020,7 +1059,7 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         self.assertEqual(2, len(output.resource_type_associations))
         actual = set([rt.name for rt in output.resource_type_associations])
         expected = set([RESOURCE_TYPE1, RESOURCE_TYPE2])
-        self.assertEqual(actual, expected)
+        self.assertEqual(expected, actual)
 
     def test_resource_type_show_non_existing_namespace(self):
         request = unit_test_utils.get_fake_request()
@@ -1075,14 +1114,14 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         rt.name = RESOURCE_TYPE2
         rt.prefix = 'pref'
         rt = self.rt_controller.create(request, rt, NAMESPACE1)
-        self.assertEqual(rt.name, RESOURCE_TYPE2)
-        self.assertEqual(rt.prefix, 'pref')
+        self.assertEqual(RESOURCE_TYPE2, rt.name)
+        self.assertEqual('pref', rt.prefix)
 
         output = self.rt_controller.show(request, NAMESPACE1)
         self.assertEqual(2, len(output.resource_type_associations))
         actual = set([x.name for x in output.resource_type_associations])
         expected = set([RESOURCE_TYPE1, RESOURCE_TYPE2])
-        self.assertEqual(actual, expected)
+        self.assertEqual(expected, actual)
 
     def test_resource_type_association_create_conflict(self):
         request = unit_test_utils.get_fake_request()
@@ -1133,11 +1172,250 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         rt.name = RESOURCE_TYPE2
         rt.prefix = 'pref'
         rt = self.rt_controller.create(request, rt, NAMESPACE1)
-        self.assertEqual(rt.name, RESOURCE_TYPE2)
-        self.assertEqual(rt.prefix, 'pref')
+        self.assertEqual(RESOURCE_TYPE2, rt.name)
+        self.assertEqual('pref', rt.prefix)
 
         output = self.rt_controller.show(request, NAMESPACE1)
         self.assertEqual(2, len(output.resource_type_associations))
         actual = set([x.name for x in output.resource_type_associations])
         expected = set([RESOURCE_TYPE1, RESOURCE_TYPE2])
-        self.assertEqual(actual, expected)
+        self.assertEqual(expected, actual)
+
+    def test_tag_index(self):
+        request = unit_test_utils.get_fake_request()
+        output = self.tag_controller.index(request, NAMESPACE3)
+        output = output.to_dict()
+        self.assertEqual(2, len(output['tags']))
+        actual = set([tag.name for tag in output['tags']])
+        expected = set([TAG1, TAG2])
+        self.assertEqual(expected, actual)
+
+    def test_tag_index_empty(self):
+        request = unit_test_utils.get_fake_request()
+        output = self.tag_controller.index(request, NAMESPACE5)
+        output = output.to_dict()
+        self.assertEqual(0, len(output['tags']))
+
+    def test_tag_index_non_existing_namespace(self):
+        request = unit_test_utils.get_fake_request()
+        self.assertRaises(webob.exc.HTTPNotFound, self.tag_controller.index,
+                          request, NAMESPACE4)
+
+    def test_tag_show(self):
+        request = unit_test_utils.get_fake_request()
+        output = self.tag_controller.show(request, NAMESPACE3, TAG1)
+        self.assertEqual(TAG1, output.name)
+
+    def test_tag_show_non_existing(self):
+        request = unit_test_utils.get_fake_request()
+        self.assertRaises(webob.exc.HTTPNotFound, self.tag_controller.show,
+                          request, NAMESPACE5, TAG1)
+
+    def test_tag_show_non_visible(self):
+        request = unit_test_utils.get_fake_request(tenant=TENANT2)
+        self.assertRaises(webob.exc.HTTPNotFound, self.tag_controller.show,
+                          request, NAMESPACE1, TAG1)
+
+    def test_tag_show_non_visible_admin(self):
+        request = unit_test_utils.get_fake_request(tenant=TENANT2,
+                                                   is_admin=True)
+
+        output = self.tag_controller.show(request, NAMESPACE1, TAG1)
+        self.assertEqual(TAG1, output.name)
+
+    def test_tag_delete(self):
+        request = unit_test_utils.get_fake_request(tenant=TENANT3)
+        self.tag_controller.delete(request, NAMESPACE3, TAG1)
+        self.assertRaises(webob.exc.HTTPNotFound, self.tag_controller.show,
+                          request, NAMESPACE3, TAG1)
+
+    def test_tag_delete_other_owner(self):
+        request = unit_test_utils.get_fake_request()
+        self.assertRaises(webob.exc.HTTPForbidden,
+                          self.tag_controller.delete, request, NAMESPACE3,
+                          TAG1)
+
+    def test_tag_delete_other_owner_admin(self):
+        request = unit_test_utils.get_fake_request(is_admin=True)
+        self.tag_controller.delete(request, NAMESPACE3, TAG1)
+        self.assertRaises(webob.exc.HTTPNotFound, self.tag_controller.show,
+                          request, NAMESPACE3, TAG1)
+
+    def test_tag_delete_non_existing(self):
+        request = unit_test_utils.get_fake_request()
+        self.assertRaises(webob.exc.HTTPNotFound,
+                          self.tag_controller.delete, request, NAMESPACE5,
+                          TAG1)
+
+    def test_tag_delete_non_existing_namespace(self):
+        request = unit_test_utils.get_fake_request()
+        self.assertRaises(webob.exc.HTTPNotFound,
+                          self.tag_controller.delete, request, NAMESPACE4,
+                          TAG1)
+
+    def test_tag_delete_non_visible(self):
+        request = unit_test_utils.get_fake_request(tenant=TENANT2)
+        self.assertRaises(webob.exc.HTTPNotFound,
+                          self.tag_controller.delete, request, NAMESPACE1,
+                          TAG1)
+
+    def test_tag_delete_admin_protected(self):
+        request = unit_test_utils.get_fake_request(is_admin=True)
+        self.assertRaises(webob.exc.HTTPForbidden,
+                          self.tag_controller.delete, request, NAMESPACE1,
+                          TAG1)
+
+    def test_tag_create(self):
+        request = unit_test_utils.get_fake_request()
+
+        tag = glance.api.v2.model.metadef_tag.MetadefTag()
+        tag.name = TAG2
+        tag = self.tag_controller.create(request, tag, NAMESPACE1)
+        self.assertEqual(TAG2, tag.name)
+
+        tag = self.tag_controller.show(request, NAMESPACE1, TAG2)
+        self.assertEqual(TAG2, tag.name)
+
+    def test_tag_create_tags(self):
+        request = unit_test_utils.get_fake_request()
+
+        metadef_tags = glance.api.v2.model.metadef_tag.MetadefTags()
+        metadef_tags.tags = _db_tags_fixture()
+        output = self.tag_controller.create_tags(
+            request, metadef_tags, NAMESPACE1)
+        output = output.to_dict()
+        self.assertEqual(3, len(output['tags']))
+        actual = set([tag.name for tag in output['tags']])
+        expected = set([TAG1, TAG2, TAG3])
+        self.assertEqual(expected, actual)
+
+    def test_tag_create_duplicate_tags(self):
+        request = unit_test_utils.get_fake_request()
+
+        metadef_tags = glance.api.v2.model.metadef_tag.MetadefTags()
+        metadef_tags.tags = _db_tags_fixture([TAG4, TAG5, TAG4])
+        self.assertRaises(
+            webob.exc.HTTPConflict,
+            self.tag_controller.create_tags,
+            request, metadef_tags, NAMESPACE1)
+
+    def test_tag_create_duplicate_with_pre_existing_tags(self):
+        request = unit_test_utils.get_fake_request()
+
+        metadef_tags = glance.api.v2.model.metadef_tag.MetadefTags()
+        metadef_tags.tags = _db_tags_fixture([TAG1, TAG2, TAG3])
+        output = self.tag_controller.create_tags(
+            request, metadef_tags, NAMESPACE1)
+        output = output.to_dict()
+        self.assertEqual(3, len(output['tags']))
+        actual = set([tag.name for tag in output['tags']])
+        expected = set([TAG1, TAG2, TAG3])
+        self.assertEqual(expected, actual)
+
+        metadef_tags = glance.api.v2.model.metadef_tag.MetadefTags()
+        metadef_tags.tags = _db_tags_fixture([TAG4, TAG5, TAG4])
+        self.assertRaises(
+            webob.exc.HTTPConflict,
+            self.tag_controller.create_tags,
+            request, metadef_tags, NAMESPACE1)
+
+        output = self.tag_controller.index(request, NAMESPACE1)
+        output = output.to_dict()
+        self.assertEqual(3, len(output['tags']))
+        actual = set([tag.name for tag in output['tags']])
+        expected = set([TAG1, TAG2, TAG3])
+        self.assertEqual(expected, actual)
+
+    def test_tag_create_conflict(self):
+        request = unit_test_utils.get_fake_request()
+
+        tag = glance.api.v2.model.metadef_tag.MetadefTag()
+        tag.name = TAG1
+
+        self.assertRaises(webob.exc.HTTPConflict,
+                          self.tag_controller.create, request, tag,
+                          NAMESPACE1)
+
+    def test_tag_create_non_existing_namespace(self):
+        request = unit_test_utils.get_fake_request()
+
+        tag = glance.api.v2.model.metadef_tag.MetadefTag()
+        tag.name = TAG1
+
+        self.assertRaises(webob.exc.HTTPNotFound,
+                          self.tag_controller.create, request, tag,
+                          NAMESPACE4)
+
+    def test_tag_create_non_visible_namespace(self):
+        request = unit_test_utils.get_fake_request(tenant=TENANT2)
+
+        tag = glance.api.v2.model.metadef_tag.MetadefTag()
+        tag.name = TAG1
+
+        self.assertRaises(webob.exc.HTTPForbidden,
+                          self.tag_controller.create, request, tag,
+                          NAMESPACE1)
+
+    def test_tag_create_non_visible_namespace_admin(self):
+        request = unit_test_utils.get_fake_request(tenant=TENANT2,
+                                                   is_admin=True)
+
+        tag = glance.api.v2.model.metadef_tag.MetadefTag()
+        tag.name = TAG2
+
+        tag = self.tag_controller.create(request, tag, NAMESPACE1)
+        self.assertEqual(TAG2, tag.name)
+
+        tag = self.tag_controller.show(request, NAMESPACE1, TAG2)
+        self.assertEqual(TAG2, tag.name)
+
+    def test_tag_update(self):
+        request = unit_test_utils.get_fake_request(tenant=TENANT3)
+
+        tag = self.tag_controller.show(request, NAMESPACE3, TAG1)
+        tag.name = TAG3
+        tag = self.tag_controller.update(request, tag, NAMESPACE3, TAG1)
+        self.assertEqual(TAG3, tag.name)
+
+        property = self.tag_controller.show(request, NAMESPACE3, TAG3)
+        self.assertEqual(TAG3, property.name)
+
+    def test_tag_update_name(self):
+        request = unit_test_utils.get_fake_request()
+
+        tag = self.tag_controller.show(request, NAMESPACE1, TAG1)
+        tag.name = TAG2
+        tag = self.tag_controller.update(request, tag, NAMESPACE1, TAG1)
+        self.assertEqual(TAG2, tag.name)
+
+        tag = self.tag_controller.show(request, NAMESPACE1, TAG2)
+        self.assertEqual(TAG2, tag.name)
+
+    def test_tag_update_conflict(self):
+        request = unit_test_utils.get_fake_request(tenant=TENANT3)
+
+        tag = self.tag_controller.show(request, NAMESPACE3, TAG1)
+        tag.name = TAG2
+        self.assertRaises(webob.exc.HTTPConflict,
+                          self.tag_controller.update, request, tag,
+                          NAMESPACE3, TAG1)
+
+    def test_tag_update_non_existing(self):
+        request = unit_test_utils.get_fake_request(tenant=TENANT3)
+
+        tag = glance.api.v2.model.metadef_tag.MetadefTag()
+        tag.name = TAG1
+
+        self.assertRaises(webob.exc.HTTPNotFound,
+                          self.tag_controller.update, request, tag,
+                          NAMESPACE5, TAG1)
+
+    def test_tag_update_namespace_non_existing(self):
+        request = unit_test_utils.get_fake_request(tenant=TENANT3)
+
+        tag = glance.api.v2.model.metadef_tag.MetadefTag()
+        tag.name = TAG1
+
+        self.assertRaises(webob.exc.HTTPNotFound,
+                          self.tag_controller.update, request, tag,
+                          NAMESPACE4, TAG1)

@@ -37,8 +37,8 @@ class TestMultiprocessing(functional.FunctionalTest):
         path = "http://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
         http = httplib2.Http()
         response, content = http.request(path, 'GET')
-        self.assertEqual(response.status, 200)
-        self.assertEqual(content, '{"images": []}')
+        self.assertEqual(200, response.status)
+        self.assertEqual('{"images": []}', content)
         self.stop_servers()
 
     def _get_children(self):
@@ -54,7 +54,6 @@ class TestMultiprocessing(functional.FunctionalTest):
         Ensure an interrupt signal does not cause a respawn storm.
         See bug #978130
         """
-        self.cleanup()
         self.start_servers(**self.__dict__.copy())
 
         children = self._get_children()

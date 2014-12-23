@@ -17,6 +17,7 @@ SQLAlchemy models for glance metadata schema
 """
 
 from oslo.db.sqlalchemy import models
+from oslo.utils import timeutils
 from sqlalchemy import Boolean
 from sqlalchemy import Column
 from sqlalchemy import DateTime
@@ -29,13 +30,12 @@ from sqlalchemy import String
 from sqlalchemy import Text
 
 from glance.db.sqlalchemy.models import JSONEncodedDict
-from glance.openstack.common import timeutils
 
 
 class DictionaryBase(models.ModelBase):
     metadata = None
 
-    def as_dict(self):
+    def to_dict(self):
         d = {}
         for c in self.__table__.columns:
             d[c.name] = self[c.name]
@@ -137,9 +137,23 @@ class MetadefResourceType(BASE_DICT, GlanceMetadefBase):
         primaryjoin=id == MetadefNamespaceResourceType.resource_type_id)
 
 
+class MetadefTag(BASE_DICT, GlanceMetadefBase):
+    """Represents a metadata-schema tag in the data store."""
+    __tablename__ = 'metadef_tags'
+    __table_args__ = (Index('ix_metadef_tags_namespace_id',
+                            'namespace_id', 'name'),
+                      Index('ix_metadef_tags_name', 'name'))
+
+    id = Column(Integer, primary_key=True, nullable=False)
+    namespace_id = Column(Integer(), ForeignKey('metadef_namespaces.id'),
+                          nullable=False)
+    name = Column(String(80), nullable=False)
+
+
 def register_models(engine):
     """Create database tables for all models with the given engine."""
     models = (MetadefNamespace, MetadefObject, MetadefProperty,
+              MetadefTag,
               MetadefResourceType, MetadefNamespaceResourceType)
     for model in models:
         model.metadata.create_all(engine)
@@ -148,6 +162,7 @@ def register_models(engine):
 def unregister_models(engine):
     """Drop database tables for all models with the given engine."""
     models = (MetadefObject, MetadefProperty, MetadefNamespaceResourceType,
+              MetadefTag,
               MetadefNamespace, MetadefResourceType)
     for model in models:
         model.metadata.drop_all(engine)

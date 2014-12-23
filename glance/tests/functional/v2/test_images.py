@@ -16,13 +16,12 @@
 import BaseHTTPServer
 import os
 import signal
-import tempfile
 import uuid
 
+from oslo.serialization import jsonutils
 import requests
 import six
 
-from glance.openstack.common import jsonutils
 from glance.tests import functional
 
 
@@ -47,7 +46,7 @@ def get_handler_class(fixture):
             self.end_headers()
             return
 
-        def log_message(*args, **kwargs):
+        def log_message(self, *args, **kwargs):
             # Override this method to prevent debug output from going
             # to stderr during testing
             return
@@ -75,6 +74,18 @@ class TestImages(functional.FunctionalTest):
         self.cleanup()
         self.api_server.deployment_flavor = 'noauth'
         self.api_server.data_api = 'glance.db.sqlalchemy.api'
+        for i in range(3):
+            ret = http_server("foo_image_id%d" % i, "foo_image%d" % i)
+            setattr(self, 'http_server%d_pid' % i, ret[0])
+            setattr(self, 'http_port%d' % i, ret[1])
+
+    def tearDown(self):
+        for i in range(3):
+            pid = getattr(self, 'http_server%d_pid' % i, None)
+            if pid:
+                os.kill(pid, signal.SIGKILL)
+
+        super(TestImages, self).tearDown()
 
     def _url(self, path):
         return 'http://127.0.0.1:%d%s' % (self.api_port, path)
@@ -132,8 +143,11 @@ class TestImages(functional.FunctionalTest):
             u'disk_format',
             u'container_format',
             u'owner',
+            u'checksum',
+            u'size',
+            u'virtual_size',
         ])
-        self.assertEqual(set(image.keys()), checked_keys)
+        self.assertEqual(checked_keys, set(image.keys()))
         expected_image = {
             'status': 'queued',
             'name': 'image-1',
@@ -150,7 +164,7 @@ class TestImages(functional.FunctionalTest):
             'schema': '/v2/schemas/image',
         }
         for key, value in expected_image.items():
-            self.assertEqual(image[key], value, key)
+            self.assertEqual(value, image[key], key)
 
         # Image list should now have one entry
         path = self._url('/v2/images')
@@ -158,7 +172,7 @@ class TestImages(functional.FunctionalTest):
         self.assertEqual(200, response.status_code)
         images = jsonutils.loads(response.text)['images']
         self.assertEqual(1, len(images))
-        self.assertEqual(images[0]['id'], image_id)
+        self.assertEqual(image_id, images[0]['id'])
 
         # Create another image (with two deployer-defined properties)
         path = self._url('/v2/images')
@@ -192,8 +206,11 @@ class TestImages(functional.FunctionalTest):
             u'disk_format',
             u'container_format',
             u'owner',
+            u'checksum',
+            u'size',
+            u'virtual_size',
         ])
-        self.assertEqual(set(image.keys()), checked_keys)
+        self.assertEqual(checked_keys, set(image.keys()))
         expected_image = {
             'status': 'queued',
             'name': 'image-2',
@@ -210,7 +227,7 @@ class TestImages(functional.FunctionalTest):
             'schema': '/v2/schemas/image',
         }
         for key, value in expected_image.items():
-            self.assertEqual(image[key], value, key)
+            self.assertEqual(value, image[key], key)
 
         # Image list should now have two entries
         path = self._url('/v2/images')
@@ -218,8 +235,8 @@ class TestImages(functional.FunctionalTest):
         self.assertEqual(200, response.status_code)
         images = jsonutils.loads(response.text)['images']
         self.assertEqual(2, len(images))
-        self.assertEqual(images[0]['id'], image2_id)
-        self.assertEqual(images[1]['id'], image_id)
+        self.assertEqual(image2_id, images[0]['id'])
+        self.assertEqual(image_id, images[1]['id'])
 
         # Image list should list only image-2 as image-1 doesn't contain the
         # property 'bar'
@@ -228,7 +245,7 @@ class TestImages(functional.FunctionalTest):
         self.assertEqual(200, response.status_code)
         images = jsonutils.loads(response.text)['images']
         self.assertEqual(1, len(images))
-        self.assertEqual(images[0]['id'], image2_id)
+        self.assertEqual(image2_id, images[0]['id'])
 
         # Image list should list only image-1 as image-2 doesn't contain the
         # property 'foo'
@@ -237,7 +254,7 @@ class TestImages(functional.FunctionalTest):
         self.assertEqual(200, response.status_code)
         images = jsonutils.loads(response.text)['images']
         self.assertEqual(1, len(images))
-        self.assertEqual(images[0]['id'], image_id)
+        self.assertEqual(image_id, images[0]['id'])
 
         # The "changes-since" filter shouldn't work on glance v2
         path = self._url('/v2/images?changes-since=20001007T10:10:10')
@@ -255,7 +272,7 @@ class TestImages(functional.FunctionalTest):
         self.assertEqual(200, response.status_code)
         images = jsonutils.loads(response.text)['images']
         self.assertEqual(1, len(images))
-        self.assertEqual(images[0]['id'], image_id)
+        self.assertEqual(image_id, images[0]['id'])
 
         # Image list should list only image-2 based on the filter
         # 'bar=foo&xyz=abc'
@@ -264,7 +281,7 @@ class TestImages(functional.FunctionalTest):
         self.assertEqual(200, response.status_code)
         images = jsonutils.loads(response.text)['images']
         self.assertEqual(1, len(images))
-        self.assertEqual(images[0]['id'], image2_id)
+        self.assertEqual(image2_id, images[0]['id'])
 
         # Image list should not list anything as the filter 'foo=baz&abc=xyz'
         # is not satisfied by either images
@@ -279,9 +296,9 @@ class TestImages(functional.FunctionalTest):
         self.assertEqual(200, response.status_code)
         image = jsonutils.loads(response.text)
         self.assertEqual(image_id, image['id'])
-        self.assertFalse('checksum' in image)
-        self.assertNotIn('size', image)
-        self.assertNotIn('virtual_size', image)
+        self.assertIsNone(image['checksum'])
+        self.assertIsNone(image['size'])
+        self.assertIsNone(image['virtual_size'])
         self.assertEqual('bar', image['foo'])
         self.assertFalse(image['protected'])
         self.assertEqual('kernel', image['type'])
@@ -329,21 +346,15 @@ class TestImages(functional.FunctionalTest):
         self.assertEqual(413, response.status_code, response.text)
 
         # Adding 3 image locations should fail since configured limit is 2
-        for i in range(3):
-            file_path = os.path.join(self.test_dir, 'fake_image_%i' % i)
-            with open(file_path, 'w') as fap:
-                fap.write('glance')
-
         path = self._url('/v2/images/%s' % image_id)
         media_type = 'application/openstack-images-v2.1-json-patch'
         headers = self._headers({'content-type': media_type})
         changes = []
         for i in range(3):
+            url = ('http://127.0.0.1:%s/foo_image' %
+                   getattr(self, 'http_port%d' % i))
             changes.append({'op': 'add', 'path': '/locations/-',
-                            'value': {'url': 'file://{0}'.format(
-                                os.path.join(self.test_dir,
-                                             'fake_image_%i' % i)),
-                                      'metadata': {}},
+                            'value': {'url': url, 'metadata': {}},
                             })
 
         data = jsonutils.dumps(changes)
@@ -416,7 +427,7 @@ class TestImages(functional.FunctionalTest):
         response = requests.get(path, headers=self._headers())
         self.assertEqual(200, response.status_code)
         self.assertEqual(expected_checksum, response.headers['Content-MD5'])
-        self.assertEqual(response.text, 'ZZZZZ')
+        self.assertEqual('ZZZZZ', response.text)
 
         # Uploading duplicate data should be rejected with a 409. The
         # original data should remain untouched.
@@ -456,8 +467,8 @@ class TestImages(functional.FunctionalTest):
         response = requests.patch(path, headers=headers, data=data)
         self.assertEqual(200, response.status_code, response.text)
         image = jsonutils.loads(response.text)
-        self.assertNotIn('size', image)
-        self.assertNotIn('virtual_size', image)
+        self.assertIsNone(image['size'])
+        self.assertIsNone(image['virtual_size'])
         self.assertEqual('queued', image['status'])
 
         # Deletion should work. Deleting image-1
@@ -482,7 +493,7 @@ class TestImages(functional.FunctionalTest):
         self.assertEqual(200, response.status_code)
         images = jsonutils.loads(response.text)['images']
         self.assertEqual(1, len(images))
-        self.assertEqual(images[0]['id'], image2_id)
+        self.assertEqual(image2_id, images[0]['id'])
 
         # Deleting image-2 should work
         path = self._url('/v2/images/%s' % image2_id)
@@ -535,7 +546,13 @@ class TestImages(functional.FunctionalTest):
 
     def test_download_policy_when_cache_is_not_enabled(self):
 
-        rules = {'context_is_admin': 'role:admin', 'default': '',
+        rules = {'context_is_admin': 'role:admin',
+                 'default': '',
+                 'add_image': '',
+                 'get_image': '',
+                 'modify_image': '',
+                 'upload_image': '',
+                 'delete_image': '',
                  'download_image': '!'}
         self.set_policy_rules(rules)
         self.start_servers(**self.__dict__.copy())
@@ -565,7 +582,7 @@ class TestImages(functional.FunctionalTest):
             'schema': '/v2/schemas/image',
         }
         for key, value in six.iteritems(expected_image):
-            self.assertEqual(image[key], value, key)
+            self.assertEqual(value, image[key], key)
 
         # Upload data to image
         path = self._url('/v2/images/%s/file' % image_id)
@@ -661,6 +678,11 @@ class TestImages(functional.FunctionalTest):
         rules = {
             "context_is_admin": "role:admin",
             "default": "",
+            "add_image": "",
+            "get_image": "",
+            "modify_image": "",
+            "upload_image": "",
+            "delete_image": "",
             "restricted":
             "not ('aki':%(container_format)s and role:_member_)",
             "download_image": "role:admin or rule:restricted"
@@ -695,7 +717,7 @@ class TestImages(functional.FunctionalTest):
         }
 
         for key, value in six.iteritems(expected_image):
-            self.assertEqual(image[key], value, key)
+            self.assertEqual(value, image[key], key)
 
         # Upload data to image
         path = self._url('/v2/images/%s/file' % image_id)
@@ -727,6 +749,12 @@ class TestImages(functional.FunctionalTest):
         rules = {
             "context_is_admin": "role:admin",
             "default": "",
+            "add_image": "",
+            "get_image": "",
+            "modify_image": "",
+            "upload_image": "",
+            "get_image_location": "",
+            "delete_image": "",
             "restricted":
             "not ('aki':%(container_format)s and role:_member_)",
             "download_image": "role:admin or rule:restricted"
@@ -761,7 +789,7 @@ class TestImages(functional.FunctionalTest):
         }
 
         for key, value in six.iteritems(expected_image):
-            self.assertEqual(image[key], value, key)
+            self.assertEqual(value, value, key)
 
         # Upload data to image
         path = self._url('/v2/images/%s/file' % image_id)
@@ -803,7 +831,7 @@ class TestImages(functional.FunctionalTest):
         image = jsonutils.loads(response.text)
         image_id = image['id']
 
-        #try to populate it with oversized data
+        # try to populate it with oversized data
         path = self._url('/v2/images/%s/file' % image_id)
         headers = self._headers({'Content-Type': 'application/octet-stream'})
 
@@ -952,7 +980,7 @@ class TestImages(functional.FunctionalTest):
         images = jsonutils.loads(response.text)['images']
         self.assertEqual(0, len(images))
 
-        ## Create an image for role member with extra props
+        # Create an image for role member with extra props
         # Raises 403 since user is not allowed to set 'foo'
         path = self._url('/v2/images')
         headers = self._headers({'content-type': 'application/json',
@@ -964,7 +992,7 @@ class TestImages(functional.FunctionalTest):
         response = requests.post(path, headers=headers, data=data)
         self.assertEqual(403, response.status_code)
 
-        ## Create an image for role member without 'foo'
+        # Create an image for role member without 'foo'
         path = self._url('/v2/images')
         headers = self._headers({'content-type': 'application/json',
                                  'X-Roles': 'member'})
@@ -991,7 +1019,7 @@ class TestImages(functional.FunctionalTest):
             'schema': '/v2/schemas/image',
         }
         for key, value in expected_image.items():
-            self.assertEqual(image[key], value, key)
+            self.assertEqual(value, image[key], key)
 
         # Create an image for role spl_role with extra props
         path = self._url('/v2/images')
@@ -1102,7 +1130,7 @@ class TestImages(functional.FunctionalTest):
         images = jsonutils.loads(response.text)['images']
         self.assertEqual(0, len(images))
 
-        ## Create an image for role member with extra props
+        # Create an image for role member with extra props
         # Raises 403 since user is not allowed to set 'foo'
         path = self._url('/v2/images')
         headers = self._headers({'content-type': 'application/json',
@@ -1114,7 +1142,7 @@ class TestImages(functional.FunctionalTest):
         response = requests.post(path, headers=headers, data=data)
         self.assertEqual(403, response.status_code)
 
-        ## Create an image for role member without 'foo'
+        # Create an image for role member without 'foo'
         path = self._url('/v2/images')
         headers = self._headers({'content-type': 'application/json',
                                  'X-Roles': 'member'})
@@ -1139,7 +1167,7 @@ class TestImages(functional.FunctionalTest):
             'schema': '/v2/schemas/image',
         }
         for key, value in expected_image.items():
-            self.assertEqual(image[key], value, key)
+            self.assertEqual(value, image[key], key)
 
         # Create an image for role spl_role with extra props
         path = self._url('/v2/images')
@@ -1278,7 +1306,7 @@ class TestImages(functional.FunctionalTest):
             'schema': '/v2/schemas/image',
         }
         for key, value in expected_image.items():
-            self.assertEqual(image[key], value, key)
+            self.assertEqual(value, image[key], key)
         path = self._url('/v2/images')
         headers = self._headers({'content-type': 'application/json',
                                  'X-Roles': 'joe_soap'})
@@ -1306,7 +1334,7 @@ class TestImages(functional.FunctionalTest):
             'schema': '/v2/schemas/image',
         }
         for key, value in expected_image.items():
-            self.assertEqual(image[key], value, key)
+            self.assertEqual(value, image[key], key)
 
         # Verify both admin and unknown role can read properties marked with
         # '@'
@@ -1555,7 +1583,7 @@ class TestImages(functional.FunctionalTest):
             'schema': '/v2/schemas/image',
         }
         for key, value in expected_image.items():
-            self.assertEqual(image[key], value, key)
+            self.assertEqual(value, image[key], key)
         path = self._url('/v2/images')
         headers = self._headers({'content-type': 'application/json',
                                  'X-Roles': 'joe_soap'})
@@ -1583,7 +1611,7 @@ class TestImages(functional.FunctionalTest):
             'schema': '/v2/schemas/image',
         }
         for key, value in expected_image.items():
-            self.assertEqual(image[key], value, key)
+            self.assertEqual(value, image[key], key)
 
         # Verify both admin and unknown role can read properties marked with
         # '@'
@@ -2060,7 +2088,10 @@ class TestImages(functional.FunctionalTest):
         self.cleanup()
         self.api_server.deployment_flavor = 'fakeauth'
         self.registry_server.deployment_flavor = 'fakeauth'
-        self.start_servers(**self.__dict__.copy())
+
+        kwargs = self.__dict__.copy()
+        kwargs['use_user_token'] = True
+        self.start_servers(**kwargs)
 
         owners = ['admin', 'tenant1', 'tenant2', 'none']
         visibilities = ['public', 'private']
@@ -2086,76 +2117,76 @@ class TestImages(functional.FunctionalTest):
             if visibility is not None:
                 path += '?visibility=%s' % visibility
             response = requests.get(path, headers=headers)
-            self.assertEqual(response.status_code, 200)
+            self.assertEqual(200, response.status_code)
             return jsonutils.loads(response.text)['images']
 
         # 1. Known user sees public and their own images
         images = list_images('tenant1')
-        self.assertEqual(len(images), 5)
+        self.assertEqual(5, len(images))
         for image in images:
             self.assertTrue(image['visibility'] == 'public'
                             or 'tenant1' in image['name'])
 
         # 2. Known user, visibility=public, sees all public images
         images = list_images('tenant1', visibility='public')
-        self.assertEqual(len(images), 4)
+        self.assertEqual(4, len(images))
         for image in images:
-            self.assertEqual(image['visibility'], 'public')
+            self.assertEqual('public', image['visibility'])
 
         # 3. Known user, visibility=private, sees only their private image
         images = list_images('tenant1', visibility='private')
-        self.assertEqual(len(images), 1)
+        self.assertEqual(1, len(images))
         image = images[0]
-        self.assertEqual(image['visibility'], 'private')
+        self.assertEqual('private', image['visibility'])
         self.assertTrue('tenant1' in image['name'])
 
         # 4. Unknown user sees only public images
         images = list_images('none')
-        self.assertEqual(len(images), 4)
+        self.assertEqual(4, len(images))
         for image in images:
-            self.assertEqual(image['visibility'], 'public')
+            self.assertEqual('public', image['visibility'])
 
         # 5. Unknown user, visibility=public, sees only public images
         images = list_images('none', visibility='public')
-        self.assertEqual(len(images), 4)
+        self.assertEqual(4, len(images))
         for image in images:
-            self.assertEqual(image['visibility'], 'public')
+            self.assertEqual('public', image['visibility'])
 
         # 6. Unknown user, visibility=private, sees no images
         images = list_images('none', visibility='private')
-        self.assertEqual(len(images), 0)
+        self.assertEqual(0, len(images))
 
         # 7. Unknown admin sees all images
         images = list_images('none', role='admin')
-        self.assertEqual(len(images), 8)
+        self.assertEqual(8, len(images))
 
         # 8. Unknown admin, visibility=public, shows only public images
         images = list_images('none', role='admin', visibility='public')
-        self.assertEqual(len(images), 4)
+        self.assertEqual(4, len(images))
         for image in images:
-            self.assertEqual(image['visibility'], 'public')
+            self.assertEqual('public', image['visibility'])
 
         # 9. Unknown admin, visibility=private, sees only private images
         images = list_images('none', role='admin', visibility='private')
-        self.assertEqual(len(images), 4)
+        self.assertEqual(4, len(images))
         for image in images:
-            self.assertEqual(image['visibility'], 'private')
+            self.assertEqual('private', image['visibility'])
 
         # 10. Known admin sees all images
         images = list_images('admin', role='admin')
-        self.assertEqual(len(images), 8)
+        self.assertEqual(8, len(images))
 
         # 11. Known admin, visibility=public, sees all public images
         images = list_images('admin', role='admin', visibility='public')
-        self.assertEqual(len(images), 4)
+        self.assertEqual(4, len(images))
         for image in images:
-            self.assertEqual(image['visibility'], 'public')
+            self.assertEqual('public', image['visibility'])
 
         # 12. Known admin, visibility=private, sees all private images
         images = list_images('admin', role='admin', visibility='private')
-        self.assertEqual(len(images), 4)
+        self.assertEqual(4, len(images))
         for image in images:
-            self.assertEqual(image['visibility'], 'private')
+            self.assertEqual('private', image['visibility'])
 
         self.stop_servers()
 
@@ -2172,21 +2203,18 @@ class TestImages(functional.FunctionalTest):
         # Returned image entity should have a generated id and status
         image = jsonutils.loads(response.text)
         image_id = image['id']
-        self.assertEqual(image['status'], 'queued')
-        self.assertNotIn('size', image)
-        self.assertNotIn('virtual_size', image)
-
-        file_path = os.path.join(self.test_dir, 'fake_image')
-        with open(file_path, 'w') as fap:
-            fap.write('glance')
+        self.assertEqual('queued', image['status'])
+        self.assertIsNone(image['size'])
+        self.assertIsNone(image['virtual_size'])
 
         # Update locations for the queued image
         path = self._url('/v2/images/%s' % image_id)
         media_type = 'application/openstack-images-v2.1-json-patch'
         headers = self._headers({'content-type': media_type})
+        url = 'http://127.0.0.1:%s/foo_image' % self.http_port0
         data = jsonutils.dumps([{'op': 'replace', 'path': '/locations',
-                                 'value': [{'url': 'file://' + file_path,
-                                            'metadata': {}}]}])
+                                 'value': [{'url': url, 'metadata': {}}]
+                                 }])
         response = requests.patch(path, headers=headers, data=data)
         self.assertEqual(200, response.status_code, response.text)
 
@@ -2195,7 +2223,42 @@ class TestImages(functional.FunctionalTest):
         response = requests.get(path, headers=headers)
         self.assertEqual(200, response.status_code)
         image = jsonutils.loads(response.text)
-        self.assertEqual(image['size'], 6)
+        self.assertEqual(10, image['size'])
+
+    def test_update_locations_with_restricted_sources(self):
+        self.start_servers(**self.__dict__.copy())
+        # Create an image
+        path = self._url('/v2/images')
+        headers = self._headers({'content-type': 'application/json'})
+        data = jsonutils.dumps({'name': 'image-1', 'disk_format': 'aki',
+                                'container_format': 'aki'})
+        response = requests.post(path, headers=headers, data=data)
+        self.assertEqual(201, response.status_code)
+
+        # Returned image entity should have a generated id and status
+        image = jsonutils.loads(response.text)
+        image_id = image['id']
+        self.assertEqual('queued', image['status'])
+        self.assertIsNone(image['size'])
+        self.assertIsNone(image['virtual_size'])
+
+        # Update locations for the queued image
+        path = self._url('/v2/images/%s' % image_id)
+        media_type = 'application/openstack-images-v2.1-json-patch'
+        headers = self._headers({'content-type': media_type})
+        data = jsonutils.dumps([{'op': 'replace', 'path': '/locations',
+                                 'value': [{'url': 'file:///foo_image',
+                                            'metadata': {}}]
+                                 }])
+        response = requests.patch(path, headers=headers, data=data)
+        self.assertEqual(400, response.status_code, response.text)
+
+        data = jsonutils.dumps([{'op': 'replace', 'path': '/locations',
+                                 'value': [{'url': 'swift+config:///foo_image',
+                                            'metadata': {}}]
+                                 }])
+        response = requests.patch(path, headers=headers, data=data)
+        self.assertEqual(400, response.status_code, response.text)
 
 
 class TestImagesWithRegistry(TestImages):
@@ -2421,16 +2484,16 @@ class TestImageLocationSelectionStrategy(functional.FunctionalTest):
         super(TestImageLocationSelectionStrategy, self).setUp()
         self.cleanup()
         self.api_server.deployment_flavor = 'noauth'
-        self.foo_image_file = tempfile.NamedTemporaryFile()
-        self.foo_image_file.write("foo image file")
-        self.foo_image_file.flush()
-        self.addCleanup(self.foo_image_file.close)
-        ret = http_server("foo_image_id", "foo_image")
-        self.http_server_pid, self.http_port = ret
+        for i in range(3):
+            ret = http_server("foo_image_id%d" % i, "foo_image%d" % i)
+            setattr(self, 'http_server%d_pid' % i, ret[0])
+            setattr(self, 'http_port%d' % i, ret[1])
 
     def tearDown(self):
-        if self.http_server_pid is not None:
-            os.kill(self.http_server_pid, signal.SIGKILL)
+        for i in range(3):
+            pid = getattr(self, 'http_server%d_pid' % i, None)
+            if pid:
+                os.kill(pid, signal.SIGKILL)
 
         super(TestImageLocationSelectionStrategy, self).tearDown()
 
@@ -2483,10 +2546,10 @@ class TestImageLocationSelectionStrategy(functional.FunctionalTest):
         path = self._url('/v2/images/%s' % image_id)
         media_type = 'application/openstack-images-v2.1-json-patch'
         headers = self._headers({'content-type': media_type})
-        values = [{'url': 'file://%s' % self.foo_image_file.name,
-                   'metadata': {'idx': '1'}},
-                  {'url': 'http://127.0.0.1:%s/foo_image' % self.http_port,
-                   'metadata': {'idx': '0'}}]
+        values = [{'url': 'http://127.0.0.1:%s/foo_image' % self.http_port0,
+                   'metadata': {}},
+                  {'url': 'http://127.0.0.1:%s/foo_image' % self.http_port1,
+                   'metadata': {}}]
         doc = [{'op': 'replace',
                 'path': '/locations',
                 'value': values}]
@@ -2501,70 +2564,9 @@ class TestImageLocationSelectionStrategy(functional.FunctionalTest):
         self.assertEqual(200, response.status_code)
         image = jsonutils.loads(response.text)
         self.assertTrue('locations' in image)
-        self.assertEqual(image['locations'], values)
+        self.assertEqual(values, image['locations'])
         self.assertTrue('direct_url' in image)
-        self.assertEqual(image['direct_url'], values[0]['url'])
-
-        self.stop_servers()
-
-    def test_image_locatons_with_store_type_strategy(self):
-        self.api_server.show_image_direct_url = True
-        self.api_server.show_multiple_locations = True
-        self.image_location_quota = 10
-        self.api_server.location_strategy = 'store_type'
-        preference = "http, swift, filesystem"
-        self.api_server.store_type_location_strategy_preference = preference
-        self.start_servers(**self.__dict__.copy())
-
-        # Create an image
-        path = self._url('/v2/images')
-        headers = self._headers({'content-type': 'application/json'})
-        data = jsonutils.dumps({'name': 'image-1', 'type': 'kernel',
-                                'foo': 'bar', 'disk_format': 'aki',
-                                'container_format': 'aki'})
-        response = requests.post(path, headers=headers, data=data)
-        self.assertEqual(201, response.status_code)
-
-        # Get the image id
-        image = jsonutils.loads(response.text)
-        image_id = image['id']
-
-        # Image locations should not be visible before location is set
-        path = self._url('/v2/images/%s' % image_id)
-        headers = self._headers({'Content-Type': 'application/json'})
-        response = requests.get(path, headers=headers)
-        self.assertEqual(200, response.status_code)
-        image = jsonutils.loads(response.text)
-        self.assertTrue('locations' in image)
-        self.assertTrue(image["locations"] == [])
-
-        # Update image locations via PATCH
-        path = self._url('/v2/images/%s' % image_id)
-        media_type = 'application/openstack-images-v2.1-json-patch'
-        headers = self._headers({'content-type': media_type})
-        values = [{'url': 'file://%s' % self.foo_image_file.name,
-                   'metadata': {'idx': '1'}},
-                  {'url': 'http://127.0.0.1:%s/foo_image' % self.http_port,
-                   'metadata': {'idx': '0'}}]
-        doc = [{'op': 'replace',
-                'path': '/locations',
-                'value': values}]
-        data = jsonutils.dumps(doc)
-        response = requests.patch(path, headers=headers, data=data)
-        self.assertEqual(200, response.status_code)
-
-        values.sort(key=lambda loc: int(loc['metadata']['idx']))
-
-        # Image locations should be visible
-        path = self._url('/v2/images/%s' % image_id)
-        headers = self._headers({'Content-Type': 'application/json'})
-        response = requests.get(path, headers=headers)
-        self.assertEqual(200, response.status_code)
-        image = jsonutils.loads(response.text)
-        self.assertTrue('locations' in image)
-        self.assertEqual(image['locations'], values)
-        self.assertTrue('direct_url' in image)
-        self.assertEqual(image['direct_url'], values[0]['url'])
+        self.assertEqual(values[0]['url'], image['direct_url'])
 
         self.stop_servers()
 
@@ -2742,9 +2744,9 @@ class TestImageMembers(functional.FunctionalTest):
         response = requests.get(path, headers=get_header('tenant1'))
         self.assertEqual(200, response.status_code)
         body = jsonutils.loads(response.text)
-        self.assertEqual(body['status'], 'pending')
-        self.assertEqual(body['image_id'], image_fixture[1]['id'])
-        self.assertEqual(body['member_id'], TENANT3)
+        self.assertEqual('pending', body['status'])
+        self.assertEqual(image_fixture[1]['id'], body['image_id'])
+        self.assertEqual(TENANT3, body['member_id'])
 
         # Tenant 3, who is the member can get status of its own status
         path = self._url('/v2/images/%s/members/%s' % (image_fixture[1]['id'],
@@ -2752,9 +2754,9 @@ class TestImageMembers(functional.FunctionalTest):
         response = requests.get(path, headers=get_header(TENANT3))
         self.assertEqual(200, response.status_code)
         body = jsonutils.loads(response.text)
-        self.assertEqual(body['status'], 'pending')
-        self.assertEqual(body['image_id'], image_fixture[1]['id'])
-        self.assertEqual(body['member_id'], TENANT3)
+        self.assertEqual('pending', body['status'])
+        self.assertEqual(image_fixture[1]['id'], body['image_id'])
+        self.assertEqual(TENANT3, body['member_id'])
 
         # Tenant 2, who not the owner cannot get status of image member
         path = self._url('/v2/images/%s/members/%s' % (image_fixture[1]['id'],

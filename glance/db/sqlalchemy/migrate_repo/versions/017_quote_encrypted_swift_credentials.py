@@ -28,7 +28,7 @@ Fixes bug #1081043
 """
 import types  # noqa
 
-#NOTE(flaper87): This is bad but there ain't better way to do it.
+# NOTE(flaper87): This is bad but there ain't better way to do it.
 from glance_store._drivers import swift  # noqa
 from oslo.config import cfg
 import six.moves.urllib.parse as urlparse
@@ -37,13 +37,14 @@ import sqlalchemy
 from glance.common import crypt
 from glance.common import exception
 from glance.common import utils
-from glance.openstack.common import gettextutils
+from glance import i18n
 import glance.openstack.common.log as logging
 
 LOG = logging.getLogger(__name__)
-_LE = gettextutils._LE
-_LI = gettextutils._LI
-_LW = gettextutils._LW
+_ = i18n._
+_LE = i18n._LE
+_LI = i18n._LI
+_LW = i18n._LW
 CONF = cfg.CONF
 
 CONF.import_opt('metadata_encryption_key', 'glance.common.config')
@@ -84,9 +85,9 @@ def migrate_location_credentials(migrate_engine, to_quoted):
     for image in images:
         try:
             fixed_uri = fix_uri_credentials(image['location'], to_quoted)
-            images_table.update()\
-                        .where(images_table.c.id == image['id'])\
-                        .values(location=fixed_uri).execute()
+            images_table.update().where(
+                images_table.c.id == image['id']).values(
+                    location=fixed_uri).execute()
         except exception.Invalid:
             msg = _LW("Failed to decrypt location value for image"
                       " %(image_id)s") % {'image_id': image['id']}
@@ -125,7 +126,7 @@ def fix_uri_credentials(uri, to_quoted):
         return
     try:
         decrypted_uri = decrypt_location(uri)
-    #NOTE (ameade): If a uri is not encrypted or incorrectly encoded then we
+    # NOTE (ameade): If a uri is not encrypted or incorrectly encoded then we
     # we raise an exception.
     except (TypeError, ValueError) as e:
         raise exception.Invalid(str(e))

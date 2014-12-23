@@ -14,12 +14,13 @@
 #    under the License.
 
 import urllib
-import urlparse
 
 import glance_store as store
 from oslo.config import cfg
+import six.moves.urllib.parse as urlparse
 
 from glance.common import exception
+from glance.common import store_utils
 from glance.common import wsgi
 import glance.context
 import glance.db.simple.api as simple_db
@@ -43,7 +44,7 @@ BASE_URI = 'http://storeurl.com/container'
 
 
 def sort_url_by_qs_keys(url):
-    #NOTE(kragniz): this only sorts the keys of the query string of a url.
+    # NOTE(kragniz): this only sorts the keys of the query string of a url.
     # For example, an input of '/v2/tasks?sort_key=id&sort_dir=asc&limit=10'
     # returns '/v2/tasks?limit=10&sort_dir=asc&sort_key=id'. This is to prevent
     # non-deterministic ordering of the query string causing problems with unit
@@ -135,6 +136,12 @@ class FakeStoreUtils(object):
         else:
             self.safe_delete_from_backend(context, image_id, location)
 
+    def validate_external_location(self, uri):
+        if uri and urlparse.urlparse(uri).scheme:
+            return store_utils.validate_external_location(uri)
+        else:
+            return True
+
 
 class FakeStoreAPI(object):
     def __init__(self, store_metadata=None):
@@ -172,7 +179,7 @@ class FakeStoreAPI(object):
                 raise store.UnknownScheme(scheme=scheme)
             return self.data[location]
         except KeyError:
-            raise store.NotFound()
+            raise store.NotFound(image=location)
 
     def get_size_from_backend(self, location, context=None):
         return self.get_from_backend(location, context=context)[1]

@@ -15,9 +15,13 @@
 
 import os
 
+from oslo.serialization import jsonutils as json
+
 from glance.common import client as base_client
 from glance.common import exception
-import glance.openstack.common.jsonutils as json
+from glance import i18n
+
+_ = i18n._
 
 
 class CacheClient(base_client.BaseClient):

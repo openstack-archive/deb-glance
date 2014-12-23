@@ -25,34 +25,35 @@ import os
 import uuid
 
 from mock import patch
+from oslo.utils import timeutils
 
 from glance.common import config
 from glance.common import exception
 from glance import context
 from glance.db.sqlalchemy import api as db_api
-from glance.openstack.common import timeutils
-
+from glance import i18n
 from glance.registry.api import v2 as rserver
 import glance.registry.client.v2.api as rapi
 from glance.registry.client.v2.api import client as rclient
 from glance.tests.unit import base
 from glance.tests import utils as test_utils
 
+_ = i18n._
 
 _gen_uuid = lambda: str(uuid.uuid4())
 
 UUID1 = str(uuid.uuid4())
 UUID2 = str(uuid.uuid4())
 
-#NOTE(bcwaldon): needed to init config_dir cli opt
+# NOTE(bcwaldon): needed to init config_dir cli opt
 config.parse_args(args=[])
 
 
 class TestRegistryV2Client(base.IsolatedUnitTest,
                            test_utils.RegistryAPIMixIn):
-    """
-    Test proper actions made for both valid and invalid requests
-    against a Registry service
+    """Test proper actions made against a registry service.
+
+    Test for both valid and invalid requests.
     """
 
     # Registry server to user
@@ -89,7 +90,7 @@ class TestRegistryV2Client(base.IsolatedUnitTest,
     def test_image_get_index(self):
         """Test correct set of public image returned"""
         images = self.client.image_get_all()
-        self.assertEqual(len(images), 2)
+        self.assertEqual(2, len(images))
 
     def test_create_image_with_null_min_disk_min_ram(self):
         UUID3 = _gen_uuid()
@@ -101,10 +102,9 @@ class TestRegistryV2Client(base.IsolatedUnitTest,
         self.assertEqual(0, image["min_disk"])
 
     def test_get_index_sort_name_asc(self):
-        """
-        Tests that the registry API returns list of
-        public images sorted alphabetically by name in
-        ascending order.
+        """Tests that the registry API returns list of public images.
+
+        Must be sorted alphabetically by name in ascending order.
         """
         UUID3 = _gen_uuid()
         extra_fixture = self.get_fixture(id=UUID3, name='asdf')
@@ -122,10 +122,9 @@ class TestRegistryV2Client(base.IsolatedUnitTest,
                                unjsonify=False)
 
     def test_get_index_sort_status_desc(self):
-        """
-        Tests that the registry API returns list of
-        public images sorted alphabetically by status in
-        descending order.
+        """Tests that the registry API returns list of public images.
+
+        Must be sorted alphabetically by status in descending order.
         """
         uuid4_time = timeutils.utcnow() + datetime.timedelta(seconds=10)
 
@@ -147,10 +146,9 @@ class TestRegistryV2Client(base.IsolatedUnitTest,
                                unjsonify=False)
 
     def test_get_index_sort_disk_format_asc(self):
-        """
-        Tests that the registry API returns list of
-        public images sorted alphabetically by disk_format in
-        ascending order.
+        """Tests that the registry API returns list of public images.
+
+        Must besorted alphabetically by disk_format in ascending order.
         """
         UUID3 = _gen_uuid()
         extra_fixture = self.get_fixture(id=UUID3, name='asdf',
@@ -172,10 +170,9 @@ class TestRegistryV2Client(base.IsolatedUnitTest,
                                unjsonify=False)
 
     def test_get_index_sort_container_format_desc(self):
-        """
-        Tests that the registry API returns list of
-        public images sorted alphabetically by container_format in
-        descending order.
+        """Tests that the registry API returns list of public images.
+
+        Must be sorted alphabetically by container_format in descending order.
         """
         UUID3 = _gen_uuid()
         extra_fixture = self.get_fixture(id=UUID3, name='asdf',
@@ -198,9 +195,9 @@ class TestRegistryV2Client(base.IsolatedUnitTest,
                                unjsonify=False)
 
     def test_get_index_sort_size_asc(self):
-        """
-        Tests that the registry API returns list of
-        public images sorted by size in ascending order.
+        """Tests that the registry API returns list of public images.
+
+        Must be sorted by size in ascending order.
         """
         UUID3 = _gen_uuid()
         extra_fixture = self.get_fixture(id=UUID3, name='asdf',
@@ -224,9 +221,9 @@ class TestRegistryV2Client(base.IsolatedUnitTest,
                                unjsonify=False)
 
     def test_get_index_sort_created_at_asc(self):
-        """
-        Tests that the registry API returns list of
-        public images sorted by created_at in ascending order.
+        """Tests that the registry API returns list of public images.
+
+        Must be sorted by created_at in ascending order.
         """
         uuid4_time = timeutils.utcnow() + datetime.timedelta(seconds=10)
         uuid3_time = uuid4_time + datetime.timedelta(seconds=5)
@@ -248,9 +245,9 @@ class TestRegistryV2Client(base.IsolatedUnitTest,
                                unjsonify=False)
 
     def test_get_index_sort_updated_at_desc(self):
-        """
-        Tests that the registry API returns list of
-        public images sorted by updated_at in descending order.
+        """Tests that the registry API returns list of public images.
+
+        Must be sorted by updated_at in descending order.
         """
         uuid4_time = timeutils.utcnow() + datetime.timedelta(seconds=10)
         uuid3_time = uuid4_time + datetime.timedelta(seconds=5)
@@ -311,7 +308,7 @@ class TestRegistryV2Client(base.IsolatedUnitTest,
         db_api.image_create(self.context, extra_fixture)
 
         images = self.client.image_get_all(limit=2)
-        self.assertEqual(len(images), 2)
+        self.assertEqual(2, len(images))
 
     def test_image_get_index_marker_limit(self):
         """Test correct set of images returned with marker/limit params."""
@@ -351,12 +348,12 @@ class TestRegistryV2Client(base.IsolatedUnitTest,
         db_api.image_create(self.context, extra_fixture)
 
         images = self.client.image_get_all(limit=None)
-        self.assertEqual(len(images), 4)
+        self.assertEqual(4, len(images))
 
     def test_image_get_index_by_name(self):
-        """
-        Test correct set of public, name-filtered image returned. This
-        is just a sanity check, we test the details call more in-depth.
+        """Test correct set of public, name-filtered image returned.
+
+        This is just a sanity check, we test the details call more in-depth.
         """
         extra_fixture = self.get_fixture(id=_gen_uuid(),
                                          name='new name! #123')
@@ -364,7 +361,7 @@ class TestRegistryV2Client(base.IsolatedUnitTest,
         db_api.image_create(self.context, extra_fixture)
 
         images = self.client.image_get_all(filters={'name': 'new name! #123'})
-        self.assertEqual(len(images), 1)
+        self.assertEqual(1, len(images))
 
         for image in images:
             self.assertEqual('new name! #123', image['name'])
@@ -379,7 +376,7 @@ class TestRegistryV2Client(base.IsolatedUnitTest,
 
         filters = {'is_public': 'avalue'}
         images = self.client.image_get_all(filters=filters)
-        self.assertEqual(len(images), 1)
+        self.assertEqual(1, len(images))
 
         for image in images:
             self.assertEqual('avalue', image['properties'][0]['value'])
@@ -484,7 +481,7 @@ class TestRegistryV2Client(base.IsolatedUnitTest,
 
         image = self.client.image_get(image_id=UUID2)
         current = image['status']
-        self.assertEqual(current, 'active')
+        self.assertEqual('active', current)
 
         # image is in 'active' state so this should cause a failure.
         from_state = 'saving'
@@ -542,7 +539,7 @@ class TestRegistryV2Client(base.IsolatedUnitTest,
         """Tests getting image members"""
         memb_list = self.client.image_member_find(image_id=UUID2)
         num_members = len(memb_list)
-        self.assertEqual(num_members, 0)
+        self.assertEqual(0, num_members)
 
     def test_image_get_members_not_existing(self):
         """Tests getting non-existent image members"""
@@ -554,7 +551,7 @@ class TestRegistryV2Client(base.IsolatedUnitTest,
         """Tests getting member images"""
         memb_list = self.client.image_member_find(member='pattieblack')
         num_members = len(memb_list)
-        self.assertEqual(num_members, 0)
+        self.assertEqual(0, num_members)
 
     def test_add_update_members(self):
         """Tests updating image members"""
@@ -573,14 +570,13 @@ class TestRegistryV2Client(base.IsolatedUnitTest,
 
         self.client.image_member_delete(memb_id=member['id'])
         memb_list = self.client.image_member_find(member='pattieblack')
-        self.assertEqual(len(memb_list), 0)
+        self.assertEqual(0, len(memb_list))
 
 
 class TestRegistryV2ClientApi(base.IsolatedUnitTest):
+    """Test proper actions made against a registry service.
 
-    """
-    Test proper actions made for both valid and invalid requests
-    against a Registry service
+    Test for both valid and invalid requests.
     """
 
     def setUp(self):
@@ -622,7 +618,7 @@ class TestRegistryV2ClientApi(base.IsolatedUnitTest):
 
         self.assertIsNone(rapi._CLIENT_CREDS)
         rapi.configure_registry_admin_creds()
-        self.assertEqual(rapi._CLIENT_CREDS, expected)
+        self.assertEqual(expected, rapi._CLIENT_CREDS)
 
     def test_configure_registry_admin_creds_with_auth_url(self):
         expected = self._get_fake_config_creds()
@@ -635,4 +631,4 @@ class TestRegistryV2ClientApi(base.IsolatedUnitTest):
 
         self.assertIsNone(rapi._CLIENT_CREDS)
         rapi.configure_registry_admin_creds()
-        self.assertEqual(rapi._CLIENT_CREDS, expected)
+        self.assertEqual(expected, rapi._CLIENT_CREDS)

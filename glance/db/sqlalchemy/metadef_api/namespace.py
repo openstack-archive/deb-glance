@@ -25,6 +25,7 @@ from glance import i18n
 import glance.openstack.common.log as os_logging
 
 LOG = os_logging.getLogger(__name__)
+_ = i18n._
 _LW = i18n._LW
 
 
@@ -86,13 +87,13 @@ def _get(context, namespace_id, session):
             .filter_by(id=namespace_id)
         namespace_rec = query.one()
     except sa_orm.exc.NoResultFound:
-        LOG.warn(_LW("Metadata definition namespace not found for id=%s",
-                     namespace_id))
-        raise exc.MetadefRecordNotFound(record_type='namespace',
-                                        id=namespace_id)
+        msg = (_("Metadata definition namespace not found for id=%s")
+               % namespace_id)
+        LOG.warn(msg)
+        raise exc.MetadefNamespaceNotFound(msg)
 
     # Make sure they are allowed to view it.
-    if not _is_namespace_visible(context, namespace_rec.as_dict()):
+    if not _is_namespace_visible(context, namespace_rec.to_dict()):
         msg = ("Forbidding request, metadata definition namespace=%s"
                " is not visible.") % namespace_rec.namespace
         LOG.debug(msg)
@@ -116,7 +117,7 @@ def _get_by_name(context, name, session):
         raise exc.MetadefNamespaceNotFound(namespace_name=name)
 
     # Make sure they are allowed to view it.
-    if not _is_namespace_visible(context, namespace_rec.as_dict()):
+    if not _is_namespace_visible(context, namespace_rec.to_dict()):
         msg = ("Forbidding request, metadata definition namespace=%s"
                " not visible." % name)
         LOG.debug(msg)
@@ -210,13 +211,13 @@ def get_all(context, session, marker=None, limit=None,
         namespaces = _get_all(
             context, session, filters, marker, limit, sort_key, sort_dir)
 
-    return map(lambda ns: ns.as_dict(), namespaces)
+    return map(lambda ns: ns.to_dict(), namespaces)
 
 
 def get(context, name, session):
     """Get a namespace by name, raise if not found"""
     namespace_rec = _get_by_name(context, name, session)
-    return namespace_rec.as_dict()
+    return namespace_rec.to_dict()
 
 
 def create(context, values, session):
@@ -235,7 +236,7 @@ def create(context, values, session):
         raise exc.MetadefDuplicateNamespace(
             namespace_name=namespace_name)
 
-    return namespace.as_dict()
+    return namespace.to_dict()
 
 
 def update(context, namespace_id, values, session):
@@ -257,7 +258,7 @@ def update(context, namespace_id, values, session):
                 % values['namespace'])
         raise exc.MetadefDuplicateNamespace(emsg)
 
-    return namespace_rec.as_dict()
+    return namespace_rec.to_dict()
 
 
 def delete(context, name, session):
@@ -277,7 +278,7 @@ def delete(context, name, session):
         else:
             raise e
 
-    return namespace_rec.as_dict()
+    return namespace_rec.to_dict()
 
 
 def delete_cascade(context, name, session):
@@ -286,6 +287,8 @@ def delete_cascade(context, name, session):
     namespace_rec = _get_by_name(context, name, session)
     with session.begin():
         try:
+            metadef_api.tag.delete_namespace_content(
+                context, namespace_rec.id, session)
             metadef_api.object.delete_namespace_content(
                 context, namespace_rec.id, session)
             metadef_api.property.delete_namespace_content(
@@ -304,4 +307,4 @@ def delete_cascade(context, name, session):
             else:
                 raise e
 
-    return namespace_rec.as_dict()
+    return namespace_rec.to_dict()

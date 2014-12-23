@@ -20,24 +20,25 @@ Cache driver that uses SQLite to store information about cached images
 from __future__ import absolute_import
 from contextlib import contextmanager
 import os
+import sqlite3
 import stat
 import time
 
 from eventlet import sleep
 from eventlet import timeout
 from oslo.config import cfg
-import sqlite3
+from oslo.utils import excutils
 
 from glance.common import exception
+from glance import i18n
 from glance.image_cache.drivers import base
-from glance.openstack.common import excutils
-from glance.openstack.common import gettextutils
 import glance.openstack.common.log as logging
 
 LOG = logging.getLogger(__name__)
-_LE = gettextutils._LE
-_LI = gettextutils._LI
-_LW = gettextutils._LW
+_ = i18n._
+_LE = i18n._LE
+_LI = i18n._LI
+_LW = i18n._LW
 
 sqlite_opts = [
     cfg.StrOpt('image_cache_sqlite_db', default='cache.db',
@@ -329,12 +330,12 @@ class Driver(base.Driver):
                 if os.path.exists(incomplete_path):
                     invalid_path = self.get_image_filepath(image_id, 'invalid')
 
-                    LOG.debug("Fetch of cache file failed (%(e)s), rolling "
-                              "back by moving '%(incomplete_path)s' to "
-                              "'%(invalid_path)s'",
-                              {'e': e,
-                               'incomplete_path': incomplete_path,
-                               'invalid_path': invalid_path})
+                    LOG.warn(_LW("Fetch of cache file failed (%(e)s), rolling "
+                                 "back by moving '%(incomplete_path)s' to "
+                                 "'%(invalid_path)s'") %
+                             {'e': e,
+                              'incomplete_path': incomplete_path,
+                              'invalid_path': invalid_path})
                     os.rename(incomplete_path, invalid_path)
 
                 db.execute("""DELETE FROM cached_images
@@ -473,7 +474,7 @@ class Driver(base.Driver):
             items.append((mtime, os.path.basename(path)))
 
         items.sort()
-        return [image_id for (mtime, image_id) in items]
+        return [image_id for (modtime, image_id) in items]
 
     def get_cache_files(self, basepath):
         """

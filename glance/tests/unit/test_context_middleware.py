@@ -16,6 +16,7 @@ import webob
 
 from glance.api.middleware import context
 import glance.context
+from glance.openstack.common import local
 from glance.tests.unit import base
 
 
@@ -40,10 +41,10 @@ class TestContextMiddleware(base.IsolatedUnitTest):
     def test_header_parsing(self):
         req = self._build_request()
         self._build_middleware().process_request(req)
-        self.assertEqual(req.context.auth_token, 'token1')
-        self.assertEqual(req.context.user, 'user1')
-        self.assertEqual(req.context.tenant, 'tenant1')
-        self.assertEqual(req.context.roles, ['role1', 'role2'])
+        self.assertEqual('token1', req.context.auth_token)
+        self.assertEqual('user1', req.context.user)
+        self.assertEqual('tenant1', req.context.tenant)
+        self.assertEqual(['role1', 'role2'], req.context.roles)
 
     def test_is_admin_flag(self):
         # is_admin check should look for 'admin' role by default
@@ -95,7 +96,7 @@ class TestContextMiddleware(base.IsolatedUnitTest):
         self.assertIsNone(req.context.auth_token)
         self.assertIsNone(req.context.user)
         self.assertIsNone(req.context.tenant)
-        self.assertEqual(req.context.roles, [])
+        self.assertEqual([], req.context.roles)
         self.assertFalse(req.context.is_admin)
         self.assertTrue(req.context.read_only)
 
@@ -118,6 +119,23 @@ class TestContextMiddleware(base.IsolatedUnitTest):
         self.assertRaises(webob.exc.HTTPInternalServerError,
                           middleware.process_request, req)
 
+    def test_clear_context(self):
+        # context should be cleared between requests
+        middleware = self._build_middleware()
+
+        req = self._build_request()
+        middleware.process_request(req)
+
+        self.assertTrue(hasattr(local.store, 'context'))
+
+        # response processing should clear reference to
+        # the context
+        resp = webob.Response()
+        resp.request = req
+        resp = middleware.process_response(resp)
+
+        self.assertFalse(hasattr(local.store, 'context'))
+
 
 class TestUnauthenticatedContextMiddleware(base.IsolatedUnitTest):
     def test_request(self):
@@ -127,15 +145,17 @@ class TestUnauthenticatedContextMiddleware(base.IsolatedUnitTest):
         self.assertIsNone(req.context.auth_token)
         self.assertIsNone(req.context.user)
         self.assertIsNone(req.context.tenant)
-        self.assertEqual(req.context.roles, [])
+        self.assertEqual([], req.context.roles)
         self.assertTrue(req.context.is_admin)
 
     def test_response(self):
         middleware = context.UnauthenticatedContextMiddleware(None)
         req = webob.Request.blank('/')
         req.context = glance.context.RequestContext()
+        request_id = req.context.request_id
+
         resp = webob.Response()
         resp.request = req
         middleware.process_response(resp)
         self.assertEqual(resp.headers['x-openstack-request-id'],
-                         'req-%s' % req.context.request_id)
+                         'req-%s' % request_id)

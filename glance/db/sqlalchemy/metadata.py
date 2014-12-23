@@ -24,6 +24,7 @@ from os.path import join
 import re
 
 from oslo.config import cfg
+from oslo.utils import timeutils
 import six
 import sqlalchemy
 from sqlalchemy.schema import MetaData
@@ -32,9 +33,9 @@ from sqlalchemy.sql import select
 from glance.common import utils
 from glance import i18n
 import glance.openstack.common.log as logging
-from glance.openstack.common import timeutils
 
 LOG = logging.getLogger(__name__)
+_ = i18n._
 _LE = i18n._LE
 _LW = i18n._LW
 _LI = i18n._LI
@@ -68,6 +69,10 @@ def get_metadef_properties_table(meta):
 
 def get_metadef_objects_table(meta):
     return sqlalchemy.Table('metadef_objects', meta, autoload=True)
+
+
+def get_metadef_tags_table(meta):
+    return sqlalchemy.Table('metadef_tags', meta, autoload=True)
 
 
 def _get_resource_type_id(meta, name):
@@ -105,6 +110,14 @@ def _get_objects(meta, namespace_id):
         execute().fetchall()
 
 
+def _get_tags(meta, namespace_id):
+    tags_table = get_metadef_tags_table(meta)
+    return (
+        tags_table.select().
+        where(tags_table.c.namespace_id == namespace_id).
+        execute().fetchall())
+
+
 def _populate_metadata(meta, metadata_path=None):
     if not metadata_path:
         metadata_path = CONF.metadata_source_path
@@ -121,6 +134,7 @@ def _populate_metadata(meta, metadata_path=None):
     metadef_namespace_resource_types_tables =\
         get_metadef_namespace_resource_types_table(meta)
     metadef_objects_table = get_metadef_objects_table(meta)
+    metadef_tags_table = get_metadef_tags_table(meta)
     metadef_properties_table = get_metadef_properties_table(meta)
     metadef_resource_types_table = get_metadef_resource_types_table(meta)
 
@@ -152,69 +166,80 @@ def _populate_metadata(meta, metadata_path=None):
             whereclause='namespace = \'%s\'' % values['namespace'])\
             .execute().fetchone()
 
-        if temp == None:
-            _insert_data_to_db(metadef_namespaces_table, values)
-
-            db_namespace = select(
-                [metadef_namespaces_table.c.id]
-            ).where(
-                metadef_namespaces_table.c.namespace == values['namespace']
-            ).select_from(
-                metadef_namespaces_table
-            ).execute().fetchone()
-            namespace_id = db_namespace['id']
-
-            for resource_type in metadata.get('resource_type_associations',
-                                              []):
-                try:
-                    resource_type_id = \
-                        _get_resource_type_id(meta, resource_type['name'])
-                except AttributeError:
-                    values = {
-                        'name': resource_type['name'],
-                        'protected': True,
-                        'created_at': timeutils.utcnow()
-                    }
-                    _insert_data_to_db(metadef_resource_types_table,
-                                       values)
-                    resource_type_id =\
-                        _get_resource_type_id(meta, resource_type['name'])
-
-                values = {
-                    'resource_type_id': resource_type_id,
-                    'namespace_id': namespace_id,
-                    'created_at': timeutils.utcnow(),
-                    'properties_target': resource_type.get(
-                        'properties_target'),
-                    'prefix': resource_type.get('prefix', None)
-                }
-                _insert_data_to_db(metadef_namespace_resource_types_tables,
-                                   values)
-
-            for property, schema in six.iteritems(metadata.get('properties',
-                                                               {})):
-                values = {
-                    'name': property,
-                    'namespace_id': namespace_id,
-                    'json_schema': json.dumps(schema),
-                    'created_at': timeutils.utcnow()
-                }
-                _insert_data_to_db(metadef_properties_table, values)
-
-            for object in metadata.get('objects', []):
-                values = {
-                    'name': object.get('name', None),
-                    'description': object.get('description', None),
-                    'namespace_id': namespace_id,
-                    'json_schema': json.dumps(object.get('properties', None)),
-                    'created_at': timeutils.utcnow()
-                }
-                _insert_data_to_db(metadef_objects_table, values)
-
-            LOG.info(_LI("File %s loaded to database."), file)
-        else:
+        if temp is not None:
             LOG.info(_LI("Skipping  namespace %s. It already exists in the "
                          "database."), values['namespace'])
+            continue
+
+        _insert_data_to_db(metadef_namespaces_table, values)
+
+        db_namespace = select(
+            [metadef_namespaces_table.c.id]
+        ).where(
+            metadef_namespaces_table.c.namespace == values['namespace']
+        ).select_from(
+            metadef_namespaces_table
+        ).execute().fetchone()
+        namespace_id = db_namespace['id']
+
+        for resource_type in metadata.get('resource_type_associations',
+                                          []):
+            try:
+                resource_type_id = \
+                    _get_resource_type_id(meta, resource_type['name'])
+            except AttributeError:
+                values = {
+                    'name': resource_type['name'],
+                    'protected': True,
+                    'created_at': timeutils.utcnow()
+                }
+                _insert_data_to_db(metadef_resource_types_table,
+                                   values)
+                resource_type_id =\
+                    _get_resource_type_id(meta, resource_type['name'])
+
+            values = {
+                'resource_type_id': resource_type_id,
+                'namespace_id': namespace_id,
+                'created_at': timeutils.utcnow(),
+                'properties_target': resource_type.get(
+                    'properties_target'),
+                'prefix': resource_type.get('prefix', None)
+            }
+            _insert_data_to_db(metadef_namespace_resource_types_tables,
+                               values)
+
+        for property, schema in six.iteritems(metadata.get('properties',
+                                                           {})):
+            values = {
+                'name': property,
+                'namespace_id': namespace_id,
+                'json_schema': json.dumps(schema),
+                'created_at': timeutils.utcnow()
+            }
+            _insert_data_to_db(metadef_properties_table, values)
+
+        for object in metadata.get('objects', []):
+            values = {
+                'name': object.get('name'),
+                'description': object.get('description', None),
+                'namespace_id': namespace_id,
+                'json_schema': json.dumps(object.get('properties', None)),
+                'created_at': timeutils.utcnow()
+            }
+            _insert_data_to_db(metadef_objects_table, values)
+
+        for tag in metadata.get('tags', []):
+            timeutils_utcnow = timeutils.utcnow()
+            values = {
+                'name': tag.get('name'),
+                'namespace_id': namespace_id,
+                'created_at': timeutils_utcnow,
+                'updated_at': timeutils_utcnow
+            }
+            _insert_data_to_db(metadef_tags_table, values)
+
+        LOG.info(_LI("File %s loaded to database."), file)
 
     LOG.info(_LI("Metadata loading finished"))
 
@@ -222,6 +247,7 @@ def _populate_metadata(meta, metadata_path=None):
 def _clear_metadata(meta):
     metadef_tables = [get_metadef_properties_table(meta),
                       get_metadef_objects_table(meta),
+                      get_metadef_tags_table(meta),
                       get_metadef_namespace_resource_types_table(meta),
                       get_metadef_namespaces_table(meta)]
 
@@ -260,13 +286,15 @@ def _export_data_to_file(meta, path):
             'owner': namespace['owner'],
             'resource_type_associations': [],
             'properties': {},
-            'objects': []
+            'objects': [],
+            'tags': []
         }
 
         namespace_resource_types = _get_namespace_resource_types(meta,
                                                                  namespace_id)
         db_objects = _get_objects(meta, namespace_id)
         db_properties = _get_properties(meta, namespace_id)
+        db_tags = _get_tags(meta, namespace_id)
 
         resource_types = []
         for namespace_resource_type in namespace_resource_types:
@@ -301,14 +329,23 @@ def _export_data_to_file(meta, path):
             'properties': properties
         })
 
+        tags = []
+        for tag in db_tags:
+            tags.append({
+                "name": tag['name']
+            })
+        values.update({
+            'tags': tags
+        })
+
         try:
             file_name = ''.join([path, namespace_file_name, '.json'])
             with open(file_name, 'w') as json_file:
                 json_file.write(json.dumps(values))
         except Exception as e:
             LOG.exception(utils.exception_to_str(e))
-        LOG.info(_LI("Namespace %s saved in %s"),
-                 namespace_file_name, file_name)
+        LOG.info(_LI("Namespace %(namespace)s saved in %(file)s") % {
+            'namespace': namespace_file_name, 'file': file_name})
 
 
 def db_load_metadefs(engine, metadata_path=None):

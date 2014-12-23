@@ -23,11 +23,14 @@ from oslo.config import cfg
 
 from glance.api import versions
 from glance.common import wsgi
+from glance import i18n
 import glance.openstack.common.log as logging
 
 CONF = cfg.CONF
 
 LOG = logging.getLogger(__name__)
+_ = i18n._
+_LW = i18n._LW
 
 
 class VersionNegotiationFilter(wsgi.Middleware):
@@ -44,7 +47,7 @@ class VersionNegotiationFilter(wsgi.Middleware):
         LOG.debug(msg % args)
 
         # If the request is for /versions, just return the versions container
-        #TODO(bcwaldon): deprecate this behavior
+        # TODO(bcwaldon): deprecate this behavior
         if req.path_info_peek() == "versions":
             return self.versions_app
 
@@ -61,7 +64,7 @@ class VersionNegotiationFilter(wsgi.Middleware):
         try:
             version = self._match_version_string(req_version)
         except ValueError:
-            LOG.debug("Unknown version. Returning version choices.")
+            LOG.warn(_LW("Unknown version. Returning version choices."))
             return self.versions_app
 
         req.environ['api.version'] = version

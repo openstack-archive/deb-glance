@@ -14,14 +14,17 @@
 #    under the License.
 
 from oslo.config import cfg
+from oslo.serialization import jsonutils
 import webob.exc
 
 from glance.api import policy
 from glance.common import wsgi
 import glance.context
-from glance.openstack.common import jsonutils
+from glance import i18n
+from glance.openstack.common import local
 import glance.openstack.common.log as logging
 
+_ = i18n._
 
 context_opts = [
     cfg.BoolOpt('owner_is_tenant', default=True,
@@ -48,6 +51,10 @@ class BaseContextMiddleware(wsgi.Middleware):
     def process_response(self, resp):
         try:
             request_id = resp.request.context.request_id
+
+            # NOTE(belliott) clear context stored in thread local
+            if hasattr(local.store, 'context'):
+                delattr(local.store, 'context')
         except AttributeError:
             LOG.warn(_('Unable to retrieve request id from context'))
         else:
@@ -91,12 +98,12 @@ class ContextMiddleware(BaseContextMiddleware):
         return glance.context.RequestContext(**kwargs)
 
     def _get_authenticated_context(self, req):
-        #NOTE(bcwaldon): X-Roles is a csv string, but we need to parse
+        # NOTE(bcwaldon): X-Roles is a csv string, but we need to parse
         # it into a list to be useful
         roles_header = req.headers.get('X-Roles', '')
         roles = [r.strip().lower() for r in roles_header.split(',')]
 
-        #NOTE(bcwaldon): This header is deprecated in favor of X-Auth-Token
+        # NOTE(bcwaldon): This header is deprecated in favor of X-Auth-Token
         deprecated_token = req.headers.get('X-Storage-Token')
 
         service_catalog = None

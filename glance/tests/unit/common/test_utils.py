@@ -38,7 +38,7 @@ class TestUtils(test_utils.BaseTestCase):
             for chunk in utils.CooperativeReader(tmp_fd):
                 bytes_read += len(chunk)
 
-        self.assertEqual(bytes_read, BYTES)
+        self.assertEqual(BYTES, bytes_read)
 
         bytes_read = 0
         with tempfile.TemporaryFile('w+') as tmp_fd:
@@ -50,7 +50,7 @@ class TestUtils(test_utils.BaseTestCase):
                 bytes_read += 1
                 byte = reader.read(1)
 
-        self.assertEqual(bytes_read, BYTES)
+        self.assertEqual(BYTES, bytes_read)
 
     def test_cooperative_reader_of_iterator(self):
         """Ensure cooperative reader supports iterator backends too"""
@@ -61,7 +61,7 @@ class TestUtils(test_utils.BaseTestCase):
             if chunks[-1] == '':
                 break
         meat = ''.join(chunks)
-        self.assertEqual(meat, 'aaabbbcccdddeeefffggghhh')
+        self.assertEqual('aaabbbcccdddeeefffggghhh', meat)
 
     def test_cooperative_reader_of_iterator_stop_iteration_err(self):
         """Ensure cooperative reader supports iterator backends too"""
@@ -72,7 +72,7 @@ class TestUtils(test_utils.BaseTestCase):
             if chunks[-1] == '':
                 break
         meat = ''.join(chunks)
-        self.assertEqual(meat, '')
+        self.assertEqual('', meat)
 
     def test_limiting_reader(self):
         """Ensure limiting reader class accesses all bytes of file"""
@@ -82,7 +82,7 @@ class TestUtils(test_utils.BaseTestCase):
         for chunk in utils.LimitingReader(data, BYTES):
             bytes_read += len(chunk)
 
-        self.assertEqual(bytes_read, BYTES)
+        self.assertEqual(BYTES, bytes_read)
 
         bytes_read = 0
         data = six.StringIO("*" * BYTES)
@@ -92,7 +92,7 @@ class TestUtils(test_utils.BaseTestCase):
             bytes_read += 1
             byte = reader.read(1)
 
-        self.assertEqual(bytes_read, BYTES)
+        self.assertEqual(BYTES, bytes_read)
 
     def test_limiting_reader_fails(self):
         """Ensure limiting reader class throws exceptions if limit exceeded"""
@@ -119,9 +119,19 @@ class TestUtils(test_utils.BaseTestCase):
 
     def test_get_meta_from_headers(self):
         resp = webob.Response()
-        resp.headers = {"x-image-meta-name": 'test'}
+        resp.headers = {"x-image-meta-name": 'test',
+                        'x-image-meta-virtual-size': 80}
         result = utils.get_image_meta_from_headers(resp)
-        self.assertEqual({'name': 'test', 'properties': {}}, result)
+        self.assertEqual({'name': 'test', 'properties': {},
+                          'virtual_size': 80}, result)
+
+    def test_get_meta_from_headers_none_virtual_size(self):
+        resp = webob.Response()
+        resp.headers = {"x-image-meta-name": 'test',
+                        'x-image-meta-virtual-size': 'None'}
+        result = utils.get_image_meta_from_headers(resp)
+        self.assertEqual({'name': 'test', 'properties': {},
+                          'virtual_size': None}, result)
 
     def test_get_meta_from_headers_bad_headers(self):
         resp = webob.Response()
@@ -415,14 +425,14 @@ class TestUtils(test_utils.BaseTestCase):
                 raise UnicodeError()
 
         ret = utils.exception_to_str(Exception('error message'))
-        self.assertEqual(ret, 'error message')
+        self.assertEqual('error message', ret)
 
         ret = utils.exception_to_str(Exception('\xa5 error message'))
-        self.assertEqual(ret, ' error message')
+        self.assertEqual(' error message', ret)
 
         ret = utils.exception_to_str(FakeException('\xa5 error message'))
-        self.assertEqual(ret, "Caught '%(exception)s' exception." %
-                         {'exception': 'FakeException'})
+        self.assertEqual("Caught '%(exception)s' exception." %
+                         {'exception': 'FakeException'}, ret)
 
 
 class UUIDTestCase(test_utils.BaseTestCase):

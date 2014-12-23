@@ -234,6 +234,12 @@ def image_location_delete(client, image_id, location_id, status, session=None):
 
 
 @_get_client
+def image_location_update(client, image_id, location, session=None):
+    """Update image location."""
+    client.image_location_update(image_id=image_id, location=location)
+
+
+@_get_client
 def user_get_storage_usage(client, owner_id, image_id=None, session=None):
     return client.user_get_storage_usage(owner_id=owner_id, image_id=image_id)
 
@@ -493,3 +499,58 @@ def metadef_resource_type_association_get_all_by_namespace(
         namespace_name, session=None):
     return client.metadef_resource_type_association_get_all_by_namespace(
         namespace_name=namespace_name)
+
+
+@_get_client
+def metadef_tag_get_all(client, namespace_name, filters=None, marker=None,
+                        limit=None, sort_key='created_at', sort_dir=None,
+                        session=None):
+    return client.metadef_tag_get_all(
+        namespace_name=namespace_name, filters=filters, marker=marker,
+        limit=limit, sort_key=sort_key, sort_dir=sort_dir, session=session)
+
+
+@_get_client
+def metadef_tag_get(client, namespace_name, name, session=None):
+    return client.metadef_tag_get(
+        namespace_name=namespace_name, name=name)
+
+
+@_get_client
+def metadef_tag_create(
+        client, namespace_name, tag_dict, session=None):
+    return client.metadef_tag_create(
+        namespace_name=namespace_name, tag_dict=tag_dict)
+
+
+@_get_client
+def metadef_tag_create_tags(
+        client, namespace_name, tag_list, session=None):
+    return client.metadef_tag_create_tags(
+        namespace_name=namespace_name, tag_list=tag_list)
+
+
+@_get_client
+def metadef_tag_update(
+        client, namespace_name, id, tag_dict, session=None):
+    return client.metadef_tag_update(
+        namespace_name=namespace_name, id=id, tag_dict=tag_dict)
+
+
+@_get_client
+def metadef_tag_delete(
+        client, namespace_name, name, session=None):
+    return client.metadef_tag_delete(
+        namespace_name=namespace_name, name=name)
+
+
+@_get_client
+def metadef_tag_delete_namespace_content(
+        client, namespace_name, session=None):
+    return client.metadef_tag_delete_namespace_content(
+        namespace_name=namespace_name)
+
+
+@_get_client
+def metadef_tag_count(client, namespace_name, session=None):
+    return client.metadef_tag_count(namespace_name=namespace_name)
