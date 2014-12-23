@@ -1,3 +1,9 @@
+glance (2015.1~b1-1) UNRELEASED; urgency=medium
+
+  * New upstream release.
+
+ -- Thomas Goirand <zigo@debian.org>  Tue, 23 Dec 2014 21:40:57 +0800
+
 glance (2014.2.1-1) experimental; urgency=medium
 
   * New upstream release.
