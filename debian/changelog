@@ -1,6 +1,7 @@
 glance (2015.1~b1-1) UNRELEASED; urgency=medium
 
   * New upstream release.
+  * Fixed (build-)depends for this release.
 
  -- Thomas Goirand <zigo@debian.org>  Tue, 23 Dec 2014 21:40:57 +0800
 
