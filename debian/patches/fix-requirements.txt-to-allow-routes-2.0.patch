@@ -5,11 +5,13 @@ Author: Thomas Goirand <zigo@debian.org>
 Forwarded: not-needed
 Last-Update: 2014-09-30
 
---- glance-2014.2~rc1.orig/requirements.txt
-+++ glance-2014.2~rc1/requirements.txt
-@@ -14,7 +14,7 @@ SQLAlchemy>=0.8.4,<=0.8.99,>=0.9.7,<=0.9
+Index: glance/requirements.txt
+===================================================================
+--- glance.orig/requirements.txt	2014-12-23 21:41:37.000000000 +0800
++++ glance/requirements.txt	2014-12-23 21:50:35.000000000 +0800
+@@ -14,7 +14,7 @@
  anyjson>=0.3.3
- eventlet>=0.15.1
+ eventlet>=0.15.2
  PasteDeploy>=1.5.0
 -Routes>=1.12.3,!=2.0
 +Routes>=1.12.3
