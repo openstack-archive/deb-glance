@@ -1,3 +1,4 @@
 disable-network-for-docs.patch
 default-config.patch
 sql_conn-registry.patch
+restrict_client_download_and_delete_files_in_glance-api.patch
