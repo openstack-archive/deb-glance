@@ -1,0 +1,29 @@
+Description: Adds some pipeline directives to glance-registry-paste.ini
+ Due to https://bugs.launchpad.net/glance/+bug/1407459, we have to patch the
+ default configuration file.
+Author: Thomas Goirand <zigo@debian.org>
+Bug-Ubuntu: https://bugs.launchpad.net/glance/+bug/1407459
+Forwarded: https://bugs.launchpad.net/glance/+bug/1407459
+Last-Update: 2015-01-04
+
+--- glance-2015.1~b1.orig/etc/glance-registry-paste.ini
++++ glance-2015.1~b1/etc/glance-registry-paste.ini
+@@ -28,3 +28,18 @@ paste.filter_factory = keystonemiddlewar
+ paste.filter_factory = osprofiler.web:WsgiMiddleware.factory
+ hmac_keys = SECRET_KEY
+ enabled = yes
++
++[pipeline:glance-registry-keystone]
++pipeline = osprofiler unauthenticated-context registryapp
++
++[pipeline:glance-registry-caching]
++pipeline = osprofiler unauthenticated-context registryapp
++
++[pipeline:glance-registry-keystone+caching]
++pipeline = osprofiler unauthenticated-context registryapp
++
++[pipeline:glance-registry-cachemanagement]
++pipeline = osprofiler unauthenticated-context registryapp
++
++[pipeline:glance-registry-keystone+cachemanagement]
++pipeline = osprofiler unauthenticated-context registryapp
