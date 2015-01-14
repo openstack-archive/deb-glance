@@ -1,3 +1,12 @@
+glance (2014.2.1-3) experimental; urgency=medium
+
+  * Only runs pkgos_dbc_postinst if glance/configure_db is true.
+  * Sets glance/configure_db default value to false.
+  * Removed the dbc_upgrade test before db sync.
+  * Build-depends on dh-python and set minimum openstack-pkg-tools to 22~.
+
+ -- Thomas Goirand <zigo@debian.org>  Wed, 14 Jan 2015 22:56:08 +0000
+
 glance (2014.2.1-2) experimental; urgency=medium
 
   * Added restrict_client_download_and_delete_files_in_glance-api_juno.patch
