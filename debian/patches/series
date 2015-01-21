@@ -2,3 +2,4 @@ disable-network-for-docs.patch
 default-config.patch
 sql_conn-registry.patch
 restrict_client_download_and_delete_files_in_glance-api.patch
+CVE-2015-1195_Prevent_file_swift_config_and_filesystem_schemes.patch
