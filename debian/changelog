@@ -1,3 +1,11 @@
+glance (2014.2.1-5) experimental; urgency=medium
+
+  * CVE-2014-9623: Glance user storage quota bypass. Applied upstream patch:
+    Cleanup_chunks_for_deleted_image_that_was_saving_juno.patch
+    (Closes: #776580).
+
+ -- Thomas Goirand <zigo@debian.org>  Thu, 29 Jan 2015 16:26:46 +0100
+
 glance (2014.2.1-4) experimental; urgency=medium
 
   * CVE-2015-1195: Prevent file, swift+config and filesystem schemes (applied
