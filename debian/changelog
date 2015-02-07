@@ -1,3 +1,9 @@
+glance (2014.2.2-1) experimental; urgency=medium
+
+  * New upstream point release.
+
+ -- Thomas Goirand <zigo@debian.org>  Sat, 07 Feb 2015 12:29:10 +0100
+
 glance (2014.2.1-5) experimental; urgency=medium
 
   * CVE-2014-9623: Glance user storage quota bypass. Applied upstream patch:
