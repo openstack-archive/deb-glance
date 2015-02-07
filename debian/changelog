@@ -1,6 +1,10 @@
 glance (2014.2.2-1) experimental; urgency=medium
 
   * New upstream point release.
+  * Removed patches applied upstream for CVE-2014-9623 & CVE-2015-1195:
+    - Cleanup_chunks_for_deleted_image_that_was_saving_juno.patch
+    - Prevent_file_swift_config_and_filesystem_schemes.patch
+    - restrict_client_download_and_delete_files_in_glance-api_juno.patch
 
  -- Thomas Goirand <zigo@debian.org>  Sat, 07 Feb 2015 12:29:10 +0100
 
