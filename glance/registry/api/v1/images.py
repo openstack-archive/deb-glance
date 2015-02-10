@@ -17,9 +17,9 @@
 Reference implementation registry server WSGI controller
 """
 
-from oslo.config import cfg
-from oslo.utils import strutils
-from oslo.utils import timeutils
+from oslo_config import cfg
+from oslo_utils import strutils
+from oslo_utils import timeutils
 from webob import exc
 
 from glance.common import exception
@@ -195,7 +195,7 @@ class Controller(object):
         params = {
             'filters': self._get_filters(req),
             'limit': self._get_limit(req),
-            'sort_key': self._get_sort_key(req),
+            'sort_key': [self._get_sort_key(req)],
             'sort_dir': self._get_sort_dir(req),
             'marker': self._get_marker(req),
         }
@@ -283,7 +283,7 @@ class Controller(object):
 
     def _get_sort_key(self, req):
         """Parse a sort key query param from the request object."""
-        sort_key = req.params.get('sort_key', None)
+        sort_key = req.params.get('sort_key', 'created_at')
         if sort_key is not None and sort_key not in SUPPORTED_SORT_KEYS:
             _keys = ', '.join(SUPPORTED_SORT_KEYS)
             msg = _("Unsupported sort_key. Acceptable values: %s") % (_keys,)

@@ -1,6 +1,7 @@
 # Copyright 2010 United States Government as represented by the
 # Administrator of the National Aeronautics and Space Administration.
 # Copyright 2014 SoftLayer Technologies, Inc.
+# Copyright 2015 Mirantis, Inc
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -35,13 +36,12 @@ import subprocess
 import sys
 import uuid
 
-import netaddr
 from OpenSSL import crypto
-from oslo.config import cfg
-from oslo.utils import encodeutils
-from oslo.utils import excutils
-from oslo.utils import netutils
-from oslo.utils import strutils
+from oslo_config import cfg
+from oslo_utils import encodeutils
+from oslo_utils import excutils
+from oslo_utils import netutils
+from oslo_utils import strutils
 import six
 from webob import exc
 
@@ -129,6 +129,9 @@ def cooperative_read(fd):
     return readfn
 
 
+MAX_COOP_READER_BUFFER_SIZE = 134217728  # 128M seems like a sane buffer limit
+
+
 class CooperativeReader(object):
     """
     An eventlet thread friendly class for reading in image data.
@@ -150,19 +153,68 @@ class CooperativeReader(object):
         # is more straightforward
         if hasattr(fd, 'read'):
             self.read = cooperative_read(fd)
+        else:
+            self.iterator = None
+            self.buffer = ''
+            self.position = 0
 
     def read(self, length=None):
-        """Return the next chunk of the underlying iterator.
+        """Return the requested amount of bytes, fetching the next chunk of
+        the underlying iterator when needed.
 
         This is replaced with cooperative_read in __init__ if the underlying
         fd already supports read().
         """
-        if self.iterator is None:
-            self.iterator = self.__iter__()
-        try:
-            return self.iterator.next()
-        except StopIteration:
-            return ''
+        if length is None:
+            if len(self.buffer) - self.position > 0:
+                # if no length specified but some data exists in buffer,
+                # return that data and clear the buffer
+                result = self.buffer[self.position:]
+                self.buffer = ''
+                self.position = 0
+                return str(result)
+            else:
+                # otherwise read the next chunk from the underlying iterator
+                # and return it as a whole. Reset the buffer, as subsequent
+                # calls may specify the length
+                try:
+                    if self.iterator is None:
+                        self.iterator = self.__iter__()
+                    return self.iterator.next()
+                except StopIteration:
+                    return ''
+                finally:
+                    self.buffer = ''
+                    self.position = 0
+        else:
+            result = bytearray()
+            while len(result) < length:
+                if self.position < len(self.buffer):
+                    to_read = length - len(result)
+                    chunk = self.buffer[self.position:self.position + to_read]
+                    result.extend(chunk)
+
+                    # This check is here to prevent potential OOM issues if
+                    # this code is called with unreasonably high values of read
+                    # size. Currently it is only called from the HTTP clients
+                    # of Glance backend stores, which use httplib for data
+                    # streaming, which has readsize hardcoded to 8K, so this
+                    # check should never fire. Regardless it still worths to
+                    # make the check, as the code may be reused somewhere else.
+                    if len(result) >= MAX_COOP_READER_BUFFER_SIZE:
+                        raise exception.LimitExceeded()
+                    self.position += len(chunk)
+                else:
+                    try:
+                        if self.iterator is None:
+                            self.iterator = self.__iter__()
+                        self.buffer = self.iterator.next()
+                        self.position = 0
+                    except StopIteration:
+                        self.buffer = ''
+                        self.position = 0
+                        return str(result)
+            return str(result)
 
     def __iter__(self):
         return cooperative_iter(self.fd.__iter__())
@@ -509,8 +561,15 @@ def validate_key_cert(key_file, cert_file):
 
     try:
         data = str(uuid.uuid4())
-        digest = "sha1"
-
+        digest = CONF.digest_algorithm
+        if digest == 'sha1':
+            LOG.warn('The FIPS (FEDERAL INFORMATION PROCESSING STANDARDS)'
+                     ' state that the SHA-1 is not suitable for'
+                     ' general-purpose digital signature applications (as'
+                     ' specified in FIPS 186-3) that require 112 bits of'
+                     ' security. The default value is sha1 in Kilo for a'
+                     ' smooth upgrade process, and it will be updated'
+                     ' with sha256 in next release(L).')
         out = crypto.sign(key, data, digest)
         crypto.verify(cert, out, data, digest)
     except crypto.Error as ce:
@@ -552,22 +611,6 @@ def is_valid_port(port):
     return str(port).isdigit() and int(port) > 0 and int(port) <= 65535
 
 
-def is_valid_ipv4(address):
-    """Verify that address represents a valid IPv4 address."""
-    try:
-        return netaddr.valid_ipv4(address)
-    except Exception:
-        return False
-
-
-def is_valid_ipv6(address):
-    """Verify that address represents a valid IPv6 address."""
-    try:
-        return netaddr.valid_ipv6(address)
-    except Exception:
-        return False
-
-
 def is_valid_hostname(hostname):
     """Verify whether a hostname (not an FQDN) is valid."""
     return re.match('^[a-zA-Z0-9-]+$', hostname) is not None
@@ -602,7 +645,7 @@ def parse_valid_host_port(host_port):
         # should pass a very generic FQDN check. The FQDN check for letters at
         # the tail end will weed out any hilariously absurd IPv4 addresses.
 
-        if not (is_valid_ipv6(host) or is_valid_ipv4(host) or
+        if not (netutils.is_valid_ipv6(host) or netutils.is_valid_ipv4(host) or
                 is_valid_hostname(host) or is_valid_fqdn(host)):
             raise ValueError(_('Host "%s" is not valid.') % host)
 

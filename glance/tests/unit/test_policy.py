@@ -17,7 +17,7 @@
 import os.path
 
 import mock
-import oslo.config.cfg
+import oslo_config.cfg
 
 import glance.api.policy
 from glance.common import exception
@@ -78,7 +78,7 @@ class MemberRepoStub(object):
     def get(self, *args, **kwargs):
         return 'member_repo_get'
 
-    def save(self, image_member):
+    def save(self, image_member, from_state=None):
         image_member.output = 'member_repo_save'
 
     def list(self, *args, **kwargs):
@@ -178,7 +178,7 @@ class TestPolicyEnforcerNoFile(base.IsolatedUnitTest):
         def fake_find_file(self, name):
             return None
 
-        self.stubs.Set(oslo.config.cfg.ConfigOpts, 'find_file',
+        self.stubs.Set(oslo_config.cfg.ConfigOpts, 'find_file',
                        fake_find_file)
 
         enforcer = glance.api.policy.Enforcer()

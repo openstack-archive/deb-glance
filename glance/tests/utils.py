@@ -15,6 +15,7 @@
 
 """Common utilities used in testing"""
 
+import BaseHTTPServer
 import errno
 import functools
 import os
@@ -24,11 +25,11 @@ import socket
 import subprocess
 
 import fixtures
-from oslo.config import cfg
 from oslo.serialization import jsonutils
-from oslo.utils import timeutils
+from oslo_config import cfg
+from oslo_utils import timeutils
+from oslotest import moxstubout
 import six
-import stubout
 import testtools
 import webob
 
@@ -54,17 +55,13 @@ class BaseTestCase(testtools.TestCase):
         # the following policy tests
         config.parse_args(args=[])
         self.addCleanup(CONF.reset)
-        self.stubs = stubout.StubOutForTesting()
+        mox_fixture = self.useFixture(moxstubout.MoxStubout())
+        self.stubs = mox_fixture.stubs
         self.stubs.Set(exception, '_FATAL_EXCEPTION_FORMAT_ERRORS', True)
         self.test_dir = self.useFixture(fixtures.TempDir()).path
         self.conf_dir = os.path.join(self.test_dir, 'etc')
         utils.safe_mkdirs(self.conf_dir)
         self.set_policy()
-
-    def tearDown(self):
-        self.stubs.UnsetAll()
-        self.stubs.SmartUnsetAll()
-        super(BaseTestCase, self).tearDown()
 
     def set_policy(self):
         conf_file = "policy.json"
@@ -303,11 +300,11 @@ def execute(cmd,
         exitcode = 0
 
     if exitcode != expected_exitcode and raise_error:
-        msg = "Command %(cmd)s did not succeed. Returned an exit "
-        "code of %(exitcode)d."
-        "\n\nSTDOUT: %(out)s"
-        "\n\nSTDERR: %(err)s" % {'cmd': cmd, 'exitcode': exitcode,
-                                 'out': out, 'err': err}
+        msg = ("Command %(cmd)s did not succeed. Returned an exit "
+               "code of %(exitcode)d."
+               "\n\nSTDOUT: %(out)s"
+               "\n\nSTDERR: %(err)s" % {'cmd': cmd, 'exitcode': exitcode,
+                                        'out': out, 'err': err})
         if context:
             msg += "\n\nCONTEXT: %s" % context
         raise RuntimeError(msg)
@@ -411,6 +408,41 @@ def minimal_add_command(port, name, suffix='', public=True):
     return ("bin/glance --port=%d add %s"
             " disk_format=raw container_format=ovf"
             " name=%s %s" % (port, visibility, name, suffix))
+
+
+def start_http_server(image_id, image_data):
+    def _get_http_handler_class(fixture):
+        class StaticHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header('Content-Length', str(len(fixture)))
+                self.end_headers()
+                self.wfile.write(fixture)
+                return
+
+            def do_HEAD(self):
+                self.send_response(200)
+                self.send_header('Content-Length', str(len(fixture)))
+                self.end_headers()
+                return
+
+            def log_message(self, *args, **kwargs):
+                # Override this method to prevent debug output from going
+                # to stderr during testing
+                return
+
+        return StaticHTTPRequestHandler
+
+    server_address = ('127.0.0.1', 0)
+    handler_class = _get_http_handler_class(image_data)
+    httpd = BaseHTTPServer.HTTPServer(server_address, handler_class)
+    port = httpd.socket.getsockname()[1]
+
+    pid = os.fork()
+    if pid == 0:
+        httpd.serve_forever()
+    else:
+        return pid, port
 
 
 class RegistryAPIMixIn(object):

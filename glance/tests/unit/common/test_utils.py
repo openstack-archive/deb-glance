@@ -1,4 +1,5 @@
 # Copyright 2011 OpenStack Foundation
+# Copyright 2015 Mirantis, Inc
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -73,6 +74,44 @@ class TestUtils(test_utils.BaseTestCase):
                 break
         meat = ''.join(chunks)
         self.assertEqual('', meat)
+
+    def _create_generator(self, chunk_size, max_iterations):
+        chars = 'abc'
+        iteration = 0
+        while True:
+            chunk = chars[iteration % len(chars)] * chunk_size
+            yield chunk
+            iteration += 1
+            if iteration >= max_iterations:
+                raise StopIteration()
+
+    def _test_reader_chunked(self, chunk_size, read_size, max_iterations=5):
+        generator = self._create_generator(chunk_size, max_iterations)
+        reader = utils.CooperativeReader(generator)
+        result = ''
+        while True:
+            data = reader.read(read_size)
+            if len(data) == 0:
+                break
+            self.assertLessEqual(len(data), read_size)
+            result += data
+        expected = ('a' * chunk_size +
+                    'b' * chunk_size +
+                    'c' * chunk_size +
+                    'a' * chunk_size +
+                    'b' * chunk_size)
+        self.assertEqual(expected, result)
+
+    def test_cooperative_reader_preserves_size_chunk_less_then_read(self):
+        self._test_reader_chunked(43, 101)
+
+    def test_cooperative_reader_preserves_size_chunk_equals_read(self):
+        self._test_reader_chunked(1024, 1024)
+
+    def test_cooperative_reader_preserves_size_chunk_more_then_read(self):
+        chunk_size = 16 * 1024 * 1024  # 16 Mb, as in remote http source
+        read_size = 8 * 1024           # 8k, as in httplib
+        self._test_reader_chunked(chunk_size, read_size)
 
     def test_limiting_reader(self):
         """Ensure limiting reader class accesses all bytes of file"""
@@ -229,11 +268,11 @@ class TestUtils(test_utils.BaseTestCase):
         self.assertEqual("test", result)
 
     def test_mutating(self):
-        class FakeContext():
+        class FakeContext(object):
             def __init__(self):
                 self.read_only = False
 
-        class Fake():
+        class Fake(object):
             def __init__(self):
                 self.context = FakeContext()
 
@@ -245,6 +284,7 @@ class TestUtils(test_utils.BaseTestCase):
         self.assertEqual("test passed", result(req, Fake()))
 
     def test_validate_key_cert_key(self):
+        self.config(digest_algorithm='sha256')
         var_dir = os.path.abspath(os.path.join(os.path.dirname(__file__),
                                                '../../', 'var'))
         keyfile = os.path.join(var_dir, 'privatekey.key')
@@ -273,6 +313,16 @@ class TestUtils(test_utils.BaseTestCase):
                                   utils.validate_key_cert,
                                   keyf.name, keyf.name)
 
+    def test_invalid_digest_algorithm(self):
+        self.config(digest_algorithm='fake_algorithm')
+        var_dir = os.path.abspath(os.path.join(os.path.dirname(__file__),
+                                               '../../', 'var'))
+        keyfile = os.path.join(var_dir, 'privatekey.key')
+        certfile = os.path.join(var_dir, 'certificate.crt')
+        self.assertRaises(ValueError,
+                          utils.validate_key_cert,
+                          keyfile, certfile)
+
     def test_valid_port(self):
         valid_inputs = [1, '1', 2, '3', '5', 8, 13, 21,
                         '80', '3246', '65535']
@@ -284,57 +334,6 @@ class TestUtils(test_utils.BaseTestCase):
                           '528.491', 'thirty-seven']
         for input_str in invalid_inputs:
             self.assertFalse(utils.is_valid_port(input_str))
-
-    def test_valid_ipv4(self):
-        valid_inputs = ['10.11.12.13',
-                        '172.17.17.1']
-        for input_str in valid_inputs:
-            self.assertTrue(utils.is_valid_ipv4(input_str))
-
-    def test_valid_ipv4_fail(self):
-        invalid_pairs = ['',
-                         '290.12.52.80',
-                         'a.b.c.d',
-                         u'\u2601',
-                         u'\u2603:8080',
-                         'fe80::1',
-                         '[fe80::2]',
-                         '<fe80::3>:5673',
-                         'fe80:a:b:c:d:e:f:1:2:3:4',
-                         'fe80:a:b:c:d:e:f:g',
-                         'fe80::1:8080',
-                         '[fe80:a:b:c:d:e:f:g]:9090',
-                         '[a:b:s:u:r:d]:fe80']
-
-        for pair in invalid_pairs:
-            self.assertRaises(ValueError,
-                              utils.parse_valid_host_port,
-                              pair)
-
-    def test_valid_ipv6(self):
-        valid_inputs = ['fe80::1',
-                        'fe80:0000:0000:0000:0000:0000:0000:0002',
-                        'fe80:a:b:c:d:e:f:0',
-                        'fe80::a:b:c:d',
-                        'fe80::1:8080']
-
-        for input_str in valid_inputs:
-            self.assertTrue(utils.is_valid_ipv6(input_str))
-
-    def test_valid_ipv6_fail(self):
-        invalid_pairs = ['',
-                         '[fe80::2]',
-                         '<fe80::3>',
-                         'fe80:::a',
-                         'fe80:a:b:c:d:e:f:1:2:3:4',
-                         'fe80:a:b:c:d:e:f:g',
-                         'fe80::1:8080',
-                         'i:n:s:a:n:i:t:y']
-
-        for pair in invalid_pairs:
-            self.assertRaises(ValueError,
-                              utils.parse_valid_host_port,
-                              pair)
 
     def test_valid_hostname(self):
         valid_inputs = ['localhost',

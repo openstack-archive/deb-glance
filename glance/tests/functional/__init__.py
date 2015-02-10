@@ -143,7 +143,8 @@ class Server(object):
         self.create_database()
 
         cmd = ("%(server_module)s --config-file %(conf_file_name)s"
-               % self.__dict__)
+               % {"server_module": self.server_module,
+                  "conf_file_name": self.conf_file_name})
         cmd = "%s -m %s" % (sys.executable, cmd)
         # close the sock and release the unused port closer to start time
         if self.exec_env:
@@ -330,7 +331,6 @@ image_cache_dir = %(image_cache_dir)s
 image_cache_driver = %(image_cache_driver)s
 policy_file = %(policy_file)s
 policy_default_rule = %(policy_default_rule)s
-db_auto_create = False
 data_api = %(data_api)s
 sql_connection = %(sql_connection)s
 show_image_direct_url = %(show_image_direct_url)s
@@ -448,7 +448,6 @@ debug = %(debug)s
 bind_host = 127.0.0.1
 bind_port = %(bind_port)s
 log_file = %(log_file)s
-db_auto_create = False
 sql_connection = %(sql_connection)s
 sql_idle_timeout = 3600
 api_limit_max = 1000

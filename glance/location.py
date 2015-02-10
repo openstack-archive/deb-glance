@@ -17,8 +17,8 @@ import collections
 import copy
 
 import glance_store as store
-from oslo.config import cfg
-from oslo.utils import excutils
+from oslo_config import cfg
+from oslo_utils import excutils
 
 from glance.common import exception
 from glance.common import utils
@@ -61,8 +61,8 @@ class ImageRepoProxy(glance.domain.proxy.Repo):
         self._set_acls(image)
         return result
 
-    def save(self, image):
-        result = super(ImageRepoProxy, self).save(image)
+    def save(self, image, from_state=None):
+        result = super(ImageRepoProxy, self).save(image, from_state=from_state)
         self._set_acls(image)
         return result
 

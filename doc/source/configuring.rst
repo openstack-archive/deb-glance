@@ -183,13 +183,6 @@ will prevent any new processes from being created.
 
 Optional. Default: The number of CPUs available will be used by default.
 
-* ``db_auto_create=False``
-
-Whether to automatically create the database tables.  Otherwise you can
-manually run `glance-manage db sync`.
-
-Optional. Default: ``False``
-
 Configuring SSL Support
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -371,7 +364,7 @@ Configuring Glance Storage Backends
 
 There are a number of configuration options in Glance that control how Glance
 stores disk images. These configuration options are specified in the
-``glance-api.conf`` config file in the section ``[DEFAULT]``.
+``glance-api.conf`` config file in the section ``[glance_store]``.
 
 * ``default_store=STORE``
 
@@ -381,7 +374,17 @@ Can only be specified in configuration files.
 
 Sets the storage backend to use by default when storing images in Glance.
 Available options for this option are (``file``, ``swift``, ``s3``, ``rbd``, ``sheepdog``,
-``cinder`` or ``vsphere``).
+``cinder`` or ``vsphere``). In order to select a default store it must also
+be listed in the ``stores`` list described below.
+
+* ``stores=STORES``
+
+Optional. Default: ``glance.store.filesystem.Store, glance.store.http.Store``
+
+A comma separated list of enabled glance stores. Options are specified
+in the format of glance.store.OPTION.Store.  Some available options for this
+option are (``filesystem``, ``http``, ``rbd``, ``s3``, ``swift``, ``sheepdog``,
+``cinder``, ``gridfs``, ``vmware_datastore``)
 
 Configuring Glance Image Size Limit
 -----------------------------------
@@ -1100,6 +1103,20 @@ Can only be specified in configuration files.
 
 Allow to perform insecure SSL requests to ESX/VC server.
 
+Configuring the Storage Endpoint
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* ``swift_store_endpoint=URL``
+
+Optional. Default: ``None``
+
+Can only be specified in configuration files.
+
+Overrides the storage URL returned by auth. The URL should include the
+path up to and excluding the container. The location of an object is
+obtained by appending the container and object to the configured URL.
+e.g. ``https://www.my-domain.com/v1/path_up_to_container``
+
 Configuring the Image Cache
 ---------------------------
 
@@ -1384,7 +1401,7 @@ profiling will not be triggered even profiling feature is enabled.
 Configuring Glance public endpoint
 ----------------------------------
 
-When Glance API service is ran dehind a proxy, operator probably need to
+When Glance API service is ran behind a proxy, operator probably need to
 configure a proper public endpoint to versions URL instead of use host owned
 which run service really. Glance allows configure a public endpoint URL to
 represent the proxy's URL.
@@ -1392,3 +1409,21 @@ represent the proxy's URL.
 * ``public_endpoint=<None|URL>``
 
 Optional. Default: ``None``
+
+Configuring Glance digest algorithm
+-----------------------------------
+
+Digest algorithm which will be used for digital signature; the default is
+sha1 for a smooth upgrade process but the recommended value is sha256. Use the
+command::
+
+  openssl list-message-digest-algorithms
+
+to get the available algorithms supported by the version of OpenSSL on the
+platform. Examples are "sha1", "sha256", "sha512", etc. If an invalid
+digest algorithm is configured, all digital signature operations will fail and
+return a ValueError exception with "No such digest method" error.
+
+* ``digest_algorithm=<algorithm>``
+
+Optional. Default: ``sha1``

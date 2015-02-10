@@ -16,9 +16,9 @@
 import re
 
 import glance_store
-from oslo.config import cfg
 from oslo.serialization import jsonutils as json
-from oslo.utils import timeutils
+from oslo_config import cfg
+from oslo_utils import timeutils
 import six
 import six.moves.urllib.parse as urlparse
 import webob.exc
@@ -88,7 +88,7 @@ class ImagesController(object):
 
         return image
 
-    def index(self, req, marker=None, limit=None, sort_key='created_at',
+    def index(self, req, marker=None, limit=None, sort_key=['created_at'],
               sort_dir='desc', filters=None, member_status='accepted'):
         result = {}
         if filters is None:
@@ -102,7 +102,8 @@ class ImagesController(object):
         image_repo = self.gateway.get_repo(req.context)
         try:
             images = image_repo.list(marker=marker, limit=limit,
-                                     sort_key=sort_key, sort_dir=sort_dir,
+                                     sort_key=sort_key,
+                                     sort_dir=sort_dir,
                                      filters=filters,
                                      member_status=member_status)
             if len(images) != 0 and len(images) == limit:
@@ -148,7 +149,7 @@ class ImagesController(object):
             raise webob.exc.HTTPBadRequest(explanation=e.msg)
         except exception.StorageQuotaFull as e:
             msg = (_("Denying attempt to upload image because it exceeds the"
-                     " .quota: %s") % utils.exception_to_str(e))
+                     " quota: %s") % utils.exception_to_str(e))
             LOG.warn(msg)
             raise webob.exc.HTTPRequestEntityTooLarge(
                 explanation=msg, request=req, content_type='text/plain')
@@ -298,16 +299,20 @@ class ImagesController(object):
 
 class RequestDeserializer(wsgi.JSONRequestDeserializer):
 
-    _disallowed_properties = ['direct_url', 'self', 'file', 'schema']
-    _readonly_properties = ['created_at', 'updated_at', 'status', 'checksum',
+    _disallowed_properties = ('direct_url', 'self', 'file', 'schema')
+    _readonly_properties = ('created_at', 'updated_at', 'status', 'checksum',
                             'size', 'virtual_size', 'direct_url', 'self',
-                            'file', 'schema']
-    _reserved_properties = ['owner', 'is_public', 'location', 'deleted',
-                            'deleted_at']
-    _base_properties = ['checksum', 'created_at', 'container_format',
+                            'file', 'schema')
+    _reserved_properties = ('owner', 'is_public', 'location', 'deleted',
+                            'deleted_at')
+    _base_properties = ('checksum', 'created_at', 'container_format',
                         'disk_format', 'id', 'min_disk', 'min_ram', 'name',
                         'size', 'virtual_size', 'status', 'tags',
-                        'updated_at', 'visibility', 'protected']
+                        'updated_at', 'visibility', 'protected')
+    _available_sort_keys = ('name', 'status', 'container_format',
+                            'disk_format', 'size', 'id', 'created_at',
+                            'updated_at')
+
     _path_depth_limits = {'locations': {'add': 2, 'remove': 2, 'replace': 1}}
 
     def __init__(self, schema=None):
@@ -535,6 +540,16 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
 
         return limit
 
+    def _validate_sort_key(self, sort_key):
+        if sort_key not in self._available_sort_keys:
+            msg = _('Invalid sort key: %(sort_key)s. '
+                    'It must be one of the following: %(available)s.') % \
+                {'sort_key': sort_key,
+                 'available': ', '.join(self._available_sort_keys)}
+            raise webob.exc.HTTPBadRequest(explanation=msg)
+
+        return sort_key
+
     def _validate_sort_dir(self, sort_dir):
         if sort_dir not in ['asc', 'desc']:
             msg = _('Invalid sort direction: %s') % sort_dir
@@ -576,8 +591,15 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
         while 'tag' in params:
             tags.append(params.pop('tag').strip())
 
+        # NOTE (mfedosin) Do the same with sorting keys
+        # v2/images?sort_key=name&sort_key=size
+
+        sort_keys = []
+        while 'sort_key' in params:
+            sort_keys.append(self._validate_sort_key(
+                params.pop('sort_key').strip()))
+
         query_params = {
-            'sort_key': params.pop('sort_key', 'created_at'),
             'sort_dir': self._validate_sort_dir(sort_dir),
             'filters': self._get_filters(params),
             'member_status': self._validate_member_status(member_status),
@@ -591,6 +613,13 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
 
         if tags:
             query_params['filters']['tags'] = tags
+
+        # NOTE(mfedosin): param is still called sort_key, instead of sort_keys
+        # It's done because in v1 it's still a single value.
+        if sort_keys:
+            query_params['sort_key'] = sort_keys
+        else:
+            query_params['sort_key'] = ['created_at']
 
         return query_params
 

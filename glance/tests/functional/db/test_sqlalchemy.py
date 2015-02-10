@@ -14,8 +14,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from oslo.config import cfg
-from oslo.db import options
+from oslo_config import cfg
+from oslo_db import options
 
 from glance.common import exception
 import glance.db.sqlalchemy.api
@@ -119,7 +119,7 @@ class TestSqlAlchemyDBDataIntegrity(base.TestDriver,
 
         self.stubs.Set(self.db_api, '_paginate_query',
                        fake_paginate_query)
-        self.db_api.image_get_all(self.context, sort_key='created_at')
+        self.db_api.image_get_all(self.context, sort_key=['created_at'])
 
     def test_paginate_non_redundant_sort_keys(self):
         original_method = self.db_api._paginate_query
@@ -132,7 +132,7 @@ class TestSqlAlchemyDBDataIntegrity(base.TestDriver,
 
         self.stubs.Set(self.db_api, '_paginate_query',
                        fake_paginate_query)
-        self.db_api.image_get_all(self.context, sort_key='name')
+        self.db_api.image_get_all(self.context, sort_key=['name'])
 
 
 class TestSqlAlchemyTask(base.TaskTests,

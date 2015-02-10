@@ -25,8 +25,8 @@ import logging.handlers
 import os
 import tempfile
 
-from oslo.concurrency import lockutils
-from oslo.config import cfg
+from oslo_concurrency import lockutils
+from oslo_config import cfg
 from paste import deploy
 
 from glance import i18n
@@ -150,6 +150,15 @@ common_opts = [
     cfg.StrOpt('metadata_encryption_key', secret=True,
                help=_('Key used for encrypting sensitive metadata while '
                       'talking to the registry or database.')),
+    cfg.StrOpt('digest_algorithm', default='sha1',
+               help=_('Digest algorithm which will be used for digital '
+                      'signature; the default is sha1 the default in Kilo '
+                      'for a smooth upgrade process, and it will be updated '
+                      'with sha256 in next release(L). Use the command '
+                      '"openssl list-message-digest-algorithms" to get the '
+                      'available algorithms supported by the version of '
+                      'OpenSSL on the platform. Examples are "sha1", '
+                      '"sha256", "sha512", etc.')),
 ]
 
 CONF = cfg.CONF

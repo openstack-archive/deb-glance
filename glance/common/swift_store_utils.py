@@ -18,13 +18,14 @@ try:
 except ImportError:
     from ordereddict import OrderedDict
 
-from oslo.config import cfg
+from oslo_config import cfg
 
 from glance.common import exception
 from glance import i18n
 from glance.openstack.common import log as logging
 
 _ = i18n._
+_LE = i18n._LE
 
 swift_opts = [
     cfg.StrOpt('default_swift_reference',
@@ -97,6 +98,6 @@ class SwiftParams(object):
                 reference['key'] = CONFIG.get(ref, 'key')
                 account_params[ref] = reference
             except (ValueError, SyntaxError, ConfigParser.NoOptionError) as e:
-                LOG.exception(_("Invalid format of swift store config"
-                                "cfg"))
+                LOG.exception(_LE("Invalid format of swift store config "
+                                  "cfg"))
         return account_params

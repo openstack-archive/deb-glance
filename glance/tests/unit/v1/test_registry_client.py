@@ -19,7 +19,7 @@ import os
 import uuid
 
 from mock import patch
-from oslo.utils import timeutils
+from oslo_utils import timeutils
 import testtools
 
 from glance.common import client as test_client
@@ -910,7 +910,7 @@ class TestRegistryV1ClientApi(base.IsolatedUnitTest):
         self.assertEqual(expected, rapi._CLIENT_CREDS)
 
 
-class FakeResponse():
+class FakeResponse(object):
     status = 202
 
     def getheader(*args, **kwargs):

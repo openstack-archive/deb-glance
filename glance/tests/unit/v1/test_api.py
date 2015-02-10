@@ -19,13 +19,15 @@ import contextlib
 import copy
 import datetime
 import hashlib
+import os
+import signal
 import uuid
 
 import glance_store as store
 import mock
-from oslo.config import cfg
 from oslo.serialization import jsonutils
-from oslo.utils import timeutils
+from oslo_config import cfg
+from oslo_utils import timeutils
 import routes
 import six
 import webob
@@ -95,11 +97,15 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         self.create_fixtures()
         # Used to store/track image status changes for post-analysis
         self.image_status = []
+        ret = test_utils.start_http_server("foo_image_id", "foo_image")
+        self.http_server_pid, self.http_port = ret
 
     def tearDown(self):
         """Clear the test environment"""
         super(TestGlanceAPI, self).tearDown()
         self.destroy_fixtures()
+        if self.http_server_pid is not None:
+            os.kill(self.http_server_pid, signal.SIGKILL)
 
     def create_fixtures(self):
         for fixture in self.FIXTURES:
@@ -133,6 +139,9 @@ class TestGlanceAPI(base.IsolatedUnitTest):
             res_body = jsonutils.loads(res.body)['image']
             self.assertEqual(format_value, res_body['disk_format'])
             self.assertEqual(format_value, res_body['container_format'])
+
+    def _http_loc_url(self, path):
+        return 'http://127.0.0.1:%d%s' % (self.http_port, path)
 
     def test_defaulted_amazon_format(self):
         for key in ('x-image-meta-disk-format',
@@ -472,7 +481,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         fixture_headers = {
             'x-image-meta-store': 'bad',
             'x-image-meta-name': 'bogus',
-            'x-image-meta-location': 'http://example.com/image.tar.gz',
+            'x-image-meta-location': self._http_loc_url('/image.tar.gz'),
             'x-image-meta-disk-format': 'vhd',
             'x-image-meta-container-format': 'bare',
         }
@@ -495,7 +504,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         fixture_headers = {
             'x-image-meta-store': 'bad',
             'x-image-meta-name': 'X' * 256,
-            'x-image-meta-location': 'http://example.com/image.tar.gz',
+            'x-image-meta-location': self._http_loc_url('/image.tar.gz'),
             'x-image-meta-disk-format': 'vhd',
             'x-image-meta-container-format': 'bare',
         }
@@ -829,7 +838,8 @@ class TestGlanceAPI(base.IsolatedUnitTest):
 
         req = webob.Request.blank("/images/%s" % image_id)
         req.method = 'PUT'
-        req.headers['x-image-meta-location'] = 'http://example.com/images/123'
+        url = self._http_loc_url('/images/123')
+        req.headers['x-image-meta-location'] = url
         res = req.get_response(self.api)
         self.assertEqual(400, res.status_int)
 
@@ -894,9 +904,10 @@ class TestGlanceAPI(base.IsolatedUnitTest):
     def test_add_copy_from_image_unauthorized(self):
         rules = {"add_image": '@', "copy_from": '!'}
         self.set_policy_rules(rules)
+        url = self._http_loc_url('/i.ovf')
         fixture_headers = {'x-image-meta-store': 'file',
                            'x-image-meta-disk-format': 'vhd',
-                           'x-glance-api-copy-from': 'http://glance.com/i.ovf',
+                           'x-glance-api-copy-from': url,
                            'x-image-meta-container-format': 'ovf',
                            'x-image-meta-name': 'fake image #F'}
 
@@ -913,9 +924,10 @@ class TestGlanceAPI(base.IsolatedUnitTest):
     def test_add_copy_from_upload_image_unauthorized(self):
         rules = {"add_image": '@', "copy_from": '@', "upload_image": '!'}
         self.set_policy_rules(rules)
+        url = self._http_loc_url('/i.ovf')
         fixture_headers = {'x-image-meta-store': 'file',
                            'x-image-meta-disk-format': 'vhd',
-                           'x-glance-api-copy-from': 'http://glance.com/i.ovf',
+                           'x-glance-api-copy-from': url,
                            'x-image-meta-container-format': 'ovf',
                            'x-image-meta-name': 'fake image #F'}
 
@@ -931,9 +943,10 @@ class TestGlanceAPI(base.IsolatedUnitTest):
     def test_add_copy_from_image_authorized_upload_image_authorized(self):
         rules = {"add_image": '@', "copy_from": '@', "upload_image": '@'}
         self.set_policy_rules(rules)
+        url = self._http_loc_url('/i.ovf')
         fixture_headers = {'x-image-meta-store': 'file',
                            'x-image-meta-disk-format': 'vhd',
-                           'x-glance-api-copy-from': 'http://glance.com/i.ovf',
+                           'x-glance-api-copy-from': url,
                            'x-image-meta-container-format': 'ovf',
                            'x-image-meta-name': 'fake image #F'}
 
@@ -1070,31 +1083,23 @@ class TestGlanceAPI(base.IsolatedUnitTest):
 
     def test_add_copy_from_with_restricted_sources(self):
         """Tests creates an image from copy-from with restricted sources"""
-        fixture_headers = {'x-image-meta-store': 'file',
+        header_template = {'x-image-meta-store': 'file',
                            'x-image-meta-disk-format': 'vhd',
-                           'x-glance-api-copy-from': 'file:///etc/passwd',
                            'x-image-meta-container-format': 'ovf',
                            'x-image-meta-name': 'fake image #F'}
 
-        req = webob.Request.blank("/images")
-        req.method = 'POST'
-        for k, v in six.iteritems(fixture_headers):
-            req.headers[k] = v
-        res = req.get_response(self.api)
-        self.assertEqual(400, res.status_int)
+        schemas = ["file:///etc/passwd",
+                   "swift+config:///xxx",
+                   "filesystem:///etc/passwd"]
 
-        fixture_headers = {'x-image-meta-store': 'file',
-                           'x-image-meta-disk-format': 'vhd',
-                           'x-glance-api-copy-from': 'swift+config://xxx',
-                           'x-image-meta-container-format': 'ovf',
-                           'x-image-meta-name': 'fake image #F'}
-
-        req = webob.Request.blank("/images")
-        req.method = 'POST'
-        for k, v in six.iteritems(fixture_headers):
-            req.headers[k] = v
-        res = req.get_response(self.api)
-        self.assertEqual(400, res.status_int)
+        for schema in schemas:
+            req = webob.Request.blank("/images")
+            req.method = 'POST'
+            for k, v in six.iteritems(header_template):
+                req.headers[k] = v
+            req.headers['x-glance-api-copy-from'] = schema
+            res = req.get_response(self.api)
+            self.assertEqual(400, res.status_int)
 
     def test_add_copy_from_upload_image_unauthorized_with_body(self):
         rules = {"upload_image": '!', "modify_image": '@',
@@ -1193,7 +1198,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req = webob.Request.blank("/images/%s" % image_id)
         req.method = 'PUT'
         req.headers['Content-Type'] = 'application/octet-stream'
-        req.headers['x-glance-api-copy-from'] = 'http://glance.com/i.ovf'
+        req.headers['x-glance-api-copy-from'] = self._http_loc_url('/i.ovf')
         res = req.get_response(self.api)
         self.assertEqual(403, res.status_int)
 
@@ -1219,7 +1224,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req = webob.Request.blank("/images/%s" % image_id)
         req.method = 'PUT'
         req.headers['Content-Type'] = 'application/octet-stream'
-        req.headers['x-glance-api-copy-from'] = 'http://glance.com/i.ovf'
+        req.headers['x-glance-api-copy-from'] = self._http_loc_url('/i.ovf')
         res = req.get_response(self.api)
         self.assertEqual(403, res.status_int)
 
@@ -1521,7 +1526,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
                         self.assertTrue(mock_db_get.called)
                         self.assertTrue(mock_db_update.called)
 
-                        # Ensure cleanup occured.
+                        # Ensure cleanup occurred.
                         self.assertEqual(1, mock_init_del.call_count)
 
                         self.assertEqual(state_changes, ['saving', 'active'])
@@ -1676,7 +1681,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req.headers['x-image-meta-property-key2'] = 'value2'
         req.body = "chunk00000remainder"
         res = req.get_response(self.api)
-        # We expect 500 since an exception occured during upload.
+        # We expect 500 since an exception occurred during upload.
         self.assertEqual(500, res.status_int)
 
     @mock.patch('glance_store.store_add_to_backend')
@@ -1741,8 +1746,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
 
         self.assertEqual(1, mock_store_add_to_backend.call_count)
 
-    def test_delete_during_image_upload(self):
-        req = unit_test_utils.get_fake_request()
+    def _check_delete_during_image_upload(self, is_admin=False):
 
         fixture_headers = {'x-image-meta-store': 'file',
                            'x-image-meta-disk-format': 'vhd',
@@ -1750,8 +1754,8 @@ class TestGlanceAPI(base.IsolatedUnitTest):
                            'x-image-meta-name': 'fake image #3',
                            'x-image-meta-property-key1': 'value1'}
 
-        req = webob.Request.blank("/images")
-        req.method = 'POST'
+        req = unit_test_utils.get_fake_request(path="/images",
+                                               is_admin=is_admin)
         for k, v in six.iteritems(fixture_headers):
             req.headers[k] = v
 
@@ -1776,31 +1780,18 @@ class TestGlanceAPI(base.IsolatedUnitTest):
                        mock_initiate_deletion)
 
         orig_update_image_metadata = registry.update_image_metadata
-        ctlr = glance.api.v1.controller.BaseController
-        orig_get_image_meta_or_404 = ctlr.get_image_meta_or_404
+
+        data = "somedata"
 
         def mock_update_image_metadata(*args, **kwargs):
 
-            if args[2].get('status', None) == 'deleted':
-
-                # One shot.
-                def mock_get_image_meta_or_404(*args, **kwargs):
-                    ret = orig_get_image_meta_or_404(*args, **kwargs)
-                    ret['status'] = 'queued'
-                    self.stubs.Set(ctlr, 'get_image_meta_or_404',
-                                   orig_get_image_meta_or_404)
-                    return ret
-
-                self.stubs.Set(ctlr, 'get_image_meta_or_404',
-                               mock_get_image_meta_or_404)
-
-                req = webob.Request.blank("/images/%s" % image_id)
-                req.method = 'PUT'
-                req.headers['Content-Type'] = 'application/octet-stream'
-                req.body = "somedata"
+            if args[2].get('size', None) == len(data):
+                path = "/images/%s" % image_id
+                req = unit_test_utils.get_fake_request(path=path,
+                                                       method='DELETE',
+                                                       is_admin=is_admin)
                 res = req.get_response(self.api)
                 self.assertEqual(200, res.status_int)
-                self.assertFalse(res.location)
 
                 self.stubs.Set(registry, 'update_image_metadata',
                                orig_update_image_metadata)
@@ -1810,19 +1801,29 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         self.stubs.Set(registry, 'update_image_metadata',
                        mock_update_image_metadata)
 
-        req = webob.Request.blank("/images/%s" % image_id)
-        req.method = 'DELETE'
+        req = unit_test_utils.get_fake_request(path="/images/%s" % image_id,
+                                               method='PUT')
+        req.headers['Content-Type'] = 'application/octet-stream'
+        req.body = data
         res = req.get_response(self.api)
-        self.assertEqual(200, res.status_int)
+        self.assertEqual(412, res.status_int)
+        self.assertFalse(res.location)
 
         self.assertTrue(called['initiate_deletion'])
 
-        req = webob.Request.blank("/images/%s" % image_id)
-        req.method = 'HEAD'
+        req = unit_test_utils.get_fake_request(path="/images/%s" % image_id,
+                                               method='HEAD',
+                                               is_admin=True)
         res = req.get_response(self.api)
         self.assertEqual(200, res.status_int)
         self.assertEqual('True', res.headers['x-image-meta-deleted'])
         self.assertEqual('deleted', res.headers['x-image-meta-status'])
+
+    def test_delete_during_image_upload_by_normal_user(self):
+        self._check_delete_during_image_upload(is_admin=False)
+
+    def test_delete_during_image_upload_by_admin(self):
+        self._check_delete_during_image_upload(is_admin=True)
 
     def test_disable_purge_props(self):
         """

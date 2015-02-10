@@ -15,10 +15,11 @@
 #    under the License.
 
 import copy
+import datetime
 import functools
 import uuid
 
-from oslo.utils import timeutils
+from oslo_utils import timeutils
 import six
 
 from glance.common import exception
@@ -339,13 +340,29 @@ def _do_pagination(context, images, marker, limit, show_deleted,
 
 
 def _sort_images(images, sort_key, sort_dir):
-    reverse = False
-    if images and not (sort_key in images[0]):
-        raise exception.InvalidSortKey()
-    keyfn = lambda x: (x[sort_key] if x[sort_key] is not None else '',
-                       x['created_at'], x['id'])
     reverse = sort_dir == 'desc'
-    images.sort(key=keyfn, reverse=reverse)
+
+    for key in ['created_at', 'id']:
+        if key not in sort_key:
+            sort_key.append(key)
+
+    for key in sort_key:
+        if images and not (key in images[0]):
+            raise exception.InvalidSortKey()
+
+    def sort_func(element):
+        keys = []
+        for key in sort_key:
+            if element[key] is not None:
+                keys.append(element[key])
+            else:
+                if key in ['created_at', 'updated_at', 'deleted_at']:
+                    keys.append(datetime.datetime.min)
+                else:
+                    keys.append('')
+        return tuple(keys)
+
+    images.sort(key=sort_func, reverse=reverse)
 
     return images
 
@@ -357,7 +374,8 @@ def _image_get(context, image_id, force_show_deleted=False, status=None):
         LOG.warn(_LW('Could not find image %s') % image_id)
         raise exception.NotFound()
 
-    if image['deleted'] and not (force_show_deleted or context.show_deleted):
+    if image['deleted'] and not (force_show_deleted
+                                 or context.can_see_deleted):
         LOG.warn(_LW('Unable to get deleted image'))
         raise exception.NotFound()
 
@@ -377,7 +395,7 @@ def image_get(context, image_id, session=None, force_show_deleted=False):
 
 @log_call
 def image_get_all(context, filters=None, marker=None, limit=None,
-                  sort_key='created_at', sort_dir='desc',
+                  sort_key=['created_at'], sort_dir='desc',
                   member_status='accepted', is_public=None,
                   admin_as_user=False, return_tag=False):
     filters = filters or {}
@@ -873,7 +891,7 @@ def _task_get(context, task_id, force_show_deleted=False):
         LOG.warn(msg)
         raise exception.TaskNotFound(task_id=task_id)
 
-    if task['deleted'] and not (force_show_deleted or context.show_deleted):
+    if task['deleted'] and not (force_show_deleted or context.can_see_deleted):
         msg = _LW('Unable to get deleted task %s') % task_id
         LOG.warn(msg)
         raise exception.TaskNotFound(task_id=task_id)
@@ -977,7 +995,6 @@ def _sort_tasks(tasks, sort_key, sort_dir):
                        x['created_at'], x['id'])
     reverse = sort_dir == 'desc'
     tasks.sort(key=keyfn, reverse=reverse)
-
     return tasks
 
 

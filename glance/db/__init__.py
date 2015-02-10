@@ -16,8 +16,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from oslo.config import cfg
-from oslo.utils import importutils
+from oslo_config import cfg
+from oslo_utils import importutils
 from wsme.rest import json
 
 from glance.api.v2.model.metadef_property_type import PropertyType
@@ -75,7 +75,7 @@ class ImageRepo(object):
         image = self._format_image_from_db(db_api_image, tags)
         return ImageProxy(image, self.context, self.db_api)
 
-    def list(self, marker=None, limit=None, sort_key='created_at',
+    def list(self, marker=None, limit=None, sort_key=['created_at'],
              sort_dir='desc', filters=None, member_status='accepted'):
         db_api_images = self.db_api.image_get_all(
             self.context, filters=filters, marker=marker, limit=limit,
@@ -166,7 +166,7 @@ class ImageRepo(object):
         image.created_at = new_values['created_at']
         image.updated_at = new_values['updated_at']
 
-    def save(self, image):
+    def save(self, image, from_state=None):
         image_values = self._format_image_to_db(image)
         if image_values['size'] > CONF.image_size_cap:
             raise exception.ImageSizeLimitExceeded
@@ -174,7 +174,8 @@ class ImageRepo(object):
             new_values = self.db_api.image_update(self.context,
                                                   image.image_id,
                                                   image_values,
-                                                  purge_props=True)
+                                                  purge_props=True,
+                                                  from_state=from_state)
         except (exception.NotFound, exception.Forbidden):
             msg = _("No image found with ID %s") % image.image_id
             raise exception.NotFound(msg)
@@ -267,7 +268,7 @@ class ImageMemberRepo(object):
             msg = _("The specified member %s could not be found")
             raise exception.NotFound(msg % image_member.id)
 
-    def save(self, image_member):
+    def save(self, image_member, from_state=None):
         image_member_values = self._format_image_member_to_db(image_member)
         try:
             new_values = self.db_api.image_member_update(self.context,

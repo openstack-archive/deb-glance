@@ -13,8 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 import glance_store as store_api
-from oslo.config import cfg
-from oslo.utils import excutils
+from oslo_config import cfg
+from oslo_utils import excutils
 import webob.exc
 
 from glance.common import exception
@@ -91,6 +91,12 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
     image_size = image_meta.get('size')
 
     try:
+        # By default image_data will be passed as CooperativeReader object.
+        # But if 'user_storage_quota' is enabled and 'remaining' is not None
+        # then it will be passed as object of LimitingReader to
+        # 'store_add_to_backend' method.
+        image_data = utils.CooperativeReader(image_data)
+
         remaining = glance.api.common.check_quota(
             req.context, image_size, db_api, image_id=image_id)
         if remaining is not None:
@@ -101,7 +107,7 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
          checksum,
          location_metadata) = store_api.store_add_to_backend(
              image_meta['id'],
-             utils.CooperativeReader(image_data),
+             image_data,
              image_meta['size'],
              store,
              context=req.context)
@@ -153,12 +159,19 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
         update_data = {'checksum': checksum,
                        'size': size}
         try:
-            image_meta = registry.update_image_metadata(req.context,
-                                                        image_id,
-                                                        update_data,
-                                                        from_state='saving')
-
-        except exception.NotFound as e:
+            try:
+                state = 'saving'
+                image_meta = registry.update_image_metadata(req.context,
+                                                            image_id,
+                                                            update_data,
+                                                            from_state=state)
+            except exception.Duplicate:
+                image = registry.get_image_metadata(req.context, image_id)
+                if image['status'] == 'deleted':
+                    raise exception.NotFound()
+                else:
+                    raise
+        except exception.NotFound:
             msg = _LI("Image %s could not be found after upload. The image may"
                       " have been deleted during the upload.") % image_id
             LOG.info(msg)
@@ -184,8 +197,9 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
                                  content_type='text/plain')
 
     except exception.Duplicate as e:
-        msg = u"Attempt to upload duplicate image: %s" % e
-        LOG.debug(msg)
+        msg = (_("Attempt to upload duplicate image: %s") %
+               utils.exception_to_str(e))
+        LOG.warn(msg)
         # NOTE(dosaboy): do not delete the image since it is likely that this
         # conflict is a result of another concurrent upload that will be
         # successful.
@@ -195,8 +209,9 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
                                      content_type="text/plain")
 
     except exception.Forbidden as e:
-        msg = u"Forbidden upload attempt: %s" % e
-        LOG.debug(msg)
+        msg = (_("Forbidden upload attempt: %s") %
+               utils.exception_to_str(e))
+        LOG.warn(msg)
         safe_kill(req, image_id, 'saving')
         notifier.error('image.upload', msg)
         raise webob.exc.HTTPForbidden(explanation=msg,
@@ -234,7 +249,7 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
                                                   content_type='text/plain')
 
     except exception.StorageQuotaFull as e:
-        msg = (_("Denying attempt to upload image because it exceeds the ."
+        msg = (_("Denying attempt to upload image because it exceeds the "
                  "quota: %s") % utils.exception_to_str(e))
         LOG.warn(msg)
         safe_kill(req, image_id, 'saving')
