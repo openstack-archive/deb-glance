@@ -1,3 +1,9 @@
+glance (2014.2.2-2) experimental; urgency=medium
+
+  * Now generating the configuration files at build time.
+
+ -- Thomas Goirand <zigo@debian.org>  Fri, 13 Mar 2015 18:23:18 +0100
+
 glance (2014.2.2-1) experimental; urgency=medium
 
   * New upstream point release.

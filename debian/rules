@@ -15,6 +15,53 @@ override_dh_auto_test:
 	#nosetests || true
 endif
 
+
+override_dh_install:
+	dh_install -O--buildsystem=python_distutils
+
+	# Generate the configuration files
+	mkdir -p $(CURDIR)/debian/glance-common/usr/share/glance-common
+	oslo-config-generator \
+		--output-file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-api.conf \
+		--namespace glance.api \
+		--namespace glance.store \
+		--namespace oslo.messaging \
+		--namespace oslo.db \
+		--namespace oslo.db.concurrency \
+		--namespace keystoneclient.middleware.auth_token
+
+	oslo-config-generator \
+		--output_file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-cache.conf \
+		--namespace glance.cache
+
+	oslo-config-generator \
+		--output_file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-manage.conf
+		--namespace glance.manage \
+		--namespace oslo.db \
+		--namespace oslo.db.concurrency
+
+	oslo-config-generator \
+		--output_file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-registry.conf
+		--namespace glance.registry \
+		--namespace glance.store \
+		--namespace oslo.messaging \
+		--namespace oslo.db \
+		--namespace oslo.db.concurrency \
+		--namespace keystoneclient.middleware.auth_token
+
+	oslo-config-generator \
+		--output_file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-scrubber.conf \
+		--namespace glance.scrubber \
+		--namespace oslo.db \
+		--namespace oslo.db.concurrency
+
+	mkdir -p $(CURDIR)/debian/glance-common/etc/glance
+	cp etc/glance-swift.conf.sample $(CURDIR)/debian/glance-common/etc/glance/glance-swift.conf
+	cp etc/logging.cnf.sample $(CURDIR)/debian/glance-common/etc/glance/logging.cnf
+	cp etc/property-protections-policies.conf.sample $(CURDIR)/debian/glance-common/etc/glance/property-protections-policies.conf
+	cp etc/property-protections-roles.conf.sample $(CURDIR)/debian/glance-common/etc/glance/property-protections-roles.conf
+	cp -r etc/metadefs $(CURDIR)/debian/glance-common/etc/glance
+
 override_dh_auto_build:
 	dh_auto_build
 

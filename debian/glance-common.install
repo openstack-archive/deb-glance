@@ -1,9 +1,5 @@
 etc/glance-api-paste.ini	usr/share/glance-common
-etc/glance-api.conf		usr/share/glance-common
-etc/glance-cache.conf		usr/share/glance-common
 etc/glance-registry-paste.ini	usr/share/glance-common
-etc/glance-registry.conf	usr/share/glance-common
-etc/glance-scrubber.conf	usr/share/glance-common
 etc/policy.json			usr/share/glance-common
 etc/schema-image.json		etc/glance
 usr/bin/glance-control
