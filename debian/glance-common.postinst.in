@@ -35,6 +35,7 @@ if [ "$1" = "configure" ] || [ "$1" = "reconfigure" ] ; then
 	pkgos_write_new_conf glance glance-registry-paste.ini
 	pkgos_write_new_conf glance glance-cache.conf
 	pkgos_write_new_conf glance glance-scrubber.conf
+	pkgos_write_new_conf glance glance-manage.conf
 	pkgos_write_new_conf glance policy.json
 
 	# Do the db creation using dbconfig-common
