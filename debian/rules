@@ -21,14 +21,15 @@ override_dh_install:
 
 	# Generate the configuration files
 	mkdir -p $(CURDIR)/debian/glance-common/usr/share/glance-common
-	oslo-config-generator \
-		--output-file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-api.conf \
-		--namespace glance.api \
-		--namespace glance.store \
-		--namespace oslo.messaging \
-		--namespace oslo.db \
-		--namespace oslo.db.concurrency \
-		--namespace keystonemiddleware.auth_token
+	cp etc/glance-api.conf $(CURDIR)/debian/glance-common/usr/share/glance-common
+#	oslo-config-generator \
+#		--output-file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-api.conf \
+#		--namespace glance.api \
+#		--namespace glance.store \
+#		--namespace oslo.messaging \
+#		--namespace oslo.db \
+#		--namespace oslo.db.concurrency \
+#		--namespace keystonemiddleware.auth_token
 
 	cp etc/glance-cache.conf $(CURDIR)/debian/glance-common/usr/share/glance-common
 #	oslo-config-generator \
@@ -41,20 +42,22 @@ override_dh_install:
 		--namespace oslo.db \
 		--namespace oslo.db.concurrency
 
-	oslo-config-generator \
-		--output-file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-registry.conf \
-		--namespace glance.registry \
-		--namespace glance.store \
-		--namespace oslo.messaging \
-		--namespace oslo.db \
-		--namespace oslo.db.concurrency \
-		--namespace keystonemiddleware.auth_token
+	cp etc/glance-registry.conf $(CURDIR)/debian/glance-common/usr/share/glance-common
+#	oslo-config-generator \
+#		--output-file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-registry.conf \
+#		--namespace glance.registry \
+#		--namespace glance.store \
+#		--namespace oslo.messaging \
+#		--namespace oslo.db \
+#		--namespace oslo.db.concurrency \
+#		--namespace keystonemiddleware.auth_token
 
-	oslo-config-generator \
-		--output-file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-scrubber.conf \
-		--namespace glance.scrubber \
-		--namespace oslo.db \
-		--namespace oslo.db.concurrency
+	cp etc/glance-scrubber.conf $(CURDIR)/debian/glance-common/usr/share/glance-common
+#	oslo-config-generator \
+#		--output-file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-scrubber.conf \
+#		--namespace glance.scrubber \
+#		--namespace oslo.db \
+#		--namespace oslo.db.concurrency
 
 	mkdir -p $(CURDIR)/debian/glance-common/etc/glance
 	cp etc/glance-swift.conf.sample $(CURDIR)/debian/glance-common/etc/glance/glance-swift.conf
