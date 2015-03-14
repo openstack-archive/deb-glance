@@ -1,3 +1,9 @@
+glance (2014.2.2-4) experimental; urgency=medium
+
+  * Adds keystonemiddleware.auth_token when generating the config files.
+
+ -- Thomas Goirand <zigo@debian.org>  Sat, 14 Mar 2015 23:06:26 +0000
+
 glance (2014.2.2-3) experimental; urgency=medium
 
   * Fixed the config generation of config files which was missing the

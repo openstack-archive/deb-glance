@@ -28,7 +28,7 @@ override_dh_install:
 		--namespace oslo.messaging \
 		--namespace oslo.db \
 		--namespace oslo.db.concurrency \
-		--namespace keystoneclient.middleware.auth_token
+		--namespace keystonemiddleware.auth_token
 
 	cp etc/glance-cache.conf $(CURDIR)/debian/glance-common/usr/share/glance-common
 #	oslo-config-generator \
@@ -48,7 +48,7 @@ override_dh_install:
 		--namespace oslo.messaging \
 		--namespace oslo.db \
 		--namespace oslo.db.concurrency \
-		--namespace keystoneclient.middleware.auth_token
+		--namespace keystonemiddleware.auth_token
 
 	oslo-config-generator \
 		--output-file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-scrubber.conf \
