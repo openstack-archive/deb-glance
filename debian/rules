@@ -30,18 +30,19 @@ override_dh_install:
 		--namespace oslo.db.concurrency \
 		--namespace keystoneclient.middleware.auth_token
 
-	oslo-config-generator \
-		--output-file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-cache.conf \
-		--namespace glance.cache
+	cp etc/glance-cache.conf $(CURDIR)/debian/glance-common/usr/share/glance-common
+#	oslo-config-generator \
+#		--output-file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-cache.conf \
+#		--namespace glance.cache
 
 	oslo-config-generator \
-		--output-file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-manage.conf
+		--output-file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-manage.conf \
 		--namespace glance.manage \
 		--namespace oslo.db \
 		--namespace oslo.db.concurrency
 
 	oslo-config-generator \
-		--output-file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-registry.conf
+		--output-file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-registry.conf \
 		--namespace glance.registry \
 		--namespace glance.store \
 		--namespace oslo.messaging \

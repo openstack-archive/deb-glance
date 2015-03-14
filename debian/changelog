@@ -1,3 +1,10 @@
+glance (2014.2.2-3) experimental; urgency=medium
+
+  * Fixed the config generation of config files which was missing the
+    namespaces due to missing \.
+
+ -- Thomas Goirand <zigo@debian.org>  Sat, 14 Mar 2015 22:24:33 +0000
+
 glance (2014.2.2-2) experimental; urgency=medium
 
   * Now generating the configuration files at build time.
