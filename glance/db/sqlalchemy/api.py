@@ -25,11 +25,13 @@ import threading
 from oslo_config import cfg
 from oslo_db import exception as db_exception
 from oslo_db.sqlalchemy import session
+from oslo_log import log as logging
 from oslo_utils import timeutils
 import osprofiler.sqlalchemy
 from retrying import retry
 import six
-from six.moves import xrange
+# NOTE(jokke): simplified transition to py3, behaves like py2 xrange
+from six.moves import range
 import sqlalchemy
 import sqlalchemy.orm as sa_orm
 import sqlalchemy.sql as sa_sql
@@ -46,21 +48,19 @@ from glance.db.sqlalchemy.metadef_api\
 from glance.db.sqlalchemy.metadef_api import tag as metadef_tag_api
 from glance.db.sqlalchemy import models
 from glance import i18n
-import glance.openstack.common.log as os_logging
 
 BASE = models.BASE
 sa_logger = None
-LOG = os_logging.getLogger(__name__)
+LOG = logging.getLogger(__name__)
 _ = i18n._
 _LI = i18n._LI
 _LW = i18n._LW
 
 
 STATUSES = ['active', 'saving', 'queued', 'killed', 'pending_delete',
-            'deleted']
+            'deleted', 'deactivated']
 
 CONF = cfg.CONF
-CONF.import_opt('debug', 'glance.openstack.common.log')
 CONF.import_group("profiler", "glance.common.wsgi")
 
 _FACADE = None
@@ -159,16 +159,21 @@ def image_destroy(context, image_id):
 
         _image_tag_delete_all(context, image_id, delete_time, session)
 
-    return _normalize_locations(image_ref)
+    return _normalize_locations(context, image_ref)
 
 
-def _normalize_locations(image, force_show_deleted=False):
+def _normalize_locations(context, image, force_show_deleted=False):
     """
     Generate suitable dictionary list for locations field of image.
 
     We don't need to set other data fields of location record which return
     from image query.
     """
+
+    if image['status'] == 'deactivated' and not context.is_admin:
+        # Locations are not returned for a deactivated image for non-admin user
+        image['locations'] = []
+        return image
 
     if force_show_deleted:
         locations = image['locations']
@@ -191,7 +196,7 @@ def _normalize_tags(image):
 def image_get(context, image_id, session=None, force_show_deleted=False):
     image = _image_get(context, image_id, session=session,
                        force_show_deleted=force_show_deleted)
-    image = _normalize_locations(image.to_dict(),
+    image = _normalize_locations(context, image.to_dict(),
                                  force_show_deleted=force_show_deleted)
     return image
 
@@ -361,9 +366,9 @@ def _paginate_query(query, model, limit, sort_keys, marker=None,
 
         # Build up an array of sort criteria as in the docstring
         criteria_list = []
-        for i in xrange(len(sort_keys)):
+        for i in range(len(sort_keys)):
             crit_attrs = []
-            for j in xrange(i):
+            for j in range(i):
                 model_attr = getattr(model, sort_keys[j])
                 default = None if isinstance(
                     model_attr.property.columns[0].type,
@@ -525,7 +530,7 @@ def _select_images_query(context, image_conditions, admin_as_user,
 
 
 def image_get_all(context, filters=None, marker=None, limit=None,
-                  sort_key=['created_at'], sort_dir='desc',
+                  sort_key=None, sort_dir=None,
                   member_status='accepted', is_public=None,
                   admin_as_user=False, return_tag=False):
     """
@@ -537,7 +542,7 @@ def image_get_all(context, filters=None, marker=None, limit=None,
     :param marker: image id after which to start page
     :param limit: maximum number of images to return
     :param sort_key: list of image attributes by which results should be sorted
-    :param sort_dir: direction in which results should be sorted (asc, desc)
+    :param sort_dir: directions in which results should be sorted (asc, desc)
     :param member_status: only return shared images that have this membership
                           status
     :param is_public: If true, return only public images. If false, return
@@ -549,6 +554,16 @@ def image_get_all(context, filters=None, marker=None, limit=None,
                        relevant tag entries. This could improve upper-layer
                        query performance, to prevent using separated calls
     """
+    sort_key = ['created_at'] if not sort_key else sort_key
+
+    default_sort_dir = 'desc'
+
+    if not sort_dir:
+        sort_dir = [default_sort_dir] * len(sort_key)
+    elif len(sort_dir) == 1:
+        default_sort_dir = sort_dir[0]
+        sort_dir *= len(sort_key)
+
     filters = filters or {}
 
     visibility = filters.pop('visibility', None)
@@ -589,11 +604,13 @@ def image_get_all(context, filters=None, marker=None, limit=None,
     for key in ['created_at', 'id']:
         if key not in sort_key:
             sort_key.append(key)
+            sort_dir.append(default_sort_dir)
 
     query = _paginate_query(query, models.Image, limit,
                             sort_key,
                             marker=marker_image,
-                            sort_dir=sort_dir)
+                            sort_dir=None,
+                            sort_dirs=sort_dir)
 
     query = query.options(sa_orm.joinedload(
         models.Image.properties)).options(
@@ -604,7 +621,7 @@ def image_get_all(context, filters=None, marker=None, limit=None,
     images = []
     for image in query.all():
         image_dict = image.to_dict()
-        image_dict = _normalize_locations(image_dict,
+        image_dict = _normalize_locations(context, image_dict,
                                           force_show_deleted=showing_deleted)
         if return_tag:
             image_dict = _normalize_tags(image_dict)
@@ -1306,8 +1323,7 @@ def task_get_all(context, filters=None, marker=None, limit=None,
     session = get_session()
     query = session.query(models.Task)
 
-    if (not (context.is_admin or admin_as_user == True)
-       and context.owner is not None):
+    if not (context.is_admin or admin_as_user) and context.owner is not None:
         query = query.filter(models.Task.owner == context.owner)
 
     showing_deleted = False

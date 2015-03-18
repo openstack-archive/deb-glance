@@ -15,6 +15,7 @@
 
 from oslo.serialization import jsonutils
 from oslo_config import cfg
+from oslo_log import log as logging
 import six
 import six.moves.urllib.parse as urlparse
 import webob.exc
@@ -35,7 +36,6 @@ import glance.db
 import glance.gateway
 from glance import i18n
 import glance.notifier
-import glance.openstack.common.log as logging
 import glance.schema
 
 LOG = logging.getLogger(__name__)
@@ -48,10 +48,12 @@ CONF = cfg.CONF
 
 
 class NamespaceController(object):
-    def __init__(self, db_api=None, policy_enforcer=None):
+    def __init__(self, db_api=None, policy_enforcer=None, notifier=None):
         self.db_api = db_api or glance.db.get_api()
         self.policy = policy_enforcer or policy.Enforcer()
+        self.notifier = notifier or glance.notifier.Notifier()
         self.gateway = glance.gateway.Gateway(db_api=self.db_api,
+                                              notifier=self.notifier,
                                               policy_enforcer=self.policy)
         self.ns_schema_link = '/v2/schemas/metadefs/namespace'
         self.obj_schema_link = '/v2/schemas/metadefs/object'
@@ -269,6 +271,7 @@ class NamespaceController(object):
         namespace_repo = self.gateway.get_metadef_namespace_repo(req.context)
         try:
             ns_obj = namespace_repo.get(namespace)
+            ns_obj._old_namespace = ns_obj.namespace
             ns_obj.namespace = wsme_utils._get_value(user_ns.namespace)
             ns_obj.display_name = wsme_utils._get_value(user_ns.display_name)
             ns_obj.description = wsme_utils._get_value(user_ns.description)
@@ -570,6 +573,12 @@ def get_schema_definitions():
                     },
                     "description": {
                         "type": "string"
+                    },
+                    "operators": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
                     },
                     "type": {
                         "type": "string",

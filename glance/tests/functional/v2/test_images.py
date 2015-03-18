@@ -20,6 +20,8 @@ import uuid
 from oslo.serialization import jsonutils
 import requests
 import six
+# NOTE(jokke): simplified transition to py3, behaves like py2 xrange
+from six.moves import range
 
 from glance.tests import functional
 from glance.tests import utils as test_utils
@@ -408,6 +410,40 @@ class TestImages(functional.FunctionalTest):
         self.assertEqual(200, response.status_code)
         self.assertEqual(5, jsonutils.loads(response.text)['size'])
 
+        # Should be able to deactivate image
+        path = self._url('/v2/images/%s/actions/deactivate' % image_id)
+        response = requests.post(path, data={}, headers=self._headers())
+        self.assertEqual(204, response.status_code)
+
+        # Deactivating a deactivated image succeeds (no-op)
+        path = self._url('/v2/images/%s/actions/deactivate' % image_id)
+        response = requests.post(path, data={}, headers=self._headers())
+        self.assertEqual(204, response.status_code)
+
+        # Can't download a deactivated image
+        path = self._url('/v2/images/%s/file' % image_id)
+        response = requests.get(path, headers=self._headers())
+        self.assertEqual(403, response.status_code)
+
+        # Deactivated image should still be in a listing
+        path = self._url('/v2/images')
+        response = requests.get(path, headers=self._headers())
+        self.assertEqual(200, response.status_code)
+        images = jsonutils.loads(response.text)['images']
+        self.assertEqual(2, len(images))
+        self.assertEqual(image2_id, images[0]['id'])
+        self.assertEqual(image_id, images[1]['id'])
+
+        # Should be able to reactivate a deactivated image
+        path = self._url('/v2/images/%s/actions/reactivate' % image_id)
+        response = requests.post(path, data={}, headers=self._headers())
+        self.assertEqual(204, response.status_code)
+
+        # Reactivating an active image succeeds (no-op)
+        path = self._url('/v2/images/%s/actions/reactivate' % image_id)
+        response = requests.post(path, data={}, headers=self._headers())
+        self.assertEqual(204, response.status_code)
+
         # Deletion should not work on protected images
         path = self._url('/v2/images/%s' % image_id)
         response = requests.delete(path, headers=self._headers())
@@ -703,6 +739,65 @@ class TestImages(functional.FunctionalTest):
                                  'X-Roles': 'member'})
         response = requests.get(path, headers=headers)
         self.assertEqual(200, response.status_code)
+
+        # Image Deletion should work
+        path = self._url('/v2/images/%s' % image_id)
+        response = requests.delete(path, headers=self._headers())
+        self.assertEqual(204, response.status_code)
+
+        # This image should be no longer be directly accessible
+        path = self._url('/v2/images/%s' % image_id)
+        response = requests.get(path, headers=self._headers())
+        self.assertEqual(404, response.status_code)
+
+        self.stop_servers()
+
+    def test_download_image_raises_service_unavailable(self):
+        """Test image download returns HTTPServiceUnavailable."""
+        self.start_servers(**self.__dict__.copy())
+
+        # Create an image
+        path = self._url('/v2/images')
+        headers = self._headers({'content-type': 'application/json'})
+        data = jsonutils.dumps({'name': 'image-1',
+                                'disk_format': 'aki',
+                                'container_format': 'aki'})
+        response = requests.post(path, headers=headers, data=data)
+        self.assertEqual(201, response.status_code)
+
+        # Get image id
+        image = jsonutils.loads(response.text)
+        image_id = image['id']
+
+        # Update image locations via PATCH
+        path = self._url('/v2/images/%s' % image_id)
+        media_type = 'application/openstack-images-v2.1-json-patch'
+        headers = self._headers({'content-type': media_type})
+        http_server_pid, http_port = test_utils.start_http_server(image_id,
+                                                                  "image-1")
+        values = [{'url': 'http://127.0.0.1:%s/image-1' % http_port,
+                   'metadata': {'idx': '0'}}]
+        doc = [{'op': 'replace',
+                'path': '/locations',
+                'value': values}]
+        data = jsonutils.dumps(doc)
+        response = requests.patch(path, headers=headers, data=data)
+        self.assertEqual(200, response.status_code)
+
+        # Download an image should work
+        path = self._url('/v2/images/%s/file' % image_id)
+        headers = self._headers({'Content-Type': 'application/json'})
+        response = requests.get(path, headers=headers)
+        self.assertEqual(200, response.status_code)
+
+        # Stop http server used to update image location
+        os.kill(http_server_pid, signal.SIGKILL)
+
+        # Download an image should raise HTTPServiceUnavailable
+        path = self._url('/v2/images/%s/file' % image_id)
+        headers = self._headers({'Content-Type': 'application/json'})
+        response = requests.get(path, headers=headers)
+        self.assertEqual(503, response.status_code)
 
         # Image Deletion should work
         path = self._url('/v2/images/%s' % image_id)

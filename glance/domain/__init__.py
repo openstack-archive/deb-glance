@@ -19,6 +19,7 @@ import datetime
 import uuid
 
 from oslo_config import cfg
+from oslo_log import log as logging
 from oslo_utils import excutils
 from oslo_utils import importutils
 from oslo_utils import timeutils
@@ -26,10 +27,11 @@ import six
 
 from glance.common import exception
 from glance import i18n
-import glance.openstack.common.log as logging
 
 _ = i18n._
 _LE = i18n._LE
+_LI = i18n._LI
+_LW = i18n._LW
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
 CONF.import_opt('task_executor', 'glance.common.config', group='task')
@@ -106,10 +108,11 @@ class Image(object):
         # can be retried.
         'queued': ('saving', 'active', 'deleted'),
         'saving': ('active', 'killed', 'deleted', 'queued'),
-        'active': ('queued', 'pending_delete', 'deleted'),
+        'active': ('queued', 'pending_delete', 'deleted', 'deactivated'),
         'killed': ('deleted',),
         'pending_delete': ('deleted',),
         'deleted': (),
+        'deactivated': ('active', 'deleted'),
     }
 
     def __init__(self, image_id, status, created_at, updated_at, **kwargs):
@@ -245,6 +248,34 @@ class Image(object):
         else:
             self.status = 'deleted'
 
+    def deactivate(self):
+        if self.status == 'active':
+            self.status = 'deactivated'
+        elif self.status == 'deactivated':
+            # Noop if already deactive
+            pass
+        else:
+            msg = ("Not allowed to deactivate image in status '%s'"
+                   % self.status)
+            LOG.debug(msg)
+            msg = (_("Not allowed to deactivate image in status '%s'")
+                   % self.status)
+            raise exception.Forbidden(message=msg)
+
+    def reactivate(self):
+        if self.status == 'deactivated':
+            self.status = 'active'
+        elif self.status == 'active':
+            # Noop if already active
+            pass
+        else:
+            msg = ("Not allowed to reactivate image in status '%s'"
+                   % self.status)
+            LOG.debug(msg)
+            msg = (_("Not allowed to reactivate image in status '%s'")
+                   % self.status)
+            raise exception.Forbidden(message=msg)
+
     def get_data(self, *args, **kwargs):
         raise NotImplementedError()
 
@@ -372,15 +403,15 @@ class Task(object):
     def _set_task_status(self, new_status):
         if self._validate_task_status_transition(self.status, new_status):
             self._status = new_status
-            log_msg = (_("Task [%(task_id)s] status changing from "
-                         "%(cur_status)s to %(new_status)s") %
+            log_msg = (_LI("Task [%(task_id)s] status changing from "
+                           "%(cur_status)s to %(new_status)s") %
                        {'task_id': self.task_id, 'cur_status': self.status,
                         'new_status': new_status})
             LOG.info(log_msg)
             self._status = new_status
         else:
-            log_msg = (_("Task [%(task_id)s] status failed to change from "
-                         "%(cur_status)s to %(new_status)s") %
+            log_msg = (_LE("Task [%(task_id)s] status failed to change from "
+                           "%(cur_status)s to %(new_status)s") %
                        {'task_id': self.task_id, 'cur_status': self.status,
                         'new_status': new_status})
             LOG.error(log_msg)
@@ -453,6 +484,7 @@ class TaskFactory(object):
 
 
 class TaskExecutorFactory(object):
+    eventlet_deprecation_warned = False
 
     def __init__(self, task_repo, image_repo, image_factory):
         self.task_repo = task_repo
@@ -461,9 +493,24 @@ class TaskExecutorFactory(object):
 
     def new_task_executor(self, context):
         try:
+            # NOTE(flaper87): Backwards compatibility layer.
+            # It'll allow us to provide a deprecation path to
+            # users that are currently consuming the `eventlet`
+            # executor.
+            task_executor = CONF.task.task_executor
+            if task_executor == 'eventlet':
+                # NOTE(jokke): Making sure we do not log the deprecation
+                # warning 1000 times or anything crazy like that.
+                if not TaskExecutorFactory.eventlet_deprecation_warned:
+                    msg = _LW("The `eventlet` executor has been deprecated. "
+                              "Use `taskflow` instead.")
+                    LOG.warn(msg)
+                    TaskExecutorFactory.eventlet_deprecation_warned = True
+                task_executor = 'taskflow'
+
             executor_cls = ('glance.async.%s_executor.'
-                            'TaskExecutor' % CONF.task.task_executor)
-            LOG.debug("Loading %s executor" % CONF.task.task_executor)
+                            'TaskExecutor' % task_executor)
+            LOG.debug("Loading %s executor" % task_executor)
             executor = importutils.import_class(executor_cls)
             return executor(context,
                             self.task_repo,

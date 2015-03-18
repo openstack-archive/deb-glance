@@ -15,17 +15,17 @@
 #    under the License.
 
 import copy
-import datetime
 import functools
+from operator import itemgetter
 import uuid
 
+from oslo_log import log as logging
 from oslo_utils import timeutils
 import six
 
 from glance.common import exception
 from glance.common import utils
 from glance import i18n
-import glance.openstack.common.log as logging
 
 LOG = logging.getLogger(__name__)
 _ = i18n._
@@ -340,29 +340,35 @@ def _do_pagination(context, images, marker, limit, show_deleted,
 
 
 def _sort_images(images, sort_key, sort_dir):
-    reverse = sort_dir == 'desc'
+    sort_key = ['created_at'] if not sort_key else sort_key
+
+    default_sort_dir = 'desc'
+
+    if not sort_dir:
+        sort_dir = [default_sort_dir] * len(sort_key)
+    elif len(sort_dir) == 1:
+        default_sort_dir = sort_dir[0]
+        sort_dir *= len(sort_key)
 
     for key in ['created_at', 'id']:
         if key not in sort_key:
             sort_key.append(key)
+            sort_dir.append(default_sort_dir)
 
     for key in sort_key:
         if images and not (key in images[0]):
             raise exception.InvalidSortKey()
 
-    def sort_func(element):
-        keys = []
-        for key in sort_key:
-            if element[key] is not None:
-                keys.append(element[key])
-            else:
-                if key in ['created_at', 'updated_at', 'deleted_at']:
-                    keys.append(datetime.datetime.min)
-                else:
-                    keys.append('')
-        return tuple(keys)
+    if any(dir for dir in sort_dir if dir not in ['asc', 'desc']):
+        raise exception.InvalidSortDir()
 
-    images.sort(key=sort_func, reverse=reverse)
+    if len(sort_key) != len(sort_dir):
+        raise exception.Invalid(message='Number of sort dirs does not match '
+                                        'the number of sort keys')
+
+    for key, dir in reversed(zip(sort_key, sort_dir)):
+        reverse = dir == 'desc'
+        images.sort(key=itemgetter(key), reverse=reverse)
 
     return images
 
@@ -389,13 +395,13 @@ def _image_get(context, image_id, force_show_deleted=False, status=None):
 @log_call
 def image_get(context, image_id, session=None, force_show_deleted=False):
     image = _image_get(context, image_id, force_show_deleted)
-    return _normalize_locations(copy.deepcopy(image),
+    return _normalize_locations(context, copy.deepcopy(image),
                                 force_show_deleted=force_show_deleted)
 
 
 @log_call
 def image_get_all(context, filters=None, marker=None, limit=None,
-                  sort_key=['created_at'], sort_dir='desc',
+                  sort_key=None, sort_dir=None,
                   member_status='accepted', is_public=None,
                   admin_as_user=False, return_tag=False):
     filters = filters or {}
@@ -409,7 +415,7 @@ def image_get_all(context, filters=None, marker=None, limit=None,
     force_show_deleted = True if filters.get('deleted') else False
     res = []
     for image in images:
-        img = _normalize_locations(copy.deepcopy(image),
+        img = _normalize_locations(context, copy.deepcopy(image),
                                    force_show_deleted=force_show_deleted)
         if return_tag:
             img['tags'] = image_tag_get_all(context, img['id'])
@@ -494,7 +500,7 @@ def image_member_create(context, values):
 def image_member_update(context, member_id, values):
     global DATA
     for member in DATA['members']:
-        if (member['id'] == member_id):
+        if member['id'] == member_id:
             member.update(values)
             member['updated_at'] = timeutils.utcnow()
             return copy.deepcopy(member)
@@ -506,7 +512,7 @@ def image_member_update(context, member_id, values):
 def image_member_delete(context, member_id):
     global DATA
     for i, member in enumerate(DATA['members']):
-        if (member['id'] == member_id):
+        if member['id'] == member_id:
             del DATA['members'][i]
             break
     else:
@@ -541,7 +547,7 @@ def image_location_update(context, image_id, location):
 
     updated = False
     for loc in DATA['locations']:
-        if (loc['id'] == loc_id and loc['image_id'] == image_id):
+        if loc['id'] == loc_id and loc['image_id'] == image_id:
             loc.update({"value": location['url'],
                         "meta_data": location['metadata'],
                         "status": location['status'],
@@ -568,7 +574,7 @@ def image_location_delete(context, image_id, location_id, status,
 
     deleted = False
     for loc in DATA['locations']:
-        if (loc['id'] == location_id and loc['image_id'] == image_id):
+        if loc['id'] == location_id and loc['image_id'] == image_id:
             deleted = True
             delete_time = delete_time or timeutils.utcnow()
             loc.update({"deleted": deleted,
@@ -616,13 +622,18 @@ def _image_locations_delete_all(context, image_id, delete_time=None):
             del DATA['locations'][i]
 
 
-def _normalize_locations(image, force_show_deleted=False):
+def _normalize_locations(context, image, force_show_deleted=False):
     """
     Generate suitable dictionary list for locations field of image.
 
     We don't need to set other data fields of location record which return
     from image query.
     """
+
+    if image['status'] == 'deactivated' and not context.is_admin:
+        # Locations are not returned for a deactivated image for non-admin user
+        image['locations'] = []
+        return image
 
     if force_show_deleted:
         locations = image['locations']
@@ -662,7 +673,7 @@ def image_create(context, image_values):
     DATA['images'][image_id] = image
     DATA['tags'][image_id] = image.pop('tags', [])
 
-    return _normalize_locations(copy.deepcopy(image))
+    return _normalize_locations(context, copy.deepcopy(image))
 
 
 @log_call
@@ -690,7 +701,7 @@ def image_update(context, image_id, image_values, purge_props=False,
     image['updated_at'] = timeutils.utcnow()
     _image_update(image, image_values, new_properties)
     DATA['images'][image_id] = image
-    return _normalize_locations(copy.deepcopy(image))
+    return _normalize_locations(context, copy.deepcopy(image))
 
 
 @log_call
@@ -721,7 +732,8 @@ def image_destroy(context, image_id):
         for tag in tags:
             image_tag_delete(context, image_id, tag)
 
-        return _normalize_locations(copy.deepcopy(DATA['images'][image_id]))
+        return _normalize_locations(context,
+                                    copy.deepcopy(DATA['images'][image_id]))
     except KeyError:
         raise exception.NotFound()
 
@@ -1060,6 +1072,15 @@ def _task_info_get(task_id):
     return task_info
 
 
+def _metadef_delete_namespace_content(get_func, key, context, namespace_name):
+    global DATA
+    metadefs = get_func(context, namespace_name)
+    data = DATA[key]
+    for metadef in metadefs:
+        data.remove(metadef)
+    return metadefs
+
+
 @log_call
 def metadef_namespace_create(context, values):
     """Create a namespace object"""
@@ -1374,6 +1395,13 @@ def metadef_object_delete(context, namespace_name, object_name):
     return object
 
 
+def metadef_object_delete_namespace_content(context, namespace_name,
+                                            session=None):
+    """Delete an object or raise if namespace or object doesn't exist."""
+    return _metadef_delete_namespace_content(
+        metadef_object_get_all, 'metadef_objects', context, namespace_name)
+
+
 @log_call
 def metadef_object_count(context, namespace_name):
     """Get metadef object count in a namespace"""
@@ -1550,6 +1578,14 @@ def metadef_property_delete(context, namespace_name, property_name):
     return property
 
 
+def metadef_property_delete_namespace_content(context, namespace_name,
+                                              session=None):
+    """Delete a property or raise if it or namespace doesn't exist."""
+    return _metadef_delete_namespace_content(
+        metadef_property_get_all, 'metadef_properties', context,
+        namespace_name)
+
+
 @log_call
 def metadef_resource_type_create(context, values):
     """Create a metadef resource type"""
@@ -1694,8 +1730,7 @@ def metadef_tag_get(context, namespace_name, name):
     _check_namespace_visibility(context, namespace, namespace_name)
 
     for tag in DATA['metadef_tags']:
-        if (tag['namespace_id'] == namespace['id'] and
-                tag['name'] == name):
+        if tag['namespace_id'] == namespace['id'] and tag['name'] == name:
             return tag
     else:
         msg = ("The metadata definition tag with name=%(name)s"
@@ -1713,8 +1748,7 @@ def metadef_tag_get_by_id(context, namespace_name, id):
     _check_namespace_visibility(context, namespace, namespace_name)
 
     for tag in DATA['metadef_tags']:
-        if (tag['namespace_id'] == namespace['id'] and
-                tag['id'] == id):
+        if tag['namespace_id'] == namespace['id'] and tag['id'] == id:
             return tag
     else:
         msg = (_("Metadata definition tag not found for id=%s") % id)
@@ -1752,8 +1786,7 @@ def metadef_tag_create(context, namespace_name, values):
     namespace = metadef_namespace_get(context, namespace_name)
 
     for tag in DATA['metadef_tags']:
-        if (tag['name'] == tag_name and
-                tag['namespace_id'] == namespace['id']):
+        if tag['name'] == tag_name and tag['namespace_id'] == namespace['id']:
             msg = ("A metadata definition tag with name=%(name)s"
                    " in namespace=%(namespace_name)s already exists."
                    % {'name': tag_name, 'namespace_name': namespace_name})
@@ -1864,6 +1897,13 @@ def metadef_tag_delete(context, namespace_name, name):
     DATA['metadef_tags'].remove(tags)
 
     return tags
+
+
+def metadef_tag_delete_namespace_content(context, namespace_name,
+                                         session=None):
+    """Delete an tag or raise if namespace or tag doesn't exist."""
+    return _metadef_delete_namespace_content(
+        metadef_tag_get_all, 'metadef_tags', context, namespace_name)
 
 
 @log_call
@@ -1986,10 +2026,10 @@ def _is_namespace_visible(context, namespace):
 def _check_namespace_visibility(context, namespace, namespace_name):
     if not _is_namespace_visible(context, namespace):
         msg = ("Forbidding request, metadata definition namespace=%s"
-               " not visible." % namespace_name)
+               " is not visible." % namespace_name)
         LOG.debug(msg)
         emsg = _("Forbidding request, metadata definition namespace=%s"
-                 " not visible.") % namespace_name
+                 " is not visible.") % namespace_name
         raise exception.MetadefForbidden(emsg)
 
 

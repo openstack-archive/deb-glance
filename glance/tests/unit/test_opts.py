@@ -61,16 +61,6 @@ class OptsTestCase(utils.BaseTestCase):
             'paste_deploy'
         ]
         expected_opt_names = [
-            'debug',
-            'verbose',
-            'log-config-append',
-            'log-format',
-            'log-date-format',
-            'log-file',
-            'log-dir',
-            'use-syslog',
-            'use-syslog-rfc-format',
-            'syslog-log-facility',
             'owner_is_tenant',
             'admin_role',
             'allow_anonymous_access',
@@ -140,12 +130,14 @@ class OptsTestCase(utils.BaseTestCase):
             'disk_formats',
             'task_time_to_live',
             'task_executor',
-            'eventlet_executor_pool_size',
+            'work_dir',
             'store_type_preference',
             'flavor',
             'config_file',
             'public_endpoint',
             'digest_algorithm',
+            'http_keepalive',
+            'disabled_notifications',
         ]
 
         self._check_opt_groups(opt_list, expected_opt_groups)
@@ -160,16 +152,6 @@ class OptsTestCase(utils.BaseTestCase):
             'paste_deploy'
         ]
         expected_opt_names = [
-            'debug',
-            'verbose',
-            'log-config-append',
-            'log-format',
-            'log-date-format',
-            'log-file',
-            'log-dir',
-            'use-syslog',
-            'use-syslog-rfc-format',
-            'syslog-log-facility',
             'owner_is_tenant',
             'admin_role',
             'allow_anonymous_access',
@@ -207,6 +189,7 @@ class OptsTestCase(utils.BaseTestCase):
             'flavor',
             'config_file',
             'digest_algorithm',
+            'http_keepalive',
         ]
 
         self._check_opt_groups(opt_list, expected_opt_groups)
@@ -220,16 +203,6 @@ class OptsTestCase(utils.BaseTestCase):
             None
         ]
         expected_opt_names = [
-            'debug',
-            'verbose',
-            'log-config-append',
-            'log-format',
-            'log-date-format',
-            'log-file',
-            'log-dir',
-            'use-syslog',
-            'use-syslog-rfc-format',
-            'syslog-log-facility',
             'policy_file',
             'policy_default_rule',
             'policy_dirs',
@@ -282,16 +255,6 @@ class OptsTestCase(utils.BaseTestCase):
             None
         ]
         expected_opt_names = [
-            'debug',
-            'verbose',
-            'log-config-append',
-            'log-format',
-            'log-date-format',
-            'log-file',
-            'log-dir',
-            'use-syslog',
-            'use-syslog-rfc-format',
-            'syslog-log-facility',
             'policy_file',
             'policy_default_rule',
             'policy_dirs',
@@ -342,17 +305,6 @@ class OptsTestCase(utils.BaseTestCase):
             None,
         ]
         expected_opt_names = [
-            'debug',
-            'verbose',
-            'log-config-append',
-            'log-format',
-            'log-date-format',
-            'log-file',
-            'log-dir',
-            'use-syslog',
-            'use-syslog-rfc-format',
-            'syslog-log-facility',
-            'db_enforce_mysql_charset'
         ]
 
         self._check_opt_groups(opt_list, expected_opt_groups)

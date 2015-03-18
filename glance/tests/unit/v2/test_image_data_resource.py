@@ -110,6 +110,16 @@ class TestImagesController(base.StoreClearingUnitTest):
         image = self.controller.download(request, unit_test_utils.UUID1)
         self.assertEqual('abcd', image.image_id)
 
+    def test_download_deactivated(self):
+        request = unit_test_utils.get_fake_request()
+        image = FakeImage('abcd',
+                          status='deactivated',
+                          locations=[{'url': 'http://example.com/image',
+                                      'metadata': {}, 'status': 'active'}])
+        self.image_repo.result = image
+        self.assertRaises(webob.exc.HTTPForbidden, self.controller.download,
+                          request, str(uuid.uuid4()))
+
     def test_download_no_location(self):
         request = unit_test_utils.get_fake_request()
         self.image_repo.result = FakeImage('abcd')
@@ -489,6 +499,62 @@ class TestImageDataSerializer(test_utils.BaseTestCase):
             image = FakeImage(size=3, data=iter('ZZZ'))
             image.get_data = mock_get_data
             self.assertRaises(webob.exc.HTTPNotFound,
+                              self.serializer.download,
+                              response, image)
+
+    def test_download_service_unavailable(self):
+        """Test image download returns HTTPServiceUnavailable."""
+        with mock.patch.object(glance.api.policy.ImageProxy,
+                               'get_data') as mock_get_data:
+            mock_get_data.side_effect = glance_store.RemoteServiceUnavailable()
+
+            request = wsgi.Request.blank('/')
+            response = webob.Response()
+            response.request = request
+            image = FakeImage(size=3, data=iter('ZZZ'))
+            image.get_data = mock_get_data
+            self.assertRaises(webob.exc.HTTPServiceUnavailable,
+                              self.serializer.download,
+                              response, image)
+
+    def test_download_store_get_not_support(self):
+        """Test image download returns HTTPBadRequest.
+
+        Make sure that serializer returns 400 bad request error in case of
+        getting images from this store is not supported at specified location.
+        """
+        with mock.patch.object(glance.api.policy.ImageProxy,
+                               'get_data') as mock_get_data:
+            mock_get_data.side_effect = glance_store.StoreGetNotSupported()
+
+            request = wsgi.Request.blank('/')
+            response = webob.Response()
+            response.request = request
+            image = FakeImage(size=3, data=iter('ZZZ'))
+            image.get_data = mock_get_data
+            self.assertRaises(webob.exc.HTTPBadRequest,
+                              self.serializer.download,
+                              response, image)
+
+    def test_download_store_random_get_not_support(self):
+        """Test image download returns HTTPBadRequest.
+
+        Make sure that serializer returns 400 bad request error in case of
+        getting randomly images from this store is not supported at
+        specified location.
+        """
+        with mock.patch.object(glance.api.policy.ImageProxy,
+                               'get_data') as m_get_data:
+            err = glance_store.StoreRandomGetNotSupported(offset=0,
+                                                          chunk_size=0)
+            m_get_data.side_effect = err
+
+            request = wsgi.Request.blank('/')
+            response = webob.Response()
+            response.request = request
+            image = FakeImage(size=3, data=iter('ZZZ'))
+            image.get_data = m_get_data
+            self.assertRaises(webob.exc.HTTPBadRequest,
                               self.serializer.download,
                               response, image)
 

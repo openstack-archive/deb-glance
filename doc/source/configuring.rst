@@ -692,6 +692,15 @@ Can only be specified in configuration files.
 
 `This option is specific to the Swift storage backend.`
 
+* ``swift_store_cacert``
+
+Can only be specified in configuration files.
+
+Optional. Default: ``None``
+
+A string giving the path to a CA certificate bundle that will allow Glance's
+services to perform SSL verification when communicating with Swift.
+
 Optional. Default: True.
 
 If set to False, disables SSL layer compression of https swift
@@ -1070,6 +1079,38 @@ Can only be specified in configuration files.
 
 Datastore name associated with the ``vmware_datacenter_path``
 
+* ``vmware_datastores``
+
+Optional. Default: Not set.
+
+This option can only be specified in configuration file and is specific
+to the VMware storage backend.
+
+vmware_datastores allows administrators to configure multiple datastores to
+save glance image in the VMware store backend. The required format for the
+option is: <datacenter_path>:<datastore_name>:<optional_weight>.
+
+where datacenter_path is the inventory path to the datacenter where the
+datastore is located. An optional weight can be given to specify the priority.
+
+Example::
+
+  vmware_datastores = datacenter1:datastore1
+  vmware_datastores = dc_folder/datacenter2:datastore2:100
+  vmware_datastores = datacenter1:datastore3:200
+
+**NOTE**:
+
+  - This option can be specified multiple times to specify multiple datastores.
+  - Either vmware_datastore_name or vmware_datastores option must be specified
+    in glance-api.conf
+  - Datastore with weight 200 has precedence over datastore with weight 100.
+  - If no weight is specified, default weight '0' is associated with it.
+  - If two datastores have same weight, the datastore with maximum free space
+    will be chosen to store the image.
+  - If the datacenter path or datastore name contains a colon (:) symbol, it
+    must be escaped with a backslash.
+
 * ``vmware_api_retry_count=TIMES``
 
 Optional. Default: ``10``
@@ -1294,6 +1335,18 @@ Sets the notification driver used by oslo.messaging. Options include
 For more information see :doc:`Glance notifications <notifications>` and
 `oslo.messaging <http://docs.openstack.org/developer/oslo.messaging/>`_.
 
+* ``disabled_notifications``
+
+Optional. Default: ``[]``
+
+List of disabled notifications. A notification can be given either as a
+notification type to disable a single event, or as a notification group prefix
+to disable all events within a group.
+
+Example: if this config option is set to ["image.create", "metadef_namespace"],
+then "image.create" notification will not be sent after image is created and
+none of the notifications for metadefinition namespaces will be sent.
+
 Configuring Glance Property Protections
 ---------------------------------------
 
@@ -1349,20 +1402,24 @@ the ``failure`` state.
 Optional. Default: ``48``
 
 The config value ``task_executor`` is used to determine which executor
-should be used by the Glance service to process the task.
+should be used by the Glance service to process the task. The currently
+available implementation is: ``taskflow``.
 
 * ``task_executor=<executor_type>``
 
-Optional. Default: ``eventlet``
+Optional. Default: ``taskflow``
 
-The config value ``eventlet_executor_pool_size`` is used to configure the
-eventlet task executor. It sets the maximum on the number of threads which can
-be spun up at any given point of time, that are used for the execution of
-Glance Tasks.
+The ``taskflow`` engine has its own set of configuration options,
+under the ``taskflow_executor`` section, that can be tuned to improve
+the task execution process. Among the available options, you may find
+``engine_mode`` and ``max_workers``. The former allows for selecting
+an execution model and the available options are ``serial``,
+``parallel`` and ``worker-based``. The ``max_workers`` option,
+instead, allows for controlling the number of workers that will be
+instantiated per executor instance.
 
-* ``eventlet_executor_pool_size=<Size_of_pool_in_int>``
-
-Optional. Default: ``1000``
+The default value for the ``engine_mode`` is ``parallel``, whereas
+the default number of ``max_workers`` is ``10``.
 
 Configuring Glance performance profiling
 ----------------------------------------
@@ -1401,10 +1458,14 @@ profiling will not be triggered even profiling feature is enabled.
 Configuring Glance public endpoint
 ----------------------------------
 
-When Glance API service is ran behind a proxy, operator probably need to
-configure a proper public endpoint to versions URL instead of use host owned
-which run service really. Glance allows configure a public endpoint URL to
-represent the proxy's URL.
+This setting allows an operator to configure the endpoint URL that will
+appear in the Glance "versions" response (that is, the response to
+``GET /``\  ).  This can be necessary when the Glance API service is run
+behind a proxy because the default endpoint displayed in the versions
+response is that of the host actually running the API service.  If
+Glance is being run behind a load balancer, for example, direct access
+to individual hosts running the Glance API may not be allowed, hence the
+load balancer URL would be used for this value.
 
 * ``public_endpoint=<None|URL>``
 
@@ -1427,3 +1488,14 @@ return a ValueError exception with "No such digest method" error.
 * ``digest_algorithm=<algorithm>``
 
 Optional. Default: ``sha1``
+
+Configuring http_keepalive option
+----------------------------------
+
+* ``http_keepalive=<True|False>``
+
+If False, server will return the header "Connection: close", If True, server
+will return "Connection: Keep-Alive" in its responses. In order to close the
+client socket connection explicitly after the response is sent and read
+successfully by the client, you simply have to set this option to False when
+you create a wsgi server.

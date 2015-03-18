@@ -38,6 +38,7 @@ import uuid
 
 from OpenSSL import crypto
 from oslo_config import cfg
+from oslo_log import log as logging
 from oslo_utils import encodeutils
 from oslo_utils import excutils
 from oslo_utils import netutils
@@ -47,12 +48,12 @@ from webob import exc
 
 from glance.common import exception
 from glance import i18n
-import glance.openstack.common.log as logging
 
 CONF = cfg.CONF
 
 LOG = logging.getLogger(__name__)
 _ = i18n._
+_LE = i18n._LE
 
 FEATURE_BLACKLIST = ['content-length', 'content-type', 'x-image-meta-size']
 
@@ -111,7 +112,7 @@ def cooperative_iter(iter):
             yield chunk
     except Exception as err:
         with excutils.save_and_reraise_exception():
-            msg = _("Error: cooperative_iter exception %s") % err
+            msg = _LE("Error: cooperative_iter exception %s") % err
             LOG.error(msg)
 
 
@@ -510,10 +511,10 @@ def mutating(func):
 
 
 def setup_remote_pydev_debug(host, port):
-    error_msg = _('Error setting up the debug environment.  Verify that the'
-                  ' option pydev_worker_debug_host is pointing to a valid '
-                  'hostname or IP on which a pydev server is listening on'
-                  ' the port indicated by pydev_worker_debug_port.')
+    error_msg = _LE('Error setting up the debug environment. Verify that the'
+                    ' option pydev_worker_debug_host is pointing to a valid '
+                    'hostname or IP on which a pydev server is listening on'
+                    ' the port indicated by pydev_worker_debug_port.')
 
     try:
         try:
@@ -606,11 +607,6 @@ def is_uuid_like(val):
         return False
 
 
-def is_valid_port(port):
-    """Verify that port represents a valid port number."""
-    return str(port).isdigit() and int(port) > 0 and int(port) <= 65535
-
-
 def is_valid_hostname(hostname):
     """Verify whether a hostname (not an FQDN) is valid."""
     return re.match('^[a-zA-Z0-9-]+$', hostname) is not None
@@ -637,7 +633,7 @@ def parse_valid_host_port(host_port):
         except Exception:
             raise ValueError(_('Host and port "%s" is not valid.') % host_port)
 
-        if not is_valid_port(port):
+        if not netutils.is_valid_port(port):
             raise ValueError(_('Port "%s" is not valid.') % port)
 
         # First check for valid IPv6 and IPv4 addresses, then a generic

@@ -40,16 +40,17 @@ try:
 except ImportError:
     SENDFILE_SUPPORTED = False
 
+from oslo_log import log as logging
 from oslo_utils import encodeutils
 import six
+# NOTE(jokke): simplified transition to py3, behaves like py2 xrange
+from six.moves import range
 import six.moves.urllib.parse as urlparse
-from six.moves import xrange
 
 from glance.common import auth
 from glance.common import exception
 from glance.common import utils
 from glance import i18n
-import glance.openstack.common.log as logging
 
 LOG = logging.getLogger(__name__)
 _ = i18n._
@@ -82,7 +83,7 @@ def handle_redirects(func):
 
     @functools.wraps(func)
     def wrapped(self, method, url, body, headers):
-        for _ in xrange(MAX_REDIRECTS):
+        for _ in range(MAX_REDIRECTS):
             try:
                 return func(self, method, url, body, headers)
             except exception.RedirectException as redirect:

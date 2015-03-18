@@ -15,6 +15,7 @@
 
 from oslo.serialization import jsonutils
 from oslo_config import cfg
+from oslo_log import log as logging
 import six
 import webob.exc
 from wsme.rest import json
@@ -29,7 +30,6 @@ from glance.common import wsme_utils
 import glance.db
 from glance import i18n
 import glance.notifier
-import glance.openstack.common.log as logging
 import glance.schema
 
 LOG = logging.getLogger(__name__)
@@ -41,20 +41,23 @@ CONF = cfg.CONF
 
 
 class TagsController(object):
-    def __init__(self, db_api=None, policy_enforcer=None):
+    def __init__(self, db_api=None, policy_enforcer=None, notifier=None):
         self.db_api = db_api or glance.db.get_api()
         self.policy = policy_enforcer or policy.Enforcer()
+        self.notifier = notifier or glance.notifier.Notifier()
         self.gateway = glance.gateway.Gateway(db_api=self.db_api,
+                                              notifier=self.notifier,
                                               policy_enforcer=self.policy)
         self.tag_schema_link = '/v2/schemas/metadefs/tag'
 
-    def create(self, req, metadata_tag, namespace):
+    def create(self, req, namespace, tag_name):
         tag_factory = self.gateway.get_metadef_tag_factory(req.context)
         tag_repo = self.gateway.get_metadef_tag_repo(req.context)
+        tag_name_as_dict = {'name': tag_name}
         try:
             new_meta_tag = tag_factory.new_tag(
                 namespace=namespace,
-                **metadata_tag.to_dict())
+                **tag_name_as_dict)
             tag_repo.add(new_meta_tag)
         except exception.Forbidden as e:
             raise webob.exc.HTTPForbidden(explanation=e.msg)
@@ -140,6 +143,7 @@ class TagsController(object):
         meta_repo = self.gateway.get_metadef_tag_repo(req.context)
         try:
             metadef_tag = meta_repo.get(namespace, tag_name)
+            metadef_tag._old_name = metadef_tag.name
             metadef_tag.name = wsme_utils._get_value(
                 metadata_tag.name)
             updated_metadata_tag = meta_repo.save(metadef_tag)
@@ -286,7 +290,7 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
 
         return limit
 
-    def _create_or_update(self, request):
+    def update(self, request):
         body = self._get_request_body(request)
         self._check_allowed(body)
         try:
@@ -316,9 +320,6 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
 
         return query_params
 
-    def create(self, request):
-        return self._create_or_update(request)
-
     def create_tags(self, request):
         body = self._get_request_body(request)
         self._check_allowed(body)
@@ -328,9 +329,6 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
             raise webob.exc.HTTPBadRequest(explanation=e.msg)
         metadata_tags = json.fromjson(MetadefTags, body)
         return dict(metadata_tags=metadata_tags)
-
-    def update(self, request):
-        return self._create_or_update(request)
 
     @classmethod
     def _check_allowed(cls, image):

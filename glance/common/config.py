@@ -67,24 +67,29 @@ task_opts = [
                deprecated_opts=[cfg.DeprecatedOpt('task_time_to_live',
                                                   group='DEFAULT')]),
     cfg.StrOpt('task_executor',
-               default='eventlet',
+               default='taskflow',
                help=_("Specifies which task executor to be used to run the "
                       "task scripts.")),
-    cfg.IntOpt('eventlet_executor_pool_size',
-               default=1000,
-               help=_("Specifies the maximum number of eventlet threads which "
-                      "can be spun up by the eventlet based task executor to "
-                      "perform execution of Glance tasks.")),
-]
-manage_opts = [
-    cfg.BoolOpt('db_enforce_mysql_charset',
-                default=True,
-                help=_('DEPRECATED. TO BE REMOVED IN THE JUNO RELEASE. '
-                       'Whether or not to enforce that all DB tables have '
-                       'charset utf8. If your database tables do not have '
-                       'charset utf8 you will need to convert before this '
-                       'option is removed. This option is only relevant if '
-                       'your database engine is MySQL.'))
+    cfg.StrOpt('work_dir',
+               default=None,
+               help=_('Work dir for asynchronous task operations. '
+                      'The directory set here will be used to operate over '
+                      'images - normally before they are imported in the '
+                      'destination store. When providing work dir, make sure '
+                      'enough space is provided for concurrent tasks to run '
+                      'efficiently without running out of space. A rough '
+                      'estimation can be done by multiplying the number of '
+                      '`max_workers` - or the N of workers running - by an '
+                      'average image size (e.g 500MB). The image size '
+                      'estimation should be done based on the average size in '
+                      'your deployment. Note that depending on the tasks '
+                      'running you may need to multiply this number by some '
+                      'factor depending on what the task does. For example, '
+                      'you may want to double the available size if image '
+                      'conversion is enabled. All this being said, remember '
+                      'these are just estimations and you should do them '
+                      'based on the worst case scenario and be prepared to '
+                      'act in case they were wrong.')),
 ]
 common_opts = [
     cfg.BoolOpt('allow_additional_image_properties', default=True,
@@ -117,12 +122,19 @@ common_opts = [
                        'caution!')),
     cfg.BoolOpt('show_multiple_locations', default=False,
                 help=_('Whether to include the backend image locations '
-                       'in image properties. Revealing storage location can '
+                       'in image properties. '
+                       'For example, if using the file system store a URL of '
+                       '"file:///path/to/image" will be returned to the user '
+                       'in the \'direct_url\' meta-data field. '
+                       'Revealing storage location can '
                        'be a security risk, so use this setting with '
                        'caution!  The overrides show_image_direct_url.')),
     cfg.IntOpt('image_size_cap', default=1099511627776,
                help=_("Maximum size of image a user can upload in bytes. "
-                      "Defaults to 1099511627776 bytes (1 TB).")),
+                      "Defaults to 1099511627776 bytes (1 TB)."
+                      "WARNING: this value should only be increased after "
+                      "careful consideration and must be set to a value under "
+                      "8 EB (9223372036854775808).")),
     cfg.StrOpt('user_storage_quota', default='0',
                help=_("Set a system wide quota for every user. This value is "
                       "the total capacity that a user can use across "
@@ -148,8 +160,10 @@ common_opts = [
                help=_('The port on which a pydev process is listening for '
                       'connections.')),
     cfg.StrOpt('metadata_encryption_key', secret=True,
-               help=_('Key used for encrypting sensitive metadata while '
-                      'talking to the registry or database.')),
+               help=_('AES key for encrypting store \'location\' metadata. '
+                      'This includes, if used, Swift or S3 credentials. '
+                      'Should be set to a random string of length 16, 24 or '
+                      '32 bytes')),
     cfg.StrOpt('digest_algorithm', default='sha1',
                help=_('Digest algorithm which will be used for digital '
                       'signature; the default is sha1 the default in Kilo '
@@ -165,7 +179,6 @@ CONF = cfg.CONF
 CONF.register_opts(paste_deploy_opts, group='paste_deploy')
 CONF.register_opts(image_format_opts, group='image_format')
 CONF.register_opts(task_opts, group='task')
-CONF.register_opts(manage_opts)
 CONF.register_opts(common_opts)
 
 

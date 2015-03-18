@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from glance.api.v2 import image_actions
 from glance.api.v2 import image_data
 from glance.api.v2 import image_members
 from glance.api.v2 import image_tags
@@ -379,12 +380,8 @@ class API(wsgi.Router):
                        conditions={'method': ['GET']})
         mapper.connect('/metadefs/namespaces/{namespace}/tags',
                        controller=metadef_tags_resource,
-                       action='create',
-                       conditions={'method': ['POST']})
-        mapper.connect('/metadefs/namespaces/{namespace}/tags',
-                       controller=metadef_tags_resource,
                        action='create_tags',
-                       conditions={'method': ['PUT']})
+                       conditions={'method': ['POST']})
         mapper.connect('/metadefs/namespaces/{namespace}/tags',
                        controller=metadef_namespace_resource,
                        action='delete_tags',
@@ -392,13 +389,17 @@ class API(wsgi.Router):
         mapper.connect('/metadefs/namespaces/{namespace}/tags',
                        controller=reject_method_resource,
                        action='reject',
-                       allowed_methods='GET, POST, PUT, DELETE',
-                       conditions={'method': ['PATCH', 'HEAD']})
+                       allowed_methods='GET, POST, DELETE',
+                       conditions={'method': ['PUT', 'PATCH', 'HEAD']})
 
         mapper.connect('/metadefs/namespaces/{namespace}/tags/{tag_name}',
                        controller=metadef_tags_resource,
                        action='show',
                        conditions={'method': ['GET']})
+        mapper.connect('/metadefs/namespaces/{namespace}/tags/{tag_name}',
+                       controller=metadef_tags_resource,
+                       action='create',
+                       conditions={'method': ['POST']})
         mapper.connect('/metadefs/namespaces/{namespace}/tags/{tag_name}',
                        controller=metadef_tags_resource,
                        action='update',
@@ -410,8 +411,8 @@ class API(wsgi.Router):
         mapper.connect('/metadefs/namespaces/{namespace}/tags/{tag_name}',
                        controller=reject_method_resource,
                        action='reject',
-                       allowed_methods='GET, PUT, DELETE',
-                       conditions={'method': ['POST', 'PATCH', 'HEAD']})
+                       allowed_methods='GET, POST, PUT, DELETE',
+                       conditions={'method': ['PATCH', 'HEAD']})
 
         images_resource = images.create_resource(custom_image_properties)
         mapper.connect('/images',
@@ -446,6 +447,28 @@ class API(wsgi.Router):
                        action='reject',
                        allowed_methods='GET, PATCH, DELETE',
                        conditions={'method': ['POST', 'PUT', 'HEAD']})
+
+        image_actions_resource = image_actions.create_resource()
+        mapper.connect('/images/{image_id}/actions/deactivate',
+                       controller=image_actions_resource,
+                       action='deactivate',
+                       conditions={'method': ['POST']})
+        mapper.connect('/images/{image_id}/actions/reactivate',
+                       controller=image_actions_resource,
+                       action='reactivate',
+                       conditions={'method': ['POST']})
+        mapper.connect('/images/{image_id}/actions/deactivate',
+                       controller=reject_method_resource,
+                       action='reject',
+                       allowed_methods='POST',
+                       conditions={'method': ['GET', 'PUT', 'DELETE', 'PATCH',
+                                              'HEAD']})
+        mapper.connect('/images/{image_id}/actions/reactivate',
+                       controller=reject_method_resource,
+                       action='reject',
+                       allowed_methods='POST',
+                       conditions={'method': ['GET', 'PUT', 'DELETE', 'PATCH',
+                                              'HEAD']})
 
         image_data_resource = image_data.create_resource()
         mapper.connect('/images/{image_id}/file',

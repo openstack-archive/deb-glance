@@ -52,6 +52,7 @@ _gen_uuid = lambda: str(uuid.uuid4())
 
 UUID1 = _gen_uuid()
 UUID2 = _gen_uuid()
+UUID3 = _gen_uuid()
 
 
 class TestGlanceAPI(base.IsolatedUnitTest):
@@ -89,6 +90,21 @@ class TestGlanceAPI(base.IsolatedUnitTest):
              'checksum': 'abc123',
              'size': 19,
              'locations': [{'url': "file:///%s/%s" % (self.test_dir, UUID2),
+                            'metadata': {}, 'status': 'active'}],
+             'properties': {}},
+            {'id': UUID3,
+             'name': 'fake image #3',
+             'status': 'deactivated',
+             'disk_format': 'ami',
+             'container_format': 'ami',
+             'is_public': False,
+             'created_at': timeutils.utcnow(),
+             'updated_at': timeutils.utcnow(),
+             'deleted_at': None,
+             'deleted': False,
+             'checksum': None,
+             'size': 13,
+             'locations': [{'url': "file:///%s/%s" % (self.test_dir, UUID1),
                             'metadata': {}, 'status': 'active'}],
              'properties': {}}]
         self.context = glance.context.RequestContext(is_admin=True)
@@ -427,7 +443,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
 
         res = req.get_response(self.api)
         self.assertEqual(400, res.status_int)
-        self.assertIn('External source are not supported', res.body)
+        self.assertIn('External sources are not supported', res.body)
 
     def test_create_with_location_bad_store_uri(self):
         fixture_headers = {
@@ -956,8 +972,33 @@ class TestGlanceAPI(base.IsolatedUnitTest):
             req.headers[k] = v
 
         req.headers['Content-Type'] = 'application/octet-stream'
+        http = store.get_store_from_scheme('http')
+
+        with mock.patch.object(http, 'get_size') as mock_size:
+            mock_size.return_value = 0
+            res = req.get_response(self.api)
+            self.assertEqual(201, res.status_int)
+
+    def test_upload_image_http_nonexistent_location_url(self):
+        # Ensure HTTP 404 response returned when try to upload
+        # image from non-existent http location URL.
+        rules = {"add_image": '@', "copy_from": '@', "upload_image": '@'}
+        self.set_policy_rules(rules)
+        fixture_headers = {'x-image-meta-store': 'file',
+                           'x-image-meta-disk-format': 'vhd',
+                           'x-glance-api-copy-from':
+                               'http://example.com/i.ovf',
+                           'x-image-meta-container-format': 'ovf',
+                           'x-image-meta-name': 'fake image #F'}
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in six.iteritems(fixture_headers):
+            req.headers[k] = v
+
+        req.headers['Content-Type'] = 'application/octet-stream'
         res = req.get_response(self.api)
-        self.assertEqual(201, res.status_int)
+        self.assertEqual(404, res.status_int)
 
     def test_add_copy_from_with_nonempty_body(self):
         """Tests creates an image from copy-from and nonempty body"""
@@ -1064,6 +1105,25 @@ class TestGlanceAPI(base.IsolatedUnitTest):
             req.headers[k] = v
         res = req.get_response(self.api)
         self.assertEqual(400, res.status_int)
+
+    def test_create_image_with_nonexistent_location_url(self):
+        # Ensure HTTP 404 response returned when try to create
+        # image with non-existent http location URL.
+        fixture_headers = {
+            'x-image-meta-name': 'bogus',
+            'x-image-meta-location': 'http://example.com/images/123',
+            'x-image-meta-disk-format': 'qcow2',
+            'x-image-meta-container-format': 'bare',
+        }
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+
+        for k, v in six.iteritems(fixture_headers):
+            req.headers[k] = v
+
+        res = req.get_response(self.api)
+        self.assertEqual(404, res.status_int)
 
     def test_add_copy_from_with_location(self):
         """Tests creates an image from copy-from and location"""
@@ -1295,6 +1355,13 @@ class TestGlanceAPI(base.IsolatedUnitTest):
     def test_put_image_content_missing_container_type(self):
         """Tests delayed activation of image with missing container format"""
         self._do_test_put_image_content_missing_format('container_format')
+
+    def test_download_deactivated_images(self):
+        """Tests exception raised trying to download a deactivated image"""
+        req = webob.Request.blank("/images/%s" % UUID3)
+        req.method = 'GET'
+        res = req.get_response(self.api)
+        self.assertEqual(403, res.status_int)
 
     def test_update_deleted_image(self):
         """Tests that exception raised trying to update a deleted image"""
@@ -2605,6 +2672,37 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req.headers['x_test_key'] = 'test_1234'
         res = req.get_response(self.api)
         self.assertEqual(403, res.status_int)
+
+    def test_download_service_unavailable(self):
+        """Test image download returns HTTPServiceUnavailable."""
+        image_fixture = self.FIXTURES[1]
+        image_fixture.update({'location': 'http://netloc/path/to/file.tar.gz'})
+        request = webob.Request.blank("/images/%s" % UUID2)
+        request.context = self.context
+
+        image_controller = glance.api.v1.images.Controller()
+        with mock.patch.object(image_controller,
+                               'get_active_image_meta_or_error'
+                               ) as mocked_get_image:
+            mocked_get_image.return_value = image_fixture
+            self.assertRaises(webob.exc.HTTPServiceUnavailable,
+                              image_controller.show,
+                              request, mocked_get_image)
+
+    @mock.patch('glance_store._drivers.filesystem.Store.get')
+    def test_show_image_store_get_not_support(self, m_get):
+        m_get.side_effect = store.StoreGetNotSupported()
+        req = webob.Request.blank("/images/%s" % UUID2)
+        res = req.get_response(self.api)
+        self.assertEqual(400, res.status_int)
+
+    @mock.patch('glance_store._drivers.filesystem.Store.get')
+    def test_show_image_store_random_get_not_support(self, m_get):
+        m_get.side_effect = store.StoreRandomGetNotSupported(chunk_size=0,
+                                                             offset=0)
+        req = webob.Request.blank("/images/%s" % UUID2)
+        res = req.get_response(self.api)
+        self.assertEqual(400, res.status_int)
 
     def test_delete_image(self):
         req = webob.Request.blank("/images/%s" % UUID2)

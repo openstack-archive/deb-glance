@@ -41,7 +41,8 @@ if os.path.exists(os.path.join(possible_topdir, 'glance', '__init__.py')):
 
 from oslo_config import cfg
 from oslo_utils import units
-from six.moves import xrange
+# NOTE(jokke): simplified transition to py3, behaves like py2 xrange
+from six.moves import range
 
 from glance.common import config
 from glance import i18n
@@ -262,7 +263,7 @@ def do_stop(server, args, graceful=False):
         except OSError:
             print(_("Process %d not running") % pid)
     for pid_file, pid in pfiles:
-        for _junk in xrange(150):  # 15 seconds
+        for _junk in range(150):  # 15 seconds
             if not os.path.exists('/proc/%s' % pid):
                 break
             time.sleep(0.1)
@@ -380,8 +381,7 @@ def main():
             pid_file = get_pid_file(server, CONF.pid_file)
             do_start('Restart', pid_file, server, CONF.server.args)
 
-    if (CONF.server.command == 'reload' or
-            CONF.server.command == 'force-reload'):
+    if CONF.server.command in ('reload', 'force-reload'):
         for server in CONF.server.servers:
             do_stop(server, CONF.server.args, graceful=True)
             pid_file = get_pid_file(server, CONF.pid_file)

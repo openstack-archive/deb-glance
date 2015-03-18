@@ -164,6 +164,10 @@ class InvalidSortKey(Invalid):
     message = _("Sort key supplied was not valid.")
 
 
+class InvalidSortDir(Invalid):
+    message = _("Sort direction supplied was not valid.")
+
+
 class InvalidPropertyProtectionConfiguration(Invalid):
     message = _("Invalid configuration in property protection file.")
 
@@ -316,12 +320,20 @@ class ImageLocationLimitExceeded(LimitExceeded):
                 "locations. Attempted: %(attempted)s, Maximum: %(maximum)s")
 
 
+class SIGHUPInterrupt(GlanceException):
+    message = _("System SIGHUP signal received.")
+
+
 class RPCError(GlanceException):
     message = _("%(cls)s exception was raised in the last rpc call: %(val)s")
 
 
 class TaskException(GlanceException):
     message = _("An unknown task exception occurred")
+
+
+class BadTaskConfiguration(GlanceException):
+    message = _("Task was not configured properly")
 
 
 class TaskNotFound(TaskException, NotFound):
@@ -434,3 +446,7 @@ class MetadefTagNotFound(NotFound):
     message = _("The metadata definition tag with"
                 " name=%(name)s was not found in"
                 " namespace=%(namespace_name)s.")
+
+
+class InvalidVersion(Invalid):
+    message = _("Version is invalid: %(reason)s")

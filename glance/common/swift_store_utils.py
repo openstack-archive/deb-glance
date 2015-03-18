@@ -19,10 +19,10 @@ except ImportError:
     from ordereddict import OrderedDict
 
 from oslo_config import cfg
+from oslo_log import log as logging
 
 from glance.common import exception
 from glance import i18n
-from glance.openstack.common import log as logging
 
 _ = i18n._
 _LE = i18n._LE
@@ -84,7 +84,7 @@ class SwiftParams(object):
             conf_file = CONF.find_file(CONF.swift_store_config_file)
             CONFIG.read(conf_file)
         except Exception as e:
-            msg = (_("swift config file %(conf_file)s:%(exc)s not found") %
+            msg = (_LE("swift config file %(conf_file)s:%(exc)s not found") %
                    {'conf_file': CONF.swift_store_config_file, 'exc': e})
             LOG.error(msg)
             raise exception.InvalidSwiftStoreConfiguration()

@@ -20,6 +20,7 @@ LRU Cache for Image Data
 import hashlib
 
 from oslo_config import cfg
+from oslo_log import log as logging
 from oslo_utils import excutils
 from oslo_utils import importutils
 from oslo_utils import units
@@ -27,7 +28,6 @@ from oslo_utils import units
 from glance.common import exception
 from glance.common import utils
 from glance import i18n
-import glance.openstack.common.log as logging
 
 LOG = logging.getLogger(__name__)
 _ = i18n._
@@ -39,7 +39,9 @@ image_cache_opts = [
     cfg.StrOpt('image_cache_driver', default='sqlite',
                help=_('The driver to use for image cache management.')),
     cfg.IntOpt('image_cache_max_size', default=10 * units.Gi,  # 10 GB
-               help=_('The maximum size in bytes that the cache can use.')),
+               help=_('The upper limit (the maximum size of accumulated '
+                      'cache in bytes) beyond which pruner, if running, '
+                      'starts cleaning the images cache.')),
     cfg.IntOpt('image_cache_stall_time', default=86400,  # 24 hours
                help=_('The amount of time to let an image remain in the '
                       'cache without being accessed.')),

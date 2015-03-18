@@ -19,11 +19,11 @@
 import copy
 
 from oslo_config import cfg
+from oslo_log import log as logging
 
 from glance.common import exception
 import glance.domain.proxy
 from glance import i18n
-import glance.openstack.common.log as logging
 from glance.openstack.common import policy
 
 
@@ -165,6 +165,20 @@ class ImageProxy(glance.domain.proxy.Image):
         self.policy.enforce(self.context, 'delete_image', {})
         return self.image.delete()
 
+    def deactivate(self):
+        LOG.debug('Attempting deactivate')
+        target = ImageTarget(self.image)
+        self.policy.enforce(self.context, 'deactivate', target=target)
+        LOG.debug('Deactivate allowed, continue')
+        self.image.deactivate()
+
+    def reactivate(self):
+        LOG.debug('Attempting reactivate')
+        target = ImageTarget(self.image)
+        self.policy.enforce(self.context, 'reactivate', target=target)
+        LOG.debug('Reactivate allowed, continue')
+        self.image.reactivate()
+
     def get_data(self, *args, **kwargs):
         target = ImageTarget(self.image)
         self.policy.enforce(self.context, 'download_image',
@@ -254,7 +268,6 @@ class ImageLocationsProxy(object):
     def _get_checker(action, func_name):
         def _checker(self, *args, **kwargs):
             self.policy.enforce(self.context, action, {})
-            assert hasattr(self.locations, func_name)
             method = getattr(self.locations, func_name)
             return method(*args, **kwargs)
         return _checker

@@ -14,6 +14,7 @@
 
 from oslo_db import exception as db_exc
 from oslo_db.sqlalchemy.utils import paginate_query
+from oslo_log import log as logging
 import sqlalchemy.exc as sa_exc
 from sqlalchemy import or_
 import sqlalchemy.orm as sa_orm
@@ -22,9 +23,8 @@ from glance.common import exception as exc
 import glance.db.sqlalchemy.metadef_api as metadef_api
 from glance.db.sqlalchemy import models_metadef as models
 from glance import i18n
-import glance.openstack.common.log as os_logging
 
-LOG = os_logging.getLogger(__name__)
+LOG = logging.getLogger(__name__)
 _ = i18n._
 _LW = i18n._LW
 
@@ -119,10 +119,10 @@ def _get_by_name(context, name, session):
     # Make sure they are allowed to view it.
     if not _is_namespace_visible(context, namespace_rec.to_dict()):
         msg = ("Forbidding request, metadata definition namespace=%s"
-               " not visible." % name)
+               " is not visible." % name)
         LOG.debug(msg)
         emsg = _("Forbidding request, metadata definition namespace=%s"
-                 " not visible.") % name
+                 " is not visible.") % name
         raise exc.MetadefForbidden(emsg)
 
     return namespace_rec

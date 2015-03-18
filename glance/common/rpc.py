@@ -20,6 +20,7 @@ import datetime
 import traceback
 
 from oslo_config import cfg
+from oslo_log import log as logging
 import oslo_utils.importutils as imp
 from oslo_utils import timeutils
 import six
@@ -30,10 +31,10 @@ from glance.common import exception
 from glance.common import utils
 from glance.common import wsgi
 from glance import i18n
-import glance.openstack.common.log as logging
 
 LOG = logging.getLogger(__name__)
 _ = i18n._
+_LE = i18n._LE
 
 
 rpc_opts = [
@@ -182,7 +183,7 @@ class Controller(object):
                     raise
 
                 cls, val = e.__class__, utils.exception_to_str(e)
-                msg = (_("RPC Call Error: %(val)s\n%(tb)s") %
+                msg = (_LE("RPC Call Error: %(val)s\n%(tb)s") %
                        dict(val=val, tb=traceback.format_exc()))
                 LOG.error(msg)
 

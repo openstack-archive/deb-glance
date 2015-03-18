@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 import glance_store
+from oslo_log import log as logging
 import webob.exc
 
 from glance.api import policy
@@ -23,7 +24,6 @@ import glance.db
 import glance.gateway
 from glance import i18n
 import glance.notifier
-import glance.openstack.common.log as logging
 
 
 LOG = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ class Controller(object):
             image.tags.add(tag_value)
             image_repo.save(image)
         except exception.NotFound:
-            msg = _("Image %s not found") % image_id
+            msg = _("Image %s not found.") % image_id
             LOG.warning(msg)
             raise webob.exc.HTTPNotFound(explanation=msg)
         except exception.Forbidden:
@@ -75,7 +75,7 @@ class Controller(object):
             image.tags.remove(tag_value)
             image_repo.save(image)
         except exception.NotFound:
-            msg = _("Image %s not found") % image_id
+            msg = _("Image %s not found.") % image_id
             LOG.warning(msg)
             raise webob.exc.HTTPNotFound(explanation=msg)
         except exception.Forbidden:

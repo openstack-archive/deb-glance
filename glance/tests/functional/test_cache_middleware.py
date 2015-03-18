@@ -29,7 +29,8 @@ import time
 import httplib2
 from oslo.serialization import jsonutils
 from oslo_utils import units
-from six.moves import xrange
+# NOTE(jokke): simplified transition to py3, behaves like py2 xrange
+from six.moves import range
 
 from glance.tests import functional
 from glance.tests.functional.store_utils import get_http_uri
@@ -331,6 +332,100 @@ class BaseCacheMiddlewareTest(object):
 
         self.stop_servers()
 
+    @skip_if_disabled
+    def test_cache_middleware_trans_with_deactivated_image(self):
+        """
+        Ensure the image v1/v2 API image transfer forbids downloading
+        deactivated images.
+        Image deactivation is not available in v1. So, we'll deactivate the
+        image using v2 but test image transfer with both v1 and v2.
+        """
+        self.cleanup()
+        self.start_servers(**self.__dict__.copy())
+
+        # Add an image and verify a 200 OK is returned
+        image_data = "*" * FIVE_KB
+        headers = minimal_headers('Image1')
+        path = "http://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
+        http = httplib2.Http()
+        response, content = http.request(path, 'POST', headers=headers,
+                                         body=image_data)
+        self.assertEqual(201, response.status)
+        data = jsonutils.loads(content)
+        self.assertEqual(hashlib.md5(image_data).hexdigest(),
+                         data['image']['checksum'])
+        self.assertEqual(FIVE_KB, data['image']['size'])
+        self.assertEqual("Image1", data['image']['name'])
+        self.assertTrue(data['image']['is_public'])
+
+        image_id = data['image']['id']
+
+        # Grab the image
+        path = "http://%s:%d/v1/images/%s" % ("127.0.0.1", self.api_port,
+                                              image_id)
+        http = httplib2.Http()
+        response, content = http.request(path, 'GET')
+        self.assertEqual(200, response.status)
+
+        # Verify image in cache
+        image_cached_path = os.path.join(self.api_server.image_cache_dir,
+                                         image_id)
+        self.assertTrue(os.path.exists(image_cached_path))
+
+        # Deactivate the image using v2
+        path = "http://%s:%d/v2/images/%s/actions/deactivate"
+        path = path % ("127.0.0.1", self.api_port, image_id)
+        http = httplib2.Http()
+        response, content = http.request(path, 'POST')
+        self.assertEqual(204, response.status)
+
+        # Download the image with v1. Ensure it is forbidden
+        path = "http://%s:%d/v1/images/%s" % ("127.0.0.1", self.api_port,
+                                              image_id)
+        http = httplib2.Http()
+        response, content = http.request(path, 'GET')
+        self.assertEqual(403, response.status)
+
+        # Download the image with v2. Ensure it is forbidden
+        path = "http://%s:%d/v2/images/%s/file" % ("127.0.0.1", self.api_port,
+                                                   image_id)
+        http = httplib2.Http()
+        response, content = http.request(path, 'GET')
+        self.assertEqual(403, response.status)
+
+        # Reactivate the image using v2
+        path = "http://%s:%d/v2/images/%s/actions/reactivate"
+        path = path % ("127.0.0.1", self.api_port, image_id)
+        http = httplib2.Http()
+        response, content = http.request(path, 'POST')
+        self.assertEqual(204, response.status)
+
+        # Download the image with v1. Ensure it is allowed
+        path = "http://%s:%d/v1/images/%s" % ("127.0.0.1", self.api_port,
+                                              image_id)
+        http = httplib2.Http()
+        response, content = http.request(path, 'GET')
+        self.assertEqual(200, response.status)
+
+        # Download the image with v2. Ensure it is allowed
+        path = "http://%s:%d/v2/images/%s/file" % ("127.0.0.1", self.api_port,
+                                                   image_id)
+        http = httplib2.Http()
+        response, content = http.request(path, 'GET')
+        self.assertEqual(200, response.status)
+
+        # Now, we delete the image from the server and verify that
+        # the image cache no longer contains the deleted image
+        path = "http://%s:%d/v1/images/%s" % ("127.0.0.1", self.api_port,
+                                              image_id)
+        http = httplib2.Http()
+        response, content = http.request(path, 'DELETE')
+        self.assertEqual(200, response.status)
+
+        self.assertFalse(os.path.exists(image_cached_path))
+
+        self.stop_servers()
+
 
 class BaseCacheManageMiddlewareTest(object):
 
@@ -528,7 +623,7 @@ class BaseCacheManageMiddlewareTest(object):
         ids = {}
 
         # Add a bunch of images...
-        for x in xrange(4):
+        for x in range(4):
             ids[x] = self.add_image("Image%s" % str(x))
 
         # Verify no images in cached_images because no image has been hit
@@ -536,7 +631,7 @@ class BaseCacheManageMiddlewareTest(object):
         self.verify_no_cached_images()
 
         # Grab the images, essentially caching them...
-        for x in xrange(4):
+        for x in range(4):
             path = "http://%s:%d/v1/images/%s" % ("127.0.0.1", self.api_port,
                                                   ids[x])
             http = httplib2.Http()
@@ -556,7 +651,7 @@ class BaseCacheManageMiddlewareTest(object):
         cached_images = data['cached_images']
         self.assertEqual(4, len(cached_images))
 
-        for x in xrange(4, 0):  # Cached images returned last modified order
+        for x in range(4, 0):  # Cached images returned last modified order
             self.assertEqual(ids[x], cached_images[x]['image_id'])
             self.assertEqual(0, cached_images[x]['hits'])
 
@@ -612,7 +707,7 @@ class BaseCacheManageMiddlewareTest(object):
         NUM_IMAGES = 4
 
         # Add and then queue some images
-        for x in xrange(NUM_IMAGES):
+        for x in range(NUM_IMAGES):
             ids[x] = self.add_image("Image%s" % str(x))
             path = "http://%s:%d/v1/queued_images/%s" % ("127.0.0.1",
                                                          self.api_port, ids[x])
@@ -676,7 +771,7 @@ log_file = %(log_file)s
         ids = {}
 
         # Add a bunch of images...
-        for x in xrange(4):
+        for x in range(4):
             ids[x] = self.add_image("Image%s" % str(x))
 
         # Queue the first image, verify no images still in cache after queueing

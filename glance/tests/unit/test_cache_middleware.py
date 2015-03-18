@@ -13,6 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+# NOTE(jokke): simplified transition to py3, behaves like py2 xrange
+from six.moves import range
 import testtools
 import webob
 
@@ -221,7 +223,7 @@ class TestCacheMiddlewareProcessRequest(base.IsolatedUnitTest):
             raise exception.NotFound()
 
         def fake_get_v1_image_metadata(request, image_id):
-            return {'properties': {}}
+            return {'status': 'active', 'properties': {}}
 
         image_id = 'test1'
         request = webob.Request.blank('/v1/images/%s' % image_id)
@@ -384,7 +386,7 @@ class TestCacheMiddlewareProcessRequest(base.IsolatedUnitTest):
         """
 
         def fake_get_v1_image_metadata(*args, **kwargs):
-            return {'properties': {}}
+            return {'status': 'active', 'properties': {}}
 
         image_id = 'test1'
         request = webob.Request.blank('/v1/images/%s' % image_id)

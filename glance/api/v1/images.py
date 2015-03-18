@@ -19,10 +19,10 @@
 
 import copy
 
-import eventlet
 import glance_store as store
 import glance_store.location
 from oslo_config import cfg
+from oslo_log import log as logging
 from oslo_utils import excutils
 from oslo_utils import strutils
 from webob.exc import HTTPBadRequest
@@ -31,6 +31,7 @@ from webob.exc import HTTPForbidden
 from webob.exc import HTTPMethodNotAllowed
 from webob.exc import HTTPNotFound
 from webob.exc import HTTPRequestEntityTooLarge
+from webob.exc import HTTPServiceUnavailable
 from webob import Response
 
 from glance.api import common
@@ -46,7 +47,6 @@ from glance.common import utils
 from glance.common import wsgi
 from glance import i18n
 from glance import notifier
-import glance.openstack.common.log as logging
 import glance.registry.client.v1.api as registry
 
 LOG = logging.getLogger(__name__)
@@ -140,7 +140,6 @@ class Controller(controller.BaseController):
         self.notifier = notifier.Notifier()
         registry.configure_registry_client()
         self.policy = policy.Enforcer()
-        self.pool = eventlet.GreenPool(size=1024)
         if property_utils.is_property_protection_enabled():
             self.prop_enforcer = property_utils.PropertyRules(self.policy)
         else:
@@ -416,7 +415,7 @@ class Controller(controller.BaseController):
     @staticmethod
     def _validate_source(source, req):
         """
-        To validate if external sources (as specified via the location
+        Validate if external sources (as specified via the location
         or copy-from headers) are supported. Otherwise we reject
         with 400 "Bad Request".
         """
@@ -424,7 +423,7 @@ class Controller(controller.BaseController):
             if store_utils.validate_external_location(source):
                 return source
             else:
-                msg = _("External source are not supported: '%s'") % source
+                msg = _("External sources are not supported: '%s'") % source
                 LOG.warn(msg)
                 raise HTTPBadRequest(explanation=msg,
                                      request=req,
@@ -453,8 +452,13 @@ class Controller(controller.BaseController):
 
             image_data, image_size = src_store.get(loc, context=context)
 
+        except store.RemoteServiceUnavailable as e:
+            raise HTTPServiceUnavailable(explanation=e.msg)
         except store.NotFound as e:
             raise HTTPNotFound(explanation=e.msg)
+        except (store.StoreGetNotSupported,
+                store.StoreRandomGetNotSupported) as e:
+            raise HTTPBadRequest(explanation=e.msg)
         image_size = int(image_size) if image_size else None
         return image_data, image_size
 
@@ -472,7 +476,7 @@ class Controller(controller.BaseController):
         self._enforce(req, 'get_image')
 
         try:
-            image_meta = self.get_active_image_meta_or_404(req, id)
+            image_meta = self.get_active_image_meta_or_error(req, id)
         except HTTPNotFound:
             # provision for backward-compatibility breaking issue
             # catch the 404 exception and raise it after enforcing
@@ -526,7 +530,7 @@ class Controller(controller.BaseController):
             try:
                 backend = store.get_store_from_location(location)
             except store.BadStoreUri:
-                msg = _("Invalid location %s") % location
+                msg = _("Invalid location: %s") % location
                 LOG.warn(msg)
                 raise HTTPBadRequest(explanation=msg,
                                      request=req,
@@ -714,8 +718,19 @@ class Controller(controller.BaseController):
         try:
             return (image_meta.get('size', 0) or
                     store.get_size_from_backend(location, context=context))
-        except (store.NotFound, store.BadStoreUri) as e:
-            LOG.debug(e)
+        except store.NotFound as e:
+            # NOTE(rajesht): The exception is logged as debug message because
+            # the image is located at third-party server and it has nothing to
+            # do with glance. If log.exception is used here, in that case the
+            # log file might be flooded with exception log messages if
+            # malicious user keeps on trying image-create using non-existent
+            # location url. Used log.debug because administrator can
+            # disable debug logs.
+            LOG.debug(utils.exception_to_str(e))
+            raise HTTPNotFound(explanation=e.msg, content_type="text/plain")
+        except store.BadStoreUri as e:
+            # NOTE(rajesht): See above note of store.NotFound
+            LOG.debug(utils.exception_to_str(e))
             raise HTTPBadRequest(explanation=e.msg, content_type="text/plain")
 
     def _handle_source(self, req, image_id, image_meta, image_data):
@@ -736,7 +751,8 @@ class Controller(controller.BaseController):
         elif copy_from:
             msg = _LI('Triggering asynchronous copy from external source')
             LOG.info(msg)
-            self.pool.spawn_n(self._upload_and_activate, req, image_meta)
+            pool = common.get_thread_pool("copy_from_eventlet_pool")
+            pool.spawn_n(self._upload_and_activate, req, image_meta)
         else:
             if location:
                 self._validate_image_for_activation(req, image_id, image_meta)
@@ -925,7 +941,7 @@ class Controller(controller.BaseController):
                 self.update_store_acls(req, id, orig_or_updated_loc,
                                        public=is_public)
             except store.BadStoreUri:
-                msg = _("Invalid location %s") % location
+                msg = _("Invalid location: %s") % location
                 LOG.warn(msg)
                 raise HTTPBadRequest(explanation=msg,
                                      request=req,

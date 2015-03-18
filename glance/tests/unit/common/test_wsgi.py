@@ -363,8 +363,8 @@ class JSONResponseSerializerTest(test_utils.BaseTestCase):
         self.assertEqual(expected, actual)
 
     def test_to_json_with_date_format_value(self):
-        fixture = {"date": datetime.datetime(1, 3, 8, 2)}
-        expected = '{"date": "0001-03-08T02:00:00"}'
+        fixture = {"date": datetime.datetime(1901, 3, 8, 2)}
+        expected = '{"date": "1901-03-08T02:00:00.000000"}'
         actual = wsgi.JSONResponseSerializer().to_json(fixture)
         self.assertEqual(expected, actual)
 
@@ -447,12 +447,35 @@ class JSONRequestDeserializerTest(test_utils.BaseTestCase):
         self.assertEqual(expected, actual)
 
     def test_has_body_has_transfer_encoding(self):
+        self.assertTrue(self._check_transfer_encoding(
+                        transfer_encoding='chunked'))
+
+    def test_has_body_multiple_transfer_encoding(self):
+        self.assertTrue(self._check_transfer_encoding(
+                        transfer_encoding='chunked, gzip'))
+
+    def test_has_body_invalid_transfer_encoding(self):
+        self.assertFalse(self._check_transfer_encoding(
+                         transfer_encoding='invalid', content_length=0))
+
+    def test_has_body_invalid_transfer_encoding_with_content_length(self):
+        self.assertTrue(self._check_transfer_encoding(
+                        transfer_encoding='invalid', content_length=5))
+
+    def test_has_body_valid_transfer_encoding_with_content_length(self):
+        self.assertTrue(self._check_transfer_encoding(
+                        transfer_encoding='chunked', content_length=0))
+
+    def _check_transfer_encoding(self, transfer_encoding=None,
+                                 content_length=None):
         request = wsgi.Request.blank('/')
         request.method = 'POST'
         request.body = 'fake_body'
-        request.headers['transfer-encoding'] = 0
-        self.assertIn('transfer-encoding', request.headers)
-        self.assertTrue(wsgi.JSONRequestDeserializer().has_body(request))
+        request.headers['transfer-encoding'] = transfer_encoding
+        if content_length is not None:
+            request.headers['content-length'] = content_length
+
+        return wsgi.JSONRequestDeserializer().has_body(request)
 
     def test_get_bind_addr_default_value(self):
         expected = ('0.0.0.0', '123456')
@@ -465,6 +488,28 @@ class ServerTest(test_utils.BaseTestCase):
         """Ensure the wsgi thread pool is an eventlet.greenpool.GreenPool."""
         actual = wsgi.Server(threads=1).create_pool()
         self.assertIsInstance(actual, eventlet.greenpool.GreenPool)
+
+    @mock.patch.object(wsgi, 'get_socket')
+    def test_http_keepalive(self, mock_get_socket):
+        fake_socket = 'fake_socket'
+        mock_get_socket.return_value = 'fake_socket'
+        self.config(http_keepalive=False)
+        self.config(workers=0)
+
+        server = wsgi.Server(threads=1)
+        # mocking eventlet.wsgi server method to check it is called with
+        # configured 'http_keepalive' value.
+        with mock.patch.object(eventlet.wsgi,
+                               'server') as mock_server:
+            fake_application = "fake-application"
+            server.start(fake_application, 0)
+            server.wait()
+            mock_server.assert_called_once_with(fake_socket,
+                                                fake_application,
+                                                log=server._wsgi_logger,
+                                                debug=False,
+                                                custom_pool=server.pool,
+                                                keepalive=False)
 
 
 class TestHelpers(test_utils.BaseTestCase):

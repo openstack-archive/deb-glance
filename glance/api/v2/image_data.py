@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 import glance_store
+from oslo_log import log as logging
 from oslo_utils import excutils
 import webob.exc
 
@@ -24,7 +25,6 @@ import glance.db
 import glance.gateway
 from glance import i18n
 import glance.notifier
-import glance.openstack.common.log as logging
 
 
 LOG = logging.getLogger(__name__)
@@ -169,6 +169,10 @@ class ImageDataController(object):
         image_repo = self.gateway.get_repo(req.context)
         try:
             image = image_repo.get(image_id)
+            if image.status == 'deactivated':
+                msg = _('The requested image has been deactivated. '
+                        'Image data download is forbidden.')
+                raise exception.Forbidden(message=msg)
             if not image.locations:
                 raise exception.ImageDataNotFound()
         except exception.ImageDataNotFound as e:
@@ -218,6 +222,11 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
                                                     chunk_size=chunk_size))
         except glance_store.NotFound as e:
             raise webob.exc.HTTPNotFound(explanation=e.msg)
+        except glance_store.RemoteServiceUnavailable as e:
+            raise webob.exc.HTTPServiceUnavailable(explanation=e.msg)
+        except (glance_store.StoreGetNotSupported,
+                glance_store.StoreRandomGetNotSupported) as e:
+            raise webob.exc.HTTPBadRequest(explanation=e.msg)
         except exception.Forbidden as e:
             raise webob.exc.HTTPForbidden(explanation=e.msg)
         # NOTE(saschpe): "response.app_iter = ..." currently resets Content-MD5
