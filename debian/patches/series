@@ -1,5 +1,3 @@
 default-config.patch
 sql_conn-registry.patch
-fix-requirements.txt-to-allow-routes-2.0.patch
 fix-default-glance-registry-paste.ini.patch
-do-not-use-ordereddict.patch

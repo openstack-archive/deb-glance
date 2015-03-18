@@ -5,9 +5,9 @@ Last-Update: 2014-04-15
 
 Index: glance/etc/glance-api.conf
 ===================================================================
---- glance.orig/etc/glance-api.conf	2015-02-10 14:45:24.000000000 +0100
-+++ glance/etc/glance-api.conf	2015-02-10 14:45:28.000000000 +0100
-@@ -316,7 +316,7 @@
+--- glance.orig/etc/glance-api.conf
++++ glance/etc/glance-api.conf
+@@ -332,7 +332,7 @@ image_cache_dir = /var/lib/glance/image-
  # Deprecated group/name - [DEFAULT]/sql_connection
  # Deprecated group/name - [DATABASE]/sql_connection
  # Deprecated group/name - [sql]/connection
@@ -18,9 +18,9 @@ Index: glance/etc/glance-api.conf
  # including the default, overrides any server-set SQL mode. To
 Index: glance/etc/glance-registry.conf
 ===================================================================
---- glance.orig/etc/glance-registry.conf	2015-02-10 14:45:24.000000000 +0100
-+++ glance/etc/glance-registry.conf	2015-02-10 14:45:28.000000000 +0100
-@@ -151,7 +151,7 @@
+--- glance.orig/etc/glance-registry.conf
++++ glance/etc/glance-registry.conf
+@@ -158,7 +158,7 @@ qpid_tcp_nodelay = True
  # Deprecated group/name - [DEFAULT]/sql_connection
  # Deprecated group/name - [DATABASE]/sql_connection
  # Deprecated group/name - [sql]/connection
