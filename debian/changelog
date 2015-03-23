@@ -1,4 +1,4 @@
-glance (2015.1~b2+git20150318+cafbe9e69d-1) UNRELEASED; urgency=medium
+glance (2015.1~b3-1) UNRELEASED; urgency=medium
 
   * New upstream release.
   * Fixed (build-)depends for this release.
