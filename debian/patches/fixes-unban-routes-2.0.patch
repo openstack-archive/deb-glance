@@ -1,0 +1,20 @@
+Description: Accepts Routes 2.0 in the package
+ Upstream doesn't accept Routes 2.0 because the PyPi package is broken, however
+ the Debian package (which contains patches) is correct and can be accepted. So
+ this patch makes it possible to use routes 2.0, which is what we have in
+ Debian.
+Author: Thomas Goirand <zigo@debian.org>
+Forwarded: no
+Last-Update: 2015-03-23
+
+--- glance-2015.1~b3.orig/requirements.txt
++++ glance-2015.1~b3/requirements.txt
+@@ -14,7 +14,7 @@ SQLAlchemy>=0.9.7,<=0.9.99
+ anyjson>=0.3.3
+ eventlet>=0.16.1
+ PasteDeploy>=1.5.0
+-Routes>=1.12.3,!=2.0
++Routes>=1.12.3
+ WebOb>=1.2.3
+ sqlalchemy-migrate>=0.9.5
+ httplib2>=0.7.5
