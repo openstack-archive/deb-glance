@@ -1,4 +1,4 @@
-glance (2015.1~b3-1) UNRELEASED; urgency=medium
+glance (2015.1~rc1-1) UNRELEASED; urgency=medium
 
   * New upstream release.
   * Fixed (build-)depends for this release.
