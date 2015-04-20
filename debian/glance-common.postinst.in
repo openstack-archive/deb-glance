@@ -59,8 +59,11 @@ ALTER IGNORE TABLE images           CONVERT TO CHARACTER SET utf8 COLLATE utf8_u
 SET FOREIGN_KEY_CHECKS=1;"
 		pkgos_mysql_query ${dbc_dbuser} ${dbc_dbpass} ${dbc_dbserver:-localhost} "${dbport}" ${dbc_dbname} "${Q}"
 	fi
-	pkgos_inifile get ${API_CONF} database connection
-	pkgos_inifile set ${GREG_CONF} database connection "${RET}"
+	db_get glance/configure_db
+	if [ "$RET" = "true" ] ; then
+		pkgos_inifile get ${API_CONF} database connection
+		pkgos_inifile set ${GREG_CONF} database connection "${RET}"
+	fi
 
 	pkgos_rabbit_write_conf ${API_CONF} DEFAULT glance
 
