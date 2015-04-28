@@ -5,17 +5,17 @@ Maintainer: PKG OpenStack <openstack-devel@lists.alioth.debian.org>
 Uploaders: Thomas Goirand <zigo@debian.org>
 Build-Depends: debhelper (>= 9),
                dh-python,
-               dh-systemd (>= 1.5),
+               dh-systemd,
                openstack-pkg-tools (>= 23~),
                po-debconf,
-               python-all (>= 2.6.6-3~),
+               python-all,
                python-pbr,
                python-setuptools,
                python-sphinx,
 Build-Depends-Indep: curl,
                      procps,
                      python-anyjson,
-                     python-boto (>= 2.32.1),
+                     python-boto,
                      python-babel,
                      python-coverage,
                      python-crypto,
@@ -71,7 +71,7 @@ Build-Depends-Indep: curl,
                      python-wsme,
                      python-xattr,
                      sqlite3,
-                     subunit (>= 0.0.18),
+                     subunit,
                      testrepository,
 Standards-Version: 3.9.6
 Homepage: http://glance.openstack.org/
@@ -81,7 +81,6 @@ Vcs-Git: git://anonscm.debian.org/openstack/glance.git
 Package: python-glance
 Architecture: all
 Section: python
-Pre-Depends: dpkg (>= 1.15.6~)
 Depends: libxml2-dev,
          libxslt-dev,
          procps,
@@ -115,10 +114,10 @@ Depends: libxml2-dev,
          python-osprofiler,
          python-paste,
          python-pastedeploy,
-         python-pbr (>= 0.6),
+         python-pbr,
          python-posix-ipc,
          python-psycopg2,
-         python-requests (>= 2.2.0),
+         python-requests,
          python-retrying,
          python-routes,
          python-semantic-version (>= 2.3.1),
@@ -132,7 +131,6 @@ Depends: libxml2-dev,
          python-xattr,
          ${misc:Depends},
          ${python:Depends},
-Provides: ${python:Provides}
 Description: OpenStack Image Service - Python client library
  The Glance project provides services for discovering, registering, and
  retrieving virtual machine images over the cloud. They may be stand-alone
@@ -144,7 +142,6 @@ Description: OpenStack Image Service - Python client library
 Package: glance
 Architecture: all
 Section: python
-Pre-Depends: dpkg (>= 1.15.6~)
 Depends: glance-api (= ${source:Version}),
          glance-registry (= ${source:Version}),
          ${misc:Depends},
@@ -161,7 +158,6 @@ Description: OpenStack Image Service - metapackage
 Package: python-glance-doc
 Architecture: all
 Section: doc
-Pre-Depends: dpkg (>= 1.15.6~)
 Depends: ${misc:Depends}, ${sphinxdoc:Depends}
 Description: OpenStack Image Service - Python library documentation
  The Glance project provides services for discovering, registering, and
@@ -176,7 +172,6 @@ Architecture: all
 Section: python
 Breaks: glance (<< 2012.1~e2-3)
 Replaces: glance (<< 2012.1~e2-3)
-Pre-Depends: dpkg (>= 1.15.6~)
 Depends: adduser,
          dbconfig-common,
          debconf,
@@ -195,7 +190,6 @@ Description: OpenStack Image Service - common files
 Package: glance-api
 Architecture: all
 Section: python
-Pre-Depends: adduser, dpkg (>= 1.15.6~)
 Depends: debconf,
          glance-common (= ${source:Version}),
          ${misc:Depends},
@@ -212,7 +206,6 @@ Description: OpenStack Image Service - API server
 Package: glance-registry
 Architecture: all
 Section: python
-Pre-Depends: dpkg (>= 1.15.6~)
 Depends: adduser,
          glance-common (= ${source:Version}),
          ${misc:Depends},
