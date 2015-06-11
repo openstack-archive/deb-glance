@@ -1,3 +1,10 @@
+glance (2015.1.0-2) unstable; urgency=medium
+
+  * Makes glance build reproduceable. Thanks to Juan Picca <jumapico@gmail.com>
+    for the bug report and patch. (Closes: #788469).
+
+ -- Thomas Goirand <zigo@debian.org>  Thu, 11 Jun 2015 19:33:36 +0200
+
 glance (2015.1.0-1) unstable; urgency=medium
 
   * New upstream release.

@@ -1,8 +1,11 @@
 #!/usr/bin/make -f
 
-#export DH_VERBOSE=1
-
 include /usr/share/openstack-pkg-tools/pkgos.make
+
+LAST_CHANGE = $(shell dpkg-parsechangelog -S Date)
+BUILD_DATE  = $(shell LC_ALL=C date -u "+%B %d, %Y" -d "$(LAST_CHANGE)")
+SPHINXOPTS := -D today="$(BUILD_DATE)"
+SPHINXOPTS += -D html_last_updated_fmt="$(BUILD_DATE)"
 
 export OSLO_PACKAGE_VERSION=$(VERSION)
 
@@ -25,13 +28,13 @@ override_dh_auto_build:
 
 override_dh_sphinxdoc:
 ifeq (,$(findstring nodocs, $(DEB_BUILD_OPTIONS)))
-	sphinx-build -b html doc/source $(CURDIR)/debian/python-glance-doc/usr/share/doc/python-glance-doc/html
+	sphinx-build $(SPHINXOPTS) -b html doc/source $(CURDIR)/debian/python-glance-doc/usr/share/doc/python-glance-doc/html
 	dh_sphinxdoc -O--buildsystem=python_distutils
 endif
 
 override_dh_installman:
 ifeq (,$(findstring nodocs, $(DEB_BUILD_OPTIONS)))
-	sphinx-build -b man doc/source doc/build/man
+	sphinx-build $(SPHINXOPTS) -b man doc/source doc/build/man
 	dh_installman -O--buildsystem=python_distutils
 endif
 
