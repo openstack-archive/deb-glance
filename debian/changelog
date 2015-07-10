@@ -1,3 +1,9 @@
+glance (1:11.0.0~b1-1) experimental; urgency=medium
+
+  * New upstream release.
+
+ -- Thomas Goirand <zigo@debian.org>  Fri, 10 Jul 2015 09:30:49 +0200
+
 glance (2015.1.0-2) unstable; urgency=medium
 
   * Makes glance build reproduceable. Thanks to Juan Picca <jumapico@gmail.com>
