@@ -22,7 +22,7 @@ from babel import localedata
 import eventlet.patcher
 import fixtures
 import mock
-from oslo.serialization import jsonutils
+from oslo_serialization import jsonutils
 import routes
 import six
 import webob
@@ -508,7 +508,8 @@ class ServerTest(test_utils.BaseTestCase):
                                                 log=server._wsgi_logger,
                                                 debug=False,
                                                 custom_pool=server.pool,
-                                                keepalive=False)
+                                                keepalive=False,
+                                                socket_timeout=900)
 
 
 class TestHelpers(test_utils.BaseTestCase):
@@ -529,7 +530,7 @@ class TestHelpers(test_utils.BaseTestCase):
                    'properties': {'distro': 'Ubuntu 10.04 LTS'}}
         headers = utils.image_meta_to_http_headers(fixture)
         for k, v in six.iteritems(headers):
-            self.assertIsInstance(v, unicode)
+            self.assertIsInstance(v, six.text_type)
 
     def test_data_passed_properly_through_headers(self):
         """

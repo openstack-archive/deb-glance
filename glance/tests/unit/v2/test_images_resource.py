@@ -19,8 +19,8 @@ import uuid
 
 import glance_store as store
 import mock
-from oslo.serialization import jsonutils
 from oslo_config import cfg
+from oslo_serialization import jsonutils
 import six
 # NOTE(jokke): simplified transition to py3, behaves like py2 xrange
 from six.moves import range
@@ -1193,6 +1193,86 @@ class TestImagesController(base.IsolatedUnitTest):
         self.assertRaises(webob.exc.HTTPConflict, self.controller.update,
                           another_request, created_image.image_id, changes)
 
+    def test_create_protected_prop_case_insensitive(self):
+        enforcer = glance.api.policy.Enforcer()
+        self.controller = glance.api.v2.images.ImagesController(self.db,
+                                                                enforcer,
+                                                                self.notifier,
+                                                                self.store)
+        self.set_property_protections()
+        request = unit_test_utils.get_fake_request(roles=['admin'])
+        image = {'name': 'image-1'}
+        created_image = self.controller.create(request, image=image,
+                                               extra_properties={},
+                                               tags=[])
+        another_request = unit_test_utils.get_fake_request(roles=['member'])
+        changes = [
+            {'op': 'add', 'path': ['x_case_insensitive'], 'value': '1'},
+        ]
+        output = self.controller.update(another_request,
+                                        created_image.image_id, changes)
+        self.assertEqual('1', output.extra_properties['x_case_insensitive'])
+
+    def test_read_protected_prop_case_insensitive(self):
+        enforcer = glance.api.policy.Enforcer()
+        self.controller = glance.api.v2.images.ImagesController(self.db,
+                                                                enforcer,
+                                                                self.notifier,
+                                                                self.store)
+        self.set_property_protections()
+        request = unit_test_utils.get_fake_request(roles=['admin'])
+        image = {'name': 'image-1'}
+        extra_props = {'x_case_insensitive': '1'}
+        created_image = self.controller.create(request, image=image,
+                                               extra_properties=extra_props,
+                                               tags=[])
+        another_request = unit_test_utils.get_fake_request(roles=['member'])
+        output = self.controller.show(another_request, created_image.image_id)
+        self.assertEqual('1', output.extra_properties['x_case_insensitive'])
+
+    def test_update_protected_prop_case_insensitive(self):
+        enforcer = glance.api.policy.Enforcer()
+        self.controller = glance.api.v2.images.ImagesController(self.db,
+                                                                enforcer,
+                                                                self.notifier,
+                                                                self.store)
+        self.set_property_protections()
+        request = unit_test_utils.get_fake_request(roles=['admin'])
+        image = {'name': 'image-1'}
+        extra_props = {'x_case_insensitive': '1'}
+        created_image = self.controller.create(request, image=image,
+                                               extra_properties=extra_props,
+                                               tags=[])
+        another_request = unit_test_utils.get_fake_request(roles=['member'])
+        changes = [
+            {'op': 'replace', 'path': ['x_case_insensitive'], 'value': '2'},
+        ]
+        output = self.controller.update(another_request,
+                                        created_image.image_id, changes)
+        self.assertEqual('2', output.extra_properties['x_case_insensitive'])
+
+    def test_delete_protected_prop_case_insensitive(self):
+        enforcer = glance.api.policy.Enforcer()
+        self.controller = glance.api.v2.images.ImagesController(self.db,
+                                                                enforcer,
+                                                                self.notifier,
+                                                                self.store)
+        self.set_property_protections()
+        request = unit_test_utils.get_fake_request(roles=['admin'])
+        image = {'name': 'image-1'}
+        extra_props = {'x_case_insensitive': 'bar'}
+        created_image = self.controller.create(request, image=image,
+                                               extra_properties=extra_props,
+                                               tags=[])
+        another_request = unit_test_utils.get_fake_request(roles=['member'])
+        changes = [
+            {'op': 'remove', 'path': ['x_case_insensitive']}
+        ]
+        output = self.controller.update(another_request,
+                                        created_image.image_id, changes)
+        self.assertRaises(KeyError, output.extra_properties.__getitem__,
+                          'x_case_insensitive')
+
     def test_create_non_protected_prop(self):
         """Property marked with special char @ creatable by an unknown role"""
         self.set_property_protections()
@@ -2191,6 +2271,7 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
             True,
             False,
             None,
+            {'op': 'invalid', 'path': '/name', 'value': 'fedora'}
         ]
         for change in changes:
             request = self._get_fake_patch_request()

@@ -42,7 +42,7 @@ class OptsTestCase(utils.BaseTestCase):
         opt_list = None
         for ep in pkg_resources.iter_entry_points('oslo.config.opts'):
             if ep.name == namespace:
-                list_fn = ep.load()
+                list_fn = ep.load(require=False)
                 opt_list = list_fn()
                 break
 
@@ -78,6 +78,7 @@ class OptsTestCase(utils.BaseTestCase):
             'user_storage_quota',
             'enable_v1_api',
             'enable_v2_api',
+            'enable_v3_api',
             'enable_v1_registry',
             'enable_v2_registry',
             'pydev_worker_debug_host',
@@ -135,6 +136,7 @@ class OptsTestCase(utils.BaseTestCase):
             'digest_algorithm',
             'http_keepalive',
             'disabled_notifications',
+            'client_socket_timeout'
         ]
 
         self._check_opt_groups(opt_list, expected_opt_groups)
@@ -166,6 +168,7 @@ class OptsTestCase(utils.BaseTestCase):
             'user_storage_quota',
             'enable_v1_api',
             'enable_v2_api',
+            'enable_v3_api',
             'enable_v1_registry',
             'enable_v2_registry',
             'pydev_worker_debug_host',
@@ -184,6 +187,7 @@ class OptsTestCase(utils.BaseTestCase):
             'config_file',
             'digest_algorithm',
             'http_keepalive',
+            'client_socket_timeout'
         ]
 
         self._check_opt_groups(opt_list, expected_opt_groups)
@@ -211,6 +215,7 @@ class OptsTestCase(utils.BaseTestCase):
             'user_storage_quota',
             'enable_v1_api',
             'enable_v2_api',
+            'enable_v3_api',
             'enable_v1_registry',
             'enable_v2_registry',
             'pydev_worker_debug_host',
@@ -260,6 +265,7 @@ class OptsTestCase(utils.BaseTestCase):
             'user_storage_quota',
             'enable_v1_api',
             'enable_v2_api',
+            'enable_v3_api',
             'enable_v1_registry',
             'enable_v2_registry',
             'pydev_worker_debug_host',

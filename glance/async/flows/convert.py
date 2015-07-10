@@ -14,6 +14,7 @@
 #    under the License.
 
 import logging
+import os
 
 from oslo_concurrency import processutils as putils
 from oslo_config import cfg
@@ -31,15 +32,15 @@ LOG = logging.getLogger(__name__)
 convert_task_opts = [
     cfg.StrOpt('conversion_format',
                default=None,
-               choices=('qcow2', 'raw'),
+               choices=('qcow2', 'raw', 'vmdk'),
                help=_("The format to which images will be automatically "
-                      "converted. " "Can be 'qcow2' or 'raw'.")),
+                      "converted.")),
 ]
 
 CONF = cfg.CONF
 
 # NOTE(flaper87): Registering under the taskflow_executor section
-# for now. It seems a waste to have a whole section dedidcated to a
+# for now. It seems a waste to have a whole section dedicated to a
 # single task with a single option.
 CONF.register_opts(convert_task_opts, group='taskflow_executor')
 
@@ -75,13 +76,27 @@ class _Convert(task.Task):
         # TODO(flaper87): Check whether the image is in the desired
         # format already. Probably using `qemu-img` just like the
         # `Introspection` task.
-        dest_path = "%s.converted"
+        dest_path = os.path.join(CONF.task.work_dir, "%s.converted" % image_id)
         stdout, stderr = putils.trycmd('qemu-img', 'convert', '-O',
                                        conversion_format, file_path, dest_path,
                                        log_errors=putils.LOG_ALL_ERRORS)
 
         if stderr:
             raise RuntimeError(stderr)
+
+        os.rename(dest_path, file_path.split("file://")[-1])
+        return file_path
+
+    def revert(self, image_id, result=None, **kwargs):
+        # NOTE(flaper87): If result is None, it probably
+        # means this task failed. Otherwise, we would have
+        # a result from its execution.
+        if result is None:
+            return
+
+        fs_path = result.split("file://")[-1]
+        if os.path.exists(fs_path):
+            os.path.remove(fs_path)
 
 
 def get_flow(**kwargs):

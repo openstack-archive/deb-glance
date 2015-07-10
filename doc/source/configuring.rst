@@ -173,6 +173,15 @@ Not supported on OS X.
 
 Optional. Default: ``600``
 
+* ``client_socket_timeout=SECONDS``
+
+Timeout for client connections' socket operations.  If an incoming
+connection is idle for this period it will be closed.  A value of `0`
+means wait forever.
+
+Optional. Default: ``900``
+
+
 * ``workers=PROCESSES``
 
 Number of Glance API or Registry worker processes to start. Each worker
@@ -271,6 +280,9 @@ If 'use_user_token' is not in effect then admin credentials can be
 specified (see below). If admin credentials are specified then they are
 used to generate a token; this token rather than the original user's
 token is used for requests to the registry.
+
+To prevent failures with token expiration during big files upload,
+it is recommended to set this parameter to False.
 
 * ``admin_user=USER``
 If 'use_user_token' is not in effect then admin credentials can be
@@ -692,6 +704,14 @@ Can only be specified in configuration files.
 
 `This option is specific to the Swift storage backend.`
 
+Optional. Default: True.
+
+If set to False, disables SSL layer compression of https swift
+requests. Setting to 'False' may improve performance for images which
+are already in a compressed format, e.g. qcow2. If set to True then
+compression will be enabled (provided it is supported by the swift
+proxy).
+
 * ``swift_store_cacert``
 
 Can only be specified in configuration files.
@@ -700,14 +720,6 @@ Optional. Default: ``None``
 
 A string giving the path to a CA certificate bundle that will allow Glance's
 services to perform SSL verification when communicating with Swift.
-
-Optional. Default: True.
-
-If set to False, disables SSL layer compression of https swift
-requests. Setting to 'False' may improve performance for images which
-are already in a compressed format, e.g. qcow2. If set to True then
-compression will be enabled (provided it is supported by the swift
-proxy).
 
 * ``swift_store_retry_get_count``
 
@@ -1370,7 +1382,7 @@ Optional. Default: ``roles``.
 Configuring Glance APIs
 -----------------------
 
-The glance-api service implents versions 1 and 2 of the OpenStack
+The glance-api service implements versions 1 and 2 of the OpenStack
 Images API. Disable either version of the Images API using the
 following options:
 
@@ -1439,7 +1451,7 @@ profiling feature for glance-api and glance-registry service.
 
 Optional. Default: ``True``
 
-The config value ``trace_sqlalchemy`` is used to determin whether fully enable
+The config value ``trace_sqlalchemy`` is used to determine whether fully enable
 sqlalchemy engine based SQL execution profiling feature for glance-api and
 glance-registry services.
 
@@ -1448,7 +1460,7 @@ glance-registry services.
 Optional. Default: ``True``
 
 **IMPORTANT NOTE**: The HMAC key which is used for encrypting context data for
-performance profiling is configued in paste config file of glance-api and
+performance profiling is configured in paste config file of glance-api and
 glance-registry service separately, by default they place at
 /etc/glance/api-paste.ini and /etc/glance/registry-paste.ini files, in order
 to make profiling work as designed operator needs to make those values of HMAC

@@ -16,8 +16,8 @@
 import datetime
 
 import glance_store
-from oslo.serialization import jsonutils
 from oslo_config import cfg
+from oslo_serialization import jsonutils
 import webob
 
 import glance.api.v2.image_members
@@ -102,6 +102,11 @@ class TestImageMembersController(test_utils.BaseTestCase):
             self.notifier,
             self.store)
         glance_store.register_opts(CONF)
+
+        self.config(default_store='filesystem',
+                    filesystem_store_datadir=self.test_dir,
+                    group="glance_store")
+
         glance_store.create_stores()
 
     def _create_images(self):

@@ -24,6 +24,7 @@ from stevedore import named
 from taskflow.patterns import linear_flow as lf
 from taskflow import retry
 from taskflow import task
+from taskflow.types import failure
 
 from glance.common import exception
 from glance.common.scripts.image_import import main as image_import
@@ -145,17 +146,14 @@ class _ImportToFS(task.Task):
         # refer to the comment in the `_ImportToStore.execute` method.
         data = script_utils.get_image_data_iter(self.uri)
 
-        # NOTE(jokke): Using .tasks_import to ease debugging. The file name
-        # is specific so we know exactly where it's coming from.
-        tmp_id = "%s.tasks_import" % image_id
-        path = self.store.add(tmp_id, data, 0, context=None)[0]
+        path = self.store.add(image_id, data, 0, context=None)[0]
         return path
 
-    def revert(self, image_id, result=None, **kwargs):
-        # NOTE(flaper87): If result is None, it probably
-        # means this task failed. Otherwise, we would have
-        # a result from its execution.
-        if result is None:
+    def revert(self, image_id, result, **kwargs):
+        if isinstance(result, failure.Failure):
+            LOG.exception(_LE('Task: %(task_id)s failed to import image '
+                              '%(image_id)s to the filesystem.') %
+                          {'task_id': self.task_id, 'image_id': image_id})
             return
 
         if os.path.exists(result.split("file://")[-1]):
@@ -284,7 +282,11 @@ class _ImportToStore(task.Task):
         #
         # image_import.set_image_data(image, image_path, None)
 
-        image_import.set_image_data(image, file_path or self.uri, None)
+        image_import.set_image_data(image, file_path or self.uri, self.task_id)
+
+        # NOTE(flaper87): We need to save the image again after the locations
+        # have been set in the image.
+        self.image_repo.save(image)
 
 
 class _SaveImage(task.Task):
@@ -423,7 +425,7 @@ def get_flow(**kwargs):
 
             # NOTE(flaper87): Since this is an "optional" task but required
             # when `limbo` is executed, we're adding it in its own subflow
-            # to isolat it from the rest of the flow.
+            # to isolate it from the rest of the flow.
             delete_flow = lf.Flow(task_type).add(_DeleteFromFS(task_id,
                                                                task_type))
             flow.add(delete_flow)

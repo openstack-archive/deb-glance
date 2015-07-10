@@ -12,16 +12,13 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import ConfigParser
+from collections import OrderedDict
 import re
-try:
-    from collections import OrderedDict
-except ImportError:
-    from ordereddict import OrderedDict
 
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_policy import policy
+from six.moves import configparser
 
 import glance.api.policy
 from glance.common import exception
@@ -29,7 +26,7 @@ from glance import i18n
 
 # NOTE(bourke): The default dict_type is collections.OrderedDict in py27, but
 # we must set manually for compatibility with py26
-CONFIG = ConfigParser.SafeConfigParser(dict_type=OrderedDict)
+CONFIG = configparser.SafeConfigParser(dict_type=OrderedDict)
 LOG = logging.getLogger(__name__)
 _ = i18n._
 _LE = i18n._LE
@@ -201,6 +198,7 @@ class PropertyRules(object):
                 prop_exp_key = self.prop_exp_mapping[rule_exp]
                 return self._check_policy(prop_exp_key, action,
                                           context)
-            if set(roles).intersection(set(rule_roles)):
+            if set(roles).intersection(set([role.lower() for role
+                                            in rule_roles])):
                 return True
         return False

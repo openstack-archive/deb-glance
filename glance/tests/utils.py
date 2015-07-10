@@ -15,7 +15,6 @@
 
 """Common utilities used in testing"""
 
-import BaseHTTPServer
 import errno
 import functools
 import os
@@ -25,11 +24,14 @@ import socket
 import subprocess
 
 import fixtures
-from oslo.serialization import jsonutils
 from oslo_config import cfg
+from oslo_config import fixture as cfg_fixture
+from oslo_log import log
+from oslo_serialization import jsonutils
 from oslo_utils import timeutils
 from oslotest import moxstubout
 import six
+from six.moves import BaseHTTPServer
 import testtools
 import webob
 
@@ -43,12 +45,27 @@ from glance.db.sqlalchemy import api as db_api
 from glance.db.sqlalchemy import models as db_models
 
 CONF = cfg.CONF
+try:
+    CONF.debug
+except cfg.NoSuchOptError:
+    # NOTE(sigmavirus24): If we run the entire test suite, the logging options
+    # will be registered appropriately and we do not need to re-register them.
+    # However, when we run a test in isolation (or use --debug), those options
+    # will not be registered for us. In order for a test in a class that
+    # inherits from BaseTestCase to even run, we will need to register them
+    # ourselves.  BaseTestCase.config will set the debug level if something
+    # calls self.config(debug=True) so we need these options registered
+    # appropriately.
+    # See bug 1433785 for more details.
+    log.register_options(CONF)
 
 
 class BaseTestCase(testtools.TestCase):
 
     def setUp(self):
         super(BaseTestCase, self).setUp()
+
+        self._config_fixture = self.useFixture(cfg_fixture.Config())
 
         # NOTE(bcwaldon): parse_args has to be called to register certain
         # command-line options - specifically we need config_dir for
@@ -108,9 +125,7 @@ class BaseTestCase(testtools.TestCase):
         All overrides are automatically cleared at the end of the current
         test by the fixtures cleanup process.
         """
-        group = kw.pop('group', None)
-        for k, v in six.iteritems(kw):
-            CONF.set_override(k, v, group)
+        self._config_fixture.config(**kw)
 
 
 class requires(object):
@@ -165,7 +180,8 @@ def skip_if_disabled(func):
 
 def fork_exec(cmd,
               exec_env=None,
-              logfile=None):
+              logfile=None,
+              pass_fds=None):
     """
     Execute a command using fork/exec.
 
@@ -182,6 +198,7 @@ def fork_exec(cmd,
                      which to run the command.
     :param logile: A path to a file which will hold the stdout/err of
                    the child process.
+    :param pass_fds: Sequence of file descriptors passed to the child.
     """
     env = os.environ.copy()
     if exec_env is not None:
@@ -201,6 +218,12 @@ def fork_exec(cmd,
                         os.dup2(fptr.fileno(), desc)
                     except OSError:
                         pass
+        if pass_fds and hasattr(os, 'set_inheritable'):
+            # os.set_inheritable() is only available and needed
+            # since Python 3.4. On Python 3.3 and older, file descriptors are
+            # inheritable by default.
+            for fd in pass_fds:
+                os.set_inheritable(fd, True)
 
         args = shlex.split(cmd)
         os.execvpe(args[0], args, env)

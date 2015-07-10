@@ -497,6 +497,10 @@ class ArtifactDuplicateTransitiveDependency(Duplicate):
                 " already has the transitive dependency=%(dep)s")
 
 
+class ArtifactCircularDependency(Invalid):
+    message = _("Artifact with a circular dependency can not be created")
+
+
 class ArtifactUnsupportedPropertyOperator(Invalid):
     message = _("Operator %(op)s is not supported")
 
@@ -554,3 +558,9 @@ class InvalidJsonPatchPath(JsonPatchException):
     def __init__(self, message=None, *args, **kwargs):
         self.explanation = kwargs.get("explanation")
         super(InvalidJsonPatchPath, self).__init__(message, *args, **kwargs)
+
+
+class SearchNotAvailable(GlanceException):
+    message = _("The search and index services are not available. Ensure you "
+                "have the necessary prerequisite dependencies installed like "
+                "elasticsearch to use these services.")

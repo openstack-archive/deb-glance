@@ -24,8 +24,8 @@ import uuid
 
 import glance_store as store
 import mock
-from oslo.serialization import jsonutils
 from oslo_config import cfg
+from oslo_serialization import jsonutils
 from oslo_utils import timeutils
 import routes
 import six
@@ -374,7 +374,44 @@ class TestGlanceAPI(base.IsolatedUnitTest):
             mocked_size.return_value = 0
             res = req.get_response(self.api)
             self.assertEqual(400, res.status_int)
-            self.assertIn('Invalid container format', res.body)
+            self.assertIn('Container format is not specified', res.body)
+
+    def test_create_with_location_no_disk_format(self):
+        fixture_headers = {
+            'x-image-meta-name': 'bogus',
+            'x-image-meta-location': 'http://localhost:0/image.tar.gz',
+            'x-image-meta-container-format': 'bare',
+        }
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in six.iteritems(fixture_headers):
+            req.headers[k] = v
+
+        http = store.get_store_from_scheme('http')
+
+        with mock.patch.object(http, 'get_size') as mocked_size:
+            mocked_size.return_value = 0
+            res = req.get_response(self.api)
+            self.assertEqual(400, res.status_int)
+            self.assertIn('Disk format is not specified', res.body)
+
+    def test_create_delayed_image_with_no_disk_and_container_formats(self):
+        fixture_headers = {
+            'x-image-meta-name': 'delayed',
+        }
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in six.iteritems(fixture_headers):
+            req.headers[k] = v
+
+        http = store.get_store_from_scheme('http')
+
+        with mock.patch.object(http, 'get_size') as mocked_size:
+            mocked_size.return_value = 0
+            res = req.get_response(self.api)
+            self.assertEqual(201, res.status_int)
 
     def test_create_with_bad_store_name(self):
         fixture_headers = {
@@ -506,7 +543,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
 
         expected = "Cannot convert image size 'invalid' to an integer."
         exec_bad_size_test('invalid', expected)
-        expected = "Image size must be >= 0 ('-10' specified)."
+        expected = "Cannot be a negative value."
         exec_bad_size_test(-10, expected)
 
     def test_bad_image_name(self):
@@ -1064,7 +1101,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req = webob.Request.blank("/images")
         req.headers['Content-Type'] = 'application/octet-stream'
         req.method = 'POST'
-        for k, v in fixture_headers.iteritems():
+        for k, v in six.iteritems(fixture_headers):
             req.headers[k] = v
         res = req.get_response(self.api)
         self.assertEqual(400, res.status_int)
@@ -1080,7 +1117,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req = webob.Request.blank("/images")
         req.headers['Content-Type'] = 'application/octet-stream'
         req.method = 'POST'
-        for k, v in fixture_headers.iteritems():
+        for k, v in six.iteritems(fixture_headers):
             req.headers[k] = v
         res = req.get_response(self.api)
         self.assertEqual(400, res.status_int)
@@ -1094,7 +1131,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         req = webob.Request.blank("/images")
         req.headers['Content-Type'] = 'application/octet-stream'
         req.method = 'POST'
-        for k, v in fixture_headers.iteritems():
+        for k, v in six.iteritems(fixture_headers):
             req.headers[k] = v
         res = req.get_response(self.api)
         self.assertEqual(400, res.status_int)
@@ -1714,7 +1751,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
 
         req = webob.Request.blank("/images")
         req.method = 'POST'
-        for k, v in fixture_headers.iteritems():
+        for k, v in six.iteritems(fixture_headers):
             req.headers[k] = v
 
         res = req.get_response(self.api)
@@ -2098,7 +2135,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
 
     def test_get_index_sort_name_asc(self):
         """
-        Tests that the /images registry API returns list of
+        Tests that the /images API returns list of
         public images sorted alphabetically by name in
         ascending order.
         """
@@ -2139,8 +2176,8 @@ class TestGlanceAPI(base.IsolatedUnitTest):
 
     def test_get_details_filter_changes_since(self):
         """
-        Tests that the /images/detail registry API returns list of
-        public images that have a size less than or equal to size_max
+        Tests that the /images/detail API returns list of
+        images that changed since the time defined by changes-since
         """
         dt1 = timeutils.utcnow() - datetime.timedelta(1)
         iso1 = timeutils.isotime(dt1)
@@ -2860,7 +2897,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
 
     def test_get_details_invalid_marker(self):
         """
-        Tests that the /images/detail registry API returns a 400
+        Tests that the /images/detail API returns a 400
         when an invalid marker is provided
         """
         req = webob.Request.blank('/images/detail?marker=%s' % _gen_uuid())
@@ -4211,6 +4248,76 @@ class TestAPIProtectedProps(base.IsolatedUnitTest):
             another_request.headers[k] = v
         output = another_request.get_response(self.api)
         self.assertEqual(403, output.status_int)
+
+    def test_create_protected_prop_check_case_insensitive(self):
+        """
+        Verify that role check is case-insensitive i.e. the property
+        marked with role Member is creatable by the member role
+        """
+        image_id = self._create_admin_image()
+        another_request = unit_test_utils.get_fake_request(
+            path='/images/%s' % image_id, method='PUT')
+        headers = {'x-auth-token': 'user:tenant:member',
+                   'x-image-meta-property-x_case_insensitive': '1'}
+        for k, v in six.iteritems(headers):
+                another_request.headers[k] = v
+        output = another_request.get_response(self.api)
+        res_body = jsonutils.loads(output.body)['image']
+        self.assertEqual('1', res_body['properties']['x_case_insensitive'])
+
+    def test_read_protected_prop_check_case_insensitive(self):
+        """
+        Verify that role check is case-insensitive i.e. the property
+        marked with role Member is readable by the member role
+        """
+        custom_props = {
+            'x-image-meta-property-x_case_insensitive': '1'
+        }
+        image_id = self._create_admin_image(custom_props)
+        another_request = unit_test_utils.get_fake_request(
+            method='HEAD', path='/images/%s' % image_id)
+        headers = {'x-auth-token': 'user:tenant:member'}
+        for k, v in six.iteritems(headers):
+            another_request.headers[k] = v
+        output = another_request.get_response(self.api)
+        self.assertEqual(200, output.status_int)
+        self.assertEqual('', output.body)
+        self.assertEqual(
+            '1', output.headers['x-image-meta-property-x_case_insensitive'])
+
+    def test_update_protected_props_check_case_insensitive(self):
+        """
+        Verify that role check is case-insensitive i.e. the property
+        marked with role Member is updatable by the member role
+        """
+        image_id = self._create_admin_image(
+            {'x-image-meta-property-x_case_insensitive': '1'})
+        another_request = unit_test_utils.get_fake_request(
+            path='/images/%s' % image_id, method='PUT')
+        headers = {'x-auth-token': 'user:tenant:member',
+                   'x-image-meta-property-x_case_insensitive': '2'}
+        for k, v in six.iteritems(headers):
+            another_request.headers[k] = v
+        output = another_request.get_response(self.api)
+        res_body = jsonutils.loads(output.body)['image']
+        self.assertEqual('2', res_body['properties']['x_case_insensitive'])
+
+    def test_delete_protected_props_check_case_insensitive(self):
+        """
+        Verify that role check is case-insensitive i.e. the property
+        marked with role Member is deletable by the member role
+        """
+        image_id = self._create_admin_image(
+            {'x-image-meta-property-x_case_insensitive': '1'})
+        another_request = unit_test_utils.get_fake_request(
+            path='/images/%s' % image_id, method='PUT')
+        headers = {'x-auth-token': 'user:tenant:member',
+                   'X-Glance-Registry-Purge-Props': 'True'}
+        for k, v in six.iteritems(headers):
+            another_request.headers[k] = v
+        output = another_request.get_response(self.api)
+        res_body = jsonutils.loads(output.body)['image']
+        self.assertEqual({}, res_body['properties'])
 
     def test_create_non_protected_prop(self):
         """

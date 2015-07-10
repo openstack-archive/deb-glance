@@ -318,9 +318,7 @@ def get_image_meta_from_headers(response):
                                                           param=key,
                                                           extra_msg=extra)
             if result[key] < 0 and result[key] is not None:
-                extra = (_("Image %(key)s must be >= 0 "
-                           "('%(value)s' specified).")
-                         % {'key': key, 'value': result[key]})
+                extra = _('Cannot be a negative value.')
                 raise exception.InvalidParameterValue(value=result[key],
                                                       param=key,
                                                       extra_msg=extra)
@@ -588,7 +586,8 @@ def get_test_suite_socket():
     if GLANCE_TEST_SOCKET_FD_STR in os.environ:
         fd = int(os.environ[GLANCE_TEST_SOCKET_FD_STR])
         sock = socket.fromfd(fd, socket.AF_INET, socket.SOCK_STREAM)
-        sock = socket.SocketType(_sock=sock)
+        if six.PY2:
+            sock = socket.SocketType(_sock=sock)
         sock.listen(CONF.backlog)
         del os.environ[GLANCE_TEST_SOCKET_FD_STR]
         os.close(fd)
@@ -684,12 +683,12 @@ def no_4byte_params(f):
     def wrapper(*args, **kwargs):
 
         def _is_match(some_str):
-            return (isinstance(some_str, unicode) and
+            return (isinstance(some_str, six.text_type) and
                     REGEX_4BYTE_UNICODE.findall(some_str) != [])
 
         def _check_dict(data_dict):
             # a dict of dicts has to be checked recursively
-            for key, value in data_dict.iteritems():
+            for key, value in six.iteritems(data_dict):
                 if isinstance(value, dict):
                     _check_dict(value)
                 else:
@@ -713,6 +712,31 @@ def no_4byte_params(f):
         _check_dict(kwargs)
         return f(*args, **kwargs)
     return wrapper
+
+
+def validate_mysql_int(*args, **kwargs):
+    """
+    Make sure that all arguments are less than 2 ** 31 - 1.
+
+    This limitation is introduced because mysql stores INT in 4 bytes.
+    If the validation fails for some argument, exception.Invalid is raised with
+    appropriate information.
+    """
+    max_int = (2 ** 31) - 1
+    for param in args:
+        if param > max_int:
+            msg = _("Value %(value)d out of range, "
+                    "must not exceed %(max)d") % {"value": param,
+                                                  "max": max_int}
+            raise exception.Invalid(msg)
+
+    for param_str in kwargs:
+        param = kwargs.get(param_str)
+        if param and param > max_int:
+            msg = _("'%(param)s' value out of range, "
+                    "must not exceed %(max)d") % {"param": param_str,
+                                                  "max": max_int}
+            raise exception.Invalid(msg)
 
 
 def stash_conf_values():

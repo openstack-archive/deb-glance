@@ -15,7 +15,7 @@
 
 import time
 
-from oslo.serialization import jsonutils as json
+from oslo_serialization import jsonutils as json
 from oslo_utils import timeutils
 
 from glance.api.v2 import tasks
@@ -146,6 +146,10 @@ class TestTasksApi(base.ApiTest):
                                               headers=minimal_task_headers())
         self.assertEqual(200, response.status)
 
+        # NOTE(sabari): wait for all task executions to finish before checking
+        # task status.
+        self._wait_on_task_execution()
+
         # 4. GET /tasks
         # Get all tasks (not deleted)
         path = "/v2/tasks"
@@ -168,10 +172,6 @@ class TestTasksApi(base.ApiTest):
         self.assertEqual('success', task['status'])
         self.assertIsNotNone(task['created_at'])
         self.assertIsNotNone(task['updated_at'])
-
-        # NOTE(nikhil): wait for all task executions to finish before exiting
-        # else there is a risk of running into deadlock
-        self._wait_on_task_execution()
 
     def test_task_schema_api(self):
         # 0. GET /schemas/task

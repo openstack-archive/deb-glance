@@ -13,13 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from oslo.config import cfg
-from oslo import messaging
+from oslo_config import cfg
 from oslo_log import log as logging
+import oslo_messaging
+from oslo_service import service as os_service
 import stevedore
 
 from glance import i18n
-from glance.openstack.common import service as os_service
 
 LOG = logging.getLogger(__name__)
 _ = i18n._
@@ -62,14 +62,14 @@ class ListenerService(os_service.Service):
 
     def start(self):
         super(ListenerService, self).start()
-        transport = messaging.get_transport(cfg.CONF)
+        transport = oslo_messaging.get_transport(cfg.CONF)
         targets = [
-            messaging.Target(topic="notifications", exchange="glance")
+            oslo_messaging.Target(topic="notifications", exchange="glance")
         ]
         endpoints = [
             NotificationEndpoint()
         ]
-        listener = messaging.get_notification_listener(
+        listener = oslo_messaging.get_notification_listener(
             transport,
             targets,
             endpoints)

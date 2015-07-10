@@ -16,9 +16,9 @@
 import re
 
 import glance_store
-from oslo.serialization import jsonutils as json
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_serialization import jsonutils as json
 from oslo_utils import timeutils
 import six
 import six.moves.urllib.parse as urlparse
@@ -68,6 +68,7 @@ class ImagesController(object):
         except exception.Invalid as e:
             raise webob.exc.HTTPBadRequest(explanation=e.msg)
         except exception.Forbidden as e:
+            LOG.debug("User not permitted to create image")
             raise webob.exc.HTTPForbidden(explanation=e.msg)
         except exception.InvalidParameterValue as e:
             raise webob.exc.HTTPBadRequest(explanation=e.msg)
@@ -85,6 +86,8 @@ class ImagesController(object):
             LOG.debug(utils.exception_to_str(e))
             raise webob.exc.HTTPBadRequest(
                 explanation=utils.exception_to_str(e))
+        except exception.NotAuthenticated as e:
+            raise webob.exc.HTTPUnauthorized(explanation=e.msg)
 
         return image
 
@@ -116,7 +119,10 @@ class ImagesController(object):
                 exception.InvalidFilterRangeValue) as e:
             raise webob.exc.HTTPBadRequest(explanation=e.msg)
         except exception.Forbidden as e:
+            LOG.debug("User not permitted to retrieve images index")
             raise webob.exc.HTTPForbidden(explanation=e.msg)
+        except exception.NotAuthenticated as e:
+            raise webob.exc.HTTPUnauthorized(explanation=e.msg)
         result['images'] = images
         return result
 
@@ -125,9 +131,12 @@ class ImagesController(object):
         try:
             return image_repo.get(image_id)
         except exception.Forbidden as e:
+            LOG.debug("User not permitted to show image '%s'", image_id)
             raise webob.exc.HTTPForbidden(explanation=e.msg)
         except exception.NotFound as e:
             raise webob.exc.HTTPNotFound(explanation=e.msg)
+        except exception.NotAuthenticated as e:
+            raise webob.exc.HTTPUnauthorized(explanation=e.msg)
 
     @utils.mutating
     def update(self, req, image_id, changes):
@@ -148,6 +157,7 @@ class ImagesController(object):
         except exception.Invalid as e:
             raise webob.exc.HTTPBadRequest(explanation=e.msg)
         except exception.Forbidden as e:
+            LOG.debug("User not permitted to update image '%s'", image_id)
             raise webob.exc.HTTPForbidden(explanation=e.msg)
         except exception.InvalidParameterValue as e:
             raise webob.exc.HTTPBadRequest(explanation=e.msg)
@@ -161,6 +171,8 @@ class ImagesController(object):
             LOG.exception(utils.exception_to_str(e))
             raise webob.exc.HTTPRequestEntityTooLarge(
                 explanation=e.msg, request=req, content_type='text/plain')
+        except exception.NotAuthenticated as e:
+            raise webob.exc.HTTPUnauthorized(explanation=e.msg)
 
         return image
 
@@ -220,6 +232,7 @@ class ImagesController(object):
             image.delete()
             image_repo.remove(image)
         except exception.Forbidden as e:
+            LOG.debug("User not permitted to delete image '%s'", image_id)
             raise webob.exc.HTTPForbidden(explanation=e.msg)
         except exception.NotFound as e:
             msg = (_("Failed to find image %(image_id)s to delete") %
@@ -233,6 +246,8 @@ class ImagesController(object):
                     "exc": e.msg})
             LOG.warn(msg)
             raise webob.exc.HTTPConflict(explanation=msg)
+        except exception.NotAuthenticated as e:
+            raise webob.exc.HTTPUnauthorized(explanation=e.msg)
 
     def _get_locations_op_pos(self, path_pos, max_pos, allow_max):
         if path_pos is None or max_pos is None:
@@ -324,6 +339,8 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
 
     _default_sort_dir = 'desc'
 
+    _supported_operations = ('add', 'remove', 'replace')
+
     def __init__(self, schema=None):
         super(RequestDeserializer, self).__init__()
         self.schema = schema or get_schema()
@@ -367,15 +384,23 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
         return dict(image=image, extra_properties=properties, tags=tags)
 
     def _get_change_operation_d10(self, raw_change):
-        try:
-            return raw_change['op']
-        except KeyError:
-            msg = _("Unable to find '%s' in JSON Schema change") % 'op'
+        op = raw_change.get('op')
+        if op is None:
+            msg = _('Unable to find `op` in JSON Schema change. '
+                    'It must be one of the following: %(available)s.') % \
+                {'available': ', '.join(self._supported_operations)}
             raise webob.exc.HTTPBadRequest(explanation=msg)
+        if op not in self._supported_operations:
+            msg = _('Invalid operation: `%(op)s`. '
+                    'It must be one of the following: %(available)s.') % \
+                {'op': op,
+                 'available': ', '.join(self._supported_operations)}
+            raise webob.exc.HTTPBadRequest(explanation=msg)
+        return op
 
     def _get_change_operation_d4(self, raw_change):
         op = None
-        for key in ['replace', 'add', 'remove']:
+        for key in self._supported_operations:
             if key in raw_change:
                 if op is not None:
                     msg = _('Operation objects must contain only one member'
@@ -720,7 +745,7 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
                     # locations but it's just non-existent.
                     image_view['locations'] = []
                     LOG.debug("There is not available location "
-                              "for image %s" % image.image_id)
+                              "for image %s", image.image_id)
 
             if CONF.show_image_direct_url:
                 if image.locations:
@@ -729,7 +754,7 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
                     image_view['direct_url'] = l['url']
                 else:
                     LOG.debug("There is not available location "
-                              "for image %s" % image.image_id)
+                              "for image %s", image.image_id)
 
             image_view['tags'] = list(image.tags)
             image_view['self'] = self._get_image_href(image)

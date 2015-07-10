@@ -25,6 +25,7 @@ import atexit
 import datetime
 import logging
 import os
+import platform
 import shutil
 import signal
 import socket
@@ -33,7 +34,7 @@ import tempfile
 import time
 
 import fixtures
-from oslo.serialization import jsonutils
+from oslo_serialization import jsonutils
 # NOTE(jokke): simplified transition to py3, behaves like py2 xrange
 from six.moves import range
 import six.moves.urllib.parse as urlparse
@@ -45,6 +46,7 @@ from glance import tests as glance_tests
 from glance.tests import utils as test_utils
 
 execute, get_unused_port = test_utils.execute, test_utils.get_unused_port
+tracecmd_osmap = {'Linux': 'strace', 'FreeBSD': 'truss'}
 
 
 class Server(object):
@@ -75,6 +77,7 @@ class Server(object):
         self.property_protection_file = ''
         self.enable_v1_api = True
         self.enable_v2_api = True
+        self.enable_v3_api = True
         self.enable_v1_registry = True
         self.enable_v2_registry = True
         self.needs_database = False
@@ -85,6 +88,7 @@ class Server(object):
         self.server_module = None
         self.stop_kill = False
         self.use_user_token = False
+        self.send_identity_credentials = False
 
     def write_conf(self, **kwargs):
         """
@@ -113,7 +117,7 @@ class Server(object):
         utils.safe_mkdirs(conf_dir)
 
         def override_conf(filepath, overridden):
-            with open(filepath, 'wb') as conf_file:
+            with open(filepath, 'w') as conf_file:
                 conf_file.write(overridden)
                 conf_file.flush()
                 return conf_file.name
@@ -153,6 +157,7 @@ class Server(object):
             exec_env = self.exec_env.copy()
         else:
             exec_env = {}
+        pass_fds = set()
         if self.sock:
             if not self.fork_socket:
                 self.sock.close()
@@ -160,11 +165,13 @@ class Server(object):
             else:
                 fd = os.dup(self.sock.fileno())
                 exec_env[utils.GLANCE_TEST_SOCKET_FD_STR] = str(fd)
+                pass_fds.add(fd)
                 self.sock.close()
 
         self.process_pid = test_utils.fork_exec(cmd,
                                                 logfile=os.devnull,
-                                                exec_env=exec_env)
+                                                exec_env=exec_env,
+                                                pass_fds=pass_fds)
 
         self.stop_kill = not expect_exit
         if self.pid_file:
@@ -205,7 +212,7 @@ class Server(object):
             utils.safe_mkdirs(conf_dir)
             conf_filepath = os.path.join(conf_dir, 'glance-manage.conf')
 
-            with open(conf_filepath, 'wb') as conf_file:
+            with open(conf_filepath, 'w') as conf_file:
                 conf_file.write('[DEFAULT]\n')
                 conf_file.write('sql_connection = %s' % self.sql_connection)
                 conf_file.flush()
@@ -322,6 +329,7 @@ metadata_encryption_key = %(metadata_encryption_key)s
 registry_host = 127.0.0.1
 registry_port = %(registry_port)s
 use_user_token = %(use_user_token)s
+send_identity_credentials = %(send_identity_credentials)s
 log_file = %(log_file)s
 image_size_cap = %(image_size_cap)d
 delayed_delete = %(delayed_delete)s
@@ -338,6 +346,7 @@ show_multiple_locations = %(show_multiple_locations)s
 user_storage_quota = %(user_storage_quota)s
 enable_v1_api = %(enable_v1_api)s
 enable_v2_api = %(enable_v2_api)s
+enable_v3_api = %(enable_v3_api)s
 lock_path = %(lock_path)s
 property_protection_file = %(property_protection_file)s
 property_protection_rule_format = %(property_protection_rule_format)s
@@ -346,6 +355,7 @@ image_property_quota=%(image_property_quota)s
 image_tag_quota=%(image_tag_quota)s
 image_location_quota=%(image_location_quota)s
 location_strategy=%(location_strategy)s
+allow_additional_image_properties = True
 [oslo_policy]
 policy_file = %(policy_file)s
 policy_default_rule = %(policy_default_rule)s
@@ -383,6 +393,7 @@ paste.composite_factory = glance.api:root_app_factory
 /: apiversions
 /v1: apiv1app
 /v2: apiv2app
+/v3: apiv3app
 
 [app:apiversions]
 paste.app_factory = glance.api.versions:create_resource
@@ -392,6 +403,9 @@ paste.app_factory = glance.api.v1.router:API.factory
 
 [app:apiv2app]
 paste.app_factory = glance.api.v2.router:API.factory
+
+[app:apiv3app]
+paste.app_factory = glance.api.v3.router:API.factory
 
 [filter:versionnegotiation]
 paste.filter_factory =
@@ -564,6 +578,8 @@ class FunctionalTest(test_utils.BaseTestCase):
         self.api_protocol = 'http'
         self.api_port, api_sock = test_utils.get_unused_port_and_socket()
         self.registry_port, reg_sock = test_utils.get_unused_port_and_socket()
+
+        self.tracecmd = tracecmd_osmap.get(platform.system())
 
         conf_dir = os.path.join(self.test_dir, 'etc')
         utils.safe_mkdirs(conf_dir)
@@ -816,11 +832,13 @@ class FunctionalTest(test_utils.BaseTestCase):
             if os.path.exists(f.pid_file):
                 pid = f.process_pid
                 trace = f.pid_file.replace('.pid', '.trace')
-                cmd = 'strace -p %d -o %s' % (pid, trace)
-                execute(cmd, raise_error=False, expect_exit=False)
-                time.sleep(0.5)
-                if os.path.exists(trace):
-                    msg += ('\nstrace:\n%s\n' % open(trace).read())
+                if self.tracecmd:
+                    cmd = '%s -p %d -o %s' % (self.tracecmd, pid, trace)
+                    execute(cmd, raise_error=False, expect_exit=False)
+                    time.sleep(0.5)
+                    if os.path.exists(trace):
+                        msg += ('\n%s:\n%s\n' % (self.tracecmd,
+                                                 open(trace).read()))
 
         self.add_log_details(failed)
 

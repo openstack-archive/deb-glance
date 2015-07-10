@@ -17,7 +17,7 @@ import os
 import signal
 import uuid
 
-from oslo.serialization import jsonutils
+from oslo_serialization import jsonutils
 import requests
 import six
 # NOTE(jokke): simplified transition to py3, behaves like py2 xrange
@@ -67,6 +67,70 @@ class TestImages(functional.FunctionalTest):
         }
         base_headers.update(custom_headers or {})
         return base_headers
+
+    def test_v1_none_properties_v2(self):
+        self.api_server.deployment_flavor = 'noauth'
+        self.api_server.use_user_token = True
+        self.api_server.send_identity_credentials = True
+        self.registry_server.deployment_flavor = ''
+        # Image list should be empty
+        self.start_servers(**self.__dict__.copy())
+
+        # Create an image (with two deployer-defined properties)
+        path = self._url('/v1/images')
+        headers = self._headers({'content-type': 'application/octet-stream'})
+        headers.update(test_utils.minimal_headers('image-1'))
+        # NOTE(flaper87): Sending empty string, the server will use None
+        headers['x-image-meta-property-my_empty_prop'] = ''
+
+        response = requests.post(path, headers=headers)
+        self.assertEqual(201, response.status_code)
+        data = jsonutils.loads(response.text)
+        image_id = data['image']['id']
+
+        # NOTE(flaper87): Get the image using V2 and verify
+        # the returned value for `my_empty_prop` is an empty
+        # string.
+        path = self._url('/v2/images/%s' % image_id)
+        response = requests.get(path, headers=self._headers())
+        self.assertEqual(200, response.status_code)
+        image = jsonutils.loads(response.text)
+        self.assertEqual('', image['my_empty_prop'])
+        self.stop_servers()
+
+    def test_not_authenticated_in_registry_on_ops(self):
+        # https://bugs.launchpad.net/glance/+bug/1451850
+        # this configuration guarantees that authentication succeeds in
+        # glance-api and fails in glance-registry if no token is passed
+        self.api_server.deployment_flavor = ''
+        # make sure that request will reach registry
+        self.api_server.data_api = 'glance.db.registry.api'
+        self.registry_server.deployment_flavor = 'fakeauth'
+        self.start_servers(**self.__dict__.copy())
+        headers = {'content-type': 'application/json'}
+        image = {'name': 'image', 'type': 'kernel', 'disk_format': 'qcow2',
+                 'container_format': 'bare'}
+        # image create should return 401
+        response = requests.post(self._url('/v2/images'), headers=headers,
+                                 data=jsonutils.dumps(image))
+        self.assertEqual(401, response.status_code)
+        # image list should return 401
+        response = requests.get(self._url('/v2/images'))
+        self.assertEqual(401, response.status_code)
+        # image show should return 401
+        response = requests.get(self._url('/v2/images/someimageid'))
+        self.assertEqual(401, response.status_code)
+        # image update should return 401
+        ops = [{'op': 'replace', 'path': '/protected', 'value': False}]
+        media_type = 'application/openstack-images-v2.1-json-patch'
+        response = requests.patch(self._url('/v2/images/someimageid'),
+                                  headers={'content-type': media_type},
+                                  data=jsonutils.dumps(ops))
+        self.assertEqual(401, response.status_code)
+        # image delete should return 401
+        response = requests.delete(self._url('/v2/images/someimageid'))
+        self.assertEqual(401, response.status_code)
+        self.stop_servers()
 
     def test_image_lifecycle(self):
         # Image list should be empty
@@ -3118,6 +3182,7 @@ class TestImageMembers(functional.FunctionalTest):
         # Image members forbidden for public image
         path = self._url('/v2/images/%s/members' % image_fixture[0]['id'])
         response = requests.get(path, headers=get_header('tenant1'))
+        self.assertIn("Public images do not have members", response.text)
         self.assertEqual(403, response.status_code)
 
         # Image Member Cannot delete Image membership

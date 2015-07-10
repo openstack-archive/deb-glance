@@ -26,18 +26,17 @@ if possible.
 from __future__ import print_function
 
 import datetime
-import exceptions
 import os
 import pickle
 import uuid
 
 from migrate.versioning import api as migration_api
 from migrate.versioning.repository import Repository
-from oslo.serialization import jsonutils
 from oslo_config import cfg
 from oslo_db.sqlalchemy import test_base
 from oslo_db.sqlalchemy import test_migrations
 from oslo_db.sqlalchemy import utils as db_utils
+from oslo_serialization import jsonutils
 from oslo_utils import timeutils
 # NOTE(jokke): simplified transition to py3, behaves like py2 xrange
 from six.moves import range
@@ -276,7 +275,7 @@ class MigrationsMixin(test_migrations.WalkVersionsMixin):
         return initial_values
 
     def _check_010(self, engine, data):
-        values = dict((c, u) for c, u in data)
+        values = {c: u for c, u in data}
 
         images = db_utils.get_table(engine, 'images')
         for row in images.select().execute():
@@ -420,7 +419,7 @@ class MigrationsMixin(test_migrations.WalkVersionsMixin):
 
         invalid_scheme_uri = ('http://acct:usr:pass@example.com'
                               '/container/obj-id')
-        self.assertRaises(exceptions.AssertionError,
+        self.assertRaises(AssertionError,
                           legacy_parse_uri_fn,
                           invalid_scheme_uri,
                           True)
@@ -646,7 +645,7 @@ class MigrationsMixin(test_migrations.WalkVersionsMixin):
     def _check_019(self, engine, data):
         image_locations = db_utils.get_table(engine, 'image_locations')
         records = image_locations.select().execute().fetchall()
-        locations = dict([(il.image_id, il.value) for il in records])
+        locations = {il.image_id: il.value for il in records}
         self.assertEqual('http://glance.example.com',
                          locations.get('fake-19-1'))
 
@@ -937,7 +936,7 @@ class MigrationsMixin(test_migrations.WalkVersionsMixin):
         records = tasks_table.select().execute().fetchall()
         self.assertEqual(2, len(records))
 
-        tasks = dict([(t.id, t) for t in records])
+        tasks = {t.id: t for t in records}
 
         task_1 = tasks.get('task-1')
         self.assertEqual('some input', task_1.input)

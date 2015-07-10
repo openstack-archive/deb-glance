@@ -19,9 +19,9 @@ Registry's Client API
 
 import os
 
-from oslo.serialization import jsonutils
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_serialization import jsonutils
 
 from glance.common import exception
 from glance import i18n
@@ -138,6 +138,9 @@ def get_registry_client(cxt):
             'X-Service-Catalog': jsonutils.dumps(cxt.service_catalog),
         }
         kwargs['identity_headers'] = identity_headers
+
+    kwargs['request_id'] = cxt.request_id
+
     return client.RegistryClient(_CLIENT_HOST, _CLIENT_PORT,
                                  _METADATA_ENCRYPTION_KEY, **kwargs)
 

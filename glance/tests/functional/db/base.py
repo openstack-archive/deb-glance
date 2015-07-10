@@ -222,6 +222,25 @@ class DriverTests(object):
         self.assertRaises(exception.Invalid, self.db_api.image_create,
                           self.context, fixture)
 
+    def test_image_create_bad_checksum(self):
+        # checksum should be no longer than 32 characters
+        bad_checksum = "42" * 42
+        fixture = {'checksum': bad_checksum}
+        self.assertRaises(exception.Invalid, self.db_api.image_create,
+                          self.context, fixture)
+        # if checksum is not longer than 32 characters but non-ascii ->
+        # still raise 400
+        fixture = {'checksum': u'\u042f' * 32}
+        self.assertRaises(exception.Invalid, self.db_api.image_create,
+                          self.context, fixture)
+
+    def test_image_create_bad_int_params(self):
+        int_too_long = 2 ** 31 + 42
+        for param in ['min_disk', 'min_ram']:
+            fixture = {param: int_too_long}
+            self.assertRaises(exception.Invalid, self.db_api.image_create,
+                              self.context, fixture)
+
     def test_image_create_bad_property(self):
         # bad value
         fixture = {'status': 'queued',
@@ -287,7 +306,7 @@ class DriverTests(object):
         fixture = {'properties': {'ping': 'pong'}}
         image = self.db_api.image_update(self.adm_context, UUID1, fixture)
         expected = {'ping': 'pong', 'foo': 'bar', 'far': 'boo'}
-        actual = dict((p['name'], p['value']) for p in image['properties'])
+        actual = {p['name']: p['value'] for p in image['properties']}
         self.assertEqual(expected, actual)
         self.assertNotEqual(image['created_at'], image['updated_at'])
 
@@ -295,7 +314,7 @@ class DriverTests(object):
         fixture = {'properties': {'ping': 'pong'}}
         image = self.db_api.image_update(self.adm_context, UUID1,
                                          fixture, purge_props=True)
-        properties = dict((p['name'], p) for p in image['properties'])
+        properties = {p['name']: p for p in image['properties']}
 
         # New properties are set
         self.assertTrue('ping' in properties)

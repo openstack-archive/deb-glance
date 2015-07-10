@@ -34,11 +34,11 @@ from eventlet.green import ssl
 import eventlet.greenio
 import eventlet.wsgi
 import glance_store
-from oslo.serialization import jsonutils
 from oslo_concurrency import processutils
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_log import loggers
+from oslo_serialization import jsonutils
 import routes
 import routes.middleware
 import six
@@ -99,6 +99,11 @@ eventlet_opts = [
                        'read successfully by the client, you simply have to '
                        'set this option to False when you create a wsgi '
                        'server.')),
+    cfg.IntOpt('client_socket_timeout', default=900,
+               help=_('Timeout for client connections\' socket operations. '
+                      'If an incoming connection is idle for this number of '
+                      'seconds it will be closed. A value of \'0\' means '
+                      'wait forever.')),
 ]
 
 profiler_opts = [
@@ -367,6 +372,7 @@ class Server(object):
         :param has changed: callable to determine if a parameter has changed
         """
         eventlet.wsgi.MAX_HEADER_LINE = CONF.max_header_line
+        self.client_socket_timeout = CONF.client_socket_timeout or None
         self.configure_socket(old_conf, has_changed)
         if self.initialize_glance_store:
             initialize_glance_store()
@@ -451,7 +457,8 @@ class Server(object):
                                  log=self._wsgi_logger,
                                  custom_pool=self.pool,
                                  debug=False,
-                                 keepalive=CONF.http_keepalive)
+                                 keepalive=CONF.http_keepalive,
+                                 socket_timeout=self.client_socket_timeout)
         except socket.error as err:
             if err[0] != errno.EINVAL:
                 raise
@@ -467,7 +474,8 @@ class Server(object):
         eventlet.wsgi.server(sock, application, custom_pool=self.pool,
                              log=self._wsgi_logger,
                              debug=False,
-                             keepalive=CONF.http_keepalive)
+                             keepalive=CONF.http_keepalive,
+                             socket_timeout=self.client_socket_timeout)
 
     def configure_socket(self, old_conf=None, has_changed=None):
         """
@@ -873,7 +881,7 @@ class Resource(object):
                                           request, **action_args)
         except webob.exc.WSGIHTTPException as e:
             exc_info = sys.exc_info()
-            raise translate_exception(request, e), None, exc_info[2]
+            six.reraise(translate_exception(request, e), None, exc_info[2])
 
         try:
             response = webob.Response(request=request)

@@ -13,9 +13,9 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from oslo.serialization import jsonutils
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_serialization import jsonutils
 import webob.exc
 
 from glance.api import policy
@@ -119,6 +119,7 @@ class ContextMiddleware(BaseContextMiddleware):
             'owner_is_tenant': CONF.owner_is_tenant,
             'service_catalog': service_catalog,
             'policy_enforcer': self.policy_enforcer,
+            'request_id': req.headers.get('X-Openstack-Request-ID'),
         }
 
         return glance.context.RequestContext(**kwargs)

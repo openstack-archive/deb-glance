@@ -454,7 +454,7 @@ def _make_conditions_from_filters(filters, is_public=None):
             tag_filters.extend([models.ImageTag.value == tag])
             tag_conditions.append(tag_filters)
 
-    filters = dict([(k, v) for k, v in filters.items() if v is not None])
+    filters = {k: v for k, v in filters.items() if v is not None}
 
     for (k, v) in filters.items():
         key = k
@@ -674,6 +674,10 @@ def _validate_image(values):
     if status not in STATUSES:
         msg = "Invalid image status '%s' for image." % status
         raise exception.Invalid(msg)
+
+    # validate integer values to eliminate DBError on save
+    utils.validate_mysql_int(min_disk=values.get('min_disk'),
+                             min_ram=values.get('min_ram'))
 
     return values
 

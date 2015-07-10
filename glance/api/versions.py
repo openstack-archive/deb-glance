@@ -13,10 +13,9 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import httplib
-
-from oslo.serialization import jsonutils
 from oslo_config import cfg
+from oslo_serialization import jsonutils
+from six.moves import http_client
 import webob.dec
 
 from glance.common import wsgi
@@ -57,6 +56,9 @@ class Controller(object):
             }
 
         version_objs = []
+        if CONF.enable_v3_api:
+            version_objs.append(
+                build_version_object(3.0, 'v3', 'EXPERIMENTAL'))
         if CONF.enable_v2_api:
             version_objs.extend([
                 build_version_object(2.3, 'v2', 'CURRENT'),
@@ -71,7 +73,7 @@ class Controller(object):
             ])
 
         response = webob.Response(request=req,
-                                  status=httplib.MULTIPLE_CHOICES,
+                                  status=http_client.MULTIPLE_CHOICES,
                                   content_type='application/json')
         response.body = jsonutils.dumps(dict(versions=version_objs))
         return response
