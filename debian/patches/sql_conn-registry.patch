@@ -7,7 +7,7 @@ Index: glance/etc/glance-api.conf
 ===================================================================
 --- glance.orig/etc/glance-api.conf
 +++ glance/etc/glance-api.conf
-@@ -336,7 +336,7 @@ image_cache_dir = /var/lib/glance/image-
+@@ -341,7 +341,7 @@ image_cache_dir = /var/lib/glance/image-
  # Deprecated group/name - [DEFAULT]/sql_connection
  # Deprecated group/name - [DATABASE]/sql_connection
  # Deprecated group/name - [sql]/connection
@@ -20,7 +20,7 @@ Index: glance/etc/glance-registry.conf
 ===================================================================
 --- glance.orig/etc/glance-registry.conf
 +++ glance/etc/glance-registry.conf
-@@ -162,7 +162,7 @@ qpid_tcp_nodelay = True
+@@ -167,7 +167,7 @@ qpid_tcp_nodelay = True
  # Deprecated group/name - [DEFAULT]/sql_connection
  # Deprecated group/name - [DATABASE]/sql_connection
  # Deprecated group/name - [sql]/connection

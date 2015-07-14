@@ -13,7 +13,7 @@ Index: glance/requirements.txt
 +++ glance/requirements.txt
 @@ -14,7 +14,7 @@ SQLAlchemy>=0.9.7,<=0.9.99
  anyjson>=0.3.3
- eventlet>=0.16.1,!=0.17.0
+ eventlet>=0.17.3
  PasteDeploy>=1.5.0
 -Routes>=1.12.3,!=2.0
 +Routes>=1.12.3

@@ -7,7 +7,7 @@ Index: glance/etc/glance-api.conf
 ===================================================================
 --- glance.orig/etc/glance-api.conf
 +++ glance/etc/glance-api.conf
-@@ -445,7 +445,7 @@ revocation_cache_time = 10
+@@ -450,7 +450,7 @@ revocation_cache_time = 10
  # service name removed. For example, if your paste section name is
  # [pipeline:glance-api-keystone], you would configure the flavor below
  # as 'keystone'.
@@ -20,7 +20,7 @@ Index: glance/etc/glance-registry.conf
 ===================================================================
 --- glance.orig/etc/glance-registry.conf
 +++ glance/etc/glance-registry.conf
-@@ -256,7 +256,7 @@ admin_password = %SERVICE_PASSWORD%
+@@ -261,7 +261,7 @@ admin_password = %SERVICE_PASSWORD%
  # service name removed. For example, if your paste section name is
  # [pipeline:glance-registry-keystone], you would configure the flavor below
  # as 'keystone'.
