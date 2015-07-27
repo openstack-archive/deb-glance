@@ -1,6 +1,6 @@
 glance (2015.1.0-3) unstable; urgency=medium
 
-  * Rebuilt with sqlalchemy 1.0.6.
+  * Rebuilt with sqlalchemy >= 1.0 (Closes: #793570).
 
  -- Thomas Goirand <zigo@debian.org>  Tue, 30 Jun 2015 17:33:38 +0000
 
