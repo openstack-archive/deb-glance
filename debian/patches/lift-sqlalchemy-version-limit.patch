@@ -1,0 +1,17 @@
+Description: Allow SQLA >= 1.0
+Author: Thomas Goirand <zigo@debian.org>
+Bug-Debian: https://bugs.debian.org/793570
+Forwarded: not-needed
+Last-Update: 2015-07-27
+
+--- glance-2015.1.0.orig/requirements.txt
++++ glance-2015.1.0/requirements.txt
+@@ -10,7 +10,7 @@ pbr>=0.6,!=0.7,<1.0
+ greenlet>=0.3.2
+ 
+ # < 0.8.0/0.8 does not work, see https://bugs.launchpad.net/bugs/1153983
+-SQLAlchemy>=0.9.7,<=0.9.99
++SQLAlchemy>=0.9.7
+ anyjson>=0.3.3
+ eventlet>=0.16.1,!=0.17.0
+ PasteDeploy>=1.5.0

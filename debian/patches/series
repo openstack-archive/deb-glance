@@ -4,3 +4,4 @@ fix-default-glance-registry-paste.ini.patch
 fixes-unban-routes-2.0.patch
 no-ordereddict-requirements.txt.patch
 accept-latest-oslo.messaging.patch
+lift-sqlalchemy-version-limit.patch
