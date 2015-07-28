@@ -56,4 +56,4 @@ override_dh_auto_clean:
 	rm -f debian/*.init debian/*.upstart debian/*.service
 	rm -rf build
 
-.PHONY: override_dh_auto_clean override_dh_auto_configure override_dh_builddeb override_dh_installman override_dh_auto_build
+.PHONY: override_dh_auto_clean override_dh_installman override_dh_auto_build
