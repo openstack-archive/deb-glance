@@ -5,3 +5,4 @@ fixes-unban-routes-2.0.patch
 no-ordereddict-requirements.txt.patch
 accept-latest-oslo.messaging.patch
 lift-sqlalchemy-version-limit.patch
+CVE-2015-3289_Save_image_data_after_setting_the_data.patch
