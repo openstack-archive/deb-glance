@@ -15,6 +15,7 @@
 
 from oslo_log import log as logging
 from oslo_serialization import jsonutils
+from oslo_utils import encodeutils
 import six
 import webob.exc
 from wsme.rest import json
@@ -25,7 +26,6 @@ from glance.api.v2.model.metadef_namespace import Namespace
 from glance.api.v2.model.metadef_property_type import PropertyType
 from glance.api.v2.model.metadef_property_type import PropertyTypes
 from glance.common import exception
-from glance.common import utils
 from glance.common import wsgi
 import glance.db
 import glance.gateway
@@ -35,8 +35,6 @@ import glance.schema
 
 LOG = logging.getLogger(__name__)
 _ = i18n._
-_LE = i18n._LE
-_LI = i18n._LI
 
 
 class NamespacePropertiesController(object):
@@ -79,7 +77,7 @@ class NamespacePropertiesController(object):
         except exception.NotFound as e:
             raise webob.exc.HTTPNotFound(explanation=e.msg)
         except Exception as e:
-            LOG.error(utils.exception_to_str(e))
+            LOG.error(encodeutils.exception_to_unicode(e))
             raise webob.exc.HTTPInternalServerError()
         return namespace_properties
 
@@ -111,7 +109,7 @@ class NamespacePropertiesController(object):
         except exception.NotFound as e:
             raise webob.exc.HTTPNotFound(explanation=e.msg)
         except Exception as e:
-            LOG.error(utils.exception_to_str(e))
+            LOG.error(encodeutils.exception_to_unicode(e))
             raise webob.exc.HTTPInternalServerError()
         return property
 
@@ -131,7 +129,7 @@ class NamespacePropertiesController(object):
         except exception.Duplicate as e:
             raise webob.exc.HTTPConflict(explanation=e.msg)
         except Exception as e:
-            LOG.error(utils.exception_to_str(e))
+            LOG.error(encodeutils.exception_to_unicode(e))
             raise webob.exc.HTTPInternalServerError()
         return self._to_model(new_property_type)
 
@@ -152,7 +150,7 @@ class NamespacePropertiesController(object):
         except exception.Duplicate as e:
             raise webob.exc.HTTPConflict(explanation=e.msg)
         except Exception as e:
-            LOG.error(utils.exception_to_str(e))
+            LOG.error(encodeutils.exception_to_unicode(e))
             raise webob.exc.HTTPInternalServerError()
         return self._to_model(updated_property_type)
 
@@ -169,7 +167,7 @@ class NamespacePropertiesController(object):
         except exception.NotFound as e:
             raise webob.exc.HTTPNotFound(explanation=e.msg)
         except Exception as e:
-            LOG.error(utils.exception_to_str(e))
+            LOG.error(encodeutils.exception_to_unicode(e))
             raise webob.exc.HTTPInternalServerError()
 
 

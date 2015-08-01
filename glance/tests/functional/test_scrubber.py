@@ -17,14 +17,12 @@ import os
 import sys
 import time
 
-import glance_store.location
 import httplib2
 from oslo_serialization import jsonutils
 from oslo_utils import units
 # NOTE(jokke): simplified transition to py3, behaves like py2 xrange
 from six.moves import range
 
-from glance.common import crypt
 from glance.tests import functional
 from glance.tests.utils import execute
 
@@ -42,6 +40,16 @@ class TestScrubber(functional.FunctionalTest):
 
     """Test that delayed_delete works and the scrubber deletes"""
 
+    def _send_http_request(self, path, method, body=None):
+        headers = {
+            'x-image-meta-name': 'test_image',
+            'x-image-meta-is_public': 'true',
+            'x-image-meta-disk_format': 'raw',
+            'x-image-meta-container_format': 'ovf',
+            'content-type': 'application/octet-stream'
+        }
+        return httplib2.Http().request(path, method, body, headers)
+
     def test_delayed_delete(self):
         """
         test that images don't get deleted immediately and that the scrubber
@@ -50,30 +58,17 @@ class TestScrubber(functional.FunctionalTest):
         self.cleanup()
         self.start_servers(delayed_delete=True, daemon=True,
                            metadata_encryption_key='')
-
-        headers = {
-            'x-image-meta-name': 'test_image',
-            'x-image-meta-is_public': 'true',
-            'x-image-meta-disk_format': 'raw',
-            'x-image-meta-container_format': 'ovf',
-            'content-type': 'application/octet-stream',
-        }
         path = "http://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
-        http = httplib2.Http()
-        response, content = http.request(path, 'POST', body='XXX',
-                                         headers=headers)
+        response, content = self._send_http_request(path, 'POST', body='XXX')
         self.assertEqual(201, response.status)
         image = jsonutils.loads(content)['image']
         self.assertEqual('active', image['status'])
-        image_id = image['id']
 
         path = "http://%s:%d/v1/images/%s" % ("127.0.0.1", self.api_port,
-                                              image_id)
-        http = httplib2.Http()
-        response, content = http.request(path, 'DELETE')
+                                              image['id'])
+        response, content = self._send_http_request(path, 'DELETE')
         self.assertEqual(200, response.status)
-
-        response, content = http.request(path, 'HEAD')
+        response, content = self._send_http_request(path, 'HEAD')
         self.assertEqual(200, response.status)
         self.assertEqual('pending_delete', response['x-image-meta-status'])
 
@@ -90,29 +85,18 @@ class TestScrubber(functional.FunctionalTest):
         self.start_servers(delayed_delete=True, daemon=False,
                            metadata_encryption_key='')
 
-        headers = {
-            'x-image-meta-name': 'test_image',
-            'x-image-meta-is_public': 'true',
-            'x-image-meta-disk_format': 'raw',
-            'x-image-meta-container_format': 'ovf',
-            'content-type': 'application/octet-stream',
-        }
         path = "http://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
-        http = httplib2.Http()
-        response, content = http.request(path, 'POST', body='XXX',
-                                         headers=headers)
+        response, content = self._send_http_request(path, 'POST', body='XXX')
         self.assertEqual(201, response.status)
         image = jsonutils.loads(content)['image']
         self.assertEqual('active', image['status'])
-        image_id = image['id']
 
         path = "http://%s:%d/v1/images/%s" % ("127.0.0.1", self.api_port,
-                                              image_id)
-        http = httplib2.Http()
-        response, content = http.request(path, 'DELETE')
+                                              image['id'])
+        response, content = self._send_http_request(path, 'DELETE')
         self.assertEqual(200, response.status)
 
-        response, content = http.request(path, 'HEAD')
+        response, content = self._send_http_request(path, 'HEAD')
         self.assertEqual(200, response.status)
         self.assertEqual('pending_delete', response['x-image-meta-status'])
 
@@ -128,71 +112,6 @@ class TestScrubber(functional.FunctionalTest):
 
         self.wait_for_scrub(path)
 
-        self.stop_servers()
-
-    def test_scrubber_with_metadata_enc(self):
-        """
-        test that files written to scrubber_data_dir use
-        metadata_encryption_key when available to encrypt the location
-        """
-
-        # FIXME(flaper87): It looks like an older commit
-        # may have broken this test. The file_queue `add_location`
-        # is not being called.
-        self.skipTest("Test broken. See bug #1366682")
-        self.cleanup()
-        self.start_servers(delayed_delete=True,
-                           daemon=True,
-                           default_store='file')
-
-        # add an image
-        headers = {
-            'x-image-meta-name': 'test_image',
-            'x-image-meta-is_public': 'true',
-            'x-image-meta-disk_format': 'raw',
-            'x-image-meta-container_format': 'ovf',
-            'content-type': 'application/octet-stream',
-        }
-
-        path = "http://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
-        http = httplib2.Http()
-        response, content = http.request(path, 'POST', body='XXX',
-                                         headers=headers)
-        self.assertEqual(201, response.status)
-        image = jsonutils.loads(content)['image']
-        self.assertEqual('active', image['status'])
-        image_id = image['id']
-
-        # delete the image
-        path = "http://%s:%d/v1/images/%s" % ("127.0.0.1",
-                                              self.api_port,
-                                              image_id)
-        http = httplib2.Http()
-        response, content = http.request(path, 'DELETE')
-        self.assertEqual(200, response.status)
-
-        response, content = http.request(path, 'HEAD')
-        self.assertEqual(200, response.status)
-        self.assertEqual('pending_delete', response['x-image-meta-status'])
-
-        # ensure the marker file has encrypted the image location by decrypting
-        # it and checking the image_id is intact
-        file_path = os.path.join(self.api_server.scrubber_datadir,
-                                 str(image_id))
-        marker_uri = None
-        with open(file_path, 'r') as f:
-            marker_uri = f.readline().strip()
-        self.assertTrue(marker_uri is not None)
-
-        decrypted_uri = crypt.urlsafe_decrypt(
-            self.api_server.metadata_encryption_key, marker_uri)
-        loc = glance_store.location.StoreLocation({})
-        loc.parse_uri(decrypted_uri)
-
-        self.assertEqual("file", loc.scheme)
-        self.assertEqual(image['id'], loc.obj)
-
-        self.wait_for_scrub(path)
         self.stop_servers()
 
     def test_scrubber_delete_handles_exception(self):
@@ -211,37 +130,25 @@ class TestScrubber(functional.FunctionalTest):
         self.assertEqual(self.api_server.default_store, 'file')
 
         # add an image
-        headers = {
-            'x-image-meta-name': 'test_image',
-            'x-image-meta-is_public': 'true',
-            'x-image-meta-disk_format': 'raw',
-            'x-image-meta-container_format': 'ovf',
-            'content-type': 'application/octet-stream',
-        }
         path = "http://%s:%d/v1/images" % ("127.0.0.1", self.api_port)
-        http = httplib2.Http()
-        response, content = http.request(path, 'POST', body='XXX',
-                                         headers=headers)
+        response, content = self._send_http_request(path, 'POST', body='XXX')
         self.assertEqual(201, response.status)
         image = jsonutils.loads(content)['image']
         self.assertEqual('active', image['status'])
-        image_id = image['id']
 
         # delete the image
         path = "http://%s:%d/v1/images/%s" % ("127.0.0.1", self.api_port,
-                                              image_id)
-        http = httplib2.Http()
-        response, content = http.request(path, 'DELETE')
+                                              image['id'])
+        response, content = self._send_http_request(path, 'DELETE')
         self.assertEqual(200, response.status)
 
         # ensure the image is marked pending delete
-        response, content = http.request(path, 'HEAD')
+        response, content = self._send_http_request(path, 'HEAD')
         self.assertEqual(200, response.status)
         self.assertEqual('pending_delete', response['x-image-meta-status'])
 
         # Remove the file from the backend.
-        file_path = os.path.join(self.api_server.image_dir,
-                                 str(image_id))
+        file_path = os.path.join(self.api_server.image_dir, image['id'])
         os.remove(file_path)
 
         # Wait for the scrub time on the image to pass
@@ -255,11 +162,6 @@ class TestScrubber(functional.FunctionalTest):
         self.assertEqual(0, exitcode)
 
         self.wait_for_scrub(path)
-
-        # Make sure there are no queue files associated with image.
-        queue_file_path = os.path.join(self.api_server.scrubber_datadir,
-                                       str(image_id))
-        self.assertFalse(os.path.exists(queue_file_path))
 
         self.stop_servers()
 

@@ -19,6 +19,7 @@ import glance_store
 import jsonschema
 from oslo_config import cfg
 from oslo_serialization import jsonutils as json
+from oslo_utils import encodeutils
 from oslo_utils import excutils
 import semantic_version
 import six
@@ -162,6 +163,8 @@ class ArtifactsController(object):
             raise webob.exc.HTTPConflict(explanation=dupex.msg)
         except exception.Invalid as e:
             raise webob.exc.HTTPBadRequest(explanation=e.msg)
+        except exception.NotAuthenticated as e:
+            raise webob.exc.HTTPUnauthorized(explanation=e.msg)
 
     @utils.mutating
     def update_property(self, req, id, type_name, type_version, path, data,
@@ -190,6 +193,8 @@ class ArtifactsController(object):
             raise webob.exc.HTTPBadRequest(explanation=e.msg)
         except exception.NotFound as e:
             raise webob.exc.HTTPNotFound(explanation=e.msg)
+        except exception.NotAuthenticated as e:
+            raise webob.exc.HTTPUnauthorized(explanation=e.msg)
 
     @utils.mutating
     def update(self, req, id, type_name, type_version, changes, **kwargs):
@@ -214,7 +219,7 @@ class ArtifactsController(object):
             raise webob.exc.HTTPForbidden(explanation=e.msg)
         except exception.StorageQuotaFull as e:
             msg = (_("Denying attempt to upload artifact because it exceeds "
-                     "the quota: %s") % utils.exception_to_str(e))
+                     "the quota: %s") % encodeutils.exception_to_unicode(e))
             raise webob.exc.HTTPRequestEntityTooLarge(
                 explanation=msg, request=req, content_type='text/plain')
         except exception.Invalid as e:
@@ -222,6 +227,8 @@ class ArtifactsController(object):
         except exception.LimitExceeded as e:
             raise webob.exc.HTTPRequestEntityTooLarge(
                 explanation=e.msg, request=req, content_type='text/plain')
+        except exception.NotAuthenticated as e:
+            raise webob.exc.HTTPUnauthorized(explanation=e.msg)
 
     @utils.mutating
     def delete(self, req, id, type_name, type_version, **kwargs):
@@ -233,16 +240,18 @@ class ArtifactsController(object):
             artifact_repo.remove(artifact)
         except exception.Invalid as e:
             raise webob.exc.HTTPBadRequest(explanation=e.msg)
-        except exception.Forbidden as e:
+        except (glance_store.Forbidden, exception.Forbidden) as e:
             raise webob.exc.HTTPForbidden(explanation=e.msg)
-        except exception.NotFound as e:
+        except (glance_store.NotFound, exception.NotFound) as e:
             msg = (_("Failed to find artifact %(artifact_id)s to delete") %
                    {'artifact_id': id})
             raise webob.exc.HTTPNotFound(explanation=msg)
-        except exception.InUseByStore as e:
+        except glance_store.exceptions.InUseByStore as e:
             msg = (_("Artifact %s could not be deleted "
                      "because it is in use: %s") % (id, e.msg))  # noqa
             raise webob.exc.HTTPConflict(explanation=msg)
+        except exception.NotAuthenticated as e:
+            raise webob.exc.HTTPUnauthorized(explanation=e.msg)
 
     @utils.mutating
     def publish(self, req, id, type_name, type_version, **kwargs):
@@ -258,6 +267,8 @@ class ArtifactsController(object):
             raise webob.exc.HTTPNotFound(explanation=e.msg)
         except exception.Invalid as e:
             raise webob.exc.HTTPBadRequest(explanation=e.msg)
+        except exception.NotAuthenticated as e:
+            raise webob.exc.HTTPUnauthorized(explanation=e.msg)
 
     def _upload_list_property(self, method, blob_list, index, data, size):
         if method == 'PUT' and not index and len(blob_list) > 0:
@@ -280,6 +291,7 @@ class ArtifactsController(object):
     def upload(self, req, id, type_name, type_version, attr, size, data,
                index, **kwargs):
         artifact_repo = self.gateway.get_artifact_repo(req.context)
+        artifact = None
         try:
             artifact = self._get_artifact_with_dependencies(artifact_repo,
                                                             id,
@@ -301,16 +313,82 @@ class ArtifactsController(object):
             artifact_repo.save(artifact)
             return artifact
 
+        except ValueError as e:
+            LOG.debug("Cannot save data for artifact %(id)s: %(e)s",
+                      {'id': id, 'e': utils.exception_to_str(e)})
+            self._restore(artifact_repo, artifact)
+            raise webob.exc.HTTPBadRequest(
+                explanation=utils.exception_to_str(e))
+
+        except glance_store.StoreAddDisabled:
+            msg = _("Error in store configuration. Adding artifacts to store "
+                    "is disabled.")
+            LOG.exception(msg)
+            self._restore(artifact_repo, artifact)
+            raise webob.exc.HTTPGone(explanation=msg, request=req,
+                                     content_type='text/plain')
+
+        except (glance_store.Duplicate,
+                exception.InvalidImageStatusTransition) as e:
+            msg = utils.exception_to_str(e)
+            LOG.exception(msg)
+            raise webob.exc.HTTPConflict(explanation=e.msg, request=req)
+
         except exception.Forbidden as e:
-            raise webob.exc.HTTPForbidden(explanation=e.msg)
+            msg = ("Not allowed to upload data for artifact %s" %
+                   id)
+            LOG.debug(msg)
+            raise webob.exc.HTTPForbidden(explanation=msg, request=req)
+
         except exception.NotFound as e:
             raise webob.exc.HTTPNotFound(explanation=e.msg)
-        except exception.Invalid as e:
-            raise webob.exc.HTTPBadRequest(explanation=e.msg)
-        except Exception as e:
-            # TODO(mfedosin): add more exception handlers here
+
+        except glance_store.StorageFull as e:
+            msg = _("Artifact storage media "
+                    "is full: %s") % utils.exception_to_str(e)
+            LOG.error(msg)
+            self._restore(artifact_repo, artifact)
+            raise webob.exc.HTTPRequestEntityTooLarge(explanation=msg,
+                                                      request=req)
+
+        except exception.StorageQuotaFull as e:
+            msg = _("Artifact exceeds the storage "
+                    "quota: %s") % utils.exception_to_str(e)
+            LOG.error(msg)
+            self._restore(artifact_repo, artifact)
+            raise webob.exc.HTTPRequestEntityTooLarge(explanation=msg,
+                                                      request=req)
+
+        except exception.ImageSizeLimitExceeded as e:
+            msg = _("The incoming artifact blob is "
+                    "too large: %s") % utils.exception_to_str(e)
+            LOG.error(msg)
+            self._restore(artifact_repo, artifact)
+            raise webob.exc.HTTPRequestEntityTooLarge(explanation=msg,
+                                                      request=req)
+
+        except glance_store.StorageWriteDenied as e:
+            msg = _("Insufficient permissions on artifact "
+                    "storage media: %s") % utils.exception_to_str(e)
+            LOG.error(msg)
+            self._restore(artifact_repo, artifact)
+            raise webob.exc.HTTPServiceUnavailable(explanation=msg,
+                                                   request=req)
+
+        except webob.exc.HTTPGone as e:
             with excutils.save_and_reraise_exception():
-                LOG.exception(_LE("Failed to upload image data due to "
+                LOG.error(_LE("Failed to upload artifact blob data due to"
+                              " HTTP error"))
+
+        except webob.exc.HTTPError as e:
+            with excutils.save_and_reraise_exception():
+                LOG.error(_LE("Failed to upload artifact blob data due to HTTP"
+                              " error"))
+                self._restore(artifact_repo, artifact)
+
+        except Exception as e:
+            with excutils.save_and_reraise_exception():
+                LOG.exception(_LE("Failed to upload artifact blob data due to "
                                   "internal error"))
                 self._restore(artifact_repo, artifact)
 
@@ -339,9 +417,9 @@ class ArtifactsController(object):
                 raise webob.exc.HTTPBadRequest(explanation=message)
         except exception.Forbidden as e:
             raise webob.exc.HTTPForbidden(explanation=e.msg)
-        except exception.NotFound as e:
+        except (glance_store.NotFound, exception.NotFound) as e:
             raise webob.exc.HTTPNotFound(explanation=e.msg)
-        except exception.Invalid as e:
+        except (glance_store.Invalid, exception.Invalid) as e:
             raise webob.exc.HTTPBadRequest(explanation=e.msg)
 
     def _restore(self, artifact_repo, artifact):
@@ -357,8 +435,36 @@ class ArtifactsController(object):
         except Exception as e:
             msg = (_LE("Unable to restore artifact %(artifact_id)s: %(e)s") %
                    {'artifact_id': artifact.id,
-                    'e': utils.exception_to_str(e)})
+                    'e': encodeutils.exception_to_unicode(e)})
             LOG.exception(msg)
+
+    def list_artifact_types(self, req):
+        plugins = self.plugins.plugin_map
+        response = []
+        base_link = "%s/v3/artifacts" % (CONF.public_endpoint or req.host_url)
+
+        for type_name, plugin in six.iteritems(plugins.get("by_typename")):
+
+            metadata = dict(
+                type_name=type_name,
+                displayed_name=plugin[0].metadata.type_display_name,
+                versions=[]
+            )
+
+            for version in plugin:
+                endpoint = version.metadata.endpoint
+                type_version = "v" + version.metadata.type_version
+                version_metadata = dict(
+                    id=type_version,
+                    link="%s/%s/%s" % (base_link, endpoint, type_version)
+                )
+                type_description = version.metadata.type_description
+                if type_description is not None:
+                    version_metadata['description'] = type_description
+                metadata['versions'].append(version_metadata)
+            response.append(metadata)
+
+        return {"artifact_types": response}
 
 
 class RequestDeserializer(wsgi.JSONRequestDeserializer,
@@ -645,6 +751,9 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer,
 
         return query_params
 
+    def list_artifact_types(self, req):
+        return {}
+
 
 class ResponseSerializer(wsgi.JSONResponseSerializer):
     # TODO(ivasilevskaya): ideally this should be autogenerated/loaded
@@ -690,6 +799,11 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
         if blob.checksum:
             response.headers['Content-MD5'] = blob.checksum
         response.headers['Content-Length'] = str(blob.size)
+
+    def list_artifact_types(self, response, res):
+        body = json.dumps(res, ensure_ascii=False)
+        response.unicode_body = six.text_type(body)
+        response.content_type = 'application/json'
 
 
 def create_resource():

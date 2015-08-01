@@ -17,9 +17,9 @@ import sys
 import glance_store as store_api
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_utils import encodeutils
 import six.moves.urllib.parse as urlparse
 
-from glance.common import utils
 import glance.db as db_api
 from glance import i18n
 from glance import scrubber
@@ -58,7 +58,7 @@ def safe_delete_from_backend(context, image_id, location):
         msg = _LW('Failed to delete image %s in store from URI') % image_id
         LOG.warn(msg)
     except store_api.StoreDeleteNotSupported as e:
-        LOG.warn(utils.exception_to_str(e))
+        LOG.warn(encodeutils.exception_to_unicode(e))
     except store_api.UnsupportedBackend:
         exc_type = sys.exc_info()[0].__name__
         msg = (_LE('Failed to delete image %(image_id)s from store: %(exc)s') %
@@ -76,12 +76,12 @@ def schedule_delayed_delete_from_backend(context, image_id, location):
     :param location: The image location entry
     """
 
-    __, db_queue = scrubber.get_scrub_queues()
+    db_queue = scrubber.get_scrub_queue()
 
     if not CONF.use_user_token:
         context = None
 
-    ret = db_queue.add_location(image_id, location, user_context=context)
+    ret = db_queue.add_location(image_id, location)
     if ret:
         location['status'] = 'pending_delete'
         if 'id' in location:

@@ -46,7 +46,6 @@ import six
 
 from glance.common import config
 from glance.common import exception
-from glance.common import utils
 from glance.db import migration as db_migration
 from glance.db.sqlalchemy import api as db_api
 from glance.db.sqlalchemy import metadata
@@ -56,7 +55,6 @@ from glance import i18n
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
 _ = i18n._
-_LW = i18n._LW
 
 
 # Decorators for actions
@@ -327,7 +325,7 @@ def main():
                          for arg in CONF.command.action_args]
             return CONF.command.action_fn(*func_args, **func_kwargs)
     except exception.GlanceException as e:
-        sys.exit("ERROR: %s" % utils.exception_to_str(e))
+        sys.exit("ERROR: %s" % encodeutils.exception_to_unicode(e))
 
 
 if __name__ == '__main__':

@@ -217,7 +217,7 @@ class TestUtils(test_utils.BaseTestCase):
         }
 
         mashup_dict = utils.create_mashup_dict(image_meta)
-        self.assertFalse('properties' in mashup_dict)
+        self.assertNotIn('properties', mashup_dict)
         self.assertEqual(image_meta['properties']['test_key'],
                          mashup_dict['test_key'])
 
@@ -244,7 +244,7 @@ class TestUtils(test_utils.BaseTestCase):
         }
 
         mashup_dict = utils.create_mashup_dict(image_meta)
-        self.assertFalse('properties' in mashup_dict)
+        self.assertNotIn('properties', mashup_dict)
         self.assertNotEqual(image_meta['properties']['min_ram'],
                             mashup_dict['min_ram'])
         self.assertEqual(image_meta['min_ram'], mashup_dict['min_ram'])
@@ -405,21 +405,6 @@ class TestUtils(test_utils.BaseTestCase):
             self.assertRaises(ValueError,
                               utils.parse_valid_host_port,
                               pair)
-
-    def test_exception_to_str(self):
-        class FakeException(Exception):
-            def __str__(self):
-                raise UnicodeError()
-
-        ret = utils.exception_to_str(Exception('error message'))
-        self.assertEqual('error message', ret)
-
-        ret = utils.exception_to_str(Exception('\xa5 error message'))
-        self.assertEqual(' error message', ret)
-
-        ret = utils.exception_to_str(FakeException('\xa5 error message'))
-        self.assertEqual("Caught '%(exception)s' exception." %
-                         {'exception': 'FakeException'}, ret)
 
 
 class UUIDTestCase(test_utils.BaseTestCase):

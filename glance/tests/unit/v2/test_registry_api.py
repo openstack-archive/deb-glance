@@ -148,7 +148,7 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         req.body = jsonutils.dumps(cmd)
         res = req.get_response(self.api)
         res_dict = jsonutils.loads(res.body)[0]
-        self.assertEqual('glance.common.exception.NotFound',
+        self.assertEqual('glance.common.exception.ImageNotFound',
                          res_dict["_error"]["cls"])
 
     def test_get_index(self):
@@ -1479,7 +1479,7 @@ class TestRegistryRPC(base.IsolatedUnitTest):
         # on any exception status_int is always 200, so have to check _error
         # dict
         code, res_dict = self._send_request(command, kwargs, method)
-        self.assertTrue('_error' in res_dict)
+        self.assertIn('_error', res_dict)
         self.assertEqual(error_cls, res_dict['_error']['cls'])
         return res_dict
 

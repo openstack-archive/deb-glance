@@ -56,7 +56,6 @@ BASE = models.BASE
 sa_logger = None
 LOG = logging.getLogger(__name__)
 _ = i18n._
-_LI = i18n._LI
 _LW = i18n._LW
 
 
@@ -134,7 +133,7 @@ def image_update(context, image_id, values, purge_props=False,
     """
     Set the given properties on an image and update it.
 
-    :raises NotFound if image does not exist.
+    :raises ImageNotFound if image does not exist.
     """
     return _image_update(context, values, image_id, purge_props,
                          from_state=from_state)
@@ -215,7 +214,7 @@ def _check_image_id(image_id):
     """
     if (image_id and
        len(image_id) > models.Image.id.property.columns[0].type.length):
-        raise exception.NotFound()
+        raise exception.ImageNotFound()
 
 
 def _image_get(context, image_id, session=None, force_show_deleted=False):
@@ -238,7 +237,7 @@ def _image_get(context, image_id, session=None, force_show_deleted=False):
     except sa_orm.exc.NoResultFound:
         msg = "No image found with ID %s" % image_id
         LOG.debug(msg)
-        raise exception.NotFound(msg)
+        raise exception.ImageNotFound(msg)
 
     # Make sure they can look at it
     if not is_image_visible(context, image):
@@ -658,22 +657,24 @@ def _image_get_disk_usage_by_owner(owner, session, image_id=None):
     return total
 
 
-def _validate_image(values):
+def _validate_image(values, mandatory_status=True):
     """
     Validates the incoming data and raises a Invalid exception
     if anything is out of order.
 
     :param values: Mapping of image metadata to check
+    :param mandatory_status: Whether to validate status from values
     """
 
-    status = values.get('status')
-    if not status:
-        msg = "Image status is required."
-        raise exception.Invalid(msg)
+    if mandatory_status:
+        status = values.get('status')
+        if not status:
+            msg = "Image status is required."
+            raise exception.Invalid(msg)
 
-    if status not in STATUSES:
-        msg = "Invalid image status '%s' for image." % status
-        raise exception.Invalid(msg)
+        if status not in STATUSES:
+            msg = "Invalid image status '%s' for image." % status
+            raise exception.Invalid(msg)
 
     # validate integer values to eliminate DBError on save
     utils.validate_mysql_int(min_disk=values.get('min_disk'),
@@ -753,8 +754,8 @@ def _image_update(context, values, image_id, purge_props=False,
             if from_state:
                 query = query.filter_by(status=from_state)
 
-            if new_status:
-                _validate_image(values)
+            mandatory_status = True if new_status else False
+            _validate_image(values, mandatory_status=mandatory_status)
 
             # Validate fields for Images table. This is similar to what is done
             # for the query result update except that we need to do it prior
@@ -794,7 +795,7 @@ def _image_update(context, values, image_id, purge_props=False,
         _set_properties_for_image(context, image_ref, properties, purge_props,
                                   session)
 
-        if location_data is not None:
+        if location_data:
             _image_locations_set(context, image_ref.id, location_data,
                                  session=session)
 

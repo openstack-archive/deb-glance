@@ -19,6 +19,7 @@ Reference implementation registry server WSGI controller
 
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_utils import encodeutils
 from oslo_utils import strutils
 from oslo_utils import timeutils
 from webob import exc
@@ -122,7 +123,7 @@ class Controller(object):
         try:
             return self.db_api.image_get_all(context, filters=filters,
                                              **params)
-        except exception.NotFound:
+        except exception.ImageNotFound:
             LOG.warn(_LW("Invalid marker. Image %(id)s could not be "
                          "found.") % {'id': params.get('marker')})
             msg = _("Invalid marker. Image could not be found.")
@@ -339,7 +340,7 @@ class Controller(object):
             image = self.db_api.image_get(req.context, id)
             msg = "Successfully retrieved image %(id)s" % {'id': id}
             LOG.debug(msg)
-        except exception.NotFound:
+        except exception.ImageNotFound:
             msg = _LI("Image %(id)s not found") % {'id': id}
             LOG.info(msg)
             raise exc.HTTPNotFound()
@@ -382,7 +383,7 @@ class Controller(object):
                       " 'not found'") % {'id': id}
             LOG.info(msg)
             return exc.HTTPNotFound()
-        except exception.NotFound:
+        except exception.ImageNotFound:
             msg = _LI("Image %(id)s not found") % {'id': id}
             LOG.info(msg)
             return exc.HTTPNotFound()
@@ -435,7 +436,7 @@ class Controller(object):
             return exc.HTTPConflict(msg)
         except exception.Invalid as e:
             msg = (_("Failed to add image metadata. "
-                     "Got error: %s") % utils.exception_to_str(e))
+                     "Got error: %s") % encodeutils.exception_to_unicode(e))
             LOG.error(msg)
             return exc.HTTPBadRequest(msg)
         except Exception:
@@ -484,10 +485,10 @@ class Controller(object):
             return dict(image=make_image_dict(updated_image))
         except exception.Invalid as e:
             msg = (_("Failed to update image metadata. "
-                     "Got error: %s") % utils.exception_to_str(e))
+                     "Got error: %s") % encodeutils.exception_to_unicode(e))
             LOG.error(msg)
             return exc.HTTPBadRequest(msg)
-        except exception.NotFound:
+        except exception.ImageNotFound:
             msg = _LI("Image %(id)s not found") % {'id': id}
             LOG.info(msg)
             raise exc.HTTPNotFound(body='Image not found',
@@ -507,7 +508,7 @@ class Controller(object):
                                    request=req,
                                    content_type='text/plain')
         except exception.Conflict as e:
-            LOG.info(utils.exception_to_str(e))
+            LOG.info(encodeutils.exception_to_unicode(e))
             raise exc.HTTPConflict(body='Image operation conflicts',
                                    request=req,
                                    content_type='text/plain')

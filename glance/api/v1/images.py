@@ -23,6 +23,7 @@ import glance_store as store
 import glance_store.location
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_utils import encodeutils
 from oslo_utils import excutils
 from oslo_utils import strutils
 from webob.exc import HTTPBadRequest
@@ -579,7 +580,7 @@ class Controller(controller.BaseController):
                                content_type="text/plain")
         except exception.Invalid as e:
             msg = (_("Failed to reserve image. Got error: %s") %
-                   utils.exception_to_str(e))
+                   encodeutils.exception_to_unicode(e))
             LOG.exception(msg)
             raise HTTPBadRequest(explanation=msg,
                                  request=req,
@@ -678,7 +679,7 @@ class Controller(controller.BaseController):
             return image_meta_data
         except exception.Duplicate:
             with excutils.save_and_reraise_exception():
-                # Delete image data since it has been supersceded by another
+                # Delete image data since it has been superseded by another
                 # upload and re-raise.
                 LOG.debug("duplicate operation - deleting image data for "
                           " %(id)s (location:%(location)s)" %
@@ -686,7 +687,7 @@ class Controller(controller.BaseController):
                 upload_utils.initiate_deletion(req, location_data, image_id)
         except exception.Invalid as e:
             msg = (_("Failed to activate image. Got error: %s") %
-                   utils.exception_to_str(e))
+                   encodeutils.exception_to_unicode(e))
             LOG.warn(msg)
             raise HTTPBadRequest(explanation=msg,
                                  request=req,
@@ -714,18 +715,19 @@ class Controller(controller.BaseController):
                                             image_id,
                                             location_data,
                                             from_state='saving')
-            except Exception as e:
+            except exception.Duplicate:
+                raise
+            except Exception:
                 with excutils.save_and_reraise_exception():
-                    if not isinstance(e, exception.Duplicate):
-                        # NOTE(zhiyan): Delete image data since it has already
-                        # been added to store by above _upload() call.
-                        LOG.warn(_LW("Failed to activate image %s in "
-                                     "registry. About to delete image "
-                                     "bits from store and update status "
-                                     "to 'killed'.") % image_id)
-                        upload_utils.initiate_deletion(req, location_data,
-                                                       image_id)
-                        upload_utils.safe_kill(req, image_id, 'saving')
+                    # NOTE(zhiyan): Delete image data since it has already
+                    # been added to store by above _upload() call.
+                    LOG.warn(_LW("Failed to activate image %s in "
+                                 "registry. About to delete image "
+                                 "bits from store and update status "
+                                 "to 'killed'.") % image_id)
+                    upload_utils.initiate_deletion(req, location_data,
+                                                   image_id)
+                    upload_utils.safe_kill(req, image_id, 'saving')
         else:
             image_meta = None
 
@@ -744,11 +746,11 @@ class Controller(controller.BaseController):
             # malicious user keeps on trying image-create using non-existent
             # location url. Used log.debug because administrator can
             # disable debug logs.
-            LOG.debug(utils.exception_to_str(e))
+            LOG.debug(encodeutils.exception_to_unicode(e))
             raise HTTPNotFound(explanation=e.msg, content_type="text/plain")
         except (store.UnknownScheme, store.BadStoreUri) as e:
             # NOTE(rajesht): See above note of store.NotFound
-            LOG.debug(utils.exception_to_str(e))
+            LOG.debug(encodeutils.exception_to_unicode(e))
             raise HTTPBadRequest(explanation=e.msg, content_type="text/plain")
 
     def _handle_source(self, req, image_id, image_meta, image_data):
@@ -782,7 +784,7 @@ class Controller(controller.BaseController):
                         image_size_store = store.get_size_from_backend(
                             location, req.context)
                     except (store.BadStoreUri, store.UnknownScheme) as e:
-                        LOG.debug(utils.exception_to_str(e))
+                        LOG.debug(encodeutils.exception_to_unicode(e))
                         raise HTTPBadRequest(explanation=e.msg,
                                              request=req,
                                              content_type="text/plain")
@@ -1015,27 +1017,27 @@ class Controller(controller.BaseController):
 
         except exception.Invalid as e:
             msg = (_("Failed to update image metadata. Got error: %s") %
-                   utils.exception_to_str(e))
+                   encodeutils.exception_to_unicode(e))
             LOG.warn(msg)
             raise HTTPBadRequest(explanation=msg,
                                  request=req,
                                  content_type="text/plain")
-        except exception.NotFound as e:
+        except exception.ImageNotFound as e:
             msg = (_("Failed to find image to update: %s") %
-                   utils.exception_to_str(e))
+                   encodeutils.exception_to_unicode(e))
             LOG.warn(msg)
             raise HTTPNotFound(explanation=msg,
                                request=req,
                                content_type="text/plain")
         except exception.Forbidden as e:
             msg = (_("Forbidden to update image: %s") %
-                   utils.exception_to_str(e))
+                   encodeutils.exception_to_unicode(e))
             LOG.warn(msg)
             raise HTTPForbidden(explanation=msg,
                                 request=req,
                                 content_type="text/plain")
         except (exception.Conflict, exception.Duplicate) as e:
-            LOG.warn(utils.exception_to_str(e))
+            LOG.warn(encodeutils.exception_to_unicode(e))
             raise HTTPConflict(body=_('Image operation conflicts'),
                                request=req,
                                content_type='text/plain')
@@ -1115,23 +1117,24 @@ class Controller(controller.BaseController):
                                                    {'status': ori_status})
 
             registry.delete_image_metadata(req.context, id)
-        except exception.NotFound as e:
+        except exception.ImageNotFound as e:
             msg = (_("Failed to find image to delete: %s") %
-                   utils.exception_to_str(e))
+                   encodeutils.exception_to_unicode(e))
             LOG.warn(msg)
             raise HTTPNotFound(explanation=msg,
                                request=req,
                                content_type="text/plain")
         except exception.Forbidden as e:
             msg = (_("Forbidden to delete image: %s") %
-                   utils.exception_to_str(e))
+                   encodeutils.exception_to_unicode(e))
             LOG.warn(msg)
             raise HTTPForbidden(explanation=msg,
                                 request=req,
                                 content_type="text/plain")
-        except exception.InUseByStore as e:
+        except store.InUseByStore as e:
             msg = (_("Image %(id)s could not be deleted because it is in use: "
-                     "%(exc)s") % {"id": id, "exc": utils.exception_to_str(e)})
+                     "%(exc)s")
+                   % {"id": id, "exc": encodeutils.exception_to_unicode(e)})
             LOG.warn(msg)
             raise HTTPConflict(explanation=msg,
                                request=req,
@@ -1168,7 +1171,7 @@ class ImageDeserializer(wsgi.JSONRequestDeserializer):
         try:
             result['image_meta'] = utils.get_image_meta_from_headers(request)
         except exception.InvalidParameterValue as e:
-            msg = utils.exception_to_str(e)
+            msg = encodeutils.exception_to_unicode(e)
             LOG.warn(msg, exc_info=True)
             raise HTTPBadRequest(explanation=e.msg, request=request)
 

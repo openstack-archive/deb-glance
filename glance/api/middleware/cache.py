@@ -42,7 +42,6 @@ import glance.registry.client.v1.api as registry
 LOG = logging.getLogger(__name__)
 _LI = i18n._LI
 _LE = i18n._LE
-_LW = i18n._LW
 
 PATTERNS = {
     ('v1', 'GET'): re.compile(r'^/v1/images/([^\/]+)$'),
@@ -170,7 +169,7 @@ class CacheFilter(wsgi.Middleware):
 
         try:
             return method(request, image_id, image_iterator, image_metadata)
-        except exception.NotFound:
+        except exception.ImageNotFound:
             msg = _LE("Image cache contained image file for image '%s', "
                       "however the registry did not contain metadata for "
                       "that image!") % image_id

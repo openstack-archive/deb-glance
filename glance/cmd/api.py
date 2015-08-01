@@ -25,8 +25,8 @@ import os
 import sys
 
 import eventlet
+from oslo_utils import encodeutils
 
-from glance.common import utils
 
 # Monkey patch socket, time, select, threads
 eventlet.patcher.monkey_patch(all=False, socket=True, time=True,
@@ -43,6 +43,7 @@ if os.path.exists(os.path.join(possible_topdir, 'glance', '__init__.py')):
 import glance_store
 from oslo_config import cfg
 from oslo_log import log as logging
+import oslo_messaging
 import osprofiler.notifier
 import osprofiler.web
 
@@ -63,7 +64,7 @@ KNOWN_EXCEPTIONS = (RuntimeError,
 def fail(e):
     global KNOWN_EXCEPTIONS
     return_code = KNOWN_EXCEPTIONS.index(type(e)) + 1
-    sys.stderr.write("ERROR: %s\n" % utils.exception_to_str(e))
+    sys.stderr.write("ERROR: %s\n" % encodeutils.exception_to_unicode(e))
     sys.exit(return_code)
 
 
@@ -75,7 +76,7 @@ def main():
 
         if cfg.CONF.profiler.enabled:
             _notifier = osprofiler.notifier.create("Messaging",
-                                                   notifier.messaging, {},
+                                                   oslo_messaging, {},
                                                    notifier.get_transport(),
                                                    "glance", "api",
                                                    cfg.CONF.bind_host)

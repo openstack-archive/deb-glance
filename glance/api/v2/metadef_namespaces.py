@@ -16,6 +16,7 @@
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_serialization import jsonutils
+from oslo_utils import encodeutils
 import six
 import six.moves.urllib.parse as urlparse
 import webob.exc
@@ -41,8 +42,6 @@ import glance.schema
 LOG = logging.getLogger(__name__)
 _ = i18n._
 _LE = i18n._LE
-_LW = i18n._LW
-_LI = i18n._LI
 
 CONF = cfg.CONF
 
@@ -101,7 +100,7 @@ class NamespaceController(object):
         except exception.NotFound as e:
             raise webob.exc.HTTPNotFound(explanation=e.msg)
         except Exception as e:
-            LOG.error(utils.exception_to_str(e))
+            LOG.error(encodeutils.exception_to_unicode(e))
             raise webob.exc.HTTPInternalServerError()
         return namespaces
 
@@ -177,7 +176,7 @@ class NamespaceController(object):
             self._cleanup_namespace(ns_repo, namespace, namespace_created)
             raise webob.exc.HTTPConflict(explanation=e.msg)
         except Exception as e:
-            LOG.error(utils.exception_to_str(e))
+            LOG.error(encodeutils.exception_to_unicode(e))
             raise webob.exc.HTTPInternalServerError()
 
         # Return the user namespace as we don't expose the id to user
@@ -268,7 +267,7 @@ class NamespaceController(object):
         except exception.NotFound as e:
             raise webob.exc.HTTPNotFound(explanation=e.msg)
         except Exception as e:
-            LOG.error(utils.exception_to_str(e))
+            LOG.error(encodeutils.exception_to_unicode(e))
             raise webob.exc.HTTPInternalServerError()
         return namespace_detail
 
@@ -298,7 +297,7 @@ class NamespaceController(object):
         except exception.Duplicate as e:
             raise webob.exc.HTTPConflict(explanation=e.msg)
         except Exception as e:
-            LOG.error(utils.exception_to_str(e))
+            LOG.error(encodeutils.exception_to_unicode(e))
             raise webob.exc.HTTPInternalServerError()
 
         return Namespace.to_wsme_model(updated_namespace,
@@ -318,7 +317,7 @@ class NamespaceController(object):
         except exception.NotFound as e:
             raise webob.exc.HTTPNotFound(explanation=e.msg)
         except Exception as e:
-            LOG.error(utils.exception_to_str(e))
+            LOG.error(encodeutils.exception_to_unicode(e))
             raise webob.exc.HTTPInternalServerError()
 
     def delete_objects(self, req, namespace):
@@ -334,7 +333,7 @@ class NamespaceController(object):
         except exception.NotFound as e:
             raise webob.exc.HTTPNotFound(explanation=e.msg)
         except Exception as e:
-            LOG.error(utils.exception_to_str(e))
+            LOG.error(encodeutils.exception_to_unicode(e))
             raise webob.exc.HTTPInternalServerError()
 
     def delete_tags(self, req, namespace):
@@ -350,7 +349,7 @@ class NamespaceController(object):
         except exception.NotFound as e:
             raise webob.exc.HTTPNotFound(explanation=e.msg)
         except Exception as e:
-            LOG.error(utils.exception_to_str(e))
+            LOG.error(encodeutils.exception_to_unicode(e))
             raise webob.exc.HTTPInternalServerError()
 
     def delete_properties(self, req, namespace):
@@ -366,7 +365,7 @@ class NamespaceController(object):
         except exception.NotFound as e:
             raise webob.exc.HTTPNotFound(explanation=e.msg)
         except Exception as e:
-            LOG.error(utils.exception_to_str(e))
+            LOG.error(encodeutils.exception_to_unicode(e))
             raise webob.exc.HTTPInternalServerError()
 
     def _prefix_property_name(self, namespace_detail, user_resource_type):

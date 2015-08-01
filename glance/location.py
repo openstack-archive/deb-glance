@@ -19,6 +19,7 @@ import copy
 import glance_store as store
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_utils import encodeutils
 from oslo_utils import excutils
 
 from glance.common import exception
@@ -76,12 +77,11 @@ def _check_location_uri(context, store_api, store_utils, uri):
     :param uri: location's uri string
     """
 
-    is_ok = True
     try:
         # NOTE(zhiyan): Some stores return zero when it catch exception
         is_ok = (store_utils.validate_external_location(uri) and
                  store_api.get_size_from_backend(uri, context=context) > 0)
-    except (store.UnknownScheme, store.NotFound):
+    except (store.UnknownScheme, store.NotFound, store.BadStoreUri):
         is_ok = False
     if not is_ok:
         reason = _('Invalid location')
@@ -396,8 +396,9 @@ class ImageProxy(glance.domain.proxy.Image):
                 return data
             except Exception as e:
                 LOG.warn(_('Get image %(id)s data failed: '
-                           '%(err)s.') % {'id': self.image.image_id,
-                                          'err': utils.exception_to_str(e)})
+                           '%(err)s.')
+                         % {'id': self.image.image_id,
+                            'err': encodeutils.exception_to_unicode(e)})
                 err = e
         # tried all locations
         LOG.error(_LE('Glance tried all active locations to get data for '

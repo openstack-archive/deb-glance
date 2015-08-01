@@ -1486,9 +1486,8 @@ Optional. Default: ``None``
 Configuring Glance digest algorithm
 -----------------------------------
 
-Digest algorithm which will be used for digital signature; the default is
-sha1 for a smooth upgrade process but the recommended value is sha256. Use the
-command::
+Digest algorithm that will be used for digital signature. The default
+is sha256. Use the command::
 
   openssl list-message-digest-algorithms
 
@@ -1499,10 +1498,10 @@ return a ValueError exception with "No such digest method" error.
 
 * ``digest_algorithm=<algorithm>``
 
-Optional. Default: ``sha1``
+Optional. Default: ``sha256``
 
 Configuring http_keepalive option
-----------------------------------
+---------------------------------
 
 * ``http_keepalive=<True|False>``
 
@@ -1511,3 +1510,32 @@ will return "Connection: Keep-Alive" in its responses. In order to close the
 client socket connection explicitly after the response is sent and read
 successfully by the client, you simply have to set this option to False when
 you create a wsgi server.
+
+Configuring the Health Check
+----------------------------
+
+This setting allows an operator to configure the endpoint URL that will
+provide information to load balancer if given API endpoint at the node should
+be available or not. Both Glance API and Glance Registry servers can be
+configured to expose a health check URL.
+
+To enable the health check middleware, it must occur in the beginning of the
+application pipeline.
+
+The health check middleware should be placed in your
+``glance-api-paste.ini`` / ``glance-registry-paste.ini`` in a section
+titled ``[filter:healthcheck]``. It should look like this::
+
+  [filter:healthcheck]
+  paste.filter_factory = oslo_middleware:Healthcheck.factory
+  backends = disable_by_file
+  disable_by_file_path = /etc/glance/healthcheck_disable
+
+A ready-made application pipeline including this filter is defined e.g. in
+the ``glance-api-paste.ini`` file, looking like so::
+
+  [pipeline:glance-api]
+  pipeline = healthcheck versionnegotiation osprofiler unauthenticated-context rootapp
+
+For more information see
+`oslo.middleware <http://docs.openstack.org/developer/oslo.middleware/api.html#oslo_middleware.Healthcheck>`_.

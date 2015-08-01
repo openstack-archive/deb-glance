@@ -19,10 +19,10 @@ import uuid
 import mock
 from oslo_config import cfg
 from oslo_db import exception as db_exc
+from oslo_utils import encodeutils
 
 from glance.common import crypt
 from glance.common import exception
-from glance.common import utils
 import glance.context
 import glance.db
 from glance.db.sqlalchemy import api
@@ -125,8 +125,7 @@ class TestImageRepo(test_utils.BaseTestCase):
 
     def setUp(self):
         super(TestImageRepo, self).setUp()
-        self.db = unit_test_utils.FakeDB()
-        self.db.reset()
+        self.db = unit_test_utils.FakeDB(initialize=False)
         self.context = glance.context.RequestContext(
             user=USER1, tenant=TENANT1)
         self.image_repo = glance.db.ImageRepo(self.context, self.db)
@@ -135,7 +134,6 @@ class TestImageRepo(test_utils.BaseTestCase):
         self._create_image_members()
 
     def _create_images(self):
-        self.db.reset()
         self.images = [
             _db_fixture(UUID1, owner=TENANT1, checksum=CHECKSUM,
                         name='1', size=256,
@@ -190,9 +188,9 @@ class TestImageRepo(test_utils.BaseTestCase):
 
     def test_get_not_found(self):
         fake_uuid = str(uuid.uuid4())
-        exc = self.assertRaises(exception.NotFound, self.image_repo.get,
+        exc = self.assertRaises(exception.ImageNotFound, self.image_repo.get,
                                 fake_uuid)
-        self.assertIn(fake_uuid, utils.exception_to_str(exc))
+        self.assertIn(fake_uuid, encodeutils.exception_to_unicode(exc))
 
     def test_get_forbidden(self):
         self.assertRaises(exception.NotFound, self.image_repo.get, UUID4)
@@ -370,31 +368,30 @@ class TestImageRepo(test_utils.BaseTestCase):
         fake_uuid = str(uuid.uuid4())
         image = self.image_repo.get(UUID1)
         image.image_id = fake_uuid
-        exc = self.assertRaises(exception.NotFound, self.image_repo.save,
+        exc = self.assertRaises(exception.ImageNotFound, self.image_repo.save,
                                 image)
-        self.assertIn(fake_uuid, utils.exception_to_str(exc))
+        self.assertIn(fake_uuid, encodeutils.exception_to_unicode(exc))
 
     def test_remove_image(self):
         image = self.image_repo.get(UUID1)
         previous_update_time = image.updated_at
         self.image_repo.remove(image)
         self.assertTrue(image.updated_at > previous_update_time)
-        self.assertRaises(exception.NotFound, self.image_repo.get, UUID1)
+        self.assertRaises(exception.ImageNotFound, self.image_repo.get, UUID1)
 
     def test_remove_image_not_found(self):
         fake_uuid = str(uuid.uuid4())
         image = self.image_repo.get(UUID1)
         image.image_id = fake_uuid
-        exc = self.assertRaises(exception.NotFound, self.image_repo.remove,
-                                image)
-        self.assertIn(fake_uuid, utils.exception_to_str(exc))
+        exc = self.assertRaises(
+            exception.ImageNotFound, self.image_repo.remove, image)
+        self.assertIn(fake_uuid, encodeutils.exception_to_unicode(exc))
 
 
 class TestEncryptedLocations(test_utils.BaseTestCase):
     def setUp(self):
         super(TestEncryptedLocations, self).setUp()
-        self.db = unit_test_utils.FakeDB()
-        self.db.reset()
+        self.db = unit_test_utils.FakeDB(initialize=False)
         self.context = glance.context.RequestContext(
             user=USER1, tenant=TENANT1)
         self.image_repo = glance.db.ImageRepo(self.context, self.db)
@@ -472,8 +469,7 @@ class TestImageMemberRepo(test_utils.BaseTestCase):
 
     def setUp(self):
         super(TestImageMemberRepo, self).setUp()
-        self.db = unit_test_utils.FakeDB()
-        self.db.reset()
+        self.db = unit_test_utils.FakeDB(initialize=False)
         self.context = glance.context.RequestContext(
             user=USER1, tenant=TENANT1)
         self.image_repo = glance.db.ImageRepo(self.context, self.db)
@@ -589,15 +585,14 @@ class TestImageMemberRepo(test_utils.BaseTestCase):
         exc = self.assertRaises(exception.NotFound,
                                 self.image_member_repo.remove,
                                 fake_member)
-        self.assertIn(fake_uuid, utils.exception_to_str(exc))
+        self.assertIn(fake_uuid, encodeutils.exception_to_unicode(exc))
 
 
 class TestTaskRepo(test_utils.BaseTestCase):
 
     def setUp(self):
         super(TestTaskRepo, self).setUp()
-        self.db = unit_test_utils.FakeDB()
-        self.db.reset()
+        self.db = unit_test_utils.FakeDB(initialize=False)
         self.context = glance.context.RequestContext(user=USER1,
                                                      tenant=TENANT1)
         self.task_repo = glance.db.TaskRepo(self.context, self.db)
@@ -608,7 +603,6 @@ class TestTaskRepo(test_utils.BaseTestCase):
         self._create_tasks()
 
     def _create_tasks(self):
-        self.db.reset()
         self.tasks = [
             _db_task_fixture(UUID1, type='import', status='pending',
                              input=self.fake_task_input,

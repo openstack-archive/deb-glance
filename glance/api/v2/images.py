@@ -19,6 +19,7 @@ import glance_store
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_serialization import jsonutils as json
+from oslo_utils import encodeutils
 from oslo_utils import timeutils
 import six
 import six.moves.urllib.parse as urlparse
@@ -73,7 +74,7 @@ class ImagesController(object):
         except exception.InvalidParameterValue as e:
             raise webob.exc.HTTPBadRequest(explanation=e.msg)
         except exception.LimitExceeded as e:
-            LOG.warn(utils.exception_to_str(e))
+            LOG.warn(encodeutils.exception_to_unicode(e))
             raise webob.exc.HTTPRequestEntityTooLarge(
                 explanation=e.msg, request=req, content_type='text/plain')
         except exception.Duplicate as dupex:
@@ -83,9 +84,9 @@ class ImagesController(object):
         except exception.ReadonlyProperty as e:
             raise webob.exc.HTTPForbidden(explanation=e.msg)
         except TypeError as e:
-            LOG.debug(utils.exception_to_str(e))
+            LOG.debug(encodeutils.exception_to_unicode(e))
             raise webob.exc.HTTPBadRequest(
-                explanation=utils.exception_to_str(e))
+                explanation=encodeutils.exception_to_unicode(e))
         except exception.NotAuthenticated as e:
             raise webob.exc.HTTPUnauthorized(explanation=e.msg)
 
@@ -154,7 +155,7 @@ class ImagesController(object):
                 image_repo.save(image)
         except exception.NotFound as e:
             raise webob.exc.HTTPNotFound(explanation=e.msg)
-        except exception.Invalid as e:
+        except (exception.Invalid, exception.BadStoreUri) as e:
             raise webob.exc.HTTPBadRequest(explanation=e.msg)
         except exception.Forbidden as e:
             LOG.debug("User not permitted to update image '%s'", image_id)
@@ -163,12 +164,12 @@ class ImagesController(object):
             raise webob.exc.HTTPBadRequest(explanation=e.msg)
         except exception.StorageQuotaFull as e:
             msg = (_("Denying attempt to upload image because it exceeds the"
-                     " quota: %s") % utils.exception_to_str(e))
+                     " quota: %s") % encodeutils.exception_to_unicode(e))
             LOG.warn(msg)
             raise webob.exc.HTTPRequestEntityTooLarge(
                 explanation=msg, request=req, content_type='text/plain')
         except exception.LimitExceeded as e:
-            LOG.exception(utils.exception_to_str(e))
+            LOG.exception(encodeutils.exception_to_unicode(e))
             raise webob.exc.HTTPRequestEntityTooLarge(
                 explanation=e.msg, request=req, content_type='text/plain')
         except exception.NotAuthenticated as e:
@@ -231,15 +232,15 @@ class ImagesController(object):
             image = image_repo.get(image_id)
             image.delete()
             image_repo.remove(image)
-        except exception.Forbidden as e:
+        except (glance_store.Forbidden, exception.Forbidden) as e:
             LOG.debug("User not permitted to delete image '%s'", image_id)
             raise webob.exc.HTTPForbidden(explanation=e.msg)
-        except exception.NotFound as e:
+        except (glance_store.NotFound, exception.NotFound) as e:
             msg = (_("Failed to find image %(image_id)s to delete") %
                    {'image_id': image_id})
             LOG.warn(msg)
             raise webob.exc.HTTPNotFound(explanation=msg)
-        except exception.InUseByStore as e:
+        except glance_store.exceptions.InUseByStore as e:
             msg = (_("Image %(id)s could not be deleted "
                      "because it is in use: %(exc)s") %
                    {"id": image_id,
@@ -281,7 +282,7 @@ class ImagesController(object):
                 raise webob.exc.HTTPBadRequest(explanation=bse.msg)
             except ValueError as ve:    # update image status failed.
                 raise webob.exc.HTTPBadRequest(
-                    explanation=utils.exception_to_str(ve))
+                    explanation=encodeutils.exception_to_unicode(ve))
 
     def _do_add_locations(self, image, path_pos, value):
         pos = self._get_locations_op_pos(path_pos,
@@ -297,7 +298,7 @@ class ImagesController(object):
             raise webob.exc.HTTPBadRequest(explanation=bse.msg)
         except ValueError as ve:    # update image status failed.
             raise webob.exc.HTTPBadRequest(
-                explanation=utils.exception_to_str(ve))
+                explanation=encodeutils.exception_to_unicode(ve))
 
     def _do_remove_locations(self, image, path_pos):
         pos = self._get_locations_op_pos(path_pos,
@@ -311,7 +312,7 @@ class ImagesController(object):
             image.locations.pop(pos)
         except Exception as e:
             raise webob.exc.HTTPInternalServerError(
-                explanation=utils.exception_to_str(e))
+                explanation=encodeutils.exception_to_unicode(e))
         if len(image.locations) == 0 and image.status == 'active':
             image.status = 'queued'
 
@@ -337,8 +338,6 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
 
     _path_depth_limits = {'locations': {'add': 2, 'remove': 2, 'replace': 1}}
 
-    _default_sort_dir = 'desc'
-
     _supported_operations = ('add', 'remove', 'replace')
 
     def __init__(self, schema=None):
@@ -358,7 +357,7 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
             if key in image:
                 msg = _("Attribute '%s' is read-only.") % key
                 raise webob.exc.HTTPForbidden(
-                    explanation=utils.exception_to_str(msg))
+                    explanation=six.text_type(msg))
 
     def create(self, request):
         body = self._get_request_body(request)

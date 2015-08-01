@@ -15,6 +15,7 @@
 import glance_store as store_api
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_utils import encodeutils
 from oslo_utils import excutils
 import webob.exc
 
@@ -31,7 +32,6 @@ LOG = logging.getLogger(__name__)
 _ = i18n._
 _LE = i18n._LE
 _LI = i18n._LI
-_LW = i18n._LW
 
 
 def initiate_deletion(req, location_data, id):
@@ -168,10 +168,10 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
             except exception.Duplicate:
                 image = registry.get_image_metadata(req.context, image_id)
                 if image['status'] == 'deleted':
-                    raise exception.NotFound()
+                    raise exception.ImageNotFound()
                 else:
                     raise
-        except exception.NotFound:
+        except exception.ImageNotFound:
             msg = _LI("Image %s could not be found after upload. The image may"
                       " have been deleted during the upload.") % image_id
             LOG.info(msg)
@@ -196,9 +196,9 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
         raise webob.exc.HTTPGone(explanation=msg, request=req,
                                  content_type='text/plain')
 
-    except exception.Duplicate as e:
+    except (store_api.Duplicate, exception.Duplicate) as e:
         msg = (_("Attempt to upload duplicate image: %s") %
-               utils.exception_to_str(e))
+               encodeutils.exception_to_unicode(e))
         LOG.warn(msg)
         # NOTE(dosaboy): do not delete the image since it is likely that this
         # conflict is a result of another concurrent upload that will be
@@ -210,7 +210,7 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
 
     except exception.Forbidden as e:
         msg = (_("Forbidden upload attempt: %s") %
-               utils.exception_to_str(e))
+               encodeutils.exception_to_unicode(e))
         LOG.warn(msg)
         safe_kill(req, image_id, 'saving')
         notifier.error('image.upload', msg)
@@ -220,7 +220,7 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
 
     except store_api.StorageFull as e:
         msg = (_("Image storage media is full: %s") %
-               utils.exception_to_str(e))
+               encodeutils.exception_to_unicode(e))
         LOG.error(msg)
         safe_kill(req, image_id, 'saving')
         notifier.error('image.upload', msg)
@@ -230,7 +230,7 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
 
     except store_api.StorageWriteDenied as e:
         msg = (_("Insufficient permissions on image storage media: %s") %
-               utils.exception_to_str(e))
+               encodeutils.exception_to_unicode(e))
         LOG.error(msg)
         safe_kill(req, image_id, 'saving')
         notifier.error('image.upload', msg)
@@ -250,7 +250,7 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
 
     except exception.StorageQuotaFull as e:
         msg = (_("Denying attempt to upload image because it exceeds the "
-                 "quota: %s") % utils.exception_to_str(e))
+                 "quota: %s") % encodeutils.exception_to_unicode(e))
         LOG.warn(msg)
         safe_kill(req, image_id, 'saving')
         notifier.error('image.upload', msg)

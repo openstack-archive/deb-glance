@@ -287,7 +287,6 @@ class ApiServer(Server):
         self.metadata_encryption_key = "012345678901234567890123456789ab"
         self.image_dir = os.path.join(self.test_dir, "images")
         self.pid_file = pid_file or os.path.join(self.test_dir, "api.pid")
-        self.scrubber_datadir = os.path.join(self.test_dir, "scrubber")
         self.log_file = os.path.join(self.test_dir, "api.log")
         self.image_size_cap = 1099511627776
         self.delayed_delete = delayed_delete
@@ -304,6 +303,7 @@ class ApiServer(Server):
         self.image_property_quota = 10
         self.image_tag_quota = 10
         self.image_location_quota = 2
+        self.disable_path = None
 
         self.needs_database = True
         default_sql_connection = 'sqlite:////%s/tests.sqlite' % self.test_dir
@@ -336,7 +336,6 @@ delayed_delete = %(delayed_delete)s
 owner_is_tenant = %(owner_is_tenant)s
 workers = %(workers)s
 scrub_time = %(scrub_time)s
-scrubber_datadir = %(scrubber_datadir)s
 image_cache_dir = %(image_cache_dir)s
 image_cache_driver = %(image_cache_driver)s
 data_api = %(data_api)s
@@ -368,13 +367,15 @@ filesystem_store_datadir=%(image_dir)s
 default_store = %(default_store)s
 """
         self.paste_conf_base = """[pipeline:glance-api]
-pipeline = versionnegotiation gzip unauthenticated-context rootapp
+pipeline = healthcheck versionnegotiation gzip unauthenticated-context rootapp
 
 [pipeline:glance-api-caching]
-pipeline = versionnegotiation gzip unauthenticated-context cache rootapp
+pipeline = healthcheck versionnegotiation gzip unauthenticated-context
+ cache rootapp
 
 [pipeline:glance-api-cachemanagement]
 pipeline =
+    healthcheck
     versionnegotiation
     gzip
     unauthenticated-context
@@ -383,10 +384,10 @@ pipeline =
     rootapp
 
 [pipeline:glance-api-fakeauth]
-pipeline = versionnegotiation gzip fakeauth context rootapp
+pipeline = healthcheck versionnegotiation gzip fakeauth context rootapp
 
 [pipeline:glance-api-noauth]
-pipeline = versionnegotiation gzip context rootapp
+pipeline = healthcheck versionnegotiation gzip context rootapp
 
 [composite:rootapp]
 paste.composite_factory = glance.api:root_app_factory
@@ -406,6 +407,11 @@ paste.app_factory = glance.api.v2.router:API.factory
 
 [app:apiv3app]
 paste.app_factory = glance.api.v3.router:API.factory
+
+[filter:healthcheck]
+paste.filter_factory = oslo_middleware:Healthcheck.factory
+backends = disable_by_file
+disable_by_file_path = %(disable_path)s
 
 [filter:versionnegotiation]
 paste.filter_factory =
@@ -458,6 +464,7 @@ class RegistryServer(Server):
         self.metadata_encryption_key = "012345678901234567890123456789ab"
         self.policy_file = policy_file
         self.policy_default_rule = 'default'
+        self.disable_path = None
 
         self.conf_base = """[DEFAULT]
 verbose = %(verbose)s
@@ -481,16 +488,21 @@ policy_default_rule = %(policy_default_rule)s
 flavor = %(deployment_flavor)s
 """
         self.paste_conf_base = """[pipeline:glance-registry]
-pipeline = unauthenticated-context registryapp
+pipeline = healthcheck unauthenticated-context registryapp
 
 [pipeline:glance-registry-fakeauth]
-pipeline = fakeauth context registryapp
+pipeline = healthcheck fakeauth context registryapp
 
 [pipeline:glance-registry-trusted-auth]
-pipeline = context registryapp
+pipeline = healthcheck context registryapp
 
 [app:registryapp]
 paste.app_factory = glance.registry.api:API.factory
+
+[filter:healthcheck]
+paste.filter_factory = oslo_middleware:Healthcheck.factory
+backends = disable_by_file
+disable_by_file_path = %(disable_path)s
 
 [filter:context]
 paste.filter_factory = glance.api.middleware.context:ContextMiddleware.factory
@@ -518,8 +530,6 @@ class ScrubberDaemon(Server):
 
         self.image_dir = os.path.join(self.test_dir, "images")
         self.scrub_time = 5
-        self.scrubber_datadir = os.path.join(self.test_dir,
-                                             "scrubber")
         self.pid_file = os.path.join(self.test_dir, "scrubber.pid")
         self.log_file = os.path.join(self.test_dir, "scrubber.log")
         self.metadata_encryption_key = "012345678901234567890123456789ab"
@@ -539,7 +549,6 @@ log_file = %(log_file)s
 daemon = %(daemon)s
 wakeup_time = 2
 scrub_time = %(scrub_time)s
-scrubber_datadir = %(scrubber_datadir)s
 registry_host = 127.0.0.1
 registry_port = %(registry_port)s
 metadata_encryption_key = %(metadata_encryption_key)s
