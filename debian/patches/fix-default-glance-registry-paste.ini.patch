@@ -6,9 +6,11 @@ Bug-Ubuntu: https://bugs.launchpad.net/glance/+bug/1407459
 Forwarded: https://bugs.launchpad.net/glance/+bug/1407459
 Last-Update: 2015-01-04
 
---- glance-2015.1~b1.orig/etc/glance-registry-paste.ini
-+++ glance-2015.1~b1/etc/glance-registry-paste.ini
-@@ -28,3 +28,18 @@ paste.filter_factory = keystonemiddlewar
+Index: glance/etc/glance-registry-paste.ini
+===================================================================
+--- glance.orig/etc/glance-registry-paste.ini
++++ glance/etc/glance-registry-paste.ini
+@@ -33,3 +33,18 @@ paste.filter_factory = keystonemiddlewar
  paste.filter_factory = osprofiler.web:WsgiMiddleware.factory
  hmac_keys = SECRET_KEY
  enabled = yes

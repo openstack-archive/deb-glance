@@ -7,7 +7,7 @@ Index: glance/etc/glance-api.conf
 ===================================================================
 --- glance.orig/etc/glance-api.conf
 +++ glance/etc/glance-api.conf
-@@ -341,7 +341,7 @@ image_cache_dir = /var/lib/glance/image-
+@@ -339,7 +339,7 @@ image_cache_dir = /var/lib/glance/image-
  # Deprecated group/name - [DEFAULT]/sql_connection
  # Deprecated group/name - [DATABASE]/sql_connection
  # Deprecated group/name - [sql]/connection
