@@ -7,19 +7,18 @@ BUILD_DATE  = $(shell LC_ALL=C date -u "+%B %d, %Y" -d "$(LAST_CHANGE)")
 SPHINXOPTS := -D today="$(BUILD_DATE)"
 SPHINXOPTS += -D html_last_updated_fmt="$(BUILD_DATE)"
 
-export OSLO_PACKAGE_VERSION=$(shell dpkg-parsechangelog -S Version | sed -e 's/^[[:digit:]]*://' -e 's/[-].*//' -e 's/~/.0/')
+export OSLO_PACKAGE_VERSION=$(shell dpkg-parsechangelog | grep Version: | cut -d' ' -f2 | sed -e 's/^[[:digit:]]*://' -e 's/[-].*//' -e 's/~/.0/' | head -n 1)
 
 %:
 	dh $@ --buildsystem=python_distutils --with python2,sphinxdoc,systemd
 
-ifeq (,$(findstring nocheck, $(DEB_BUILD_OPTIONS)))
 override_dh_auto_test:
+ifeq (,$(findstring nocheck, $(DEB_BUILD_OPTIONS)))
 	./run_tests.sh -P -N || true
-	#nosetests || true
 endif
 
 override_dh_auto_build:
-	dh_auto_build
+	dh_auto_build -O--buildsystem=python_distutils
 
 	/usr/share/openstack-pkg-tools/pkgos_insert_include pkgos_func glance-common.config
 	/usr/share/openstack-pkg-tools/pkgos_insert_include pkgos_func glance-common.postinst
@@ -38,22 +37,14 @@ ifeq (,$(findstring nodocs, $(DEB_BUILD_OPTIONS)))
 	dh_installman -O--buildsystem=python_distutils
 endif
 
-override_dh_auto_configure:
-	echo $(VERSION) > glance/versioninfo
-	dh_auto_configure
-
+override_dh_install:
+	dh_install -O--buildsystem=python_distutils --fail-missing
 
 override_dh_auto_clean:
-	echo $(VERSION) > glance/versioninfo
-	# dh_auto_clean
-	# debconf-updatepo
+	dh_auto_clean -O--buildsystem=python_distutils
 	find . -iname '*.pyc' -delete
-	rm -rf glance.egg-info
 	rm -rf doc/build
 	rm -rf glance.sqlite
-	rm -f glance/versioninfo
 	rm -f debian/glance-common.config debian/glance-common.postinst
 	rm -f debian/*.init debian/*.upstart debian/*.service
 	rm -rf build
-
-.PHONY: override_dh_auto_clean override_dh_auto_configure override_dh_installman override_dh_auto_build

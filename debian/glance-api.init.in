@@ -12,9 +12,6 @@
 ### END INIT INFO
 
 # Author: Thomas Goirand <zigo@debian.org>
-
-# PATH should only include /usr/* if it runs after the mountnfs.sh script
-PATH=/sbin:/usr/sbin:/bin:/usr/bin
 DESC="OpenStack Image Service API"
 PROJECT_NAME=glance
 NAME=${PROJECT_NAME}-api

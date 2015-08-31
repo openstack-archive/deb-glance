@@ -2,7 +2,7 @@ Source: glance
 Section: net
 Priority: extra
 Maintainer: PKG OpenStack <openstack-devel@lists.alioth.debian.org>
-Uploaders: Thomas Goirand <zigo@debian.org>
+Uploaders: Thomas Goirand <zigo@debian.org>,
 Build-Depends: debhelper (>= 9),
                dh-python,
                dh-systemd,
@@ -14,9 +14,9 @@ Build-Depends: debhelper (>= 9),
                python-sphinx,
 Build-Depends-Indep: curl,
                      procps,
-                     python-anyjson,
-                     python-boto,
+                     python-anyjson (>= 0.3.3),
                      python-babel,
+                     python-boto,
                      python-coverage,
                      python-crypto,
                      python-elasticsearch (>= 1.3.0),
@@ -42,8 +42,8 @@ Build-Depends-Indep: curl,
                      python-oslo.db (>= 1.12.0),
                      python-oslo.i18n (>= 1.5.0),
                      python-oslo.log (>= 1.6.0),
-                     python-oslo.middleware (>= 2.4.0),
                      python-oslo.messaging (>= 1.16.0),
+                     python-oslo.middleware (>= 2.4.0),
                      python-oslo.policy (>= 0.5.0),
                      python-oslo.serialization (>= 1.4.0),
                      python-oslo.service,
@@ -65,9 +65,9 @@ Build-Depends-Indep: curl,
                      python-semantic-version (>= 2.3.1),
                      python-sendfile,
                      python-six (>= 1.9.0),
-                     python-sqlalchemy,
+                     python-sqlalchemy (>= 0.9.7),
                      python-stevedore (>= 1.5.0),
-                     python-swiftclient,
+                     python-swiftclient (>= 1:2.2.0),
                      python-taskflow (>= 1.16.0),
                      python-testtools (>= 1.4.0),
                      python-webob,
@@ -77,9 +77,9 @@ Build-Depends-Indep: curl,
                      subunit,
                      testrepository,
 Standards-Version: 3.9.6
-Homepage: http://glance.openstack.org/
 Vcs-Browser: http://anonscm.debian.org/gitweb/?p=openstack/glance.git;a=summary
 Vcs-Git: git://anonscm.debian.org/openstack/glance.git
+Homepage: https://github.com/openstack/glance
 
 Package: python-glance
 Architecture: all
@@ -89,7 +89,7 @@ Depends: libxml2-dev,
          procps,
          python-anyjson,
          python-boto,
-         python-configobj,
+         python-cinderclient (>= 1:1.3.1),
          python-crypto,
          python-eventlet (>= 0.17.4),
          python-glance-store (>= 0.7.1),
@@ -109,14 +109,14 @@ Depends: libxml2-dev,
          python-oslo.db (>= 1.12.0),
          python-oslo.i18n (>= 1.5.0),
          python-oslo.log (>= 1.6.0),
-         python-oslo.middleware (>= 2.4.0),
          python-oslo.messaging (>= 1.16.0),
+         python-oslo.middleware (>= 2.4.0),
          python-oslo.policy (>= 0.5.0),
          python-oslo.serialization (>= 1.4.0),
          python-oslo.service,
          python-oslo.utils (>= 1.9.0),
          python-oslo.vmware (>= 1.16.0),
-         python-osprofiler,
+         python-osprofiler (>= 0.3.0),
          python-paste,
          python-pastedeploy,
          python-pbr (>= 1.3),
@@ -128,16 +128,17 @@ Depends: libxml2-dev,
          python-routes,
          python-semantic-version (>= 2.3.1),
          python-six (>= 1.9.0),
-         python-sqlalchemy,
+         python-sqlalchemy (>= 0.9.7),
          python-stevedore (>= 1.5.0),
-         python-swiftclient,
+         python-swiftclient (>= 1:2.2.0),
          python-taskflow (>= 1.16.0),
          python-webob,
          python-wsme (>= 0.7),
          python-xattr,
          ${misc:Depends},
          ${python:Depends},
-Description: OpenStack Image Service - Python client library
+Provides: ${python:Provides},
+Description: OpenStack Image Registry and Delivery Service - Python library
  The Glance project provides services for discovering, registering, and
  retrieving virtual machine images over the cloud. They may be stand-alone
  services, or may be used to deliver images from object stores, such as
@@ -147,25 +148,25 @@ Description: OpenStack Image Service - Python client library
 
 Package: glance
 Architecture: all
-Section: python
 Depends: glance-api (= ${source:Version}),
          glance-registry (= ${source:Version}),
          ${misc:Depends},
          ${python:Depends},
-Suggests: python-ceph
-Description: OpenStack Image Service - metapackage
+Suggests: python-ceph,
+Description: OpenStack Image Registry and Delivery Service - Daemons
  The Glance project provides services for discovering, registering, and
  retrieving virtual machine images over the cloud. They may be stand-alone
  services, or may be used to deliver images from object stores, such as
  OpenStack's Swift service, to Nova's compute nodes.
  .
- This is a dependency package to install all of the Glance suite.
+ This package is a metapackage for all glance daemons.
 
 Package: python-glance-doc
 Architecture: all
 Section: doc
-Depends: ${misc:Depends}, ${sphinxdoc:Depends}
-Description: OpenStack Image Service - Python library documentation
+Depends: ${misc:Depends},
+         ${sphinxdoc:Depends},
+Description: OpenStack Image Registry and Delivery Service - Documentation
  The Glance project provides services for discovering, registering, and
  retrieving virtual machine images over the cloud. They may be stand-alone
  services, or may be used to deliver images from object stores, such as
@@ -175,17 +176,13 @@ Description: OpenStack Image Service - Python library documentation
 
 Package: glance-common
 Architecture: all
-Section: python
-Breaks: glance (<< 2012.1~e2-3)
-Replaces: glance (<< 2012.1~e2-3)
 Depends: adduser,
          dbconfig-common,
          debconf,
          python-glance (= ${source:Version}),
-         python-glanceclient,
          ${misc:Depends},
          ${python:Depends},
-Description: OpenStack Image Service - common files
+Description: OpenStack Image Registry and Delivery Service - common files
  The Glance project provides services for discovering, registering, and
  retrieving virtual machine images over the cloud. They may be stand-alone
  services, or may be used to deliver images from object stores, such as
@@ -195,13 +192,13 @@ Description: OpenStack Image Service - common files
 
 Package: glance-api
 Architecture: all
-Section: python
 Depends: debconf,
          glance-common (= ${source:Version}),
          ${misc:Depends},
          ${ostack-lsb-base},
          ${python:Depends},
-Description: OpenStack Image Service - API server
+Recommends: python-glanceclient,
+Description: OpenStack Image Registry and Delivery Service - API server
  The Glance project provides services for discovering, registering, and
  retrieving virtual machine images over the cloud. They may be stand-alone
  services, or may be used to deliver images from object stores, such as
@@ -211,13 +208,13 @@ Description: OpenStack Image Service - API server
 
 Package: glance-registry
 Architecture: all
-Section: python
 Depends: adduser,
          glance-common (= ${source:Version}),
          ${misc:Depends},
          ${ostack-lsb-base},
          ${python:Depends},
-Description: OpenStack Image Service - registry server
+Recommends: python-glanceclient,
+Description: OpenStack Image Registry and Delivery Service - registry server
  The Glance project provides services for discovering, registering, and
  retrieving virtual machine images over the cloud. They may be stand-alone
  services, or may be used to deliver images from object stores, such as

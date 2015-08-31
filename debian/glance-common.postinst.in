@@ -83,3 +83,5 @@ SET FOREIGN_KEY_CHECKS=1;"
 fi
 
 #DEBHELPER#
+
+exit 0
