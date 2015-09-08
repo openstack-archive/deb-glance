@@ -32,7 +32,6 @@ import functools
 import os
 import platform
 import re
-import stevedore
 import subprocess
 import sys
 import uuid
@@ -54,8 +53,6 @@ CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
 _ = i18n._
 _LE = i18n._LE
-
-FEATURE_BLACKLIST = ['content-length', 'content-type', 'x-image-meta-size']
 
 # Whitelist of v1 API headers of form x-image-meta-xxx
 IMAGE_META_HEADERS = ['x-image-meta-location', 'x-image-meta-size',
@@ -741,10 +738,3 @@ def stash_conf_values():
     conf['cert_file'] = CONF.cert_file
 
     return conf
-
-
-def get_search_plugins():
-    namespace = 'glance.search.index_backend'
-    ext_manager = stevedore.extension.ExtensionManager(
-        namespace, invoke_on_load=True)
-    return ext_manager.extensions

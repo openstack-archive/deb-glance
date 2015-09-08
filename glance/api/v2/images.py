@@ -183,6 +183,9 @@ class ImagesController(object):
         value = change['value']
         if path_root == 'locations':
             self._do_replace_locations(image, value)
+        elif path_root == 'owner' and req.context.is_admin == False:
+            msg = _("Owner can't be updated by non admin.")
+            raise webob.exc.HTTPForbidden(msg)
         else:
             if hasattr(image, path_root):
                 setattr(image, path_root, value)
@@ -322,8 +325,8 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
     _disallowed_properties = ('direct_url', 'self', 'file', 'schema')
     _readonly_properties = ('created_at', 'updated_at', 'status', 'checksum',
                             'size', 'virtual_size', 'direct_url', 'self',
-                            'file', 'schema')
-    _reserved_properties = ('owner', 'location', 'deleted', 'deleted_at')
+                            'file', 'schema', 'id')
+    _reserved_properties = ('location', 'deleted', 'deleted_at')
     _base_properties = ('checksum', 'created_at', 'container_format',
                         'disk_format', 'id', 'min_disk', 'min_ram', 'name',
                         'size', 'virtual_size', 'status', 'tags',
@@ -385,15 +388,15 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
     def _get_change_operation_d10(self, raw_change):
         op = raw_change.get('op')
         if op is None:
-            msg = _('Unable to find `op` in JSON Schema change. '
-                    'It must be one of the following: %(available)s.') % \
-                {'available': ', '.join(self._supported_operations)}
+            msg = (_('Unable to find `op` in JSON Schema change. '
+                     'It must be one of the following: %(available)s.') %
+                   {'available': ', '.join(self._supported_operations)})
             raise webob.exc.HTTPBadRequest(explanation=msg)
         if op not in self._supported_operations:
-            msg = _('Invalid operation: `%(op)s`. '
-                    'It must be one of the following: %(available)s.') % \
-                {'op': op,
-                 'available': ', '.join(self._supported_operations)}
+            msg = (_('Invalid operation: `%(op)s`. '
+                     'It must be one of the following: %(available)s.') %
+                   {'op': op,
+                    'available': ', '.join(self._supported_operations)})
             raise webob.exc.HTTPBadRequest(explanation=msg)
         return op
 
@@ -576,9 +579,9 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
     def _validate_sort_key(self, sort_key):
         if sort_key not in self._available_sort_keys:
             msg = _('Invalid sort key: %(sort_key)s. '
-                    'It must be one of the following: %(available)s.') % \
+                    'It must be one of the following: %(available)s.') % (
                 {'sort_key': sort_key,
-                 'available': ', '.join(self._available_sort_keys)}
+                 'available': ', '.join(self._available_sort_keys)})
             raise webob.exc.HTTPBadRequest(explanation=msg)
 
         return sort_key
@@ -698,8 +701,8 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
         # instead of sort_keys and sort_dirs respectively.
         # It's done because in v1 it's still a single value.
 
-        query_params['sort_key'], query_params['sort_dir'] = \
-            self._get_sorting_params(params)
+        query_params['sort_key'], query_params['sort_dir'] = (
+            self._get_sorting_params(params))
 
         return query_params
 

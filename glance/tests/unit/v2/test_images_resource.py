@@ -793,12 +793,22 @@ class TestImagesController(base.IsolatedUnitTest):
     def test_update_replace_base_attribute(self):
         self.db.image_update(None, UUID1, {'properties': {'foo': 'bar'}})
         request = unit_test_utils.get_fake_request()
-        changes = [{'op': 'replace', 'path': ['name'], 'value': 'fedora'}]
+        request.context.is_admin = True
+        changes = [{'op': 'replace', 'path': ['name'], 'value': 'fedora'},
+                   {'op': 'replace', 'path': ['owner'], 'value': TENANT3}]
         output = self.controller.update(request, UUID1, changes)
         self.assertEqual(UUID1, output.image_id)
         self.assertEqual('fedora', output.name)
+        self.assertEqual(TENANT3, output.owner)
         self.assertEqual({'foo': 'bar'}, output.extra_properties)
         self.assertNotEqual(output.created_at, output.updated_at)
+
+    def test_update_replace_onwer_non_admin(self):
+        request = unit_test_utils.get_fake_request()
+        request.context.is_admin = False
+        changes = [{'op': 'replace', 'path': ['owner'], 'value': TENANT3}]
+        self.assertRaises(webob.exc.HTTPForbidden,
+                          self.controller.update, request, UUID1, changes)
 
     def test_update_replace_tags(self):
         request = unit_test_utils.get_fake_request()
@@ -2372,7 +2382,6 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
     def test_update_base_attributes(self):
         request = self._get_fake_patch_request()
         body = [
-            {'op': 'replace', 'path': '/id', 'value': UUID1},
             {'op': 'replace', 'path': '/name', 'value': 'fedora'},
             {'op': 'replace', 'path': '/visibility', 'value': 'public'},
             {'op': 'replace', 'path': '/tags', 'value': ['king', 'kong']},
@@ -2389,8 +2398,6 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
         request.body = jsonutils.dumps(body)
         output = self.deserializer.update(request)
         expected = {'changes': [
-            {'json_schema_version': 10, 'op': 'replace',
-             'path': ['id'], 'value': UUID1},
             {'json_schema_version': 10, 'op': 'replace',
              'path': ['name'], 'value': 'fedora'},
             {'json_schema_version': 10, 'op': 'replace',
@@ -2436,6 +2443,7 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
 
     def test_update_readonly_attributes(self):
         samples = {
+            'id': '00000000-0000-0000-0000-000000000000',
             'status': 'active',
             'checksum': 'abcdefghijklmnopqrstuvwxyz012345',
             'size': 9001,
@@ -2457,7 +2465,6 @@ class TestImagesDeserializer(test_utils.BaseTestCase):
 
     def test_update_reserved_attributes(self):
         samples = {
-            'owner': TENANT1,
             'deleted': False,
             'deleted_at': ISOTIME,
         }
