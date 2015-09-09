@@ -8,3 +8,5 @@ etc/policy.json			usr/share/glance-common
 etc/schema-image.json		etc/glance
 usr/bin/glance-control
 usr/bin/glance-manage
+usr/bin/glance-artifacts
+usr/etc/glance/metadefs		usr/share/glance-common
