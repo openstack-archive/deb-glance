@@ -5,7 +5,7 @@ etc/glance-registry-paste.ini	usr/share/glance-common
 etc/glance-registry.conf	usr/share/glance-common
 etc/glance-scrubber.conf	usr/share/glance-common
 etc/policy.json			usr/share/glance-common
-etc/schema-image.json		etc/glance
+etc/schema-image.json		usr/share/glance-common
 usr/bin/glance-control
 usr/bin/glance-manage
 usr/bin/glance-artifacts

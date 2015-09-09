@@ -36,11 +36,12 @@ if [ "$1" = "configure" ] || [ "$1" = "reconfigure" ] ; then
 	pkgos_write_new_conf glance glance-cache.conf
 	pkgos_write_new_conf glance glance-scrubber.conf
 	pkgos_write_new_conf glance policy.json
+	pkgos_write_new_conf schema-image.json
 
 	# Copy metadefs files from /usr/share/glance-common/metadefs to /etc/glance/metadefs
 	mkdir -p /etc/glance/metadefs
 	chown glance:glance /etc/glance/metadefs
-	for i in `ls /usr/share/glance-common/metadefs/*` ; do
+	for i in `ls /usr/share/glance-common/metadefs/*.json` ; do
 		MDFILE=`basename $i`
 		if ! [ -e /etc/glance/metadefs/$MDFILE ] ; then
 			install -D -m 0640 -o glance -g glance /usr/share/glance-common/metadefs/$MDFILE /etc/glance/metadefs/$MDFILE
