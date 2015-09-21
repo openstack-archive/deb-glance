@@ -200,6 +200,7 @@ Package: glance-api
 Architecture: all
 Depends: debconf,
          glance-common (= ${source:Version}),
+         python-openstackclient,
          ${misc:Depends},
          ${ostack-lsb-base},
          ${python:Depends},
