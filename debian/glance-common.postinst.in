@@ -36,7 +36,7 @@ if [ "$1" = "configure" ] || [ "$1" = "reconfigure" ] ; then
 	pkgos_write_new_conf glance glance-cache.conf
 	pkgos_write_new_conf glance glance-scrubber.conf
 	pkgos_write_new_conf glance policy.json
-	pkgos_write_new_conf schema-image.json
+	pkgos_write_new_conf glance schema-image.json
 
 	# Copy metadefs files from /usr/share/glance-common/metadefs to /etc/glance/metadefs
 	mkdir -p /etc/glance/metadefs
