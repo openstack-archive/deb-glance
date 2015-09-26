@@ -131,6 +131,7 @@ common_opts = [
                        'be a security risk, so use this setting with '
                        'caution!  The overrides show_image_direct_url.')),
     cfg.IntOpt('image_size_cap', default=1099511627776,
+               max=9223372036854775808,
                help=_("Maximum size of image a user can upload in bytes. "
                       "Defaults to 1099511627776 bytes (1 TB)."
                       "WARNING: this value should only be increased after "
@@ -150,7 +151,7 @@ common_opts = [
                 help=_("Deploy the v1 OpenStack Images API.")),
     cfg.BoolOpt('enable_v2_api', default=True,
                 help=_("Deploy the v2 OpenStack Images API.")),
-    cfg.BoolOpt('enable_v3_api', default=True,
+    cfg.BoolOpt('enable_v3_api', default=False,
                 help=_("Deploy the v3 OpenStack Objects API.")),
     cfg.BoolOpt('enable_v1_registry', default=True,
                 help=_("Deploy the v1 OpenStack Registry API.")),
@@ -159,7 +160,7 @@ common_opts = [
     cfg.StrOpt('pydev_worker_debug_host',
                help=_('The hostname/IP of the pydev process listening for '
                       'debug connections')),
-    cfg.IntOpt('pydev_worker_debug_port', default=5678,
+    cfg.IntOpt('pydev_worker_debug_port', default=5678, min=1, max=65535,
                help=_('The port on which a pydev process is listening for '
                       'connections.')),
     cfg.StrOpt('metadata_encryption_key', secret=True,

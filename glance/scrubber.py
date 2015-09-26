@@ -17,6 +17,7 @@ import calendar
 import time
 
 import eventlet
+from glance_store import exceptions as store_exceptions
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_utils import encodeutils
@@ -40,8 +41,27 @@ scrubber_opts = [
     cfg.IntOpt('scrub_time', default=0,
                help=_('The amount of time in seconds to delay before '
                       'performing a delete.')),
+    cfg.IntOpt('scrub_pool_size', default=1,
+               help=_('The size of thread pool to be used for '
+                      'scrubbing images. The default is one, which '
+                      'signifies serial scrubbing. Any value above '
+                      'one indicates the max number of images that '
+                      'may be scrubbed in parallel.')),
     cfg.BoolOpt('delayed_delete', default=False,
                 help=_('Turn on/off delayed delete.')),
+    cfg.StrOpt('admin_role', default='admin',
+               help=_('Role used to identify an authenticated user as '
+                      'administrator.')),
+    cfg.BoolOpt('send_identity_headers', default=False,
+                help=_("Whether to pass through headers containing user "
+                       "and tenant information when making requests to "
+                       "the registry. This allows the registry to use the "
+                       "context middleware without keystonemiddleware's "
+                       "auth_token middleware, removing calls to the keystone "
+                       "auth service. It is recommended that when using this "
+                       "option, secure communication between glance api and "
+                       "glance registry is ensured by means other than "
+                       "auth_token middleware.")),
 ]
 
 scrubber_cmd_opts = [
@@ -73,12 +93,24 @@ class ScrubDBQueue(object):
         self.metadata_encryption_key = CONF.metadata_encryption_key
         registry.configure_registry_client()
         registry.configure_registry_admin_creds()
-        self.registry = registry.get_registry_client(context.RequestContext())
-        admin_tenant_name = CONF.admin_tenant_name
-        admin_token = self.registry.auth_token
-        self.admin_context = context.RequestContext(user=CONF.admin_user,
-                                                    tenant=admin_tenant_name,
-                                                    auth_token=admin_token)
+        admin_user = CONF.admin_user
+        admin_tenant = CONF.admin_tenant_name
+
+        if CONF.send_identity_headers:
+            # When registry is operating in trusted-auth mode
+            roles = [CONF.admin_role]
+            self.admin_context = context.RequestContext(user=admin_user,
+                                                        tenant=admin_tenant,
+                                                        auth_token=None,
+                                                        roles=roles)
+            self.registry = registry.get_registry_client(self.admin_context)
+        else:
+            ctxt = context.RequestContext()
+            self.registry = registry.get_registry_client(ctxt)
+            admin_token = self.registry.auth_token
+            self.admin_context = context.RequestContext(user=admin_user,
+                                                        tenant=admin_tenant,
+                                                        auth_token=admin_token)
 
     def add_location(self, image_id, location):
         """Adding image location to scrub queue.
@@ -180,13 +212,14 @@ def get_scrub_queue():
 
 
 class Daemon(object):
-    def __init__(self, wakeup_time=300, threads=1000):
+    def __init__(self, wakeup_time=300, threads=100):
         LOG.info(_LI("Starting Daemon: wakeup_time=%(wakeup_time)s "
                      "threads=%(threads)s"),
                  {'wakeup_time': wakeup_time, 'threads': threads})
         self.wakeup_time = wakeup_time
         self.event = eventlet.event.Event()
-        self.pool = eventlet.greenpool.GreenPool(threads)
+        # This pool is used for periodic instantiation of scrubber
+        self.daemon_pool = eventlet.greenpool.GreenPool(threads)
 
     def start(self, application):
         self._run(application)
@@ -200,7 +233,7 @@ class Daemon(object):
 
     def _run(self, application):
         LOG.debug("Running application")
-        self.pool.spawn_n(application.run, self.pool, self.event)
+        self.daemon_pool.spawn_n(application.run, self.event)
         eventlet.spawn_after(self.wakeup_time, self._run, application)
         LOG.debug("Next run scheduled in %s seconds" % self.wakeup_time)
 
@@ -215,17 +248,30 @@ class Scrubber(object):
 
         registry.configure_registry_client()
         registry.configure_registry_admin_creds()
-        self.registry = registry.get_registry_client(context.RequestContext())
 
         # Here we create a request context with credentials to support
         # delayed delete when using multi-tenant backend storage
+        admin_user = CONF.admin_user
         admin_tenant = CONF.admin_tenant_name
-        auth_token = self.registry.auth_token
-        self.admin_context = context.RequestContext(user=CONF.admin_user,
-                                                    tenant=admin_tenant,
-                                                    auth_token=auth_token)
+
+        if CONF.send_identity_headers:
+            # When registry is operating in trusted-auth mode
+            roles = [CONF.admin_role]
+            self.admin_context = context.RequestContext(user=admin_user,
+                                                        tenant=admin_tenant,
+                                                        auth_token=None,
+                                                        roles=roles)
+            self.registry = registry.get_registry_client(self.admin_context)
+        else:
+            ctxt = context.RequestContext()
+            self.registry = registry.get_registry_client(ctxt)
+            auth_token = self.registry.auth_token
+            self.admin_context = context.RequestContext(user=admin_user,
+                                                        tenant=admin_tenant,
+                                                        auth_token=auth_token)
 
         self.db_queue = get_scrub_queue()
+        self.pool = eventlet.greenpool.GreenPool(CONF.scrub_pool_size)
 
     def _get_delete_jobs(self):
         try:
@@ -242,39 +288,57 @@ class Scrubber(object):
             delete_jobs[image_id].append((image_id, loc_id, loc_uri))
         return delete_jobs
 
-    def run(self, pool, event=None):
+    def run(self, event=None):
         delete_jobs = self._get_delete_jobs()
 
         if delete_jobs:
-            for image_id, jobs in six.iteritems(delete_jobs):
-                self._scrub_image(pool, image_id, jobs)
+            list(self.pool.starmap(self._scrub_image, delete_jobs.items()))
 
-    def _scrub_image(self, pool, image_id, delete_jobs):
+    def _scrub_image(self, image_id, delete_jobs):
         if len(delete_jobs) == 0:
             return
 
         LOG.info(_LI("Scrubbing image %(id)s from %(count)d locations.") %
                  {'id': image_id, 'count': len(delete_jobs)})
-        # NOTE(bourke): The starmap must be iterated to do work
-        list(pool.starmap(self._delete_image_location_from_backend,
-                          delete_jobs))
 
-        image = self.registry.get_image(image_id)
-        if image['status'] == 'pending_delete':
-            self.registry.update_image(image_id, {'status': 'deleted'})
+        success = True
+        for img_id, loc_id, uri in delete_jobs:
+            try:
+                self._delete_image_location_from_backend(img_id, loc_id, uri)
+            except Exception:
+                success = False
+
+        if success:
+            image = self.registry.get_image(image_id)
+            if image['status'] == 'pending_delete':
+                self.registry.update_image(image_id, {'status': 'deleted'})
+            LOG.info(_LI("Image %s has been scrubbed successfully") % image_id)
+        else:
+            LOG.warn(_LW("One or more image locations couldn't be scrubbed "
+                         "from backend. Leaving image '%s' in 'pending_delete'"
+                         " status") % image_id)
 
     def _delete_image_location_from_backend(self, image_id, loc_id, uri):
         if CONF.metadata_encryption_key:
             uri = crypt.urlsafe_decrypt(CONF.metadata_encryption_key, uri)
-
         try:
-            LOG.debug("Deleting URI from image %s." % image_id)
-            self.store_api.delete_from_backend(uri, self.admin_context)
+            LOG.debug("Scrubbing image %s from a location." % image_id)
+            try:
+                self.store_api.delete_from_backend(uri, self.admin_context)
+            except store_exceptions.NotFound:
+                LOG.info(_LI("Image location for image '%s' not found in "
+                             "backend; Marking image location deleted in "
+                             "db.") % image_id)
+
             if loc_id != '-':
                 db_api.get_api().image_location_delete(self.admin_context,
                                                        image_id,
                                                        int(loc_id),
                                                        'deleted')
-            LOG.info(_LI("Image %s has been deleted.") % image_id)
-        except Exception:
-            LOG.warn(_LW("Unable to delete URI from image %s.") % image_id)
+            LOG.info(_LI("Image %s is scrubbed from a location.") % image_id)
+        except Exception as e:
+            LOG.error(_LE("Unable to scrub image %(id)s from a location. "
+                          "Reason: %(exc)s ") %
+                      {'id': image_id,
+                       'exc': encodeutils.exception_to_unicode(e)})
+            raise

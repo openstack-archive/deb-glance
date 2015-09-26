@@ -49,7 +49,7 @@ class VersionNegotiationFilter(wsgi.Middleware):
         # If the request is for /versions, just return the versions container
         # TODO(bcwaldon): deprecate this behavior
         if req.path_info_peek() == "versions":
-            return self.versions_app
+            return self.versions_app.index(req, explicit=True)
 
         accept = str(req.accept)
         if accept.startswith('application/vnd.openstack.images-'):
@@ -64,7 +64,7 @@ class VersionNegotiationFilter(wsgi.Middleware):
         try:
             version = self._match_version_string(req_version)
         except ValueError:
-            LOG.warn(_LW("Unknown version. Returning version choices."))
+            LOG.debug("Unknown version. Returning version choices.")
             return self.versions_app
 
         req.environ['api.version'] = version

@@ -23,6 +23,7 @@ from oslo_utils import encodeutils
 from oslo_utils import excutils
 import semantic_version
 import six
+import six.moves.urllib.parse as urlparse
 import webob.exc
 
 from glance.artifacts import gateway
@@ -105,30 +106,37 @@ class ArtifactsController(object):
                        state={'value': state})
         if type_version is not None:
             filters['type_version'] = {'value': type_version}
-        if 'version' in filters and filters['version']['value'] == 'latest':
-            if 'name' in filters:
-                filters['version']['value'] = self._get_latest_version(
-                    req, filters['name']['value'], type_name, type_version)
-            else:
-                raise webob.exc.HTTPBadRequest(
-                    'Filtering by version without specifying a name is not'
-                    ' supported.')
+        if 'version' in filters:
+            for filter in filters['version']:
+                if filter['value'] == 'latest':
+                    if 'name' not in filters:
+                        raise webob.exc.HTTPBadRequest(
+                            'Filtering by latest version without specifying'
+                            ' a name is not supported.')
+                    filter['value'] = self._get_latest_version(
+                        req, filters['name'][0]['value'], type_name,
+                        type_version)
 
-        return artifact_repo.list(filters=filters,
-                                  show_level=Showlevel.BASIC,
-                                  **kwargs)
+        res = artifact_repo.list(filters=filters,
+                                 show_level=Showlevel.BASIC,
+                                 **kwargs)
+        result = {'artifacts': res}
+        limit = kwargs.get("limit")
+        if limit is not None and len(res) != 0 and len(res) == limit:
+            result['next_marker'] = res[-1].id
+        return result
 
     def _get_latest_version(self, req, name, type_name, type_version=None,
                             state='creating'):
         artifact_repo = self.gateway.get_artifact_repo(req.context)
-        filters = dict(name={"value": name},
+        filters = dict(name=[{"value": name}],
                        type_name={"value": type_name},
                        state={"value": state})
         if type_version is not None:
             filters["type_version"] = {"value": type_version}
         result = artifact_repo.list(filters=filters,
                                     show_level=Showlevel.NONE,
-                                    sort_keys=['version'])
+                                    sort_keys=[('version', None)])
         if len(result):
             return result[0].version
 
@@ -175,6 +183,7 @@ class ArtifactsController(object):
             artifact = self._get_artifact_with_dependencies(artifact_repo, id,
                                                             type_name,
                                                             type_version)
+            self._ensure_write_access(artifact, req.context)
             # use updater mixin to perform updates: generate update path
             if req.method == "PUT":
                 # replaces existing value or creates a new one
@@ -204,6 +213,7 @@ class ArtifactsController(object):
             artifact = self._get_artifact_with_dependencies(artifact_repo, id,
                                                             type_name,
                                                             type_version)
+            self._ensure_write_access(artifact, req.context)
             updated = artifact
             for change in changes:
                 updated = self._do_update_op(updated, change)
@@ -237,6 +247,7 @@ class ArtifactsController(object):
             artifact = self._get_artifact_with_dependencies(
                 artifact_repo, id, type_name=type_name,
                 type_version=type_version)
+            self._ensure_write_access(artifact, req.context)
             artifact_repo.remove(artifact)
         except exception.Invalid as e:
             raise webob.exc.HTTPBadRequest(explanation=e.msg)
@@ -260,6 +271,7 @@ class ArtifactsController(object):
             artifact = self._get_artifact_with_dependencies(
                 artifact_repo, id, type_name=type_name,
                 type_version=type_version)
+            self._ensure_write_access(artifact, req.context)
             return artifact_repo.publish(artifact, context=req.context)
         except exception.Forbidden as e:
             raise webob.exc.HTTPForbidden(explanation=e.msg)
@@ -297,6 +309,7 @@ class ArtifactsController(object):
                                                             id,
                                                             type_name,
                                                             type_version)
+            self._ensure_write_access(artifact, req.context)
             blob_prop = artifact.metadata.attributes.blobs.get(attr)
             if blob_prop is None:
                 raise webob.exc.HTTPBadRequest(
@@ -314,11 +327,12 @@ class ArtifactsController(object):
             return artifact
 
         except ValueError as e:
+            exc_message = encodeutils.exception_to_unicode(e)
             LOG.debug("Cannot save data for artifact %(id)s: %(e)s",
-                      {'id': id, 'e': utils.exception_to_str(e)})
+                      {'id': id, 'e': exc_message})
             self._restore(artifact_repo, artifact)
             raise webob.exc.HTTPBadRequest(
-                explanation=utils.exception_to_str(e))
+                explanation=exc_message)
 
         except glance_store.StoreAddDisabled:
             msg = _("Error in store configuration. Adding artifacts to store "
@@ -330,8 +344,7 @@ class ArtifactsController(object):
 
         except (glance_store.Duplicate,
                 exception.InvalidImageStatusTransition) as e:
-            msg = utils.exception_to_str(e)
-            LOG.exception(msg)
+            LOG.exception(encodeutils.exception_to_unicode(e))
             raise webob.exc.HTTPConflict(explanation=e.msg, request=req)
 
         except exception.Forbidden as e:
@@ -345,7 +358,7 @@ class ArtifactsController(object):
 
         except glance_store.StorageFull as e:
             msg = _("Artifact storage media "
-                    "is full: %s") % utils.exception_to_str(e)
+                    "is full: %s") % encodeutils.exception_to_unicode(e)
             LOG.error(msg)
             self._restore(artifact_repo, artifact)
             raise webob.exc.HTTPRequestEntityTooLarge(explanation=msg,
@@ -353,7 +366,7 @@ class ArtifactsController(object):
 
         except exception.StorageQuotaFull as e:
             msg = _("Artifact exceeds the storage "
-                    "quota: %s") % utils.exception_to_str(e)
+                    "quota: %s") % encodeutils.exception_to_unicode(e)
             LOG.error(msg)
             self._restore(artifact_repo, artifact)
             raise webob.exc.HTTPRequestEntityTooLarge(explanation=msg,
@@ -361,7 +374,7 @@ class ArtifactsController(object):
 
         except exception.ImageSizeLimitExceeded as e:
             msg = _("The incoming artifact blob is "
-                    "too large: %s") % utils.exception_to_str(e)
+                    "too large: %s") % encodeutils.exception_to_unicode(e)
             LOG.error(msg)
             self._restore(artifact_repo, artifact)
             raise webob.exc.HTTPRequestEntityTooLarge(explanation=msg,
@@ -369,7 +382,7 @@ class ArtifactsController(object):
 
         except glance_store.StorageWriteDenied as e:
             msg = _("Insufficient permissions on artifact "
-                    "storage media: %s") % utils.exception_to_str(e)
+                    "storage media: %s") % encodeutils.exception_to_unicode(e)
             LOG.error(msg)
             self._restore(artifact_repo, artifact)
             raise webob.exc.HTTPServiceUnavailable(explanation=msg,
@@ -465,6 +478,13 @@ class ArtifactsController(object):
             response.append(metadata)
 
         return {"artifact_types": response}
+
+    @staticmethod
+    def _ensure_write_access(artifact, context):
+        if context.is_admin:
+            return
+        if context.owner is None or context.owner != artifact.owner:
+            raise exception.ArtifactForbidden(id=artifact.id)
 
 
 class RequestDeserializer(wsgi.JSONRequestDeserializer,
@@ -683,37 +703,86 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer,
         return mapper[type_name](value)
 
     def _get_filters(self, artifact_type, params):
+        error_msg = 'Unexpected filter property'
         filters = dict()
-        for filter, value in params.items():
-            value = value.strip()
-            prop_type = artifact_type.metadata.attributes.all.get(filter)
+        for filter, raw_value in params.items():
+
+            # first, get the comparison operator
+            left, sep, right = raw_value.strip().partition(':')
+            if not sep:
+                op = "default"
+                value = left.strip()
+            else:
+                op = left.strip().upper()
+                value = right.strip()
+
+            # then, understand what's the property to filter and its value
+            if '.' in filter:  # Indicates a dict-valued property with a key
+                prop_name, key = filter.split('.', 1)
+            else:
+                prop_name = filter
+                key = None
+            prop_type = artifact_type.metadata.attributes.all.get(prop_name)
+            if prop_type is None:
+                raise webob.exc.HTTPBadRequest(error_msg)
+            key_only_check = False
+            position = None
+            if isinstance(prop_type, dict):
+                if key is None:
+                    key = value
+                    val = None
+                    key_only_check = True
+                else:
+                    val = value
+
+                if isinstance(prop_type.properties, dict):
+                    # This one is to handle the case of composite dict, having
+                    # different types of values at different keys, i.e. object
+                    prop_type = prop_type.properties.get(key)
+                    if prop_type is None:
+                        raise webob.exc.HTTPBadRequest(error_msg)
+                else:
+                    prop_type = prop_type.properties
+
+                property_name = prop_name + '.' + key
+                property_value = val
+            else:
+                if key is not None:
+                    raise webob.exc.HTTPBadRequest(error_msg)
+                property_name = prop_name
+                property_value = value
+
+            # now detect the value DB type
             if prop_type.DB_TYPE is not None:
                 str_type = prop_type.DB_TYPE
             elif isinstance(prop_type, list):
                 if not isinstance(prop_type.item_type, list):
+                    position = "any"
                     str_type = prop_type.item_type.DB_TYPE
                 else:
                     raise webob.exc.HTTPBadRequest('Filtering by tuple-like'
                                                    ' fields is not supported')
-            elif isinstance(prop_type, dict):
-                filters['name'] = filter + '.' + value
-                continue
             else:
-                raise webob.exc.HTTPBadRequest('Filtering by this property '
-                                               'is not supported')
-            substr1, _sep, substr2 = value.partition(':')
-            if not _sep:
-                op = 'IN' if isinstance(prop_type, list) else 'EQ'
-                filters[filter] = dict(operator=op,
-                                       value=self._bring_to_type(str_type,
-                                                                 substr1),
-                                       type=str_type)
+                raise webob.exc.HTTPBadRequest(error_msg)
+            if property_value is not None:
+                property_value = self._bring_to_type(str_type, property_value)
+
+            # convert the default operation to NE, EQ or IN
+            if key_only_check:
+                if op == 'default':
+                    op = 'NE'
+                else:
+                    raise webob.exc.HTTPBadRequest('Comparison not supported '
+                                                   'for key-only filtering')
             else:
-                op = substr1.strip().upper()
-                filters[filter] = dict(operator=op,
-                                       value=self._bring_to_type(str_type,
-                                                                 substr2),
-                                       type=str_type)
+                if op == 'default':
+                    op = 'IN' if isinstance(prop_type, list) else 'EQ'
+
+            filters.setdefault(property_name, [])
+
+            filters[property_name].append(dict(operator=op, position=position,
+                                               value=property_value,
+                                               type=str_type))
         return filters
 
     def list(self, req):
@@ -726,10 +795,6 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer,
         limit = params.pop('limit', None)
         marker = params.pop('marker', None)
 
-        tags = []
-        while 'tag' in params:
-            tags.append(params.pop('tag').strip())
-
         query_params = dict()
 
         query_params['sort_keys'], query_params['sort_dirs'] = (
@@ -740,9 +805,6 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer,
             query_params['marker'] = marker
 
         query_params['limit'] = self._validate_limit(limit)
-
-        if tags:
-            query_params['filters']['tags'] = {'value': tags}
 
         query_params['filters'] = self._get_filters(res['artifact_type'],
                                                     params)
@@ -783,11 +845,39 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
                 id=artifact.id))
 
     def list(self, response, res):
+        params = dict(response.request.params)
+        params.pop('marker', None)
+        query = urlparse.urlencode(params)
+        type_name = response.request.urlvars.get('type_name')
+        type_version = response.request.urlvars.get('type_version')
+        if response.request.urlvars.get('state') == 'creating':
+            drafts = "/drafts"
+        else:
+            drafts = ""
+
         artifacts_list = [
             serialization.serialize_for_client(a, show_level=Showlevel.NONE)
-            for a in res]
-        body = json.dumps(artifacts_list, ensure_ascii=False)
-        response.unicode_body = six.text_type(body)
+            for a in res['artifacts']]
+        url = "/v3/artifacts"
+        if type_name:
+            url += "/" + type_name
+        if type_version:
+            url += "/v" + type_version
+        url += drafts
+        if query:
+            first_url = url + "?" + query
+        else:
+            first_url = url
+        body = {
+            "artifacts": artifacts_list,
+            "first": first_url
+        }
+        if 'next_marker' in res:
+            params['marker'] = res['next_marker']
+            next_query = urlparse.urlencode(params)
+            body['next'] = url + '?' + next_query
+        content = json.dumps(body, ensure_ascii=False)
+        response.unicode_body = six.text_type(content)
         response.content_type = 'application/json'
 
     def delete(self, response, result):

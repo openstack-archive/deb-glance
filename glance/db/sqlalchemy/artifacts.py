@@ -22,6 +22,7 @@ from oslo_db import exception as db_exc
 from oslo_utils import timeutils
 import sqlalchemy
 from sqlalchemy import and_
+from sqlalchemy import case
 from sqlalchemy import or_
 import sqlalchemy.orm as orm
 from sqlalchemy.orm import joinedload
@@ -208,8 +209,7 @@ def _out(artifact, show_level=ga.Showlevel.BASIC, show_text_properties=True):
                         break
                 else:
                     # create new array
-                    deparr = []
-                    deparr.append(_out(dep.dest, new_show_level))
+                    deparr = [_out(dep.dest, new_show_level)]
                     res['dependencies'][dep.name] = deparr
     return res
 
@@ -362,34 +362,53 @@ def _do_paginate_query(query, sort_keys=None, sort_dirs=None,
                 order_by(sort_dir_func(getattr(models.ArtifactProperty,
                                                prop_type))))
 
+    default = ''
+
     # Add pagination
     if marker is not None:
         marker_values = []
         for sort_key in sort_keys:
             v = getattr(marker, sort_key[0])
+            if v is None:
+                v = default
             marker_values.append(v)
 
         # Build up an array of sort criteria as in the docstring
         criteria_list = []
         for i in range(len(sort_keys)):
             crit_attrs = []
+            if marker_values[i] is None:
+                continue
             for j in range(i):
                 if sort_keys[j][1] is None:
                     model_attr = getattr(models.Artifact, sort_keys[j][0])
                 else:
                     model_attr = getattr(models.ArtifactProperty,
                                          sort_keys[j][1] + "_value")
-                crit_attrs.append((model_attr == marker_values[j]))
+                default = None if isinstance(
+                    model_attr.property.columns[0].type,
+                    sqlalchemy.DateTime) else ''
+                attr = case([(model_attr != None,
+                              model_attr), ],
+                            else_=default)
+                crit_attrs.append((attr == marker_values[j]))
 
             if sort_keys[i][1] is None:
-                model_attr = getattr(models.Artifact, sort_keys[j][0])
+                model_attr = getattr(models.Artifact, sort_keys[i][0])
             else:
                 model_attr = getattr(models.ArtifactProperty,
-                                     sort_keys[j][1] + "_value")
+                                     sort_keys[i][1] + "_value")
+
+            default = None if isinstance(model_attr.property.columns[0].type,
+                                         sqlalchemy.DateTime) else ''
+            attr = case([(model_attr != None,
+                          model_attr), ],
+                        else_=default)
+
             if sort_dirs[i] == 'desc':
-                crit_attrs.append((model_attr < marker_values[i]))
+                crit_attrs.append((attr < marker_values[i]))
             else:
-                crit_attrs.append((model_attr > marker_values[i]))
+                crit_attrs.append((attr > marker_values[i]))
 
             criteria = and_(*crit_attrs)
             criteria_list.append(criteria)
@@ -466,7 +485,8 @@ def _do_query_filters(filters):
     visibility = filters.pop('visibility', None)
     if visibility is not None:
         # ignore operator. always consider it EQ
-        basic_conds.append([models.Artifact.visibility == visibility['value']])
+        basic_conds.append(
+            [models.Artifact.visibility == visibility[0]['value']])
 
     type_name = filters.pop('type_name', None)
     if type_name is not None:
@@ -482,13 +502,15 @@ def _do_query_filters(filters):
     name = filters.pop('name', None)
     if name is not None:
         # ignore operator. always consider it EQ
-        basic_conds.append([models.Artifact.name == name['value']])
-        version = filters.pop('version', None)
-        if version is not None:
-            # ignore operator. always consider it EQ
-            # TODO(mfedosin) add support of LIKE operator
-            version = semver_db.parse(version['value'])
-            basic_conds.append([models.Artifact.version == version])
+        basic_conds.append([models.Artifact.name == name[0]['value']])
+
+    versions = filters.pop('version', None)
+    if versions is not None:
+        for version in versions:
+            value = semver_db.parse(version['value'])
+            op = version['operator']
+            fn = op_mappings[op]
+            basic_conds.append([fn(models.Artifact.version, value)])
 
     state = filters.pop('state', None)
     if state is not None:
@@ -498,7 +520,7 @@ def _do_query_filters(filters):
     owner = filters.pop('owner', None)
     if owner is not None:
         # ignore operator. always consider it EQ
-        basic_conds.append([models.Artifact.owner == owner['value']])
+        basic_conds.append([models.Artifact.owner == owner[0]['value']])
 
     id_list = filters.pop('id_list', None)
     if id_list is not None:
@@ -510,42 +532,48 @@ def _do_query_filters(filters):
 
     tags = filters.pop('tags', None)
     if tags is not None:
-        for tag in tags['value']:
-            tag_conds.append([models.ArtifactTag.value == tag])
+        for tag in tags:
+            tag_conds.append([models.ArtifactTag.value == tag['value']])
 
     # process remaining filters
-    for filtername, filtervalue in filters.items():
+    for filtername, filtervalues in filters.items():
+        for filtervalue in filtervalues:
 
-        db_prop_op = filtervalue['operator']
-        db_prop_value = filtervalue['value']
-        db_prop_type = filtervalue['type'] + "_value"
-        db_prop_position = filtervalue.get('position')
+            db_prop_op = filtervalue['operator']
+            db_prop_value = filtervalue['value']
+            db_prop_type = filtervalue['type'] + "_value"
+            db_prop_position = filtervalue.get('position')
 
-        conds = [models.ArtifactProperty.name == filtername]
+            conds = [models.ArtifactProperty.name == filtername]
 
-        if db_prop_op in op_mappings:
-            fn = op_mappings[db_prop_op]
-            result = fn(getattr(models.ArtifactProperty, db_prop_type),
-                        db_prop_value)
+            if db_prop_op in op_mappings:
+                fn = op_mappings[db_prop_op]
+                result = fn(getattr(models.ArtifactProperty, db_prop_type),
+                            db_prop_value)
 
-            cond = [result,
-                    models.ArtifactProperty.position == db_prop_position]
-            if db_prop_op == 'IN':
-                if db_prop_position is not None:
-                    msg = _LE("Cannot use this parameter with "
-                              "the operator IN")
-                    LOG.error(msg)
-                    raise exception.ArtifactInvalidPropertyParameter(op='IN')
-                cond = [result,
-                        models.ArtifactProperty.position >= 0]
-        else:
-            msg = _LE("Operator %s is not supported") % db_prop_op
-            LOG.error(msg)
-            raise exception.ArtifactUnsupportedPropertyOperator(op=db_prop_op)
+                cond = [result]
+                if db_prop_position is not 'any':
+                    cond.append(
+                        models.ArtifactProperty.position == db_prop_position)
+                if db_prop_op == 'IN':
+                    if (db_prop_position is not None and
+                            db_prop_position is not 'any'):
+                        msg = _LE("Cannot use this parameter with "
+                                  "the operator IN")
+                        LOG.error(msg)
+                        raise exception.ArtifactInvalidPropertyParameter(
+                            op='IN')
+                    cond = [result,
+                            models.ArtifactProperty.position >= 0]
+            else:
+                msg = _LE("Operator %s is not supported") % db_prop_op
+                LOG.error(msg)
+                raise exception.ArtifactUnsupportedPropertyOperator(
+                    op=db_prop_op)
 
-        conds.extend(cond)
+            conds.extend(cond)
 
-        prop_conds.append(conds)
+            prop_conds.append(conds)
     return basic_conds, tag_conds, prop_conds
 
 
