@@ -1,27 +1,27 @@
 Description: Default config
 Author: Thomas Goirand <zigo@debian.org>
 Forwarded: not-needed
-Last-Update: 2015-08-01
+Last-Update: 2015-09-26
 
---- glance-11.0.0~b2.orig/etc/glance-api.conf
-+++ glance-11.0.0~b2/etc/glance-api.conf
-@@ -448,7 +448,7 @@ revocation_cache_time = 10
+--- glance-11.0.0~rc1.orig/etc/glance-api.conf
++++ glance-11.0.0~rc1/etc/glance-api.conf
+@@ -1302,7 +1302,7 @@ connection = sqlite:////var/lib/glance/g
  # service name removed. For example, if your paste section name is
- # [pipeline:glance-api-keystone], you would configure the flavor below
- # as 'keystone'.
--#flavor =
+ # [pipeline:glance-api-keystone] use the value "keystone" (string
+ # value)
+-#flavor = <None>
 +flavor = caching
  
- [store_type_location_strategy]
- # The scheme list to use to get store preference order. The scheme must be
---- glance-11.0.0~b2.orig/etc/glance-registry.conf
-+++ glance-11.0.0~b2/etc/glance-registry.conf
-@@ -261,7 +261,7 @@ admin_password = %SERVICE_PASSWORD%
+ # Name of the paste configuration file. (string value)
+ #config_file = <None>
+--- glance-11.0.0~rc1.orig/etc/glance-registry.conf
++++ glance-11.0.0~rc1/etc/glance-registry.conf
+@@ -1073,7 +1073,7 @@ connection = sqlite:////var/lib/glance/g
  # service name removed. For example, if your paste section name is
- # [pipeline:glance-registry-keystone], you would configure the flavor below
- # as 'keystone'.
--#flavor =
+ # [pipeline:glance-api-keystone] use the value "keystone" (string
+ # value)
+-#flavor = <None>
 +flavor = caching
  
- [profiler]
- # If False fully disable profiling feature.
+ # Name of the paste configuration file. (string value)
+ #config_file = <None>

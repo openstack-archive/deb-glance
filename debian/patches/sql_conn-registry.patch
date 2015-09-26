@@ -7,25 +7,25 @@ Index: glance/etc/glance-api.conf
 ===================================================================
 --- glance.orig/etc/glance-api.conf
 +++ glance/etc/glance-api.conf
-@@ -339,7 +339,7 @@ image_cache_dir = /var/lib/glance/image-
+@@ -535,7 +535,7 @@
  # Deprecated group/name - [DEFAULT]/sql_connection
  # Deprecated group/name - [DATABASE]/sql_connection
  # Deprecated group/name - [sql]/connection
 -#connection = <None>
 +connection = sqlite:////var/lib/glance/glancedb
  
- # The SQL mode to be used for MySQL sessions. This option,
- # including the default, overrides any server-set SQL mode. To
+ # The SQLAlchemy connection string to use to connect to the slave
+ # database. (string value)
 Index: glance/etc/glance-registry.conf
 ===================================================================
 --- glance.orig/etc/glance-registry.conf
 +++ glance/etc/glance-registry.conf
-@@ -167,7 +167,7 @@ qpid_tcp_nodelay = True
+@@ -360,7 +360,7 @@
  # Deprecated group/name - [DEFAULT]/sql_connection
  # Deprecated group/name - [DATABASE]/sql_connection
  # Deprecated group/name - [sql]/connection
 -#connection = <None>
 +connection = sqlite:////var/lib/glance/glancedb
  
- # The SQL mode to be used for MySQL sessions. This option,
- # including the default, overrides any server-set SQL mode. To
+ # The SQLAlchemy connection string to use to connect to the slave
+ # database. (string value)

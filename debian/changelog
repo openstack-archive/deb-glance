@@ -2,6 +2,7 @@ glance (1:11.0.0~rc1-1) experimental; urgency=medium
 
   * New upstream release.
   * Fixed (build-)depends for this release.
+  * Refreshed patches.
 
  -- Thomas Goirand <zigo@debian.org>  Sat, 26 Sep 2015 16:44:58 +0200
 
