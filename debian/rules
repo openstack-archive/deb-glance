@@ -50,6 +50,7 @@ override_dh_install:
 		--namespace oslo.db.concurrency \
 		--namespace oslo.policy \
 		--namespace keystoneclient.middleware.auth_token \
+		--namespace keystonemiddleware.auth_token \
 		--namespace oslo.log
 	PYTHONPATH=. oslo-config-generator --output-file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-registry.conf \
 		--namespace glance.registry \
@@ -59,6 +60,7 @@ override_dh_install:
 		--namespace oslo.db.concurrency \
 		--namespace oslo.policy \
 		--namespace keystoneclient.middleware.auth_token \
+		--namespace keystonemiddleware.auth_token \
 		--namespace oslo.log
 	PYTHONPATH=. oslo-config-generator --output-file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-cache.conf \
 		--namespace glance.cache \
