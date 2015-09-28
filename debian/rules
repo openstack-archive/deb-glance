@@ -39,6 +39,46 @@ endif
 
 override_dh_install:
 	dh_install -O--buildsystem=python_distutils --fail-missing
+	# Generate all config files
+	mkdir -p $(CURDIR)/debian/glance-common/usr/share/glance-common
+	PYTHONPATH=. oslo-config-generator --output-file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-api.conf \
+		--namespace glance.api \
+		--namespace glance.store \
+		--namespace oslo.concurrency \
+		--namespace oslo.messaging \
+		--namespace oslo.db \
+		--namespace oslo.db.concurrency \
+		--namespace oslo.policy \
+		--namespace keystoneclient.middleware.auth_token \
+		--namespace oslo.log
+	PYTHONPATH=. oslo-config-generator --output-file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-registry.conf \
+		--namespace glance.registry \
+		--namespace glance.store \
+		--namespace oslo.messaging \
+		--namespace oslo.db \
+		--namespace oslo.db.concurrency \
+		--namespace oslo.policy \
+		--namespace keystoneclient.middleware.auth_token \
+		--namespace oslo.log
+	PYTHONPATH=. oslo-config-generator --output-file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-cache.conf
+		--namespace glance.cache \
+		--namespace oslo.log \
+		--namespace oslo.policy
+	PYTHONPATH=. oslo-config-generator --output-file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-manage.conf \
+		--namespace glance.manage \
+		--namespace oslo.db \
+		--namespace oslo.db.concurrency \
+		--namespace oslo.log
+	PYTHONPATH=. oslo-config-generator --output-file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-scrubber.conf \
+		--namespace glance.scrubber \
+		--namespace oslo.concurrency \
+		--namespace oslo.db \
+		--namespace oslo.db.concurrency \
+		--namespace oslo.log \
+		--namespace oslo.policy
+	install -D -m 0664 etc/glance-swift.conf.sample $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-swift.conf
+	install -D -m 0664 etc/property-protections-policies.conf.sample $(CURDIR)/debian/glance-common/usr/share/glance-common/property-protections-policies.conf
+	install -D -m 0664 etc/property-protections-roles.conf.sample $(CURDIR)/debian/glance-common/usr/share/glance-common/property-protections-roles.conf
 
 override_dh_auto_clean:
 	dh_auto_clean -O--buildsystem=python_distutils

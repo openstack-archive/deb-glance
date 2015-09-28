@@ -31,12 +31,19 @@ if [ "$1" = "configure" ] || [ "$1" = "reconfigure" ] ; then
 	# Make sure we have a /etc/glance folder with config files in it.
 	pkgos_write_new_conf glance glance-api.conf
 	pkgos_write_new_conf glance glance-registry.conf
+	pkgos_write_new_conf glance glance-cache.conf
+	pkgos_write_new_conf glance glance-manage.conf
+	pkgos_write_new_conf glance glance-scrubber.conf
+
 	pkgos_write_new_conf glance glance-api-paste.ini
 	pkgos_write_new_conf glance glance-registry-paste.ini
-	pkgos_write_new_conf glance glance-cache.conf
-	pkgos_write_new_conf glance glance-scrubber.conf
 	pkgos_write_new_conf glance policy.json
 	pkgos_write_new_conf glance schema-image.json
+
+	pkgos_write_new_conf glance property-protections-policies.conf
+	pkgos_write_new_conf glance property-protections-roles.conf
+
+	pkgos_write_new_conf glance glance-swift.conf
 
 	# Copy metadefs files from /usr/share/glance-common/metadefs to /etc/glance/metadefs
 	mkdir -p /etc/glance/metadefs
