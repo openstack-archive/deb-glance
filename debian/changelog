@@ -2,6 +2,8 @@ glance (1:11.0.0~rc1-2) experimental; urgency=medium
 
   * Now generating config file with oslo-config-generator.
   * Fixes install of config file.
+  * Using http protocol by default, not https, for glance connecting to
+    Keystone through keystonemiddleware.
 
  -- Thomas Goirand <zigo@debian.org>  Mon, 28 Sep 2015 10:02:16 +0200
 
