@@ -4,6 +4,9 @@ glance (1:11.0.0~rc1-2) experimental; urgency=medium
   * Fixes install of config file.
   * Using http protocol by default, not https, for glance connecting to
     Keystone through keystonemiddleware.
+  * Change default value for filesystem_store_datadir in both the
+    glance-api.conf and glance-registry.conf: the default doesn't work as the
+    comments in the config file pretends.
 
  -- Thomas Goirand <zigo@debian.org>  Mon, 28 Sep 2015 10:02:16 +0200
 
