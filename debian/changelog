@@ -1,3 +1,9 @@
+glance (1:11.0.0~rc1-3) experimental; urgency=medium
+
+  * Adding python-swiftclient as runtime dependency (request from puppet team).
+
+ -- Thomas Goirand <zigo@debian.org>  Fri, 02 Oct 2015 21:58:33 +0200
+
 glance (1:11.0.0~rc1-2) experimental; urgency=medium
 
   * Now generating config file with oslo-config-generator.
