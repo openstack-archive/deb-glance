@@ -54,6 +54,7 @@ override_dh_install:
 		--namespace oslo.log
 	sed -i 's/^[ \t#]*auth_protocol[ \t]*=[ \t].*/auth_protocol = http/' $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-api.conf
 	sed -i 's|^[ \t#]*filesystem_store_datadir[ \t]*=[ \t].*|filesystem_store_datadir = /var/lib/glance/images|' $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-api.conf
+	sed -i 's|^[ \t#]*lock_path[ \t]*=[ \t].*|lock_path = /var/lock/glance|' $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-api.conf
 
 	PYTHONPATH=. oslo-config-generator --output-file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-registry.conf \
 		--namespace glance.registry \

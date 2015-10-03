@@ -1,6 +1,7 @@
 glance (1:11.0.0~rc1-3) experimental; urgency=medium
 
   * Adding python-swiftclient as runtime dependency (request from puppet team).
+  * Added tweak of lock_path in glance-api.conf.
 
  -- Thomas Goirand <zigo@debian.org>  Fri, 02 Oct 2015 21:58:33 +0200
 
