@@ -1,6 +1,7 @@
-glance (1:11.0.0-1) experimental; urgency=medium
+glance (1:11.0.0-1) unstable; urgency=medium
 
   * New upstream release.
+  * Uploading to unstable.
   * Adding python-swiftclient as runtime dependency (request from puppet team).
   * Added tweak of lock_path in glance-api.conf.
 
