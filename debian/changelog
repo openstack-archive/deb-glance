@@ -1,3 +1,9 @@
+glance (1:11.0.0-2) unstable; urgency=medium
+
+  * Purge /etc/glance completely on purge (Closes: #802537).
+
+ -- Thomas Goirand <zigo@debian.org>  Fri, 23 Oct 2015 12:08:06 +0000
+
 glance (1:11.0.0-1) unstable; urgency=medium
 
   * New upstream release.

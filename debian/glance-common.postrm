@@ -5,10 +5,7 @@ set -e
 if [ "${1}" = "purge" ] ; then
 	[ -e /var/lib/glance ] && rm -rf /var/lib/glance
 	[ -e /var/log/glance ] && rm -rf /var/log/glance
-
-	rm -f /etc/glance/glance-registry.conf /etc/glance/glance-registry-paste.ini /etc/glance/glance-api.conf /etc/glance/glance-api-paste.ini
-	rm -f /etc/glance/glance-cache.conf /etc/glance/glance-scrubber.conf /etc/glance/policy.json
-	[ -d /etc/glance ] && rmdir --ignore-fail-on-non-empty /etc/glance
+	[ -e /etc/glance ] && rm -rf /etc/glance
 fi
 
 #DEBHELPER#
