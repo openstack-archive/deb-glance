@@ -1,3 +1,9 @@
+glance (1:11.0.0-3) unstable; urgency=medium
+
+  * Rebuilt with openstack-pkg-tools 37 to use Keystone API v3.
+
+ -- Thomas Goirand <zigo@debian.org>  Mon, 02 Nov 2015 14:17:05 +0000
+
 glance (1:11.0.0-2) unstable; urgency=medium
 
   * Purge /etc/glance completely on purge (Closes: #802537).
