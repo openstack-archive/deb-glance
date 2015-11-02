@@ -1,6 +1,7 @@
 glance (1:11.0.0-3) unstable; urgency=medium
 
   * Rebuilt with openstack-pkg-tools 37 to use Keystone API v3.
+  * Added missing python-swiftclient needed for building the config.
 
  -- Thomas Goirand <zigo@debian.org>  Mon, 02 Nov 2015 14:17:05 +0000
 
