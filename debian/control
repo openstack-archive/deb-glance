@@ -195,6 +195,7 @@ Architecture: all
 Depends: debconf,
          glance-common (= ${source:Version}),
          python-openstackclient,
+         q-text-as-data,
          ${misc:Depends},
          ${ostack-lsb-base},
          ${python:Depends},
