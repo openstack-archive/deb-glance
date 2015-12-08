@@ -55,6 +55,7 @@ Glance Background Concepts
    domain_model
    identifiers
    statuses
+   tasks
    formats
    common-image-properties
    metadefs-concepts
@@ -72,6 +73,7 @@ Installing/Configuring Glance
    image-location-strategy-modules
    artifact-types
    flows
+   property-protections
 
 Operating Glance
 ================
@@ -93,3 +95,20 @@ Using Glance
    glanceapi
    glanceclient
    glancemetadefcatalogapi
+
+Glance Manual Pages
+===================
+
+.. toctree::
+   :glob:
+   :maxdepth: 1
+
+   man/*
+
+Contributing to Glance
+======================
+
+.. toctree::
+   :maxdepth: 1
+
+   contributing/index

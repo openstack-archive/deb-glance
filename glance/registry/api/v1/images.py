@@ -22,6 +22,7 @@ from oslo_log import log as logging
 from oslo_utils import encodeutils
 from oslo_utils import strutils
 from oslo_utils import timeutils
+from oslo_utils import uuidutils
 from webob import exc
 
 from glance.common import exception
@@ -205,7 +206,9 @@ class Controller(object):
             # Only admin gets to look for non-public images
             params['is_public'] = self._get_is_public(req)
 
-        for key, value in params.items():
+        # need to coy items because the params is modified in the loop body
+        items = list(params.items())
+        for key, value in items:
             if value is None:
                 del params[key]
 
@@ -276,7 +279,7 @@ class Controller(object):
         """Parse a marker query param into something usable."""
         marker = req.params.get('marker', None)
 
-        if marker and not utils.is_uuid_like(marker):
+        if marker and not uuidutils.is_uuid_like(marker):
             msg = _('Invalid marker format')
             raise exc.HTTPBadRequest(explanation=msg)
 
@@ -341,15 +344,13 @@ class Controller(object):
             msg = "Successfully retrieved image %(id)s" % {'id': id}
             LOG.debug(msg)
         except exception.ImageNotFound:
-            msg = _LI("Image %(id)s not found") % {'id': id}
-            LOG.info(msg)
+            LOG.info(_LI("Image %(id)s not found"), {'id': id})
             raise exc.HTTPNotFound()
         except exception.Forbidden:
             # If it's private and doesn't belong to them, don't let on
             # that it exists
-            msg = _LI("Access denied to image %(id)s but returning"
-                      " 'not found'") % {'id': id}
-            LOG.info(msg)
+            LOG.info(_LI("Access denied to image %(id)s but returning"
+                         " 'not found'"), {'id': id})
             raise exc.HTTPNotFound()
         except Exception:
             LOG.exception(_LE("Unable to show image %s") % id)
@@ -369,23 +370,19 @@ class Controller(object):
         """
         try:
             deleted_image = self.db_api.image_destroy(req.context, id)
-            msg = _LI("Successfully deleted image %(id)s") % {'id': id}
-            LOG.info(msg)
+            LOG.info(_LI("Successfully deleted image %(id)s"), {'id': id})
             return dict(image=make_image_dict(deleted_image))
         except exception.ForbiddenPublicImage:
-            msg = _LI("Delete denied for public image %(id)s") % {'id': id}
-            LOG.info(msg)
+            LOG.info(_LI("Delete denied for public image %(id)s"), {'id': id})
             raise exc.HTTPForbidden()
         except exception.Forbidden:
             # If it's private and doesn't belong to them, don't let on
             # that it exists
-            msg = _LI("Access denied to image %(id)s but returning"
-                      " 'not found'") % {'id': id}
-            LOG.info(msg)
+            LOG.info(_LI("Access denied to image %(id)s but returning"
+                         " 'not found'"), {'id': id})
             return exc.HTTPNotFound()
         except exception.ImageNotFound:
-            msg = _LI("Image %(id)s not found") % {'id': id}
-            LOG.info(msg)
+            LOG.info(_LI("Image %(id)s not found"), {'id': id})
             return exc.HTTPNotFound()
         except Exception:
             LOG.exception(_LE("Unable to delete image %s") % id)
@@ -412,10 +409,9 @@ class Controller(object):
             image_data['owner'] = req.context.owner
 
         image_id = image_data.get('id')
-        if image_id and not utils.is_uuid_like(image_id):
-            msg = _LI("Rejecting image creation request for invalid image "
-                      "id '%(bad_id)s'") % {'bad_id': image_id}
-            LOG.info(msg)
+        if image_id and not uuidutils.is_uuid_like(image_id):
+            LOG.info(_LI("Rejecting image creation request for invalid image "
+                         "id '%(bad_id)s'"), {'bad_id': image_id})
             msg = _("Invalid image id format")
             return exc.HTTPBadRequest(explanation=msg)
 
@@ -426,9 +422,8 @@ class Controller(object):
             image_data = _normalize_image_location_for_db(image_data)
             image_data = self.db_api.image_create(req.context, image_data)
             image_data = dict(image=make_image_dict(image_data))
-            msg = (_LI("Successfully created image %(id)s") %
-                   image_data['image'])
-            LOG.info(msg)
+            LOG.info(_LI("Successfully created image %(id)s"),
+                     {'id': image_data['image']['id']})
             return image_data
         except exception.Duplicate:
             msg = _("Image with identifier %s already exists!") % image_id
@@ -480,8 +475,7 @@ class Controller(object):
                                                      purge_props=purge_props,
                                                      from_state=from_state)
 
-            msg = _LI("Updating metadata for image %(id)s") % {'id': id}
-            LOG.info(msg)
+            LOG.info(_LI("Updating metadata for image %(id)s"), {'id': id})
             return dict(image=make_image_dict(updated_image))
         except exception.Invalid as e:
             msg = (_("Failed to update image metadata. "
@@ -489,21 +483,18 @@ class Controller(object):
             LOG.error(msg)
             return exc.HTTPBadRequest(msg)
         except exception.ImageNotFound:
-            msg = _LI("Image %(id)s not found") % {'id': id}
-            LOG.info(msg)
+            LOG.info(_LI("Image %(id)s not found"), {'id': id})
             raise exc.HTTPNotFound(body='Image not found',
                                    request=req,
                                    content_type='text/plain')
         except exception.ForbiddenPublicImage:
-            msg = _LI("Update denied for public image %(id)s") % {'id': id}
-            LOG.info(msg)
+            LOG.info(_LI("Update denied for public image %(id)s"), {'id': id})
             raise exc.HTTPForbidden()
         except exception.Forbidden:
             # If it's private and doesn't belong to them, don't let on
             # that it exists
-            msg = _LI("Access denied to image %(id)s but returning"
-                      " 'not found'") % {'id': id}
-            LOG.info(msg)
+            LOG.info(_LI("Access denied to image %(id)s but returning"
+                         " 'not found'"), {'id': id})
             raise exc.HTTPNotFound(body='Image not found',
                                    request=req,
                                    content_type='text/plain')

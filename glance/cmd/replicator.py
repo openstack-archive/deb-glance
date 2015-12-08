@@ -25,6 +25,8 @@ from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_serialization import jsonutils
 from oslo_utils import encodeutils
+from oslo_utils import uuidutils
+import six
 from six.moves import http_client
 import six.moves.urllib.parse as urlparse
 from webob import exc
@@ -370,10 +372,14 @@ def replication_dump(options, args):
 
         data_path = os.path.join(path, image['id'])
         if not os.path.exists(data_path):
-            LOG.info(_LI('Storing: %s') % image['id'])
+            LOG.info(_LI('Storing: %s'), image['id'])
 
             # Dump glance information
-            with open(data_path, 'w') as f:
+            if six.PY3:
+                f = open(data_path, 'w', encoding='utf-8')
+            else:
+                f = open(data_path, 'w')
+            with f:
                 f.write(jsonutils.dumps(image))
 
             if image['status'] == 'active' and not options.metaonly:
@@ -441,9 +447,9 @@ def replication_load(options, args):
     updated = []
 
     for ent in os.listdir(path):
-        if utils.is_uuid_like(ent):
+        if uuidutils.is_uuid_like(ent):
             image_uuid = ent
-            LOG.info(_LI('Considering: %s') % image_uuid)
+            LOG.info(_LI('Considering: %s'), image_uuid)
 
             meta_file_name = os.path.join(path, image_uuid)
             with open(meta_file_name) as meta_file:
@@ -469,8 +475,7 @@ def replication_load(options, args):
                         del headers[key]
 
                 if _dict_diff(meta, headers):
-                    LOG.info(_LI('Image %s metadata has changed') %
-                             image_uuid)
+                    LOG.info(_LI('Image %s metadata has changed'), image_uuid)
                     headers, body = client.add_image_meta(meta)
                     _check_upload_response_headers(headers, body)
                     updated.append(meta['id'])
@@ -544,14 +549,13 @@ def replication_livecopy(options, args):
                         del headers[key]
 
                 if _dict_diff(image, headers):
-                    LOG.info(_LI('Image %s metadata has changed') %
-                             image['id'])
+                    LOG.info(_LI('Image %s metadata has changed'), image['id'])
                     headers, body = slave_client.add_image_meta(image)
                     _check_upload_response_headers(headers, body)
                     updated.append(image['id'])
 
         elif image['status'] == 'active':
-            LOG.info(_LI('Image %s is being synced') % image['id'])
+            LOG.info(_LI('Image %s is being synced'), image['id'])
             if not options.metaonly:
                 image_response = master_client.get_image(image['id'])
                 try:
@@ -704,7 +708,7 @@ def main():
         sys.exit("ERROR: %s" % encodeutils.exception_to_unicode(e))
 
     # Setup logging
-    logging.setup('glance')
+    logging.setup(CONF, 'glance')
 
     if CONF.token:
         CONF.slavetoken = CONF.token

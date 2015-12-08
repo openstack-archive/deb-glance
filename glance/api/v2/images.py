@@ -64,31 +64,26 @@ class ImagesController(object):
             image = image_factory.new_image(extra_properties=extra_properties,
                                             tags=tags, **image)
             image_repo.add(image)
-        except exception.DuplicateLocation as dup:
-            raise webob.exc.HTTPBadRequest(explanation=dup.msg)
-        except exception.Invalid as e:
+        except (exception.DuplicateLocation,
+                exception.Invalid) as e:
             raise webob.exc.HTTPBadRequest(explanation=e.msg)
+        except (exception.ReservedProperty,
+                exception.ReadonlyProperty) as e:
+            raise webob.exc.HTTPForbidden(explanation=e.msg)
         except exception.Forbidden as e:
             LOG.debug("User not permitted to create image")
             raise webob.exc.HTTPForbidden(explanation=e.msg)
-        except exception.InvalidParameterValue as e:
-            raise webob.exc.HTTPBadRequest(explanation=e.msg)
         except exception.LimitExceeded as e:
             LOG.warn(encodeutils.exception_to_unicode(e))
             raise webob.exc.HTTPRequestEntityTooLarge(
                 explanation=e.msg, request=req, content_type='text/plain')
-        except exception.Duplicate as dupex:
-            raise webob.exc.HTTPConflict(explanation=dupex.msg)
-        except exception.ReservedProperty as e:
-            raise webob.exc.HTTPForbidden(explanation=e.msg)
-        except exception.ReadonlyProperty as e:
-            raise webob.exc.HTTPForbidden(explanation=e.msg)
-        except TypeError as e:
-            LOG.debug(encodeutils.exception_to_unicode(e))
-            raise webob.exc.HTTPBadRequest(
-                explanation=encodeutils.exception_to_unicode(e))
+        except exception.Duplicate as e:
+            raise webob.exc.HTTPConflict(explanation=e.msg)
         except exception.NotAuthenticated as e:
             raise webob.exc.HTTPUnauthorized(explanation=e.msg)
+        except TypeError as e:
+            LOG.debug(encodeutils.exception_to_unicode(e))
+            raise webob.exc.HTTPBadRequest(explanation=e)
 
         return image
 
@@ -117,7 +112,9 @@ class ImagesController(object):
             if len(images) != 0 and len(images) == limit:
                 result['next_marker'] = images[-1].image_id
         except (exception.NotFound, exception.InvalidSortKey,
-                exception.InvalidFilterRangeValue) as e:
+                exception.InvalidFilterRangeValue,
+                exception.InvalidParameterValue,
+                exception.InvalidFilterOperatorValue) as e:
             raise webob.exc.HTTPBadRequest(explanation=e.msg)
         except exception.Forbidden as e:
             LOG.debug("User not permitted to retrieve images index")
@@ -160,8 +157,6 @@ class ImagesController(object):
         except exception.Forbidden as e:
             LOG.debug("User not permitted to update image '%s'", image_id)
             raise webob.exc.HTTPForbidden(explanation=e.msg)
-        except exception.InvalidParameterValue as e:
-            raise webob.exc.HTTPBadRequest(explanation=e.msg)
         except exception.StorageQuotaFull as e:
             msg = (_("Denying attempt to upload image because it exceeds the"
                      " quota: %s") % encodeutils.exception_to_unicode(e))
@@ -250,6 +245,8 @@ class ImagesController(object):
                     "exc": e.msg})
             LOG.warn(msg)
             raise webob.exc.HTTPConflict(explanation=msg)
+        except exception.InvalidImageStatusTransition as e:
+            raise webob.exc.HTTPBadRequest(explanation=e.msg)
         except exception.NotAuthenticated as e:
             raise webob.exc.HTTPUnauthorized(explanation=e.msg)
 
@@ -281,8 +278,8 @@ class ImagesController(object):
                 image.locations = value
                 if image.status == 'queued':
                     image.status = 'active'
-            except (exception.BadStoreUri, exception.DuplicateLocation) as bse:
-                raise webob.exc.HTTPBadRequest(explanation=bse.msg)
+            except (exception.BadStoreUri, exception.DuplicateLocation) as e:
+                raise webob.exc.HTTPBadRequest(explanation=e.msg)
             except ValueError as ve:    # update image status failed.
                 raise webob.exc.HTTPBadRequest(
                     explanation=encodeutils.exception_to_unicode(ve))
@@ -297,11 +294,11 @@ class ImagesController(object):
             image.locations.insert(pos, value)
             if image.status == 'queued':
                 image.status = 'active'
-        except (exception.BadStoreUri, exception.DuplicateLocation) as bse:
-            raise webob.exc.HTTPBadRequest(explanation=bse.msg)
-        except ValueError as ve:    # update image status failed.
+        except (exception.BadStoreUri, exception.DuplicateLocation) as e:
+            raise webob.exc.HTTPBadRequest(explanation=e.msg)
+        except ValueError as e:    # update image status failed.
             raise webob.exc.HTTPBadRequest(
-                explanation=encodeutils.exception_to_unicode(ve))
+                explanation=encodeutils.exception_to_unicode(e))
 
     def _do_remove_locations(self, image, path_pos):
         pos = self._get_locations_op_pos(path_pos,
@@ -329,7 +326,7 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
     _reserved_properties = ('location', 'deleted', 'deleted_at')
     _base_properties = ('checksum', 'created_at', 'container_format',
                         'disk_format', 'id', 'min_disk', 'min_ram', 'name',
-                        'size', 'virtual_size', 'status', 'tags',
+                        'size', 'virtual_size', 'status', 'tags', 'owner',
                         'updated_at', 'visibility', 'protected')
     _available_sort_keys = ('name', 'status', 'container_format',
                             'disk_format', 'size', 'id', 'created_at',
@@ -478,7 +475,7 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
             msg = _("Attribute '%s' is reserved.") % path_root
             raise webob.exc.HTTPForbidden(explanation=six.text_type(msg))
 
-        if change['op'] == 'delete':
+        if change['op'] == 'remove':
             return
 
         partial_image = None
@@ -557,7 +554,8 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
 
             if not op == 'remove':
                 change['value'] = self._get_change_value(raw_change, op)
-                self._validate_change(change)
+
+            self._validate_change(change)
 
             changes.append(change)
 
@@ -617,7 +615,7 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer):
         """
         Process sorting params.
         Currently glance supports two sorting syntax: classic and new one,
-        that is uniform for all Openstack projects.
+        that is uniform for all OpenStack projects.
         Classic syntax: sort_key=name&sort_dir=asc&sort_key=size&sort_dir=desc
         New syntax: sort=name:asc,size:desc
         """

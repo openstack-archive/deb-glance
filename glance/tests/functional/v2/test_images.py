@@ -22,6 +22,7 @@ import requests
 import six
 # NOTE(jokke): simplified transition to py3, behaves like py2 xrange
 from six.moves import range
+from six.moves import urllib
 
 from glance.tests import functional
 from glance.tests import utils as test_utils
@@ -420,7 +421,7 @@ class TestImages(functional.FunctionalTest):
         path = self._url('/v2/images/%s/file' % image_id)
         headers = self._headers()
         response = requests.get(path, headers=headers)
-        self.assertEqual(204, response.status_code)
+        self.assertEqual(403, response.status_code)
 
         def _verify_image_checksum_and_status(checksum, status):
             # Checksum should be populated and status should be active
@@ -478,6 +479,26 @@ class TestImages(functional.FunctionalTest):
         path = self._url('/v2/images/%s/actions/deactivate' % image_id)
         response = requests.post(path, data={}, headers=self._headers())
         self.assertEqual(204, response.status_code)
+
+        # Change the image to public so TENANT2 can see it
+        path = self._url('/v2/images/%s' % image_id)
+        media_type = 'application/openstack-images-v2.0-json-patch'
+        headers = self._headers({'content-type': media_type})
+        data = jsonutils.dumps([{"replace": "/visibility", "value": "public"}])
+        response = requests.patch(path, headers=headers, data=data)
+        self.assertEqual(200, response.status_code, response.text)
+
+        # Tennant2 should get Forbidden when deactivating the public image
+        path = self._url('/v2/images/%s/actions/deactivate' % image_id)
+        response = requests.post(path, data={}, headers=self._headers(
+            {'X-Tenant-Id': TENANT2}))
+        self.assertEqual(403, response.status_code)
+
+        # Tennant2 should get Forbidden when reactivating the public image
+        path = self._url('/v2/images/%s/actions/reactivate' % image_id)
+        response = requests.post(path, data={}, headers=self._headers(
+            {'X-Tenant-Id': TENANT2}))
+        self.assertEqual(403, response.status_code)
 
         # Deactivating a deactivated image succeeds (no-op)
         path = self._url('/v2/images/%s/actions/deactivate' % image_id)
@@ -571,6 +592,70 @@ class TestImages(functional.FunctionalTest):
         self.assertEqual(200, response.status_code)
         images = jsonutils.loads(response.text)['images']
         self.assertEqual(0, len(images))
+
+        # Create image that tries to send True should return 400
+        path = self._url('/v2/images')
+        headers = self._headers({'content-type': 'application/json'})
+        data = 'true'
+        response = requests.post(path, headers=headers, data=data)
+        self.assertEqual(400, response.status_code)
+
+        # Create image that tries to send a string should return 400
+        path = self._url('/v2/images')
+        headers = self._headers({'content-type': 'application/json'})
+        data = '"hello"'
+        response = requests.post(path, headers=headers, data=data)
+        self.assertEqual(400, response.status_code)
+
+        # Create image that tries to send 123 should return 400
+        path = self._url('/v2/images')
+        headers = self._headers({'content-type': 'application/json'})
+        data = '123'
+        response = requests.post(path, headers=headers, data=data)
+        self.assertEqual(400, response.status_code)
+
+        self.stop_servers()
+
+    def test_update_readonly_prop(self):
+        self.start_servers(**self.__dict__.copy())
+        # Create an image (with two deployer-defined properties)
+        path = self._url('/v2/images')
+        headers = self._headers({'content-type': 'application/json'})
+        data = jsonutils.dumps({'name': 'image-1'})
+        response = requests.post(path, headers=headers, data=data)
+
+        image = jsonutils.loads(response.text)
+        image_id = image['id']
+
+        path = self._url('/v2/images/%s' % image_id)
+        media_type = 'application/openstack-images-v2.1-json-patch'
+        headers = self._headers({'content-type': media_type})
+
+        props = ['/id', '/file', '/location', '/schema', '/self']
+
+        for prop in props:
+            doc = [{'op': 'replace',
+                    'path': prop,
+                    'value': 'value1'}]
+            data = jsonutils.dumps(doc)
+            response = requests.patch(path, headers=headers, data=data)
+            self.assertEqual(403, response.status_code)
+
+        for prop in props:
+            doc = [{'op': 'remove',
+                    'path': prop,
+                    'value': 'value1'}]
+            data = jsonutils.dumps(doc)
+            response = requests.patch(path, headers=headers, data=data)
+            self.assertEqual(403, response.status_code)
+
+        for prop in props:
+            doc = [{'op': 'add',
+                    'path': prop,
+                    'value': 'value1'}]
+            data = jsonutils.dumps(doc)
+            response = requests.patch(path, headers=headers, data=data)
+            self.assertEqual(403, response.status_code)
 
         self.stop_servers()
 
@@ -2387,6 +2472,40 @@ class TestImages(functional.FunctionalTest):
         self.assertEqual(7, len(body['images']))
         self.assertEqual('/v2/images', body['first'])
         self.assertNotIn('next', jsonutils.loads(response.text))
+
+        # Image list filters by created_at time
+        url_template = '/v2/images?created_at=lt:%s'
+        path = self._url(url_template % images[0]['created_at'])
+        response = requests.get(path, headers=self._headers())
+        self.assertEqual(200, response.status_code)
+        body = jsonutils.loads(response.text)
+        self.assertEqual(0, len(body['images']))
+        self.assertEqual(url_template % images[0]['created_at'],
+                         urllib.parse.unquote(body['first']))
+
+        # Image list filters by updated_at time
+        url_template = '/v2/images?updated_at=lt:%s'
+        path = self._url(url_template % images[2]['updated_at'])
+        response = requests.get(path, headers=self._headers())
+        self.assertEqual(200, response.status_code)
+        body = jsonutils.loads(response.text)
+        self.assertGreaterEqual(3, len(body['images']))
+        self.assertEqual(url_template % images[2]['updated_at'],
+                         urllib.parse.unquote(body['first']))
+
+        # Image list filters by updated_at and created time with invalid value
+        url_template = '/v2/images?%s=lt:invalid_value'
+        for filter in ['updated_at', 'created_at']:
+            path = self._url(url_template % filter)
+            response = requests.get(path, headers=self._headers())
+            self.assertEqual(400, response.status_code)
+
+        # Image list filters by updated_at and created_at with invalid operator
+        url_template = '/v2/images?%s=invalid_operator:2015-11-19T12:24:02Z'
+        for filter in ['updated_at', 'created_at']:
+            path = self._url(url_template % filter)
+            response = requests.get(path, headers=self._headers())
+            self.assertEqual(400, response.status_code)
 
         # Begin pagination after the first image
         template_url = ('/v2/images?limit=2&sort_dir=asc&sort_key=name'

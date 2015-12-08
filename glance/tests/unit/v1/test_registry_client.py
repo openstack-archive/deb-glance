@@ -20,8 +20,10 @@ import uuid
 
 from mock import patch
 from oslo_utils import timeutils
+from six.moves import reload_module
 import testtools
 
+from glance.api.v1.images import Controller as acontroller
 from glance.common import client as test_client
 from glance.common import config
 from glance.common import exception
@@ -32,7 +34,7 @@ import glance.registry.client.v1.api as rapi
 from glance.registry.client.v1.api import client as rclient
 from glance.tests.unit import base
 from glance.tests import utils as test_utils
-
+import webob
 
 _gen_uuid = lambda: str(uuid.uuid4())
 
@@ -842,7 +844,7 @@ class TestRegistryV1ClientApi(base.IsolatedUnitTest):
         """Establish a clean test environment."""
         super(TestRegistryV1ClientApi, self).setUp()
         self.context = context.RequestContext()
-        reload(rapi)
+        reload_module(rapi)
 
     def tearDown(self):
         """Clear the test environment."""
@@ -944,3 +946,14 @@ class TestRegistryV1ClientRequests(base.IsolatedUnitTest):
             self.client.do_request("GET", "/images")
             mock_do_request.assert_called_once_with("GET", "/images",
                                                     headers={})
+
+    def test_registry_invalid_token_exception_handling(self):
+        self.image_controller = acontroller()
+        request = webob.Request.blank('/images')
+        request.method = 'GET'
+        request.context = context.RequestContext()
+
+        with patch.object(rapi, 'get_images_detail') as mock_detail:
+            mock_detail.side_effect = exception.NotAuthenticated()
+            self.assertRaises(webob.exc.HTTPUnauthorized,
+                              self.image_controller.detail, request)

@@ -13,19 +13,22 @@ glance.sqlite
 AUTHORS
 ChangeLog
 build
-doc/source/api
 dist
 *.egg
 .eggs/*
 glance.egg-info
 tests.sqlite
 glance/versioninfo
+subunit.log
 
 # Swap files range from .saa to .swp
 *.s[a-w][a-p]
 
 # Files created by doc build
 doc/source/api
+
+# Files created by releasenotes build
+releasenotes/build
 
 # IDE files
 .project

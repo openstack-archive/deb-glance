@@ -176,6 +176,10 @@ class InvalidSwiftStoreConfiguration(Invalid):
     message = _("Invalid configuration in glance-swift conf file.")
 
 
+class InvalidFilterOperatorValue(Invalid):
+    message = _("Unable to filter using the specified operator.")
+
+
 class InvalidFilterRangeValue(Invalid):
     message = _("Unable to filter using the specified range.")
 
@@ -286,10 +290,6 @@ class InvalidObject(GlanceException):
                 "'%(schema)s': %(reason)s")
 
 
-class UnsupportedHeaderFeature(GlanceException):
-    message = _("Provided header feature is unsupported: %(feature)s")
-
-
 class ImageSizeLimitExceeded(GlanceException):
     message = _("The provided image is too large.")
 
@@ -354,10 +354,6 @@ class InvalidTaskStatusTransition(TaskException, Invalid):
 
 class DuplicateLocation(Duplicate):
     message = _("The location %(location)s already exists")
-
-
-class ImageDataNotFound(NotFound):
-    message = _("No image data could be found")
 
 
 class InvalidParameterValue(Invalid):

@@ -38,6 +38,7 @@ from oslo_db.sqlalchemy import test_migrations
 from oslo_db.sqlalchemy import utils as db_utils
 from oslo_serialization import jsonutils
 from oslo_utils import timeutils
+from oslo_utils import uuidutils
 # NOTE(jokke): simplified transition to py3, behaves like py2 xrange
 from six.moves import range
 import sqlalchemy
@@ -45,7 +46,6 @@ from sqlalchemy import inspect
 
 from glance.common import crypt
 from glance.common import exception
-from glance.common import utils
 from glance.db import migration
 from glance.db.sqlalchemy import migrate_repo
 from glance.db.sqlalchemy.migrate_repo.schema import from_migration_import
@@ -346,7 +346,7 @@ class MigrationsMixin(test_migrations.WalkVersionsMixin):
             self.assertEqual(1, len(rows))
 
             row = rows[0]
-            self.assertTrue(utils.is_uuid_like(row['id']))
+            self.assertTrue(uuidutils.is_uuid_like(row['id']))
 
             uuids[name] = row['id']
 
@@ -385,7 +385,7 @@ class MigrationsMixin(test_migrations.WalkVersionsMixin):
             self.assertEqual(1, len(rows))
 
             row = rows[0]
-            self.assertFalse(utils.is_uuid_like(row['id']))
+            self.assertFalse(uuidutils.is_uuid_like(row['id']))
 
             ids[name] = row['id']
 
@@ -502,7 +502,7 @@ class MigrationsMixin(test_migrations.WalkVersionsMixin):
             'file://foo',
         ]
         result = images.select().execute()
-        locations = map(lambda x: x['location'], result)
+        locations = list(map(lambda x: x['location'], result))
         for loc in quoted_locations:
             self.assertIn(loc, locations)
 
@@ -538,7 +538,8 @@ class MigrationsMixin(test_migrations.WalkVersionsMixin):
 
     def test_legacy_parse_swift_uri_017(self):
         metadata_encryption_key = 'a' * 16
-        CONF.set_override('metadata_encryption_key', metadata_encryption_key)
+        CONF.set_override('metadata_encryption_key', metadata_encryption_key,
+                          enforce_type=True)
         self.addCleanup(CONF.reset)
         (legacy_parse_uri, encrypt_location) = from_migration_import(
             '017_quote_encrypted_swift_credentials', ['legacy_parse_uri',
@@ -553,7 +554,8 @@ class MigrationsMixin(test_migrations.WalkVersionsMixin):
 
     def _pre_upgrade_017(self, engine):
         metadata_encryption_key = 'a' * 16
-        CONF.set_override('metadata_encryption_key', metadata_encryption_key)
+        CONF.set_override('metadata_encryption_key', metadata_encryption_key,
+                          enforce_type=True)
         self.addCleanup(CONF.reset)
         images = db_utils.get_table(engine, 'images')
         unquoted = 'swift://acct:usr:pass@example.com/container/obj-id'
@@ -598,7 +600,7 @@ class MigrationsMixin(test_migrations.WalkVersionsMixin):
         quoted = 'swift://acct%3Ausr:pass@example.com/container/obj-id'
         images = db_utils.get_table(engine, 'images')
         result = images.select().execute()
-        locations = map(lambda x: x['location'], result)
+        locations = list(map(lambda x: x['location'], result))
         actual_location = []
         for location in locations:
             if location:
@@ -638,8 +640,8 @@ class MigrationsMixin(test_migrations.WalkVersionsMixin):
             # not be migrated
             {'id': 'fake-19-2', 'location': None},
         ]
-        map(lambda image: image.update(base_values), data)
         for image in data:
+            image.update(base_values)
             images.insert().values(image).execute()
         return data
 
@@ -906,8 +908,8 @@ class MigrationsMixin(test_migrations.WalkVersionsMixin):
                 'result': None
             },
         ]
-        map(lambda task: task.update(base_values), data)
         for task in data:
+            task.update(base_values)
             tasks.insert().values(task).execute()
         return data
 
@@ -996,7 +998,7 @@ class MigrationsMixin(test_migrations.WalkVersionsMixin):
             r = list(results)
             self.assertEqual(1, len(r))
             self.assertIn('status', r[0])
-            self.assertEqual(r[0]['status'], status_list[idx])
+            self.assertEqual(status_list[idx], r[0]['status'])
 
     def _post_downgrade_033(self, engine):
         image_locations = db_utils.get_table(engine, 'image_locations')
@@ -1857,7 +1859,7 @@ class TestMysqlMigrations(test_base.MySQLOpportunisticTestCase,
             "AND TABLE_NAME!='migrate_version'"
             % self.migrate_engine.url.database)
         count = noninnodb.scalar()
-        self.assertEqual(count, 0, "%d non InnoDB tables created" % count)
+        self.assertEqual(0, count, "%d non InnoDB tables created" % count)
 
 
 class TestPostgresqlMigrations(test_base.PostgreSQLOpportunisticTestCase,

@@ -384,7 +384,7 @@ class BaseClient(object):
         netloc = "%s:%d" % (self.host, self.port)
 
         if isinstance(params, dict):
-            for (key, value) in params.items():
+            for (key, value) in list(params.items()):
                 if value is None:
                     del params[key]
                     continue
@@ -411,7 +411,10 @@ class BaseClient(object):
         :returns: Dictionary with encoded headers'
                   names and values
         """
-        to_str = encodeutils.safe_encode
+        if six.PY3:
+            to_str = str
+        else:
+            to_str = encodeutils.safe_encode
         return {to_str(h): to_str(v) for h, v in six.iteritems(headers)}
 
     @handle_redirects
@@ -456,7 +459,7 @@ class BaseClient(object):
                 return method.lower() in ('post', 'put')
 
             def _simple(body):
-                return body is None or isinstance(body, six.string_types)
+                return body is None or isinstance(body, bytes)
 
             def _filelike(body):
                 return hasattr(body, 'read')

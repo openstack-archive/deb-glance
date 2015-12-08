@@ -392,17 +392,17 @@ def xattr_writes_supported(path):
         return False
 
     def set_xattr(path, key, value):
-        xattr.setxattr(path, "user.%s" % key, str(value))
+        xattr.setxattr(path, "user.%s" % key, value)
 
     # We do a quick attempt to write a user xattr to a temporary file
     # to check that the filesystem is even enabled to support xattrs
     fake_filepath = os.path.join(path, 'testing-checkme')
     result = True
     with open(fake_filepath, 'wb') as fake_file:
-        fake_file.write("XXX")
+        fake_file.write(b"XXX")
         fake_file.flush()
     try:
-        set_xattr(fake_filepath, 'hits', '1')
+        set_xattr(fake_filepath, 'hits', b'1')
     except IOError as e:
         if e.errno == errno.EOPNOTSUPP:
             result = False
@@ -444,7 +444,12 @@ def start_http_server(image_id, image_data):
                 return
 
             def do_HEAD(self):
-                self.send_response(200)
+                # reserve non_existing_image_path for the cases where we expect
+                # 404 from the server
+                if 'non_existing_image_path' in self.path:
+                    self.send_response(404)
+                else:
+                    self.send_response(200)
                 self.send_header('Content-Length', str(len(fixture)))
                 self.end_headers()
                 return
@@ -475,7 +480,7 @@ class RegistryAPIMixIn(object):
             db_api.image_create(self.context, fixture)
             with open(os.path.join(self.test_dir, fixture['id']),
                       'wb') as image:
-                image.write("chunk00000remainder")
+                image.write(b"chunk00000remainder")
 
     def destroy_fixtures(self):
         db_models.unregister_models(db_api.get_engine())
@@ -570,8 +575,8 @@ class FakeAuthMiddleware(wsgi.Middleware):
 
 class FakeHTTPResponse(object):
     def __init__(self, status=200, headers=None, data=None, *args, **kwargs):
-        data = data or 'I am a teapot, short and stout\n'
-        self.data = six.StringIO(data)
+        data = data or b'I am a teapot, short and stout\n'
+        self.data = six.BytesIO(data)
         self.read = self.data.read
         self.status = status
         self.headers = headers or {'content-length': len(data)}

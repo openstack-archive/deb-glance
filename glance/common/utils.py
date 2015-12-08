@@ -30,10 +30,7 @@ from eventlet.green import socket
 
 import functools
 import os
-import platform
 import re
-import subprocess
-import sys
 import uuid
 
 from OpenSSL import crypto
@@ -153,7 +150,7 @@ class CooperativeReader(object):
             self.read = cooperative_read(fd)
         else:
             self.iterator = None
-            self.buffer = ''
+            self.buffer = b''
             self.position = 0
 
     def read(self, length=None):
@@ -168,7 +165,7 @@ class CooperativeReader(object):
                 # if no length specified but some data exists in buffer,
                 # return that data and clear the buffer
                 result = self.buffer[self.position:]
-                self.buffer = ''
+                self.buffer = b''
                 self.position = 0
                 return str(result)
             else:
@@ -178,11 +175,11 @@ class CooperativeReader(object):
                 try:
                     if self.iterator is None:
                         self.iterator = self.__iter__()
-                    return self.iterator.next()
+                    return next(self.iterator)
                 except StopIteration:
                     return ''
                 finally:
-                    self.buffer = ''
+                    self.buffer = b''
                     self.position = 0
         else:
             result = bytearray()
@@ -206,13 +203,13 @@ class CooperativeReader(object):
                     try:
                         if self.iterator is None:
                             self.iterator = self.__iter__()
-                        self.buffer = self.iterator.next()
+                        self.buffer = next(self.iterator)
                         self.position = 0
                     except StopIteration:
-                        self.buffer = ''
+                        self.buffer = b''
                         self.position = 0
-                        return str(result)
-            return str(result)
+                        return bytes(result)
+            return bytes(result)
 
     def __iter__(self):
         return cooperative_iter(self.fd.__iter__())
@@ -313,7 +310,7 @@ def get_image_meta_from_headers(response):
                     raise exception.InvalidParameterValue(value=result[key],
                                                           param=key,
                                                           extra_msg=extra)
-            if result[key] < 0 and result[key] is not None:
+            if result[key] is not None and result[key] < 0:
                 extra = _('Cannot be a negative value.')
                 raise exception.InvalidParameterValue(value=result[key],
                                                       param=key,
@@ -333,17 +330,17 @@ def create_mashup_dict(image_meta):
     :param image_meta: metadata of image with core and custom properties
     """
 
-    def get_items():
-        for key, value in six.iteritems(image_meta):
-            if isinstance(value, dict):
-                for subkey, subvalue in six.iteritems(
-                        create_mashup_dict(value)):
-                    if subkey not in image_meta:
-                        yield subkey, subvalue
-            else:
-                yield key, value
+    d = {}
+    for key, value in six.iteritems(image_meta):
+        if isinstance(value, dict):
+            for subkey, subvalue in six.iteritems(
+                    create_mashup_dict(value)):
+                if subkey not in image_meta:
+                    d[subkey] = subvalue
+        else:
+            d[key] = value
 
-    return dict(get_items())
+    return d
 
 
 def safe_mkdirs(path):
@@ -351,14 +348,6 @@ def safe_mkdirs(path):
         os.makedirs(path)
     except OSError as e:
         if e.errno != errno.EEXIST:
-            raise
-
-
-def safe_remove(path):
-    try:
-        os.remove(path)
-    except OSError as e:
-        if e.errno != errno.ENOENT:
             raise
 
 
@@ -422,74 +411,6 @@ class PrettyTable(object):
             justified = clipped_data.ljust(width)
 
         return justified
-
-
-def get_terminal_size():
-
-    def _get_terminal_size_posix():
-        import fcntl
-        import struct
-        import termios
-
-        height_width = None
-
-        try:
-            height_width = struct.unpack('hh', fcntl.ioctl(sys.stderr.fileno(),
-                                         termios.TIOCGWINSZ,
-                                         struct.pack('HH', 0, 0)))
-        except Exception:
-            pass
-
-        if not height_width:
-            try:
-                p = subprocess.Popen(['stty', 'size'],
-                                     shell=False,
-                                     stdout=subprocess.PIPE,
-                                     stderr=open(os.devnull, 'w'))
-                result = p.communicate()
-                if p.returncode == 0:
-                    return tuple(int(x) for x in result[0].split())
-            except Exception:
-                pass
-
-        return height_width
-
-    def _get_terminal_size_win32():
-        try:
-            from ctypes import create_string_buffer
-            from ctypes import windll
-            handle = windll.kernel32.GetStdHandle(-12)
-            csbi = create_string_buffer(22)
-            res = windll.kernel32.GetConsoleScreenBufferInfo(handle, csbi)
-        except Exception:
-            return None
-        if res:
-            import struct
-            unpack_tmp = struct.unpack("hhhhHhhhhhh", csbi.raw)
-            (bufx, bufy, curx, cury, wattr,
-             left, top, right, bottom, maxx, maxy) = unpack_tmp
-            height = bottom - top + 1
-            width = right - left + 1
-            return (height, width)
-        else:
-            return None
-
-    def _get_terminal_size_unknownOS():
-        raise NotImplementedError
-
-    func = {'posix': _get_terminal_size_posix,
-            'win32': _get_terminal_size_win32}
-
-    height_width = func.get(platform.os.name, _get_terminal_size_unknownOS)()
-
-    if height_width is None:
-        raise exception.Invalid()
-
-    for i in height_width:
-        if not isinstance(i, int) or i <= 0:
-            raise exception.Invalid()
-
-    return height_width[0], height_width[1]
 
 
 def mutating(func):
@@ -589,18 +510,6 @@ def get_test_suite_socket():
         os.close(fd)
         return sock
     return None
-
-
-def is_uuid_like(val):
-    """Returns validation of a value as a UUID.
-
-    For our purposes, a UUID is a canonical form string:
-    aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
-    """
-    try:
-        return str(uuid.UUID(val)) == val
-    except (TypeError, ValueError, AttributeError):
-        return False
 
 
 def is_valid_hostname(hostname):
@@ -739,3 +648,54 @@ def stash_conf_values():
     }
 
     return conf
+
+
+def split_filter_op(expression):
+    """Split operator from threshold in an expression.
+    Designed for use on a comparative-filtering query field.
+    When no operator is found, default to an equality comparison.
+
+    :param expression: the expression to parse
+
+    :returns a tuple (operator, threshold) parsed from expression
+    """
+    left, sep, right = expression.partition(':')
+    if sep:
+        op = left
+        threshold = right
+    else:
+        op = 'eq'  # default operator
+        threshold = left
+
+    # NOTE stevelle decoding escaped values may be needed later
+    return op, threshold
+
+
+def evaluate_filter_op(value, operator, threshold):
+    """Evaluate a comparison operator.
+    Designed for use on a comparative-filtering query field.
+
+    :param value: evaluated against the operator, as left side of expression
+    :param operator: any supported filter operation
+    :param threshold: to compare value against, as right side of expression
+
+    :raises InvalidFilterOperatorValue if an unknown operator is provided
+
+    :returns boolean result of applied comparison
+
+    """
+    if operator == 'gt':
+        return value > threshold
+    elif operator == 'gte':
+        return value >= threshold
+    elif operator == 'lt':
+        return value < threshold
+    elif operator == 'lte':
+        return value <= threshold
+    elif operator == 'neq':
+        return value != threshold
+    elif operator == 'eq':
+        return value == threshold
+
+    msg = _("Unable to filter on a unknown operator.")
+    raise exception.InvalidFilterOperatorValue(msg)

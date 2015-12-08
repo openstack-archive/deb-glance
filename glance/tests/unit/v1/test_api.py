@@ -101,7 +101,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
              'updated_at': timeutils.utcnow(),
              'deleted_at': None,
              'deleted': False,
-             'checksum': None,
+             'checksum': '13',
              'size': 13,
              'locations': [{'url': "file:///%s/%s" % (self.test_dir, UUID1),
                             'metadata': {}, 'status': 'active'}],
@@ -127,7 +127,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
             db_api.image_create(self.context, fixture)
             # We write a fake image file to the filesystem
             with open("%s/%s" % (self.test_dir, fixture['id']), 'wb') as image:
-                image.write("chunk00000remainder")
+                image.write(b"chunk00000remainder")
                 image.flush()
 
     def destroy_fixtures(self):
@@ -164,6 +164,63 @@ class TestGlanceAPI(base.IsolatedUnitTest):
             for value in ('aki', 'ari', 'ami'):
                 self._do_test_defaulted_format(key, value)
 
+    def test_bad_time_create_minus_int(self):
+        fixture_headers = {'x-image-meta-store': 'file',
+                           'x-image-meta-disk-format': 'vhd',
+                           'x-image-meta-container-format': 'ovf',
+                           'x-image-meta-created_at': '-42',
+                           'x-image-meta-name': 'fake image #3'}
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in six.iteritems(fixture_headers):
+            req.headers[k] = v
+        res = req.get_response(self.api)
+        self.assertEqual(400, res.status_int)
+
+    def test_bad_time_create_string(self):
+        fixture_headers = {'x-image-meta-store': 'file',
+                           'x-image-meta-disk-format': 'vhd',
+                           'x-image-meta-container-format': 'ovf',
+                           'x-image-meta-created_at': 'foo',
+                           'x-image-meta-name': 'fake image #3'}
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in six.iteritems(fixture_headers):
+            req.headers[k] = v
+        res = req.get_response(self.api)
+        self.assertEqual(400, res.status_int)
+
+    def test_bad_time_create_low_year(self):
+        # 'strftime' only allows values after 1900 in glance v1
+        fixture_headers = {'x-image-meta-store': 'file',
+                           'x-image-meta-disk-format': 'vhd',
+                           'x-image-meta-container-format': 'ovf',
+                           'x-image-meta-created_at': '1100',
+                           'x-image-meta-name': 'fake image #3'}
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in six.iteritems(fixture_headers):
+            req.headers[k] = v
+        res = req.get_response(self.api)
+        self.assertEqual(400, res.status_int)
+
+    def test_bad_time_create_string_in_date(self):
+        fixture_headers = {'x-image-meta-store': 'file',
+                           'x-image-meta-disk-format': 'vhd',
+                           'x-image-meta-container-format': 'ovf',
+                           'x-image-meta-created_at': '2012-01-01hey12:32:12',
+                           'x-image-meta-name': 'fake image #3'}
+
+        req = webob.Request.blank("/images")
+        req.method = 'POST'
+        for k, v in six.iteritems(fixture_headers):
+            req.headers[k] = v
+        res = req.get_response(self.api)
+        self.assertEqual(400, res.status_int)
+
     def test_bad_min_disk_size_create(self):
         fixture_headers = {'x-image-meta-store': 'file',
                            'x-image-meta-disk-format': 'vhd',
@@ -178,6 +235,21 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res = req.get_response(self.api)
         self.assertEqual(400, res.status_int)
         self.assertIn('Invalid value', res.body)
+
+    def test_updating_imageid_after_creation(self):
+        # Test incorrect/illegal id update
+        req = webob.Request.blank("/images/%s" % UUID1)
+        req.method = 'PUT'
+        req.headers['x-image-meta-id'] = '000000-000-0000-0000-000'
+        res = req.get_response(self.api)
+        self.assertEqual(403, res.status_int)
+
+        # Test using id of another image
+        req = webob.Request.blank("/images/%s" % UUID1)
+        req.method = 'PUT'
+        req.headers['x-image-meta-id'] = UUID2
+        res = req.get_response(self.api)
+        self.assertEqual(403, res.status_int)
 
     def test_bad_min_disk_size_update(self):
         fixture_headers = {'x-image-meta-disk-format': 'vhd',
@@ -610,7 +682,10 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         fixture_headers = {'x-image-meta-store': 'file',
                            'x-image-meta-disk-format': 'vhd',
                            'x-image-meta-container-format': 'ovf',
-                           'x-image-meta-name': 'fake image #3'}
+                           'x-image-meta-name': 'fake image #3',
+                           'x-image-created_at': '2015-11-20',
+                           'x-image-updated_at': '2015-12-01 12:10:01',
+                           'x-image-deleted_at': '2000'}
 
         req = webob.Request.blank("/images")
         req.method = 'POST'
@@ -1059,7 +1134,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         fixture_headers = {'x-image-meta-store': 'file',
                            'x-image-meta-disk-format': 'vhd',
                            'x-glance-api-copy-from':
-                               'http://example.com/i.ovf',
+                               self._http_loc_url('/non_existing_image_path'),
                            'x-image-meta-container-format': 'ovf',
                            'x-image-meta-name': 'fake image #F'}
 
@@ -1129,7 +1204,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
                 req.headers[k] = v
 
             res = req.get_response(self.api)
-            self.assertEqual(res.status_int, 409)
+            self.assertEqual(409, res.status_int)
 
     def test_add_location_with_invalid_location_on_conflict_image_size(self):
         """Tests creates an image from location and conflict image size"""
@@ -1181,19 +1256,19 @@ class TestGlanceAPI(base.IsolatedUnitTest):
     def test_create_image_with_nonexistent_location_url(self):
         # Ensure HTTP 404 response returned when try to create
         # image with non-existent http location URL.
+
         fixture_headers = {
             'x-image-meta-name': 'bogus',
-            'x-image-meta-location': 'http://example.com/images/123',
+            'x-image-meta-location':
+                self._http_loc_url('/non_existing_image_path'),
             'x-image-meta-disk-format': 'qcow2',
             'x-image-meta-container-format': 'bare',
         }
-
         req = webob.Request.blank("/images")
         req.method = 'POST'
 
         for k, v in six.iteritems(fixture_headers):
             req.headers[k] = v
-
         res = req.get_response(self.api)
         self.assertEqual(404, res.status_int)
 
@@ -1670,7 +1745,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
                         # Ensure cleanup occurred.
                         self.assertEqual(1, mock_init_del.call_count)
 
-                        self.assertEqual(state_changes, ['saving', 'active'])
+                        self.assertEqual(['saving', 'active'], state_changes)
 
     def test_register_and_upload(self):
         """
@@ -2305,7 +2380,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         res_dict = jsonutils.loads(res.body)
         images = res_dict['images']
         self.assertEqual(1, len(images))
-        self.assertEqual(images[0]['id'], UUID4)
+        self.assertEqual(UUID4, images[0]['id'])
 
         # Expect 0 images (0 deleted)
         req = webob.Request.blank('/images/detail?changes-since=%s' %
@@ -2333,9 +2408,9 @@ class TestGlanceAPI(base.IsolatedUnitTest):
             res_dict = jsonutils.loads(res.body)
             images = res_dict['images']
             self.assertEqual(3, len(images))
-            self.assertEqual(images[0]['id'], UUID4)
-            self.assertEqual(images[1]['id'], UUID3)  # deleted
-            self.assertEqual(images[2]['id'], UUID2)
+            self.assertEqual(UUID4, images[0]['id'])
+            self.assertEqual(UUID3, images[1]['id'])  # deleted
+            self.assertEqual(UUID2, images[2]['id'])
 
         # Bad request (empty changes-since param)
         req = webob.Request.blank('/images/detail?changes-since=')
@@ -2399,8 +2474,8 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         self.assertEqual(200, res.status_int)
         images = jsonutils.loads(res.body)['images']
         self.assertEqual(2, len(images))
-        self.assertEqual(images[0]['id'], image2_id)
-        self.assertEqual(images[1]['id'], image1_id)
+        self.assertEqual(image2_id, images[0]['id'])
+        self.assertEqual(image1_id, images[1]['id'])
 
         # Test index with filter containing one user-defined property but
         # non-existent value. Filter is 'property-distro=fedora'.
@@ -2419,7 +2494,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         self.assertEqual(200, res.status_int)
         images = jsonutils.loads(res.body)['images']
         self.assertEqual(1, len(images))
-        self.assertEqual(images[0]['id'], image1_id)
+        self.assertEqual(image1_id, images[0]['id'])
 
         # Test index with filter containing one user-defined property but
         # unique value. Filter is 'property-arch=x86_64'.
@@ -2429,7 +2504,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         self.assertEqual(200, res.status_int)
         images = jsonutils.loads(res.body)['images']
         self.assertEqual(1, len(images))
-        self.assertEqual(images[0]['id'], image2_id)
+        self.assertEqual(image2_id, images[0]['id'])
 
         # Test index with filter containing unique user-defined property.
         # Filter is 'property-foo=bar'.
@@ -2439,7 +2514,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         self.assertEqual(200, res.status_int)
         images = jsonutils.loads(res.body)['images']
         self.assertEqual(1, len(images))
-        self.assertEqual(images[0]['id'], image2_id)
+        self.assertEqual(image2_id, images[0]['id'])
 
         # Test index with filter containing unique user-defined property but
         # .value is non-existent. Filter is 'property-foo=baz'.
@@ -2459,7 +2534,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         self.assertEqual(200, res.status_int)
         images = jsonutils.loads(res.body)['images']
         self.assertEqual(1, len(images))
-        self.assertEqual(images[0]['id'], image2_id)
+        self.assertEqual(image2_id, images[0]['id'])
 
         # Test index with filter containing multiple user-defined properties
         # Filter is 'property-arch=i386&property-distro=ubuntu'.
@@ -2470,7 +2545,7 @@ class TestGlanceAPI(base.IsolatedUnitTest):
         self.assertEqual(200, res.status_int)
         images = jsonutils.loads(res.body)['images']
         self.assertEqual(1, len(images))
-        self.assertEqual(images[0]['id'], image1_id)
+        self.assertEqual(image1_id, images[0]['id'])
 
         # Test index with filter containing multiple user-defined properties.
         # Filter is 'property-arch=random&property-distro=ubuntu'.
@@ -3066,11 +3141,44 @@ class TestGlanceAPI(base.IsolatedUnitTest):
                 res = req.get_response(self.api)
                 self.assertEqual(403, res.status_int)
                 prop = k[len('x-image-meta-'):]
-                self.assertNotEqual(res.body.find("Forbidden to modify '%s' "
-                                                  "of active "
-                                                  "image" % prop), -1)
+                self.assertNotEqual(-1, res.body.find(
+                    "Forbidden to modify '%s' of active image" % prop))
 
                 req = webob.Request.blank('/images/%s' % UUID2)
+                req.method = 'HEAD'
+                res = req.get_response(self.api)
+                self.assertEqual(200, res.status_int)
+                self.assertEqual(orig_value, res.headers[k])
+
+    def test_deactivated_image_immutable_props_for_user(self):
+        """
+        Tests user cannot update immutable props of deactivated image
+        """
+        test_router_api = router.API(self.mapper)
+        self.api = test_utils.FakeAuthMiddleware(
+            test_router_api, is_admin=False)
+        fixture_header_list = [{'x-image-meta-checksum': '1234'},
+                               {'x-image-meta-size': '12345'}]
+        for fixture_header in fixture_header_list:
+            req = webob.Request.blank('/images/%s' % UUID3)
+            req.method = 'PUT'
+            for k, v in six.iteritems(fixture_header):
+                req = webob.Request.blank('/images/%s' % UUID3)
+                req.method = 'HEAD'
+                res = req.get_response(self.api)
+                self.assertEqual(200, res.status_int)
+                orig_value = res.headers[k]
+
+                req = webob.Request.blank('/images/%s' % UUID3)
+                req.headers[k] = v
+                req.method = 'PUT'
+                res = req.get_response(self.api)
+                self.assertEqual(403, res.status_int)
+                prop = k[len('x-image-meta-'):]
+                self.assertNotEqual(-1, res.body.find(
+                    "Forbidden to modify '%s' of deactivated image" % prop))
+
+                req = webob.Request.blank('/images/%s' % UUID3)
                 req.method = 'HEAD'
                 res = req.get_response(self.api)
                 self.assertEqual(200, res.status_int)
@@ -3101,6 +3209,36 @@ class TestGlanceAPI(base.IsolatedUnitTest):
                 self.assertEqual(200, res.status_int)
 
                 req = webob.Request.blank('/images/%s' % UUID2)
+                req.method = 'HEAD'
+                res = req.get_response(self.api)
+                self.assertEqual(200, res.status_int)
+                self.assertEqual(v, res.headers[k])
+
+    def test_props_of_deactivated_image_mutable_for_admin(self):
+        """
+        Tests admin can update 'immutable' props of deactivated image
+        """
+        test_router_api = router.API(self.mapper)
+        self.api = test_utils.FakeAuthMiddleware(
+            test_router_api, is_admin=True)
+        fixture_header_list = [{'x-image-meta-checksum': '1234'},
+                               {'x-image-meta-size': '12345'}]
+        for fixture_header in fixture_header_list:
+            req = webob.Request.blank('/images/%s' % UUID3)
+            req.method = 'PUT'
+            for k, v in six.iteritems(fixture_header):
+                req = webob.Request.blank('/images/%s' % UUID3)
+                req.method = 'HEAD'
+                res = req.get_response(self.api)
+                self.assertEqual(200, res.status_int)
+
+                req = webob.Request.blank('/images/%s' % UUID3)
+                req.headers[k] = v
+                req.method = 'PUT'
+                res = req.get_response(self.api)
+                self.assertEqual(200, res.status_int)
+
+                req = webob.Request.blank('/images/%s' % UUID3)
                 req.method = 'HEAD'
                 res = req.get_response(self.api)
                 self.assertEqual(200, res.status_int)
@@ -3654,7 +3792,7 @@ class TestImageSerializer(base.IsolatedUnitTest):
         for chunk in response.app_iter:
             pass
 
-        self.assertNotEqual(response.request.environ['eventlet.posthooks'], [])
+        self.assertNotEqual([], response.request.environ['eventlet.posthooks'])
 
     def test_image_send_notification(self):
         req = webob.Request.blank("/images/%s" % UUID2)

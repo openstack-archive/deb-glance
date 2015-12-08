@@ -60,12 +60,12 @@ def log_call(func):
     @functools.wraps(func)
     def wrapped(*args, **kwargs):
         LOG.info(_LI('Calling %(funcname)s: args=%(args)s, '
-                     'kwargs=%(kwargs)s') %
+                     'kwargs=%(kwargs)s'),
                  {"funcname": func.__name__,
                   "args": args,
                   "kwargs": kwargs})
         output = func(*args, **kwargs)
-        LOG.info(_LI('Returning %(funcname)s: %(output)s') %
+        LOG.info(_LI('Returning %(funcname)s: %(output)s'),
                  {"funcname": func.__name__,
                   "output": output})
         return output
@@ -145,7 +145,7 @@ def _image_member_format(image_id, tenant_id, can_share, status='pending'):
 
 def _pop_task_info_values(values):
     task_info_values = {}
-    for k, v in values.items():
+    for k, v in list(values.items()):
         if k in ['input', 'result', 'message']:
             values.pop(k)
             task_info_values[k] = v
@@ -298,6 +298,13 @@ def _filter_images(images, filters, context,
                 to_add = image.get(key) >= value
             elif k.endswith('_max'):
                 to_add = image.get(key) <= value
+            elif k in ['created_at', 'updated_at']:
+                attr_value = image.get(key)
+                operator, isotime = utils.split_filter_op(value)
+                parsed_time = timeutils.parse_isotime(isotime)
+                threshold = timeutils.normalize_time(parsed_time)
+                to_add = utils.evaluate_filter_op(attr_value, operator,
+                                                  threshold)
             elif k != 'is_public' and image.get(k) is not None:
                 to_add = image.get(key) == value
             elif k == 'tags':
@@ -373,7 +380,7 @@ def _sort_images(images, sort_key, sort_dir):
         raise exception.Invalid(message='Number of sort dirs does not match '
                                         'the number of sort keys')
 
-    for key, dir in reversed(zip(sort_key, sort_dir)):
+    for key, dir in reversed(list(zip(sort_key, sort_dir))):
         reverse = dir == 'desc'
         images.sort(key=itemgetter(key), reverse=reverse)
 
@@ -490,7 +497,7 @@ def image_member_count(context, image_id):
         raise exception.Invalid(msg)
 
     members = DATA['members']
-    return len(filter(lambda x: x['image_id'] == image_id, members))
+    return len([x for x in members if x['image_id'] == image_id])
 
 
 @log_call
@@ -2000,7 +2007,7 @@ def _artifact_get(context, artifact_id, type_name,
                  artifact['type_version'] != type_version)):
             raise KeyError
     except KeyError:
-        LOG.info(_LI('Could not find artifact %s') % artifact_id)
+        LOG.info(_LI('Could not find artifact %s'), artifact_id)
         raise exception.NotFound()
 
     if artifact['deleted_at']:

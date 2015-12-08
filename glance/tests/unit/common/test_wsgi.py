@@ -217,11 +217,11 @@ class RequestTest(test_utils.BaseTestCase):
                 res = req.get_response(api)
                 self.assertEqual(405, res.status_int)
 
-        """Makes sure not implemented methods return 501"""
+        # Makes sure not implemented methods return 405
         req = webob.Request.blank('/schemas/image')
         req.method = 'NonexistentMethod'
         res = req.get_response(api)
-        self.assertEqual(501, res.status_int)
+        self.assertEqual(405, res.status_int)
 
 
 class ResourceTest(test_utils.BaseTestCase):
@@ -377,13 +377,13 @@ class JSONResponseSerializerTest(test_utils.BaseTestCase):
 
     def test_to_json(self):
         fixture = {"key": "value"}
-        expected = '{"key": "value"}'
+        expected = b'{"key": "value"}'
         actual = wsgi.JSONResponseSerializer().to_json(fixture)
         self.assertEqual(expected, actual)
 
     def test_to_json_with_date_format_value(self):
         fixture = {"date": datetime.datetime(1901, 3, 8, 2)}
-        expected = '{"date": "1901-03-08T02:00:00.000000"}'
+        expected = b'{"date": "1901-03-08T02:00:00.000000"}'
         actual = wsgi.JSONResponseSerializer().to_json(fixture)
         self.assertEqual(expected, actual)
 
@@ -397,7 +397,7 @@ class JSONResponseSerializerTest(test_utils.BaseTestCase):
 
     def test_to_json_with_set(self):
         fixture = set(["foo"])
-        expected = '["foo"]'
+        expected = b'["foo"]'
         actual = wsgi.JSONResponseSerializer().to_json(fixture)
         self.assertEqual(expected, actual)
 
@@ -406,11 +406,11 @@ class JSONResponseSerializerTest(test_utils.BaseTestCase):
         response = webob.Response()
         wsgi.JSONResponseSerializer().default(response, fixture)
         self.assertEqual(200, response.status_int)
-        content_types = filter(lambda h: h[0] == 'Content-Type',
-                               response.headerlist)
+        content_types = [h for h in response.headerlist
+                         if h[0] == 'Content-Type']
         self.assertEqual(1, len(content_types))
         self.assertEqual('application/json', response.content_type)
-        self.assertEqual('{"key": "value"}', response.body)
+        self.assertEqual(b'{"key": "value"}', response.body)
 
 
 class JSONRequestDeserializerTest(test_utils.BaseTestCase):
@@ -418,21 +418,21 @@ class JSONRequestDeserializerTest(test_utils.BaseTestCase):
     def test_has_body_no_content_length(self):
         request = wsgi.Request.blank('/')
         request.method = 'POST'
-        request.body = 'asdf'
+        request.body = b'asdf'
         request.headers.pop('Content-Length')
         self.assertFalse(wsgi.JSONRequestDeserializer().has_body(request))
 
     def test_has_body_zero_content_length(self):
         request = wsgi.Request.blank('/')
         request.method = 'POST'
-        request.body = 'asdf'
+        request.body = b'asdf'
         request.headers['Content-Length'] = 0
         self.assertFalse(wsgi.JSONRequestDeserializer().has_body(request))
 
     def test_has_body_has_content_length(self):
         request = wsgi.Request.blank('/')
         request.method = 'POST'
-        request.body = 'asdf'
+        request.body = b'asdf'
         self.assertIn('Content-Length', request.headers)
         self.assertTrue(wsgi.JSONRequestDeserializer().has_body(request))
 
@@ -460,7 +460,7 @@ class JSONRequestDeserializerTest(test_utils.BaseTestCase):
     def test_default_with_body(self):
         request = wsgi.Request.blank('/')
         request.method = 'POST'
-        request.body = '{"key": "value"}'
+        request.body = b'{"key": "value"}'
         actual = wsgi.JSONRequestDeserializer().default(request)
         expected = {"body": {"key": "value"}}
         self.assertEqual(expected, actual)
@@ -489,7 +489,7 @@ class JSONRequestDeserializerTest(test_utils.BaseTestCase):
                                  content_length=None):
         request = wsgi.Request.blank('/')
         request.method = 'POST'
-        request.body = 'fake_body'
+        request.body = b'fake_body'
         request.headers['transfer-encoding'] = transfer_encoding
         if content_length is not None:
             request.headers['content-length'] = content_length

@@ -105,6 +105,7 @@ class TestImagesController(base.StoreClearingUnitTest):
     def test_download(self):
         request = unit_test_utils.get_fake_request()
         image = FakeImage('abcd',
+                          status='active',
                           locations=[{'url': 'http://example.com/image',
                                       'metadata': {}, 'status': 'active'}])
         self.image_repo.result = image
@@ -112,7 +113,7 @@ class TestImagesController(base.StoreClearingUnitTest):
         self.assertEqual('abcd', image.image_id)
 
     def test_download_deactivated(self):
-        request = unit_test_utils.get_fake_request()
+        request = unit_test_utils.get_fake_request(is_admin=False)
         image = FakeImage('abcd',
                           status='deactivated',
                           locations=[{'url': 'http://example.com/image',
@@ -121,11 +122,33 @@ class TestImagesController(base.StoreClearingUnitTest):
         self.assertRaises(webob.exc.HTTPForbidden, self.controller.download,
                           request, str(uuid.uuid4()))
 
+        request = unit_test_utils.get_fake_request(is_admin=True)
+        image = FakeImage('abcd',
+                          status='deactivated',
+                          locations=[{'url': 'http://example.com/image',
+                                      'metadata': {}, 'status': 'active'}])
+        self.image_repo.result = image
+        image = self.controller.download(request, unit_test_utils.UUID1)
+        self.assertEqual('abcd', image.image_id)
+
+    def test_download_is_not_active(self):
+        state = ['queued', 'deleted', 'saving', 'killed', 'pending_delete']
+        for st in state:
+            request = unit_test_utils.get_fake_request()
+            image = FakeImage('abcd',
+                              status=st,
+                              locations=[{'url': 'http://example.com/image',
+                                          'metadata': {}, 'status': 'active'}])
+            self.image_repo.result = image
+            self.assertRaises(webob.exc.HTTPForbidden,
+                              self.controller.download,
+                              request, str(uuid.uuid4()))
+
     def test_download_no_location(self):
         # NOTE(mclaren): NoContent will be raised by the ResponseSerializer
         # That's tested below.
         request = unit_test_utils.get_fake_request()
-        self.image_repo.result = FakeImage('abcd')
+        self.image_repo.result = FakeImage('abcd', status='active')
         image = self.controller.download(request, unit_test_utils.UUID2)
         self.assertEqual('abcd', image.image_id)
 
@@ -147,7 +170,7 @@ class TestImagesController(base.StoreClearingUnitTest):
                 raise exception.Forbidden()
 
         request = unit_test_utils.get_fake_request()
-        image = FakeImage('abcd')
+        image = FakeImage('abcd', status='active')
         self.image_repo.result = image
         image.locations = ImageLocations()
         image = self.controller.download(request, unit_test_utils.UUID1)
@@ -348,7 +371,7 @@ class TestImagesController(base.StoreClearingUnitTest):
         prepare_updated_at = output_log[0]['payload']['updated_at']
         del output_log[0]['payload']['updated_at']
         self.assertTrue(prepare_updated_at <= output['meta']['updated_at'])
-        self.assertEqual(output_log[0], prepare_log)
+        self.assertEqual(prepare_log, output_log[0])
 
     def _test_upload_download_upload_notification(self):
         request = unit_test_utils.get_fake_request()
@@ -362,7 +385,7 @@ class TestImagesController(base.StoreClearingUnitTest):
             'payload': upload_payload,
         }
         self.assertEqual(3, len(output_log))
-        self.assertEqual(output_log[1], upload_log)
+        self.assertEqual(upload_log, output_log[1])
 
     def _test_upload_download_activate_notification(self):
         request = unit_test_utils.get_fake_request()
@@ -376,7 +399,7 @@ class TestImagesController(base.StoreClearingUnitTest):
             'payload': activate_payload,
         }
         self.assertEqual(3, len(output_log))
-        self.assertEqual(output_log[2], activate_log)
+        self.assertEqual(activate_log, output_log[2])
 
     def test_restore_image_when_upload_failed(self):
         request = unit_test_utils.get_fake_request()
@@ -398,11 +421,11 @@ class TestImageDataDeserializer(test_utils.BaseTestCase):
     def test_upload(self):
         request = unit_test_utils.get_fake_request()
         request.headers['Content-Type'] = 'application/octet-stream'
-        request.body = 'YYY'
+        request.body = b'YYY'
         request.headers['Content-Length'] = 3
         output = self.deserializer.upload(request)
         data = output.pop('data')
-        self.assertEqual('YYY', data.read())
+        self.assertEqual(b'YYY', data.read())
         expected = {'size': 3}
         self.assertEqual(expected, output)
 
@@ -421,13 +444,13 @@ class TestImageDataDeserializer(test_utils.BaseTestCase):
     def test_upload_chunked_with_content_length(self):
         request = unit_test_utils.get_fake_request()
         request.headers['Content-Type'] = 'application/octet-stream'
-        request.body_file = six.StringIO('YYY')
+        request.body_file = six.BytesIO(b'YYY')
         # The deserializer shouldn't care if the Content-Length is
         # set when the user is attempting to send chunked data.
         request.headers['Content-Length'] = 3
         output = self.deserializer.upload(request)
         data = output.pop('data')
-        self.assertEqual('YYY', data.read())
+        self.assertEqual(b'YYY', data.read())
         expected = {'size': 3}
         self.assertEqual(expected, output)
 
@@ -437,24 +460,24 @@ class TestImageDataDeserializer(test_utils.BaseTestCase):
         # The deserializer shouldn't care if the Content-Length and
         # actual request body length differ. That job is left up
         # to the controller
-        request.body = 'YYY'
+        request.body = b'YYY'
         request.headers['Content-Length'] = 4
         output = self.deserializer.upload(request)
         data = output.pop('data')
-        self.assertEqual('YYY', data.read())
+        self.assertEqual(b'YYY', data.read())
         expected = {'size': 4}
         self.assertEqual(expected, output)
 
     def test_upload_wrong_content_type(self):
         request = unit_test_utils.get_fake_request()
         request.headers['Content-Type'] = 'application/json'
-        request.body = 'YYYYY'
+        request.body = b'YYYYY'
         self.assertRaises(webob.exc.HTTPUnsupportedMediaType,
                           self.deserializer.upload, request)
 
         request = unit_test_utils.get_fake_request()
         request.headers['Content-Type'] = 'application/octet-st'
-        request.body = 'YYYYY'
+        request.body = b'YYYYY'
         self.assertRaises(webob.exc.HTTPUnsupportedMediaType,
                           self.deserializer.upload, request)
 
@@ -470,9 +493,9 @@ class TestImageDataSerializer(test_utils.BaseTestCase):
         request.environ = {}
         response = webob.Response()
         response.request = request
-        image = FakeImage(size=3, data=iter('ZZZ'))
+        image = FakeImage(size=3, data=[b'Z', b'Z', b'Z'])
         self.serializer.download(response, image)
-        self.assertEqual('ZZZ', response.body)
+        self.assertEqual(b'ZZZ', response.body)
         self.assertEqual('3', response.headers['Content-Length'])
         self.assertNotIn('Content-MD5', response.headers)
         self.assertEqual('application/octet-stream',
@@ -484,9 +507,9 @@ class TestImageDataSerializer(test_utils.BaseTestCase):
         response = webob.Response()
         response.request = request
         checksum = '0745064918b49693cca64d6b6a13d28a'
-        image = FakeImage(size=3, checksum=checksum, data=iter('ZZZ'))
+        image = FakeImage(size=3, checksum=checksum, data=[b'Z', b'Z', b'Z'])
         self.serializer.download(response, image)
-        self.assertEqual('ZZZ', response.body)
+        self.assertEqual(b'ZZZ', response.body)
         self.assertEqual('3', response.headers['Content-Length'])
         self.assertEqual(checksum, response.headers['Content-MD5'])
         self.assertEqual('application/octet-stream',

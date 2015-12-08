@@ -455,7 +455,10 @@ def _make_conditions_from_filters(filters, is_public=None):
 
     filters = {k: v for k, v in filters.items() if v is not None}
 
-    for (k, v) in filters.items():
+    # need to copy items because filters is modified in the loop body
+    # (filters.pop(k))
+    keys = list(filters.keys())
+    for k in keys:
         key = k
         if k.endswith('_min') or k.endswith('_max'):
             key = key[0:-4]
@@ -470,9 +473,22 @@ def _make_conditions_from_filters(filters, is_public=None):
                 image_conditions.append(getattr(models.Image, key) >= v)
             if k.endswith('_max'):
                 image_conditions.append(getattr(models.Image, key) <= v)
+        elif k in ['created_at', 'updated_at']:
+            attr_value = getattr(models.Image, key)
+            operator, isotime = utils.split_filter_op(filters.pop(k))
+            try:
+                parsed_time = timeutils.parse_isotime(isotime)
+                threshold = timeutils.normalize_time(parsed_time)
+            except ValueError:
+                msg = (_("Bad \"%s\" query filter format. "
+                         "Use ISO 8601 DateTime notation.") % k)
+                raise exception.InvalidParameterValue(msg)
 
-    for (k, v) in filters.items():
-        value = filters.pop(k)
+            comparison = utils.evaluate_filter_op(attr_value, operator,
+                                                  threshold)
+            image_conditions.append(comparison)
+
+    for (k, value) in filters.items():
         if hasattr(models.Image, k):
             image_conditions.append(getattr(models.Image, k) == value)
         else:
@@ -760,12 +776,8 @@ def _image_update(context, values, image_id, purge_props=False,
             # Validate fields for Images table. This is similar to what is done
             # for the query result update except that we need to do it prior
             # in this case.
-            # TODO(dosaboy): replace this with a dict comprehension once py26
-            #                support is deprecated.
-            keys = values.keys()
-            for k in keys:
-                if k not in image_ref.to_dict():
-                    del values[k]
+            values = {key: values[key] for key in values
+                      if key in image_ref.to_dict()}
             updated = query.update(values, synchronize_session='fetch')
 
             if not updated:
@@ -876,11 +888,12 @@ def _image_locations_set(context, image_id, locations, session=None):
     # NOTE(zhiyan): 1. Remove records from DB for deleted locations
     session = session or get_session()
     query = session.query(models.ImageLocation).filter_by(
-        image_id=image_id).filter_by(
-            deleted=False).filter(~models.ImageLocation.id.in_(
-                [loc['id']
-                 for loc in locations
-                 if loc.get('id')]))
+        image_id=image_id).filter_by(deleted=False)
+
+    loc_ids = [loc['id'] for loc in locations if loc.get('id')]
+    if loc_ids:
+        query = query.filter(~models.ImageLocation.id.in_(loc_ids))
+
     for loc_id in [loc_ref.id for loc_ref in query.all()]:
         image_location_delete(context, image_id, loc_id, 'deleted',
                               session=session)

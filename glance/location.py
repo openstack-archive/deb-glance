@@ -235,31 +235,38 @@ class StoreLocations(collections.MutableSequence):
                         [location])
 
     def __delitem__(self, i):
+        if isinstance(i, slice):
+            if i.step not in (None, 1):
+                raise NotImplementedError("slice with step")
+            self.__delslice__(i.start, i.stop)
+            return
         location = None
         try:
-            location = self.value.__getitem__(i)
+            location = self.value[i]
         except Exception:
-            return self.value.__delitem__(i)
+            del self.value[i]
+            return
         self.image_proxy.store_utils.delete_image_location_from_backend(
             self.image_proxy.context,
             self.image_proxy.image.image_id,
             location)
-        self.value.__delitem__(i)
+        del self.value[i]
 
     def __delslice__(self, i, j):
-        i = max(i, 0)
-        j = max(j, 0)
+        i = 0 if i is None else max(i, 0)
+        j = len(self) if j is None else max(j, 0)
         locations = []
         try:
-            locations = self.value.__getslice__(i, j)
+            locations = self.value[i:j]
         except Exception:
-            return self.value.__delslice__(i, j)
+            del self.value[i:j]
+            return
         for location in locations:
             self.image_proxy.store_utils.delete_image_location_from_backend(
                 self.image_proxy.context,
                 self.image_proxy.image.image_id,
                 location)
-            self.value.__delitem__(i)
+            del self.value[i]
 
     def __iadd__(self, other):
         self.extend(other)
@@ -279,6 +286,9 @@ class StoreLocations(collections.MutableSequence):
 
     def __cmp__(self, other):
         return cmp(self.value, self.__cast(other))
+
+    def __eq__(self, other):
+        return self.value == self.__cast(other)
 
     def __iter__(self):
         return iter(self.value)
@@ -385,9 +395,8 @@ class ImageProxy(glance.domain.proxy.Image):
             result = signature_utils.verify_signature(
                 self.context, checksum, self.image.extra_properties)
             if result:
-                msg = (_LI("Successfully verified signature for image "
-                           "%s") % self.image.image_id)
-                LOG.info(msg)
+                LOG.info(_LI("Successfully verified signature for image %s"),
+                         self.image.image_id)
 
         self.image.locations = [{'url': location, 'metadata': loc_meta,
                                  'status': 'active'}]

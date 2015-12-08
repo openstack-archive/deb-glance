@@ -16,7 +16,6 @@
 
 import os
 import tempfile
-import uuid
 
 import six
 import webob
@@ -55,14 +54,16 @@ class TestUtils(test_utils.BaseTestCase):
 
     def test_cooperative_reader_of_iterator(self):
         """Ensure cooperative reader supports iterator backends too"""
-        reader = utils.CooperativeReader([l * 3 for l in 'abcdefgh'])
+        data = b'abcdefgh'
+        data_list = [data[i:i + 1] * 3 for i in range(len(data))]
+        reader = utils.CooperativeReader(data_list)
         chunks = []
         while True:
             chunks.append(reader.read(3))
-            if chunks[-1] == '':
+            if chunks[-1] == b'':
                 break
-        meat = ''.join(chunks)
-        self.assertEqual('aaabbbcccdddeeefffggghhh', meat)
+        meat = b''.join(chunks)
+        self.assertEqual(b'aaabbbcccdddeeefffggghhh', meat)
 
     def test_cooperative_reader_of_iterator_stop_iteration_err(self):
         """Ensure cooperative reader supports iterator backends too"""
@@ -70,16 +71,17 @@ class TestUtils(test_utils.BaseTestCase):
         chunks = []
         while True:
             chunks.append(reader.read(3))
-            if chunks[-1] == '':
+            if chunks[-1] == b'':
                 break
-        meat = ''.join(chunks)
-        self.assertEqual('', meat)
+        meat = b''.join(chunks)
+        self.assertEqual(b'', meat)
 
     def _create_generator(self, chunk_size, max_iterations):
-        chars = 'abc'
+        chars = b'abc'
         iteration = 0
         while True:
-            chunk = chars[iteration % len(chars)] * chunk_size
+            index = iteration % len(chars)
+            chunk = chars[index:index + 1] * chunk_size
             yield chunk
             iteration += 1
             if iteration >= max_iterations:
@@ -88,19 +90,19 @@ class TestUtils(test_utils.BaseTestCase):
     def _test_reader_chunked(self, chunk_size, read_size, max_iterations=5):
         generator = self._create_generator(chunk_size, max_iterations)
         reader = utils.CooperativeReader(generator)
-        result = ''
+        result = bytearray()
         while True:
             data = reader.read(read_size)
             if len(data) == 0:
                 break
             self.assertLessEqual(len(data), read_size)
             result += data
-        expected = ('a' * chunk_size +
-                    'b' * chunk_size +
-                    'c' * chunk_size +
-                    'a' * chunk_size +
-                    'b' * chunk_size)
-        self.assertEqual(expected, result)
+        expected = (b'a' * chunk_size +
+                    b'b' * chunk_size +
+                    b'c' * chunk_size +
+                    b'a' * chunk_size +
+                    b'b' * chunk_size)
+        self.assertEqual(expected, bytes(result))
 
     def test_cooperative_reader_preserves_size_chunk_less_then_read(self):
         self._test_reader_chunked(43, 101)
@@ -407,13 +409,76 @@ class TestUtils(test_utils.BaseTestCase):
                               pair)
 
 
-class UUIDTestCase(test_utils.BaseTestCase):
+class SplitFilterOpTestCase(test_utils.BaseTestCase):
 
-    def test_is_uuid_like(self):
-        self.assertTrue(utils.is_uuid_like(str(uuid.uuid4())))
+    def test_less_than_operator(self):
+        expr = 'lt:bar'
+        returned = utils.split_filter_op(expr)
+        self.assertEqual(('lt', 'bar'), returned)
 
-    def test_id_is_uuid_like(self):
-        self.assertFalse(utils.is_uuid_like(1234567))
+    def test_less_than_equal_operator(self):
+        expr = 'lte:bar'
+        returned = utils.split_filter_op(expr)
+        self.assertEqual(('lte', 'bar'), returned)
 
-    def test_name_is_uuid_like(self):
-        self.assertFalse(utils.is_uuid_like('zhongyueluo'))
+    def test_greater_than_operator(self):
+        expr = 'gt:bar'
+        returned = utils.split_filter_op(expr)
+        self.assertEqual(('gt', 'bar'), returned)
+
+    def test_greater_than_equal_operator(self):
+        expr = 'gte:bar'
+        returned = utils.split_filter_op(expr)
+        self.assertEqual(('gte', 'bar'), returned)
+
+    def test_not_equal_operator(self):
+        expr = 'neq:bar'
+        returned = utils.split_filter_op(expr)
+        self.assertEqual(('neq', 'bar'), returned)
+
+    def test_equal_operator(self):
+        expr = 'eq:bar'
+        returned = utils.split_filter_op(expr)
+        self.assertEqual(('eq', 'bar'), returned)
+
+    def test_default_operator(self):
+        expr = 'bar'
+        returned = utils.split_filter_op(expr)
+        self.assertEqual(('eq', expr), returned)
+
+
+class EvaluateFilterOpTestCase(test_utils.BaseTestCase):
+
+    def test_less_than_operator(self):
+        self.assertTrue(utils.evaluate_filter_op(9, 'lt', 10))
+        self.assertFalse(utils.evaluate_filter_op(10, 'lt', 10))
+        self.assertFalse(utils.evaluate_filter_op(11, 'lt', 10))
+
+    def test_less_than_equal_operator(self):
+        self.assertTrue(utils.evaluate_filter_op(9, 'lte', 10))
+        self.assertTrue(utils.evaluate_filter_op(10, 'lte', 10))
+        self.assertFalse(utils.evaluate_filter_op(11, 'lte', 10))
+
+    def test_greater_than_operator(self):
+        self.assertFalse(utils.evaluate_filter_op(9, 'gt', 10))
+        self.assertFalse(utils.evaluate_filter_op(10, 'gt', 10))
+        self.assertTrue(utils.evaluate_filter_op(11, 'gt', 10))
+
+    def test_greater_than_equal_operator(self):
+        self.assertFalse(utils.evaluate_filter_op(9, 'gte', 10))
+        self.assertTrue(utils.evaluate_filter_op(10, 'gte', 10))
+        self.assertTrue(utils.evaluate_filter_op(11, 'gte', 10))
+
+    def test_not_equal_operator(self):
+        self.assertTrue(utils.evaluate_filter_op(9, 'neq', 10))
+        self.assertFalse(utils.evaluate_filter_op(10, 'neq', 10))
+        self.assertTrue(utils.evaluate_filter_op(11, 'neq', 10))
+
+    def test_equal_operator(self):
+        self.assertFalse(utils.evaluate_filter_op(9, 'eq', 10))
+        self.assertTrue(utils.evaluate_filter_op(10, 'eq', 10))
+        self.assertFalse(utils.evaluate_filter_op(11, 'eq', 10))
+
+    def test_invalid_operator(self):
+        self.assertRaises(exception.InvalidFilterOperatorValue,
+                          utils.evaluate_filter_op, '10', 'bar', '8')

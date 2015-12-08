@@ -23,9 +23,7 @@ import logging
 import logging.config
 import logging.handlers
 import os
-import tempfile
 
-from oslo_concurrency import lockutils
 from oslo_config import cfg
 from oslo_policy import policy
 from paste import deploy
@@ -72,7 +70,6 @@ task_opts = [
                help=_("Specifies which task executor to be used to run the "
                       "task scripts.")),
     cfg.StrOpt('work_dir',
-               default=None,
                help=_('Work dir for asynchronous task operations. '
                       'The directory set here will be used to operate over '
                       'images - normally before they are imported in the '
@@ -129,7 +126,9 @@ common_opts = [
                        'in the \'direct_url\' meta-data field. '
                        'Revealing storage location can '
                        'be a security risk, so use this setting with '
-                       'caution!  The overrides show_image_direct_url.')),
+                       'caution! '
+                       'Setting this to true overrides the '
+                       'show_image_direct_url option.')),
     cfg.IntOpt('image_size_cap', default=1099511627776,
                max=9223372036854775808,
                help=_("Maximum size of image a user can upload in bytes. "
@@ -160,9 +159,9 @@ common_opts = [
     cfg.StrOpt('pydev_worker_debug_host',
                help=_('The hostname/IP of the pydev process listening for '
                       'debug connections')),
-    cfg.IntOpt('pydev_worker_debug_port', default=5678, min=1, max=65535,
-               help=_('The port on which a pydev process is listening for '
-                      'connections.')),
+    cfg.PortOpt('pydev_worker_debug_port', default=5678,
+                help=_('The port on which a pydev process is listening for '
+                       'connections.')),
     cfg.StrOpt('metadata_encryption_key', secret=True,
                help=_('AES key for encrypting store \'location\' metadata. '
                       'This includes, if used, Swift or S3 credentials. '
@@ -171,7 +170,7 @@ common_opts = [
     cfg.StrOpt('digest_algorithm', default='sha256',
                help=_('Digest algorithm which will be used for digital '
                       'signature. Use the command "openssl list-message-'
-                      'digest-algorithms" to get the available algorithms'
+                      'digest-algorithms" to get the available algorithms '
                       'supported by the version of OpenSSL on the platform.'
                       ' Examples are "sha1", "sha256", "sha512", etc.')),
 ]
@@ -185,9 +184,6 @@ policy.Enforcer(CONF)
 
 
 def parse_args(args=None, usage=None, default_config_files=None):
-    if "OSLO_LOCK_PATH" not in os.environ:
-        lockutils.set_defaults(tempfile.gettempdir())
-
     CONF(args=args,
          project='glance',
          version=version.cached_version_string(),

@@ -328,6 +328,14 @@ class ImmutableImageProxy(object):
         message = _("You are not permitted to upload data for this image.")
         raise exception.Forbidden(message)
 
+    def deactivate(self, *args, **kwargs):
+        message = _("You are not permitted to deactivate this image.")
+        raise exception.Forbidden(message)
+
+    def reactivate(self, *args, **kwargs):
+        message = _("You are not permitted to reactivate this image.")
+        raise exception.Forbidden(message)
+
 
 class ImmutableMemberProxy(object):
     def __init__(self, base):

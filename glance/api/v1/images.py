@@ -33,6 +33,7 @@ from webob.exc import HTTPMethodNotAllowed
 from webob.exc import HTTPNotFound
 from webob.exc import HTTPRequestEntityTooLarge
 from webob.exc import HTTPServiceUnavailable
+from webob.exc import HTTPUnauthorized
 from webob import Response
 
 from glance.api import common
@@ -49,6 +50,7 @@ from glance.common import wsgi
 from glance import i18n
 from glance import notifier
 import glance.registry.client.v1.api as registry
+from oslo_utils import timeutils
 
 LOG = logging.getLogger(__name__)
 _ = i18n._
@@ -65,6 +67,28 @@ CONF.import_opt('disk_formats', 'glance.common.config', group='image_format')
 CONF.import_opt('container_formats', 'glance.common.config',
                 group='image_format')
 CONF.import_opt('image_property_quota', 'glance.common.config')
+
+
+def _validate_time(req, values):
+    """Validates time formats for updated_at, created_at and deleted_at.
+    'strftime' only allows values after 1900 in glance v1 so this is enforced
+    here. This was introduced to keep modularity.
+    """
+    for time_field in ['created_at', 'updated_at', 'deleted_at']:
+        if time_field in values and values[time_field]:
+            try:
+                time = timeutils.parse_isotime(values[time_field])
+                # On Python 2, datetime.datetime.strftime() raises a ValueError
+                # for years older than 1900. On Python 3, years older than 1900
+                # are accepted. But we explicitly want to reject timestamps
+                # older than January 1st, 1900 for Glance API v1.
+                if time.year < 1900:
+                    raise ValueError
+                values[time_field] = time.strftime(
+                    timeutils.PERFECT_TIME_FORMAT)
+            except ValueError:
+                msg = (_("Invalid time format for %s.") % time_field)
+                raise HTTPBadRequest(explanation=msg, request=req)
 
 
 def _validate_format(req, values):
@@ -102,6 +126,7 @@ def _validate_format(req, values):
 
 def validate_image_meta(req, values):
     _validate_format(req, values)
+    _validate_time(req, values)
 
     name = values.get('name')
     checksum = values.get('checksum')
@@ -374,6 +399,8 @@ class Controller(controller.BaseController):
                 self._enforce_read_protected_props(image, req)
         except exception.Invalid as e:
             raise HTTPBadRequest(explanation=e.msg, request=req)
+        except exception.NotAuthenticated as e:
+            raise HTTPUnauthorized(explanation=e.msg, request=req)
         return dict(images=images)
 
     def _get_query_params(self, req):
@@ -709,7 +736,7 @@ class Controller(controller.BaseController):
         location_data = self._upload(req, image_meta)
         image_id = image_meta['id']
         LOG.info(_LI("Uploaded data of image %s from request "
-                     "payload successfully.") % image_id)
+                     "payload successfully."), image_id)
 
         if location_data:
             try:
@@ -934,15 +961,17 @@ class Controller(controller.BaseController):
             # Once an image is 'active' only an admin can
             # modify certain core metadata keys
             for key in ACTIVE_IMMUTABLE:
-                if (orig_status == 'active' and image_meta.get(key) is not None
+                if ((orig_status == 'active' or orig_status == 'deactivated')
+                        and key in image_meta
                         and image_meta.get(key) != orig_image_meta.get(key)):
-                    msg = _("Forbidden to modify '%s' of active image.") % key
+                    msg = _("Forbidden to modify '%(key)s' of %(status)s "
+                            "image.") % {'key': key, 'status': orig_status}
                     raise HTTPForbidden(explanation=msg,
                                         request=req,
                                         content_type="text/plain")
 
         for key in IMMUTABLE:
-            if (image_meta.get(key) is not None and
+            if (key in image_meta and
                     image_meta.get(key) != orig_image_meta.get(key)):
                 msg = _("Forbidden to modify '%s' of image.") % key
                 raise HTTPForbidden(explanation=msg,

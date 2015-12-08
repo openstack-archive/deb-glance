@@ -179,7 +179,7 @@ class TestTasksController(test_utils.BaseTestCase):
         self.assertEqual(4, len(output['tasks']))
         actual = set([task.task_id for task in output['tasks']])
         expected = set([UUID1, UUID2, UUID3, UUID4])
-        self.assertEqual(sorted(actual), sorted(expected))
+        self.assertEqual(sorted(expected), sorted(actual))
 
     def test_index_with_many_filters(self):
         url = '/tasks?status=pending&type=import'
@@ -357,9 +357,11 @@ class TestTasksController(test_utils.BaseTestCase):
         task_executor.begin_processing(new_task.task_id)
         success_task = self.controller.get(request, new_task.task_id)
 
-        # ignore microsecond
-        task_live_time = (success_task.expires_at.replace(microsecond=0) -
-                          success_task.updated_at.replace(microsecond=0))
+        # ignore second and microsecond to avoid flaky runs
+        task_live_time = (success_task.expires_at.replace(second=0,
+                                                          microsecond=0) -
+                          success_task.updated_at.replace(second=0,
+                                                          microsecond=0))
         task_live_time_hour = (task_live_time.days * 24 +
                                task_live_time.seconds / 3600)
         self.assertEqual(CONF.task.task_time_to_live, task_live_time_hour)
@@ -439,7 +441,7 @@ class TestTasksDeserializer(test_utils.BaseTestCase):
 
     def test_create(self):
         request = unit_test_utils.get_fake_request()
-        request.body = jsonutils.dumps({
+        request.body = jsonutils.dump_as_bytes({
             'type': 'import',
             'input': {'import_from':
                       'swift://cloud.foo/myaccount/mycontainer/path',
@@ -747,7 +749,7 @@ class TestTasksSerializer(test_utils.BaseTestCase):
         self.serializer.create(response, self.fixtures[3])
 
         serialized_task = jsonutils.loads(response.body)
-        self.assertEqual(response.status_int, 201)
+        self.assertEqual(201, response.status_int)
         self.assertEqual(self.fixtures[3].task_id,
                          serialized_task['id'])
         self.assertEqual(self.fixtures[3].task_input,
@@ -761,7 +763,7 @@ class TestTasksSerializer(test_utils.BaseTestCase):
         self.serializer.create(response, self.fixtures[0])
 
         serialized_task = jsonutils.loads(response.body)
-        self.assertEqual(response.status_int, 201)
+        self.assertEqual(201, response.status_int)
         self.assertEqual(self.fixtures[0].task_id,
                          serialized_task['id'])
         self.assertEqual(self.fixtures[0].task_input,
@@ -774,7 +776,7 @@ class TestTasksSerializer(test_utils.BaseTestCase):
         self.serializer.create(response, self.fixtures[1])
 
         serialized_task = jsonutils.loads(response.body)
-        self.assertEqual(response.status_int, 201)
+        self.assertEqual(201, response.status_int)
         self.assertEqual(self.fixtures[1].task_id,
                          serialized_task['id'])
         self.assertEqual(self.fixtures[1].task_input,

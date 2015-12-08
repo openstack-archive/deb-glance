@@ -117,7 +117,8 @@ class _ImportToFS(task.Task):
         backend.register_opts(conf)
         conf.set_override('filesystem_store_datadir',
                           CONF.task.work_dir,
-                          group='glance_store')
+                          group='glance_store',
+                          enforce_type=True)
 
         # NOTE(flaper87): Do not even try to judge me for this... :(
         # With the glance_store refactor, this code will change, until
@@ -373,7 +374,7 @@ class _CompleteTask(task.Task):
         finally:
             self.task_repo.save(task)
 
-        LOG.info(_LI("%(task_id)s of %(task_type)s completed") %
+        LOG.info(_LI("%(task_id)s of %(task_type)s completed"),
                  {'task_id': self.task_id, 'task_type': self.task_type})
 
 

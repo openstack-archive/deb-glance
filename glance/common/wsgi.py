@@ -59,8 +59,8 @@ bind_opts = [
     cfg.StrOpt('bind_host', default='0.0.0.0',
                help=_('Address to bind the server.  Useful when '
                       'selecting a particular network interface.')),
-    cfg.IntOpt('bind_port', min=1, max=65535,
-               help=_('The port on which the server will listen.')),
+    cfg.PortOpt('bind_port',
+                help=_('The port on which the server will listen.')),
 ]
 
 socket_opts = [
@@ -308,7 +308,7 @@ class Server(object):
             self.pool.spawn_n(self._single_run, self.application, self.sock)
             return
         else:
-            LOG.info(_LI("Starting %d workers") % CONF.workers)
+            LOG.info(_LI("Starting %d workers"), CONF.workers)
             signal.signal(signal.SIGTERM, self.kill_children)
             signal.signal(signal.SIGINT, self.kill_children)
             signal.signal(signal.SIGHUP, self.hup)
@@ -321,10 +321,10 @@ class Server(object):
     def _remove_children(self, pid):
         if pid in self.children:
             self.children.remove(pid)
-            LOG.info(_LI('Removed dead child %s') % pid)
+            LOG.info(_LI('Removed dead child %s'), pid)
         elif pid in self.stale_children:
             self.stale_children.remove(pid)
-            LOG.info(_LI('Removed stale child %s') % pid)
+            LOG.info(_LI('Removed stale child %s'), pid)
         else:
             LOG.warn(_LW('Unrecognised child %s') % pid)
 
@@ -433,12 +433,12 @@ class Server(object):
             # exit on sighup
             self._sock = None
             self.run_server()
-            LOG.info(_LI('Child %d exiting normally') % os.getpid())
+            LOG.info(_LI('Child %d exiting normally'), os.getpid())
             # self.pool.waitall() is now called in wsgi's server so
             # it's safe to exit here
             sys.exit(0)
         else:
-            LOG.info(_LI('Started child %s') % pid)
+            LOG.info(_LI('Started child %s'), pid)
             self.children.add(pid)
 
     def run_server(self):
@@ -774,7 +774,7 @@ class JSONRequestDeserializer(object):
         is_valid_encoding = request_encoding in self.valid_transfer_encoding
         if is_valid_encoding and request.is_body_readable:
             return True
-        elif request.content_length > 0:
+        elif request.content_length is not None and request.content_length > 0:
             return True
 
         return False
@@ -786,7 +786,11 @@ class JSONRequestDeserializer(object):
 
     def from_json(self, datastring):
         try:
-            return jsonutils.loads(datastring, object_hook=self._sanitizer)
+            jsondata = jsonutils.loads(datastring, object_hook=self._sanitizer)
+            if not isinstance(jsondata, (dict, list)):
+                msg = _('Unexpected body type. Expected list/dict.')
+                raise webob.exc.HTTPBadRequest(explanation=msg)
+            return jsondata
         except ValueError:
             msg = _('Malformed JSON in request body.')
             raise webob.exc.HTTPBadRequest(explanation=msg)
@@ -809,11 +813,14 @@ class JSONResponseSerializer(object):
         return jsonutils.to_primitive(obj)
 
     def to_json(self, data):
-        return jsonutils.dumps(data, default=self._sanitizer)
+        return jsonutils.dump_as_bytes(data, default=self._sanitizer)
 
     def default(self, response, result):
         response.content_type = 'application/json'
-        response.body = self.to_json(result)
+        body = self.to_json(result)
+        if isinstance(body, six.text_type):
+            body = body.encode('utf-8')
+        response.body = body
 
 
 def translate_exception(req, e):
@@ -879,7 +886,8 @@ class Resource(object):
                                           request, **action_args)
         except webob.exc.WSGIHTTPException as e:
             exc_info = sys.exc_info()
-            six.reraise(translate_exception(request, e), None, exc_info[2])
+            e = translate_exception(request, e)
+            six.reraise(type(e), e, exc_info[2])
         except Exception as e:
             LOG.exception(_LE("Caught error: %s"), six.text_type(e))
             response = webob.exc.HTTPInternalServerError()

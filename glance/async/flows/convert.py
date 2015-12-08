@@ -31,7 +31,6 @@ LOG = logging.getLogger(__name__)
 
 convert_task_opts = [
     cfg.StrOpt('conversion_format',
-               default=None,
                choices=('qcow2', 'raw', 'vmdk'),
                help=_("The format to which images will be automatically "
                       "converted.")),
@@ -96,7 +95,7 @@ class _Convert(task.Task):
 
         fs_path = result.split("file://")[-1]
         if os.path.exists(fs_path):
-            os.path.remove(fs_path)
+            os.remove(fs_path)
 
 
 def get_flow(**kwargs):

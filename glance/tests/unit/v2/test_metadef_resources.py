@@ -158,6 +158,7 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
             self.db, self.policy, self.notifier)
         self.tag_controller = tags.TagsController(
             self.db, self.policy, self.notifier)
+        self.deserializer = objects.RequestDeserializer()
 
     def _create_namespaces(self):
         req = unit_test_utils.get_fake_request()
@@ -255,7 +256,7 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         actual = set([namespace.namespace for
                       namespace in output['namespaces']])
         expected = set([NAMESPACE1, NAMESPACE3, NAMESPACE5, NAMESPACE6])
-        self.assertEqual(actual, expected)
+        self.assertEqual(expected, actual)
 
     def test_namespace_index_admin(self):
         request = unit_test_utils.get_fake_request(is_admin=True)
@@ -846,7 +847,7 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         output = self.property_controller.show(
             request, NAMESPACE6, ''.join([PREFIX1, PROPERTY4]),
             filters={'resource_type': RESOURCE_TYPE4})
-        self.assertEqual(output.name, PROPERTY4)
+        self.assertEqual(PROPERTY4, output.name)
 
     def test_property_show_prefix_mismatch(self):
         request = unit_test_utils.get_fake_request()
@@ -1164,6 +1165,13 @@ class TestMetadefsControllers(base.IsolatedUnitTest):
         actual = set([object.name for object in output['objects']])
         expected = set([OBJECT1, OBJECT2])
         self.assertEqual(expected, actual)
+
+    def test_object_index_zero_limit(self):
+        request = unit_test_utils.get_fake_request('/metadefs/namespaces/'
+                                                   'Namespace3/'
+                                                   'objects?limit=0')
+        self.assertRaises(webob.exc.HTTPBadRequest, self.deserializer.index,
+                          request)
 
     def test_object_index_empty(self):
         request = unit_test_utils.get_fake_request()

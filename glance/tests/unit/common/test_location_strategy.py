@@ -68,7 +68,7 @@ class TestLocationStrategy(base.IsolatedUnitTest):
 
         loaded_modules = location_strategy._load_strategies()
         self.assertEqual(1, len(loaded_modules))
-        self.assertEqual('module_name', loaded_modules.keys()[0])
+        self.assertIn('module_name', loaded_modules)
         # Skipped module #2, duplicated one.
         self.assertEqual('module1', loaded_modules['module_name'].__name__)
 
@@ -98,7 +98,7 @@ class TestLocationStrategy(base.IsolatedUnitTest):
 
         loaded_modules = location_strategy._load_strategies()
         self.assertEqual(1, len(loaded_modules))
-        self.assertEqual('module_good', loaded_modules.keys()[0])
+        self.assertIn('module_good', loaded_modules)
         # Skipped module #1, initialize failed one.
         self.assertEqual('module_good', loaded_modules['module_good'].__name__)
 
@@ -172,7 +172,7 @@ class TestStoreTypeStrategyModule(base.IsolatedUnitTest):
         ordered_locs = store_type.get_ordered_locations(copy.deepcopy(locs))
         locs.sort(key=lambda loc: loc['metadata']['idx'])
         # The result will ordered by preferred store type order.
-        self.assertEqual(ordered_locs, locs)
+        self.assertEqual(locs, ordered_locs)
 
     def test_get_ordered_locations_with_invalid_store_name(self):
         self.config(store_type_preference=['  rbd', 'sheepdog ', 'invalid',
@@ -190,4 +190,4 @@ class TestStoreTypeStrategyModule(base.IsolatedUnitTest):
         ordered_locs = store_type.get_ordered_locations(copy.deepcopy(locs))
         locs.sort(key=lambda loc: loc['metadata']['idx'])
         # The result will ordered by preferred store type order.
-        self.assertEqual(ordered_locs, locs)
+        self.assertEqual(locs, ordered_locs)

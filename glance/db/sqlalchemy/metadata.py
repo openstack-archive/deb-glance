@@ -212,7 +212,10 @@ def _populate_metadata(meta, metadata_path=None, merge=False,
             with open(file) as json_file:
                 metadata = json.load(json_file)
         except Exception as e:
-            LOG.error(encodeutils.exception_to_unicode(e))
+            LOG.error(_LE("Failed to parse json file %(file_path)s while "
+                          "populating metadata due to: %(error_msg)s"),
+                      {"file_path": file,
+                       "error_msg": encodeutils.exception_to_unicode(e)})
             continue
 
         values = {
@@ -450,7 +453,7 @@ def _export_data_to_file(meta, path):
                 json_file.write(json.dumps(values))
         except Exception as e:
             LOG.exception(encodeutils.exception_to_unicode(e))
-        LOG.info(_LI("Namespace %(namespace)s saved in %(file)s") % {
+        LOG.info(_LI("Namespace %(namespace)s saved in %(file)s"), {
             'namespace': namespace_file_name, 'file': file_name})
 
 
