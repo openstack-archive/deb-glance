@@ -49,9 +49,9 @@ override_dh_install:
 		--namespace oslo.db \
 		--namespace oslo.db.concurrency \
 		--namespace oslo.policy \
-		--namespace keystoneclient.middleware.auth_token \
 		--namespace keystonemiddleware.auth_token \
-		--namespace oslo.log
+		--namespace oslo.log \
+		--namespace oslo.middleware.cors
 	sed -i 's/^[ \t#]*auth_protocol[ \t]*=[ \t].*/auth_protocol = http/' $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-api.conf
 	sed -i 's|^[ \t#]*filesystem_store_datadir[ \t]*=[ \t].*|filesystem_store_datadir = /var/lib/glance/images|' $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-api.conf
 	sed -i 's|^[ \t#]*lock_path[ \t]*=[ \t].*|lock_path = /var/lock/glance|' $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-api.conf
@@ -63,7 +63,6 @@ override_dh_install:
 		--namespace oslo.db \
 		--namespace oslo.db.concurrency \
 		--namespace oslo.policy \
-		--namespace keystoneclient.middleware.auth_token \
 		--namespace keystonemiddleware.auth_token \
 		--namespace oslo.log
 	sed -i 's/^[ \t#]*auth_protocol[ \t]*=[ \t].*/auth_protocol = http/' $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-registry.conf
