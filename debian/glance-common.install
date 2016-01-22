@@ -2,7 +2,6 @@ etc/glance-api-paste.ini	usr/share/glance-common
 etc/glance-registry-paste.ini	usr/share/glance-common
 etc/policy.json			usr/share/glance-common
 etc/schema-image.json		usr/share/glance-common
-usr/bin/glance-artifacts
 usr/bin/glance-control
 usr/bin/glance-manage
 usr/etc/glance/metadefs		usr/share/glance-common

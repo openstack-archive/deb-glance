@@ -2,6 +2,8 @@ glance (1:12.0.0~b2-1) experimental; urgency=medium
 
   * New upstream release.
   * Fixed (build-)depends for this release.
+  * Removing /usr/bin/glance-artifacts to glance-common as it's gone from
+    upstream entry-points.
 
  -- Thomas Goirand <zigo@debian.org>  Tue, 08 Dec 2015 09:26:10 +0100
 
