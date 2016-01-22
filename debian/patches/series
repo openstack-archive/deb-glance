@@ -1,4 +1,3 @@
 sql_conn-registry.patch
-fix-default-glance-registry-paste.ini.patch
 fixes-unban-routes-2.0.patch
 default-config.patch

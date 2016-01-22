@@ -9,7 +9,7 @@ Index: glance/requirements.txt
 --- glance.orig/requirements.txt
 +++ glance/requirements.txt
 @@ -8,8 +8,7 @@ pbr>=1.6
- SQLAlchemy<1.1.0,>=0.9.9
+ SQLAlchemy<1.1.0,>=1.0.10
  eventlet>=0.17.4
  PasteDeploy>=1.5.0
 -Routes!=2.0,!=2.1,>=1.12.3;python_version=='2.7'
