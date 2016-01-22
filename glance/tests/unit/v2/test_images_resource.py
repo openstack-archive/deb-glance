@@ -1899,8 +1899,8 @@ class TestImagesController(base.IsolatedUnitTest):
         change = {'op': 'test', 'path': 'options', 'value': 'puts'}
         try:
             self.controller.update(request, UUID1, [change])
-        except AssertionError:
-            pass  # AssertionError is the desired behavior
+        except AttributeError:
+            pass  # AttributeError is the desired behavior
         else:
             self.fail('Failed to raise AssertionError on %s' % change)
 
@@ -3755,7 +3755,7 @@ class TestImageSchemaFormatConfiguration(test_utils.BaseTestCase):
 
     def test_default_container_formats(self):
         schema = glance.api.v2.images.get_schema()
-        expected = [None, 'ami', 'ari', 'aki', 'bare', 'ovf', 'ova']
+        expected = [None, 'ami', 'ari', 'aki', 'bare', 'ovf', 'ova', 'docker']
         actual = schema.properties['container_format']['enum']
         self.assertEqual(expected, actual)
 

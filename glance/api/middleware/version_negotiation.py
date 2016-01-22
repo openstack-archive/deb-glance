@@ -24,13 +24,10 @@ from oslo_log import log as logging
 
 from glance.api import versions
 from glance.common import wsgi
-from glance import i18n
 
 CONF = cfg.CONF
 
 LOG = logging.getLogger(__name__)
-_ = i18n._
-_LW = i18n._LW
 
 
 class VersionNegotiationFilter(wsgi.Middleware):
@@ -41,10 +38,9 @@ class VersionNegotiationFilter(wsgi.Middleware):
 
     def process_request(self, req):
         """Try to find a version first in the accept header, then the URL"""
-        msg = _("Determining version of request: %(method)s %(path)s"
-                " Accept: %(accept)s")
         args = {'method': req.method, 'path': req.path, 'accept': req.accept}
-        LOG.debug(msg % args)
+        LOG.debug("Determining version of request: %(method)s %(path)s "
+                  "Accept: %(accept)s", args)
 
         # If the request is for /versions, just return the versions container
         if req.path_info_peek() == "versions":
@@ -78,8 +74,8 @@ class VersionNegotiationFilter(wsgi.Middleware):
         minor version number.
 
         :param subject: The string to check
-        :returns version found in the subject
-        :raises ValueError if no acceptable version could be found
+        :returns: version found in the subject
+        :raises: ValueError if no acceptable version could be found
         """
         if subject in ('v1', 'v1.0', 'v1.1') and CONF.enable_v1_api:
             major_version = 1

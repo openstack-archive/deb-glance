@@ -21,13 +21,10 @@ from oslo_utils import encodeutils
 import six.moves.urllib.parse as urlparse
 
 import glance.db as db_api
-from glance import i18n
+from glance.i18n import _LE, _LW
 from glance import scrubber
 
 LOG = logging.getLogger(__name__)
-_ = i18n._
-_LE = i18n._LE
-_LW = i18n._LW
 
 CONF = cfg.CONF
 
@@ -127,7 +124,7 @@ def validate_external_location(uri):
     absent for security reasons, see LP bug #1334196.
 
     :param uri: The URI of external image location.
-    :return: Whether given URI of external image location are OK.
+    :returns: Whether given URI of external image location are OK.
     """
 
     # TODO(zhiyan): This function could be moved to glance_store.

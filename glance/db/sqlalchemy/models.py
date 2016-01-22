@@ -22,12 +22,10 @@ import uuid
 
 from oslo_db.sqlalchemy import models
 from oslo_serialization import jsonutils
-from oslo_utils import timeutils
 from sqlalchemy import BigInteger
 from sqlalchemy import Boolean
 from sqlalchemy import Column
 from sqlalchemy import DateTime
-from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import ForeignKey
 from sqlalchemy import Index
@@ -39,13 +37,10 @@ from sqlalchemy import Text
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy import UniqueConstraint
 
+from glance.common import timeutils
+
 
 BASE = declarative_base()
-
-
-@compiles(BigInteger, 'sqlite')
-def compile_big_int_sqlite(type_, compiler, **kw):
-    return 'INTEGER'
 
 
 class JSONEncodedDict(TypeDecorator):
@@ -130,8 +125,8 @@ class Image(BASE, GlanceBase):
     name = Column(String(255))
     disk_format = Column(String(20))
     container_format = Column(String(20))
-    size = Column(BigInteger)
-    virtual_size = Column(BigInteger)
+    size = Column(BigInteger().with_variant(Integer, "sqlite"))
+    virtual_size = Column(BigInteger().with_variant(Integer, "sqlite"))
     status = Column(String(30), nullable=False)
     is_public = Column(Boolean, nullable=False, default=False)
     checksum = Column(String(32))

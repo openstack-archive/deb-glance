@@ -19,9 +19,8 @@ from oslo_config import cfg
 import six
 import six.moves.urllib.parse as urlparse
 
-from glance import i18n
+from glance.i18n import _
 
-_ = i18n._
 
 store_type_opts = [
     cfg.ListOpt("store_type_preference",
@@ -74,7 +73,7 @@ def get_ordered_locations(locations, uri_key='url', **kwargs):
 
     :param locations: The original image location list.
     :param uri_key: The key name for location URI in image location dictionary.
-    :return: The image location list with preferred store type order.
+    :returns: The image location list with preferred store type order.
     """
     def _foreach_store_type_preference():
         store_types = CONF.store_type_location_strategy.store_type_preference

@@ -14,11 +14,8 @@
 
 import uuid
 
-from oslo_utils import timeutils
-
-from glance import i18n
-
-_ = i18n._
+from glance.common import timeutils
+from glance.i18n import _
 
 
 class Artifact(object):

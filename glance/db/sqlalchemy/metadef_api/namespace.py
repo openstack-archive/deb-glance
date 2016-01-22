@@ -22,10 +22,9 @@ import sqlalchemy.orm as sa_orm
 from glance.common import exception as exc
 import glance.db.sqlalchemy.metadef_api as metadef_api
 from glance.db.sqlalchemy import models_metadef as models
-from glance import i18n
+from glance.i18n import _
 
 LOG = logging.getLogger(__name__)
-_ = i18n._
 
 
 def _is_namespace_visible(context, namespace, status=None):
@@ -56,7 +55,7 @@ def _is_namespace_visible(context, namespace, status=None):
 def _select_namespaces_query(context, session):
     """Build the query to get all namespaces based on the context"""
 
-    LOG.debug("context.is_admin=%(is_admin)s; context.owner=%(owner)s" %
+    LOG.debug("context.is_admin=%(is_admin)s; context.owner=%(owner)s",
               {'is_admin': context.is_admin, 'owner': context.owner})
 
     # If admin, return everything.
@@ -93,9 +92,8 @@ def _get(context, namespace_id, session):
 
     # Make sure they are allowed to view it.
     if not _is_namespace_visible(context, namespace_rec.to_dict()):
-        msg = ("Forbidding request, metadata definition namespace=%s"
-               " is not visible.") % namespace_rec.namespace
-        LOG.debug(msg)
+        LOG.debug("Forbidding request, metadata definition namespace=%s"
+                  " is not visible.", namespace_rec.namespace)
         emsg = _("Forbidding request, metadata definition namespace=%s"
                  " is not visible.") % namespace_rec.namespace
         raise exc.MetadefForbidden(emsg)
@@ -111,15 +109,13 @@ def _get_by_name(context, name, session):
             namespace=name)
         namespace_rec = query.one()
     except sa_orm.exc.NoResultFound:
-        msg = "Metadata definition namespace=%s was not found." % name
-        LOG.debug(msg)
+        LOG.debug("Metadata definition namespace=%s was not found.", name)
         raise exc.MetadefNamespaceNotFound(namespace_name=name)
 
     # Make sure they are allowed to view it.
     if not _is_namespace_visible(context, namespace_rec.to_dict()):
-        msg = ("Forbidding request, metadata definition namespace=%s"
-               " is not visible." % name)
-        LOG.debug(msg)
+        LOG.debug("Forbidding request, metadata definition namespace=%s"
+                  " is not visible.", name)
         emsg = _("Forbidding request, metadata definition namespace=%s"
                  " is not visible.") % name
         raise exc.MetadefForbidden(emsg)
@@ -229,9 +225,8 @@ def create(context, values, session):
     try:
         namespace.save(session=session)
     except db_exc.DBDuplicateEntry:
-        msg = ("Can not create the metadata definition namespace."
-               " Namespace=%s already exists.") % namespace_name
-        LOG.debug(msg)
+        LOG.debug("Can not create the metadata definition namespace."
+                  " Namespace=%s already exists.", namespace_name)
         raise exc.MetadefDuplicateNamespace(
             namespace_name=namespace_name)
 
@@ -248,10 +243,9 @@ def update(context, namespace_id, values, session):
         namespace_rec.update(values.copy())
         namespace_rec.save(session=session)
     except db_exc.DBDuplicateEntry:
-        msg = ("Invalid update. It would result in a duplicate"
-               " metadata definition namespace with the same name of %s"
-               % values['namespace'])
-        LOG.debug(msg)
+        LOG.debug("Invalid update. It would result in a duplicate"
+                  " metadata definition namespace with the same name of %s",
+                  values['namespace'])
         emsg = (_("Invalid update. It would result in a duplicate"
                   " metadata definition namespace with the same name of %s")
                 % values['namespace'])
@@ -269,9 +263,8 @@ def delete(context, name, session):
         session.flush()
     except db_exc.DBError as e:
         if isinstance(e.inner_exception, sa_exc.IntegrityError):
-            msg = ("Metadata definition namespace=%s not deleted."
-                   " Other records still refer to it." % name)
-            LOG.debug(msg)
+            LOG.debug("Metadata definition namespace=%s not deleted. "
+                      "Other records still refer to it.", name)
             raise exc.MetadefIntegrityError(
                 record_type='namespace', record_name=name)
         else:
@@ -298,9 +291,8 @@ def delete_cascade(context, name, session):
             session.flush()
         except db_exc.DBError as e:
             if isinstance(e.inner_exception, sa_exc.IntegrityError):
-                msg = ("Metadata definition namespace=%s not deleted."
-                       " Other records still refer to it." % name)
-                LOG.debug(msg)
+                LOG.debug("Metadata definition namespace=%s not deleted. "
+                          "Other records still refer to it.", name)
                 raise exc.MetadefIntegrityError(
                     record_type='namespace', record_name=name)
             else:

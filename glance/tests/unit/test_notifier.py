@@ -20,11 +20,11 @@ import glance_store
 import mock
 from oslo_config import cfg
 import oslo_messaging
-from oslo_utils import timeutils
 import webob
 
 import glance.async
 from glance.common import exception
+from glance.common import timeutils
 import glance.context
 from glance import notifier
 import glance.tests.unit.utils as unit_test_utils
@@ -113,6 +113,13 @@ class TestNotifier(utils.BaseTestCase):
 
     def test_notifier_load(self):
         self._test_load_strategy(url=None, driver=None)
+
+    @mock.patch.object(oslo_messaging, 'set_transport_defaults')
+    def test_set_defaults(self, mock_set_trans_defaults):
+        notifier.set_defaults(control_exchange='foo')
+        mock_set_trans_defaults.assert_called_with('foo')
+        notifier.set_defaults()
+        mock_set_trans_defaults.assert_called_with('glance')
 
 
 class TestImageNotifications(utils.BaseTestCase):

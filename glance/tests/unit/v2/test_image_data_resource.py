@@ -251,9 +251,24 @@ class TestImagesController(base.StoreClearingUnitTest):
                               request, str(uuid.uuid4()), 'ABC', 3)
             self.assertTrue(image.delete.called)
 
-    def test_upload_non_existent_image_raises_not_found_exception(self):
+    def test_upload_non_existent_image_raises_image_not_found_exception(self):
         def fake_save(self):
             raise exception.ImageNotFound()
+
+        def fake_delete():
+            raise exception.ImageNotFound()
+
+        request = unit_test_utils.get_fake_request()
+        image = FakeImage('abcd', locations=['http://example.com/image'])
+        self.image_repo.result = image
+        self.image_repo.save = fake_save
+        image.delete = fake_delete
+        self.assertRaises(webob.exc.HTTPGone, self.controller.upload,
+                          request, str(uuid.uuid4()), 'ABC', 3)
+
+    def test_upload_non_existent_image_raises_store_not_found_exception(self):
+        def fake_save(self):
+            raise glance_store.NotFound()
 
         def fake_delete():
             raise exception.ImageNotFound()
@@ -349,6 +364,59 @@ class TestImagesController(base.StoreClearingUnitTest):
         self.assertRaises(webob.exc.HTTPGone,
                           self.controller.upload,
                           request, unit_test_utils.UUID2, 'YY', 2)
+
+    @mock.patch("glance.common.trust_auth.TokenRefresher")
+    def test_upload_with_trusts(self, mock_refresher):
+        """Test that uploading with registry correctly uses trusts"""
+        # initialize trust environment
+        self.config(data_api='glance.db.registry.api')
+        refresher = mock.MagicMock()
+        mock_refresher.return_value = refresher
+        refresher.refresh_token.return_value = "fake_token"
+        # request an image upload
+        request = unit_test_utils.get_fake_request()
+        request.environ['keystone.token_auth'] = mock.MagicMock()
+        request.environ['keystone.token_info'] = {
+            'token': {
+                'roles': [{'name': 'FakeRole', 'id': 'FakeID'}]
+            }
+        }
+        image = FakeImage('abcd')
+        self.image_repo.result = image
+        mock_fake_save = mock.Mock()
+        mock_fake_save.side_effect = [None, exception.NotAuthenticated, None]
+        temp_save = FakeImageRepo.save
+        # mocking save to raise NotAuthenticated on the second call
+        FakeImageRepo.save = mock_fake_save
+        self.controller.upload(request, unit_test_utils.UUID2, 'YYYY', 4)
+        # check image data
+        self.assertEqual('YYYY', image.data)
+        self.assertEqual(4, image.size)
+        FakeImageRepo.save = temp_save
+        # check that token has been correctly acquired and deleted
+        mock_refresher.assert_called_once_with(
+            request.environ['keystone.token_auth'],
+            request.context.tenant, ['FakeRole'])
+        refresher.refresh_token.assert_called_once_with()
+        refresher.release_resources.assert_called_once_with()
+        self.assertEqual("fake_token", request.context.auth_token)
+
+    @mock.patch("glance.common.trust_auth.TokenRefresher")
+    def test_upload_with_trusts_fails(self, mock_refresher):
+        """Test upload with registry if trust was not successfully created"""
+        # initialize trust environment
+        self.config(data_api='glance.db.registry.api')
+        mock_refresher().side_effect = Exception()
+        # request an image upload
+        request = unit_test_utils.get_fake_request()
+        image = FakeImage('abcd')
+        self.image_repo.result = image
+        self.controller.upload(request, unit_test_utils.UUID2, 'YYYY', 4)
+        # check image data
+        self.assertEqual('YYYY', image.data)
+        self.assertEqual(4, image.size)
+        # check that the token has not been updated
+        self.assertEqual(0, mock_refresher().refresh_token.call_count)
 
     def _test_upload_download_prepare_notification(self):
         request = unit_test_utils.get_fake_request()

@@ -21,7 +21,6 @@ from oslo_config import cfg
 from oslo_log import log as logging
 import oslo_serialization.jsonutils as json
 from oslo_utils import encodeutils
-from oslo_utils import timeutils
 from oslo_utils import uuidutils
 import six
 import six.moves.urllib.parse as urlparse
@@ -30,16 +29,15 @@ import webob.exc
 from glance.api import common
 from glance.api import policy
 from glance.common import exception
+from glance.common import timeutils
 from glance.common import wsgi
 import glance.db
 import glance.gateway
-from glance import i18n
+from glance.i18n import _, _LW
 import glance.notifier
 import glance.schema
 
 LOG = logging.getLogger(__name__)
-_ = i18n._
-_LW = i18n._LW
 
 CONF = cfg.CONF
 CONF.import_opt('task_time_to_live', 'glance.common.config', group='task')

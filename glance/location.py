@@ -16,6 +16,7 @@
 import collections
 import copy
 
+import debtcollector
 import glance_store as store
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -26,12 +27,8 @@ from glance.common import exception
 from glance.common import signature_utils
 from glance.common import utils
 import glance.domain.proxy
-from glance import i18n
+from glance.i18n import _, _LE, _LI
 
-
-_ = i18n._
-_LE = i18n._LE
-_LI = i18n._LI
 
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
@@ -388,6 +385,17 @@ class ImageProxy(glance.domain.proxy.Image):
             size,
             context=self.context)
 
+        self._verify_signature_if_needed(checksum)
+
+        self.image.locations = [{'url': location, 'metadata': loc_meta,
+                                 'status': 'active'}]
+        self.image.size = size
+        self.image.checksum = checksum
+        self.image.status = 'active'
+
+    @debtcollector.removals.remove(
+        message="This will be removed in the N cycle.")
+    def _verify_signature_if_needed(self, checksum):
         # Verify the signature (if correct properties are present)
         if (signature_utils.should_verify_signature(
                 self.image.extra_properties)):
@@ -397,12 +405,6 @@ class ImageProxy(glance.domain.proxy.Image):
             if result:
                 LOG.info(_LI("Successfully verified signature for image %s"),
                          self.image.image_id)
-
-        self.image.locations = [{'url': location, 'metadata': loc_meta,
-                                 'status': 'active'}]
-        self.image.size = size
-        self.image.checksum = checksum
-        self.image.status = 'active'
 
     def get_data(self, offset=0, chunk_size=None):
         if not self.image.locations:

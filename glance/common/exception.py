@@ -19,9 +19,7 @@
 import six
 import six.moves.urllib.parse as urlparse
 
-from glance import i18n
-
-_ = i18n._
+from glance.i18n import _
 
 _FATAL_EXCEPTION_FORMAT_ERRORS = False
 
@@ -350,6 +348,10 @@ class InvalidTaskType(TaskException, Invalid):
 class InvalidTaskStatusTransition(TaskException, Invalid):
     message = _("Status transition from %(cur_status)s to"
                 " %(new_status)s is not allowed")
+
+
+class ImportTaskError(TaskException, Invalid):
+    message = _("An import task exception occurred")
 
 
 class DuplicateLocation(Duplicate):

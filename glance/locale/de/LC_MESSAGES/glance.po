@@ -1,4 +1,4 @@
-# German translations for glance.
+# Translations template for glance.
 # Copyright (C) 2015 ORGANIZATION
 # This file is distributed under the same license as the glance project.
 #
@@ -11,18 +11,19 @@
 # Tom Cocozzello <tjcocozz@us.ibm.com>, 2015. #zanata
 msgid ""
 msgstr ""
-"Project-Id-Version: glance 12.0.0.dev111\n"
+"Project-Id-Version: glance 12.0.0.0b2.dev74\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2015-10-22 06:09+0000\n"
+"POT-Creation-Date: 2016-01-15 11:52+0000\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
 "PO-Revision-Date: 2015-09-04 12:45+0000\n"
 "Last-Translator: openstackjenkins <jenkins@openstack.org>\n"
 "Language: de\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"Generated-By: Babel 2.0\n"
+"X-Generator: Zanata 3.7.3\n"
 "Language-Team: German\n"
-"Plural-Forms: nplurals=2; plural=(n != 1)\n"
-"MIME-Version: 1.0\n"
-"Content-Type: text/plain; charset=utf-8\n"
-"Content-Transfer-Encoding: 8bit\n"
-"Generated-By: Babel 2.1.1\n"
 
 #, python-format
 msgid "%(attribute)s have to be string"
@@ -588,12 +589,6 @@ msgstr "OpenStack-Registry-API von Version 2 implementieren."
 msgid "Descriptive name for the image"
 msgstr "Beschreibender Name für das Image"
 
-#, python-format
-msgid "Determining version of request: %(method)s %(path)s Accept: %(accept)s"
-msgstr ""
-"Bestimmen von Version der Anforderung: %(method)s %(path)s Akzeptieren: "
-"%(accept)s"
-
 msgid "Dictionary contains unexpected key(s)"
 msgstr "Verzeichnis enthält unerwartete Schlüssel"
 
@@ -709,10 +704,6 @@ msgstr "Es ist nicht erlaubt, ein %s Abbild zu löschen."
 #, python-format
 msgid "Forbidden to delete image: %s"
 msgstr "Löschen von Image nicht erlaubt: %s"
-
-#, python-format
-msgid "Forbidden to modify '%s' of active image."
-msgstr "Es ist nicht erlaubt, '%s' eines aktiven Abbilds zu verändern."
 
 msgid "Forbidden to reserve image."
 msgstr "Reservieren von Image nicht erlaubt."
@@ -1298,9 +1289,6 @@ msgstr "Name der einzufügenden Konfigurationsdatei."
 msgid "No authenticated user"
 msgstr "Kein authentifizierter Benutzer"
 
-msgid "No image data could be found"
-msgstr "Keine Imagedaten gefunden"
-
 #, python-format
 msgid "No image found with ID %s"
 msgstr "Es wurde kein Abbild mit der ID %s gefunden"
@@ -1523,10 +1511,6 @@ msgstr ""
 #, python-format
 msgid "Property's %(prop)s value has not been found"
 msgstr "Der Wert der Eigenschaft %(prop)s wurde nicht gefunden"
-
-#, python-format
-msgid "Provided header feature is unsupported: %(feature)s"
-msgstr "Angegebene Headerfunktion wird nicht unterstützt: %(feature)s"
 
 #, python-format
 msgid ""
@@ -2183,12 +2167,6 @@ msgstr ""
 "\n"
 "Der Antworttext:\n"
 "%(body)s"
-
-msgid ""
-"The requested image has been deactivated. Image data download is forbidden."
-msgstr ""
-"Das angeforderte Image wurde inaktiviert. Der Download von Imagedaten ist "
-"nicht zulässig. "
 
 msgid "The result of current task, JSON blob"
 msgstr "Das Ergebnis der aktuellen Task, JSON-Blob-Objekt"

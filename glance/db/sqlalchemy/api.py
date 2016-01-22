@@ -21,24 +21,26 @@
 
 """Defines interface for DB access."""
 
+import datetime
 import threading
 
 from oslo_config import cfg
 from oslo_db import exception as db_exception
 from oslo_db.sqlalchemy import session
 from oslo_log import log as logging
-from oslo_utils import timeutils
 import osprofiler.sqlalchemy
 from retrying import retry
 import six
 # NOTE(jokke): simplified transition to py3, behaves like py2 xrange
 from six.moves import range
 import sqlalchemy
+from sqlalchemy import MetaData, Table, select
 import sqlalchemy.orm as sa_orm
 import sqlalchemy.sql as sa_sql
 
 from glance import artifacts as ga
 from glance.common import exception
+from glance.common import timeutils
 from glance.common import utils
 from glance.db.sqlalchemy import artifacts
 from glance.db.sqlalchemy.metadef_api import (resource_type
@@ -50,13 +52,11 @@ from glance.db.sqlalchemy.metadef_api import object as metadef_object_api
 from glance.db.sqlalchemy.metadef_api import property as metadef_property_api
 from glance.db.sqlalchemy.metadef_api import tag as metadef_tag_api
 from glance.db.sqlalchemy import models
-from glance import i18n
+from glance.i18n import _, _LW, _LE, _LI
 
 BASE = models.BASE
 sa_logger = None
 LOG = logging.getLogger(__name__)
-_ = i18n._
-_LW = i18n._LW
 
 
 STATUSES = ['active', 'saving', 'queued', 'killed', 'pending_delete',
@@ -133,7 +133,7 @@ def image_update(context, image_id, values, purge_props=False,
     """
     Set the given properties on an image and update it.
 
-    :raises ImageNotFound if image does not exist.
+    :raises: ImageNotFound if image does not exist.
     """
     return _image_update(context, values, image_id, purge_props,
                          from_state=from_state)
@@ -210,7 +210,7 @@ def _check_image_id(image_id):
     wrapping the different behaviors between MySql and DB2 when the image id
     length is longer than the defined length in database model.
     :param image_id: The id of the image we want to check
-    :return: Raise NoFound exception if given image id is invalid
+    :returns: Raise NoFound exception if given image id is invalid
     """
     if (image_id and
        len(image_id) > models.Image.id.property.columns[0].type.length):
@@ -293,6 +293,25 @@ def is_image_visible(context, image, status=None):
     return False
 
 
+def _get_default_column_value(column_type):
+    """Return the default value of the columns from DB table
+
+    In postgreDB case, if no right default values are being set, an
+    psycopg2.DataError will be thrown.
+    """
+    type_schema = {
+        'datetime': None,
+        'big_integer': 0,
+        'integer': 0,
+        'string': ''
+    }
+
+    if isinstance(column_type, sa_sql.type_api.Variant):
+        return _get_default_column_value(column_type.impl)
+
+    return type_schema[column_type.__visit_name__]
+
+
 def _paginate_query(query, model, limit, sort_keys, marker=None,
                     sort_dir=None, sort_dirs=None):
     """Returns a query with sorting / pagination criteria added.
@@ -322,7 +341,7 @@ def _paginate_query(query, model, limit, sort_keys, marker=None,
     :param sort_dirs: per-column array of sort_dirs, corresponding to sort_keys
 
     :rtype: sqlalchemy.orm.query.Query
-    :return: The query with sorting/pagination added.
+    :returns: The query with sorting/pagination added.
     """
 
     if 'id' not in sort_keys:
@@ -330,17 +349,21 @@ def _paginate_query(query, model, limit, sort_keys, marker=None,
         # the actual primary key, rather than assuming its id
         LOG.warn(_LW('Id not in sort_keys; is sort_keys unique?'))
 
-    assert(not (sort_dir and sort_dirs))
+    assert(not (sort_dir and sort_dirs))  # nosec
+    # nosec: This function runs safely if the assertion fails.
 
     # Default the sort direction to ascending
-    if sort_dirs is None and sort_dir is None:
+    if sort_dir is None:
         sort_dir = 'asc'
 
     # Ensure a per-column sort direction
     if sort_dirs is None:
-        sort_dirs = [sort_dir for _sort_key in sort_keys]
+        sort_dirs = [sort_dir] * len(sort_keys)
 
-    assert(len(sort_dirs) == len(sort_keys))
+    assert(len(sort_dirs) == len(sort_keys))  # nosec
+    # nosec: This function runs safely if the assertion fails.
+    if len(sort_dirs) < len(sort_keys):
+        sort_dirs += [sort_dir] * (len(sort_keys) - len(sort_dirs))
 
     # Add sorting
     for current_sort_key, current_sort_dir in zip(sort_keys, sort_dirs):
@@ -372,17 +395,16 @@ def _paginate_query(query, model, limit, sort_keys, marker=None,
             crit_attrs = []
             for j in range(i):
                 model_attr = getattr(model, sort_keys[j])
-                default = None if isinstance(
-                    model_attr.property.columns[0].type,
-                    sqlalchemy.DateTime) else ''
+                default = _get_default_column_value(
+                    model_attr.property.columns[0].type)
                 attr = sa_sql.expression.case([(model_attr != None,
                                               model_attr), ],
                                               else_=default)
                 crit_attrs.append((attr == marker_values[j]))
 
             model_attr = getattr(model, sort_keys[i])
-            default = None if isinstance(model_attr.property.columns[0].type,
-                                         sqlalchemy.DateTime) else ''
+            default = _get_default_column_value(
+                model_attr.property.columns[0].type)
             attr = sa_sql.expression.case([(model_attr != None,
                                           model_attr), ],
                                           else_=default)
@@ -970,7 +992,7 @@ def _image_child_entry_delete_all(child_model_cls, image_id, delete_time=None,
     :param session: A SQLAlchemy session to use (if present)
 
     :rtype: int
-    :return: The number of child entries got soft-deleted.
+    :returns: The number of child entries got soft-deleted.
     """
     session = session or get_session()
 
@@ -1210,6 +1232,69 @@ def image_tag_get_all(context, image_id, session=None):
     return [tag[0] for tag in tags]
 
 
+def purge_deleted_rows(context, age_in_days, max_rows, session=None):
+    """Purges soft deleted rows
+
+    Deletes rows of table images, table tasks and all dependent tables
+    according to given age for relevant models.
+    """
+    try:
+        age_in_days = int(age_in_days)
+    except ValueError:
+        LOG.exception(_LE('Invalid value for age, %(age)d'),
+                      {'age': age_in_days})
+        raise exception.InvalidParameterValue(value=age_in_days,
+                                              param='age_in_days')
+    try:
+        max_rows = int(max_rows)
+    except ValueError:
+        LOG.exception(_LE('Invalid value for max_rows, %(max_rows)d'),
+                      {'max_rows': max_rows})
+        raise exception.InvalidParameterValue(value=max_rows,
+                                              param='max_rows')
+
+    session = session or get_session()
+    metadata = MetaData(get_engine())
+    deleted_age = timeutils.utcnow() - datetime.timedelta(days=age_in_days)
+
+    tables = []
+    for model_class in models.__dict__.values():
+        if not hasattr(model_class, '__tablename__'):
+            continue
+        if hasattr(model_class, 'deleted'):
+            tables.append(model_class.__tablename__)
+    # get rid of FX constraints
+    for tbl in ('images', 'tasks'):
+        try:
+            tables.remove(tbl)
+        except ValueError:
+            LOG.warning(_LW('Expected table %(tbl)s was not found in DB.'),
+                        **locals())
+        else:
+            tables.append(tbl)
+
+    for tbl in tables:
+        tab = Table(tbl, metadata, autoload=True)
+        LOG.info(
+            _LI('Purging deleted rows older than %(age_in_days)d day(s) '
+                'from table %(tbl)s'),
+            **locals()
+        )
+        with session.begin():
+            result = session.execute(
+                tab.delete().where(
+                    tab.columns.id.in_(
+                        select([tab.columns.id]).where(
+                            tab.columns.deleted_at < deleted_age
+                        ).limit(max_rows)
+                    )
+                )
+            )
+        rows = result.rowcount
+        LOG.info(_LI('Deleted %(rows)d row(s) from table %(tbl)s'),
+                 **locals())
+
+
 def user_get_storage_usage(context, owner_id, image_id=None, session=None):
     _check_image_id(image_id)
     session = session or get_session()
@@ -1258,9 +1343,8 @@ def _task_info_get(context, task_id, session=None):
     try:
         task_info_ref = query.one()
     except sa_orm.exc.NoResultFound:
-        msg = ("TaskInfo was not found for task with id %(task_id)s" %
-               {'task_id': task_id})
-        LOG.debug(msg)
+        LOG.debug("TaskInfo was not found for task with id %(task_id)s",
+                  {'task_id': task_id})
         task_info_ref = None
 
     return task_info_ref
@@ -1347,7 +1431,7 @@ def task_get_all(context, filters=None, marker=None, limit=None,
     :param admin_as_user: For backwards compatibility. If true, then return to
                       an admin the equivalent set of tasks which it would see
                       if it were a regular user
-    :return: tasks set
+    :returns: tasks set
     """
     filters = filters or {}
 
@@ -1423,8 +1507,7 @@ def _task_get(context, task_id, session=None, force_show_deleted=False):
     try:
         task_ref = query.one()
     except sa_orm.exc.NoResultFound:
-        msg = "No task found with ID %s" % task_id
-        LOG.debug(msg)
+        LOG.debug("No task found with ID %s", task_id)
         raise exception.TaskNotFound(task_id=task_id)
 
     # Make sure the task is visible
@@ -1438,7 +1521,8 @@ def _task_get(context, task_id, session=None, force_show_deleted=False):
 
 def _task_update(context, task_ref, values, session=None):
     """Apply supplied dictionary of values to a task object."""
-    values["deleted"] = False
+    if 'deleted' not in values:
+        values["deleted"] = False
     task_ref.update(values)
     task_ref.save(session=session)
     return task_ref

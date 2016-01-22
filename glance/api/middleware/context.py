@@ -21,9 +21,8 @@ import webob.exc
 from glance.api import policy
 from glance.common import wsgi
 import glance.context
-from glance import i18n
+from glance.i18n import _
 
-_ = i18n._
 
 context_opts = [
     cfg.BoolOpt('owner_is_tenant', default=True,
@@ -79,9 +78,10 @@ class ContextMiddleware(BaseContextMiddleware):
         of the req object.
 
         :param req: wsgi request object that will be given the context object
-        :raises webob.exc.HTTPUnauthorized: when value of the X-Identity-Status
-                                            header is not 'Confirmed' and
-                                            anonymous access is disallowed
+        :raises: webob.exc.HTTPUnauthorized: when value of the
+                                            X-Identity-Status  header is not
+                                            'Confirmed' and anonymous access
+                                            is disallowed
         """
         if req.headers.get('X-Identity-Status') == 'Confirmed':
             req.context = self._get_authenticated_context(req)

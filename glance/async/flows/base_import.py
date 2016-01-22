@@ -33,13 +33,10 @@ from taskflow.types import failure
 from glance.common import exception
 from glance.common.scripts.image_import import main as image_import
 from glance.common.scripts import utils as script_utils
-from glance import i18n
+from glance.i18n import _, _LE, _LI
 
 
 LOG = logging.getLogger(__name__)
-_ = i18n._
-_LE = i18n._LE
-_LI = i18n._LI
 
 
 CONF = cfg.CONF
@@ -68,7 +65,7 @@ class _CreateImage(task.Task):
             self.image_repo, self.image_factory,
             task_input.get('image_properties'), self.task_id)
 
-        LOG.debug("Task %(task_id)s created image %(image_id)s" %
+        LOG.debug("Task %(task_id)s created image %(image_id)s",
                   {'task_id': task.task_id, 'image_id': image.image_id})
         return image.image_id
 

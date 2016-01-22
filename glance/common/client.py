@@ -50,10 +50,9 @@ import six.moves.urllib.parse as urlparse
 from glance.common import auth
 from glance.common import exception
 from glance.common import utils
-from glance import i18n
+from glance.i18n import _
 
 LOG = logging.getLogger(__name__)
-_ = i18n._
 
 # common chunk size for get and put
 CHUNKSIZE = 65536
@@ -83,7 +82,7 @@ def handle_redirects(func):
 
     @functools.wraps(func)
     def wrapped(self, method, url, body, headers):
-        for _ in range(MAX_REDIRECTS):
+        for i in range(MAX_REDIRECTS):
             try:
                 return func(self, method, url, body, headers)
             except exception.RedirectException as redirect:
@@ -307,9 +306,8 @@ class BaseClient(object):
             if self.DEFAULT_DOC_ROOT:
                 doc_root = self.DEFAULT_DOC_ROOT.lstrip('/')
                 self.doc_root += '/' + doc_root
-                msg = ("Appending doc_root %(doc_root)s to URL %(url)s" %
-                       {'doc_root': doc_root, 'url': url})
-                LOG.debug(msg)
+                LOG.debug("Appending doc_root %(doc_root)s to URL %(url)s",
+                          {'doc_root': doc_root, 'url': url})
 
         # ensure connection kwargs are re-evaluated after the service catalog
         # publicURL is parsed for potential SSL usage
@@ -511,33 +509,39 @@ class BaseClient(object):
             def _retry(res):
                 return res.getheader('Retry-After')
 
+            def read_body(res):
+                body = res.read()
+                if six.PY3:
+                    body = body.decode('utf-8')
+                return body
+
             status_code = self.get_status_code(res)
             if status_code in self.OK_RESPONSE_CODES:
                 return res
             elif status_code in self.REDIRECT_RESPONSE_CODES:
                 raise exception.RedirectException(res.getheader('Location'))
             elif status_code == http_client.UNAUTHORIZED:
-                raise exception.NotAuthenticated(res.read())
+                raise exception.NotAuthenticated(read_body(res))
             elif status_code == http_client.FORBIDDEN:
-                raise exception.Forbidden(res.read())
+                raise exception.Forbidden(read_body(res))
             elif status_code == http_client.NOT_FOUND:
-                raise exception.NotFound(res.read())
+                raise exception.NotFound(read_body(res))
             elif status_code == http_client.CONFLICT:
-                raise exception.Duplicate(res.read())
+                raise exception.Duplicate(read_body(res))
             elif status_code == http_client.BAD_REQUEST:
-                raise exception.Invalid(res.read())
+                raise exception.Invalid(read_body(res))
             elif status_code == http_client.MULTIPLE_CHOICES:
-                raise exception.MultipleChoices(body=res.read())
+                raise exception.MultipleChoices(body=read_body(res))
             elif status_code == http_client.REQUEST_ENTITY_TOO_LARGE:
                 raise exception.LimitExceeded(retry=_retry(res),
-                                              body=res.read())
+                                              body=read_body(res))
             elif status_code == http_client.INTERNAL_SERVER_ERROR:
                 raise exception.ServerError()
             elif status_code == http_client.SERVICE_UNAVAILABLE:
                 raise exception.ServiceUnavailable(retry=_retry(res))
             else:
                 raise exception.UnexpectedStatus(status=status_code,
-                                                 body=res.read())
+                                                 body=read_body(res))
 
         except (socket.error, IOError) as e:
             raise exception.ClientConnectionError(e)

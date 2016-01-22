@@ -28,10 +28,8 @@ from oslo_config import cfg
 from oslo_policy import policy
 from paste import deploy
 
-from glance import i18n
+from glance.i18n import _
 from glance.version import version_info as version
-
-_ = i18n._
 
 paste_deploy_opts = [
     cfg.StrOpt('flavor',
@@ -45,7 +43,7 @@ paste_deploy_opts = [
 ]
 image_format_opts = [
     cfg.ListOpt('container_formats',
-                default=['ami', 'ari', 'aki', 'bare', 'ovf', 'ova'],
+                default=['ami', 'ari', 'aki', 'bare', 'ovf', 'ova', 'docker'],
                 help=_("Supported values for the 'container_format' "
                        "image attribute"),
                 deprecated_opts=[cfg.DeprecatedOpt('container_formats',
@@ -246,7 +244,7 @@ def load_paste_app(app_name, flavor=None, conf_file=None):
     :param flavor: name of the variant of the application to load
     :param conf_file: path to the paste config file
 
-    :raises RuntimeError when config file cannot be located or application
+    :raises: RuntimeError when config file cannot be located or application
             cannot be loaded from config file
     """
     # append the deployment flavor to the application name,

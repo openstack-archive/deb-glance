@@ -14,9 +14,7 @@
 
 from glance.artifacts.domain import proxy
 from glance.common import exception as exc
-from glance import i18n
-
-_ = i18n._
+from glance.i18n import _
 
 
 class ArtifactProxy(proxy.Artifact):
@@ -37,6 +35,7 @@ class ArtifactProxy(proxy.Artifact):
         path = kwargs.get("path")
         value = kwargs.get("value")
         prop_name, delimiter, path_left = path.lstrip('/').partition('/')
+        super(ArtifactProxy, self).get_type_specific_property(prop_name)
         if not path_left:
             return setattr(self, prop_name, value)
         try:

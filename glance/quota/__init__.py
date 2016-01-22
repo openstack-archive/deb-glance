@@ -25,12 +25,10 @@ import glance.common.exception as exception
 from glance.common import utils
 import glance.domain
 import glance.domain.proxy
-from glance import i18n
+from glance.i18n import _, _LI
 
 
 LOG = logging.getLogger(__name__)
-_ = i18n._
-_LI = i18n._LI
 CONF = cfg.CONF
 CONF.import_opt('image_member_quota', 'glance.common.config')
 CONF.import_opt('image_property_quota', 'glance.common.config')
@@ -57,11 +55,15 @@ def _calc_required_size(context, image, locations):
     else:
         for location in locations:
             size_from_backend = None
+
             try:
                 size_from_backend = store.get_size_from_backend(
                     location['url'], context=context)
             except (store.UnknownScheme, store.NotFound):
                 pass
+            except store.BadStoreUri:
+                raise exception.BadStoreUri
+
             if size_from_backend:
                 required_size = size_from_backend * len(locations)
                 break

@@ -20,7 +20,6 @@ from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_serialization import jsonutils as json
 from oslo_utils import encodeutils
-from oslo_utils import timeutils
 import six
 import six.moves.urllib.parse as urlparse
 import webob.exc
@@ -28,17 +27,16 @@ import webob.exc
 from glance.api import policy
 from glance.common import exception
 from glance.common import location_strategy
+from glance.common import timeutils
 from glance.common import utils
 from glance.common import wsgi
 import glance.db
 import glance.gateway
-from glance import i18n
+from glance.i18n import _, _LW
 import glance.notifier
 import glance.schema
 
 LOG = logging.getLogger(__name__)
-_ = i18n._
-_LW = i18n._LW
 
 CONF = cfg.CONF
 CONF.import_opt('disk_formats', 'glance.common.config', group='image_format')
@@ -144,7 +142,6 @@ class ImagesController(object):
 
             for change in changes:
                 change_method_name = '_do_%s' % change['op']
-                assert hasattr(self, change_method_name)
                 change_method = getattr(self, change_method_name)
                 change_method(req, image, change)
 

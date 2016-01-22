@@ -24,11 +24,10 @@ from oslo_utils import excutils
 
 from glance.common.client import BaseClient
 from glance.common import crypt
-from glance import i18n
+from glance.i18n import _LE
 from glance.registry.api.v1 import images
 
 LOG = logging.getLogger(__name__)
-_LE = i18n._LE
 
 
 class RegistryClient(BaseClient):
@@ -121,11 +120,10 @@ class RegistryClient(BaseClient):
                                                          **kwargs)
             status = res.status
             request_id = res.getheader('x-openstack-request-id')
-            msg = ("Registry request %(method)s %(action)s HTTP %(status)s"
-                   " request id %(request_id)s" %
-                   {'method': method, 'action': action,
-                    'status': status, 'request_id': request_id})
-            LOG.debug(msg)
+            LOG.debug("Registry request %(method)s %(action)s HTTP %(status)s"
+                      " request id %(request_id)s",
+                      {'method': method, 'action': action,
+                       'status': status, 'request_id': request_id})
 
         except Exception as exc:
             with excutils.save_and_reraise_exception():

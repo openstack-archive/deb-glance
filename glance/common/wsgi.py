@@ -48,12 +48,8 @@ from webob import multidict
 from glance.common import exception
 from glance.common import utils
 from glance import i18n
+from glance.i18n import _, _LE, _LI, _LW
 
-
-_ = i18n._
-_LE = i18n._LE
-_LI = i18n._LI
-_LW = i18n._LW
 
 bind_opts = [
     cfg.StrOpt('bind_host', default='0.0.0.0',
@@ -109,7 +105,10 @@ profiler_opts = [
     cfg.BoolOpt("enabled", default=False,
                 help=_('If False fully disable profiling feature.')),
     cfg.BoolOpt("trace_sqlalchemy", default=False,
-                help=_("If False doesn't trace SQL requests."))
+                help=_("If False doesn't trace SQL requests.")),
+    cfg.StrOpt("hmac_keys", default="SECRET_KEY",
+               help=_("Secret key to use to sign Glance API and Glance "
+                      "Registry services tracing messages.")),
 ]
 
 
@@ -161,7 +160,7 @@ def get_socket(default_port):
 
     :param default_port: port to bind to if none is specified in conf
 
-    :returns : a socket object as returned from socket.listen or
+    :returns: a socket object as returned from socket.listen or
                ssl.wrap_socket if conf specifies cert_file
     """
     bind_addr = get_bind_addr(default_port)
@@ -316,7 +315,7 @@ class Server(object):
                 self.run_child()
 
     def create_pool(self):
-        return eventlet.GreenPool(size=self.threads)
+        return get_asynchronous_eventlet_pool(size=self.threads)
 
     def _remove_children(self, pid):
         if pid in self.children:
@@ -645,7 +644,7 @@ class APIMapper(routes.Mapper):
 
 class RejectMethodController(object):
     def reject(self, req, allowed_methods, *args, **kwargs):
-        LOG.debug("The method %s is not allowed for this resource" %
+        LOG.debug("The method %s is not allowed for this resource",
                   req.environ['REQUEST_METHOD'])
         raise webob.exc.HTTPMethodNotAllowed(
             headers=[('Allow', allowed_methods)])
@@ -888,6 +887,11 @@ class Resource(object):
             exc_info = sys.exc_info()
             e = translate_exception(request, e)
             six.reraise(type(e), e, exc_info[2])
+        except UnicodeDecodeError:
+            msg = _("Error decoding your request. Either the URL or the "
+                    "request body contained characters that could not be "
+                    "decoded by Glance")
+            raise webob.exc.HTTPBadRequest(explanation=msg)
         except Exception as e:
             LOG.exception(_LE("Caught error: %s"), six.text_type(e))
             response = webob.exc.HTTPInternalServerError()

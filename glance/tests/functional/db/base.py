@@ -20,11 +20,12 @@ import datetime
 import uuid
 
 import mock
-from oslo_utils import timeutils
 # NOTE(jokke): simplified transition to py3, behaves like py2 xrange
 from six.moves import range
+from six.moves import reduce
 
 from glance.common import exception
+from glance.common import timeutils
 from glance import context
 from glance.tests import functional
 import glance.tests.functional.db as db_tests
@@ -75,7 +76,7 @@ def build_task_fixture(**kwargs):
         'message': None,
         'expires_at': None,
         'created_at': default_datetime,
-        'updated_at': default_datetime
+        'updated_at': default_datetime,
     }
     task.update(kwargs)
     return task
@@ -545,6 +546,14 @@ class DriverTests(object):
     def test_image_get_all_marker(self):
         images = self.db_api.image_get_all(self.context, marker=UUID3)
         self.assertEqual(2, len(images))
+
+    def test_image_get_all_marker_with_size(self):
+        # Use sort_key=size to test BigInteger
+        images = self.db_api.image_get_all(self.context, sort_key=['size'],
+                                           marker=UUID3)
+        self.assertEqual(2, len(images))
+        self.assertEqual(17, images[0]['size'])
+        self.assertEqual(13, images[1]['size'])
 
     def test_image_get_all_marker_deleted(self):
         """Cannot specify a deleted image as a marker."""
@@ -1785,6 +1794,62 @@ class TaskTests(test_utils.BaseTestCase):
         self.assertEqual(task_id, del_task['id'])
         self.assertTrue(del_task['deleted'])
         self.assertIsNotNone(del_task['deleted_at'])
+
+
+class DBPurgeTests(test_utils.BaseTestCase):
+
+    def setUp(self):
+        super(DBPurgeTests, self).setUp()
+        self.adm_context = context.get_admin_context(show_deleted=True)
+        self.db_api = db_tests.get_db(self.config)
+        db_tests.reset_db(self.db_api)
+        self.image_fixtures, self.task_fixtures = self.build_fixtures()
+        self.create_tasks(self.task_fixtures)
+        self.create_images(self.image_fixtures)
+
+    def build_fixtures(self):
+        dt1 = timeutils.utcnow() - datetime.timedelta(days=5)
+        dt2 = dt1 + datetime.timedelta(days=1)
+        dt3 = dt2 + datetime.timedelta(days=1)
+        fixtures = [
+            {
+                'created_at': dt1,
+                'updated_at': dt1,
+                'deleted_at': dt3,
+                'deleted': True,
+            },
+            {
+                'created_at': dt1,
+                'updated_at': dt2,
+                'deleted_at': timeutils.utcnow(),
+                'deleted': True,
+            },
+            {
+                'created_at': dt2,
+                'updated_at': dt2,
+                'deleted_at': None,
+                'deleted': False,
+            },
+        ]
+        return (
+            [build_image_fixture(**fixture) for fixture in fixtures],
+            [build_task_fixture(**fixture) for fixture in fixtures],
+        )
+
+    def create_images(self, images):
+        for fixture in images:
+            self.db_api.image_create(self.adm_context, fixture)
+
+    def create_tasks(self, tasks):
+        for fixture in tasks:
+            self.db_api.task_create(self.adm_context, fixture)
+
+    def test_db_purge(self):
+        self.db_api.purge_deleted_rows(self.adm_context, 1, 5)
+        images = self.db_api.image_get_all(self.adm_context)
+        self.assertEqual(len(images), 2)
+        tasks = self.db_api.task_get_all(self.adm_context)
+        self.assertEqual(len(tasks), 2)
 
 
 class TestVisibility(test_utils.BaseTestCase):

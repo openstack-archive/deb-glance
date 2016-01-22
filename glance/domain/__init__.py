@@ -22,16 +22,12 @@ from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_utils import excutils
 from oslo_utils import importutils
-from oslo_utils import timeutils
 import six
 
 from glance.common import exception
-from glance import i18n
+from glance.common import timeutils
+from glance.i18n import _, _LE, _LI, _LW
 
-_ = i18n._
-_LE = i18n._LE
-_LI = i18n._LI
-_LW = i18n._LW
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
 CONF.import_opt('task_executor', 'glance.common.config', group='task')
@@ -254,9 +250,8 @@ class Image(object):
             # Noop if already deactive
             pass
         else:
-            msg = ("Not allowed to deactivate image in status '%s'"
-                   % self.status)
-            LOG.debug(msg)
+            LOG.debug("Not allowed to deactivate image in status '%s'",
+                      self.status)
             msg = (_("Not allowed to deactivate image in status '%s'")
                    % self.status)
             raise exception.Forbidden(message=msg)
@@ -268,9 +263,8 @@ class Image(object):
             # Noop if already active
             pass
         else:
-            msg = ("Not allowed to reactivate image in status '%s'"
-                   % self.status)
-            LOG.debug(msg)
+            LOG.debug("Not allowed to reactivate image in status '%s'",
+                      self.status)
             msg = (_("Not allowed to reactivate image in status '%s'")
                    % self.status)
             raise exception.Forbidden(message=msg)
@@ -507,7 +501,7 @@ class TaskExecutorFactory(object):
 
             executor_cls = ('glance.async.%s_executor.'
                             'TaskExecutor' % task_executor)
-            LOG.debug("Loading %s executor" % task_executor)
+            LOG.debug("Loading %s executor", task_executor)
             executor = importutils.import_class(executor_cls)
             return executor(context,
                             self.task_repo,

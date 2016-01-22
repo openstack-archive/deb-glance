@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 import glance_store
+from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_utils import encodeutils
 from oslo_utils import excutils
@@ -20,17 +21,18 @@ import webob.exc
 
 import glance.api.policy
 from glance.common import exception
+from glance.common import trust_auth
 from glance.common import utils
 from glance.common import wsgi
 import glance.db
 import glance.gateway
-from glance import i18n
+from glance.i18n import _, _LE, _LI
 import glance.notifier
 
 
 LOG = logging.getLogger(__name__)
-_ = i18n._
-_LE = i18n._LE
+
+CONF = cfg.CONF
 
 
 class ImageDataController(object):
@@ -83,14 +85,57 @@ class ImageDataController(object):
     def upload(self, req, image_id, data, size):
         image_repo = self.gateway.get_repo(req.context)
         image = None
+        refresher = None
+        cxt = req.context
         try:
             image = image_repo.get(image_id)
             image.status = 'saving'
             try:
+                if CONF.data_api == 'glance.db.registry.api':
+                    # create a trust if backend is registry
+                    try:
+                        # request user pluging for current token
+                        user_plugin = req.environ.get('keystone.token_auth')
+                        roles = []
+                        # use roles from request environment because they
+                        # are not transformed to lower-case unlike cxt.roles
+                        for role_info in req.environ.get(
+                                'keystone.token_info')['token']['roles']:
+                            roles.append(role_info['name'])
+                        refresher = trust_auth.TokenRefresher(user_plugin,
+                                                              cxt.tenant,
+                                                              roles)
+                    except Exception as e:
+                        LOG.info(_LI("Unable to create trust: %s "
+                                     "Use the existing user token."),
+                                 encodeutils.exception_to_unicode(e))
+
                 image_repo.save(image)
                 image.set_data(data, size)
-                image_repo.save(image, from_state='saving')
-            except (exception.ImageNotFound, exception.Conflict):
+
+                try:
+                    image_repo.save(image, from_state='saving')
+                except exception.NotAuthenticated as e:
+                    if refresher is not None:
+                        # request a new token to update an image in database
+                        cxt.auth_token = refresher.refresh_token()
+                        image_repo = self.gateway.get_repo(req.context)
+                        image_repo.save(image, from_state='saving')
+                    else:
+                        raise e
+
+                try:
+                    # release resources required for re-auth
+                    if refresher is not None:
+                        refresher.release_resources()
+                except Exception as e:
+                    LOG.info(_LI("Unable to delete trust %(trust)s: %(msg)s"),
+                             {"trust": refresher.trust_id,
+                              "msg": encodeutils.exception_to_unicode(e)})
+
+            except (glance_store.NotFound,
+                    exception.ImageNotFound,
+                    exception.Conflict):
                 msg = (_("Image %s could not be found after upload. "
                          "The image may have been deleted during the "
                          "upload, cleaning up the chunks uploaded.") %

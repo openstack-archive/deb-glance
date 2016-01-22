@@ -35,13 +35,11 @@ from glance.common import wsgi
 from glance.common import wsme_utils
 import glance.db
 import glance.gateway
-from glance import i18n
+from glance.i18n import _, _LE
 import glance.notifier
 import glance.schema
 
 LOG = logging.getLogger(__name__)
-_ = i18n._
-_LE = i18n._LE
 
 CONF = cfg.CONF
 
@@ -202,9 +200,8 @@ class NamespaceController(object):
                 namespace_obj = namespace_repo.get(namespace.namespace)
                 namespace_obj.delete()
                 namespace_repo.remove(namespace_obj)
-                msg = ("Cleaned up namespace %(namespace)s "
-                       % {'namespace': namespace.namespace})
-                LOG.debug(msg)
+                LOG.debug("Cleaned up namespace %(namespace)s ",
+                          {'namespace': namespace.namespace})
             except exception:
                 msg = (_LE("Failed to delete namespace %(namespace)s ") %
                        {'namespace': namespace.namespace})

@@ -22,16 +22,14 @@ from oslo_log import log as logging
 import oslo_messaging
 from oslo_utils import encodeutils
 from oslo_utils import excutils
-from oslo_utils import timeutils
 import six
 import webob
 
 from glance.common import exception
+from glance.common import timeutils
 from glance.domain import proxy as domain_proxy
-from glance import i18n
+from glance.i18n import _, _LE
 
-_ = i18n._
-_LE = i18n._LE
 
 notifier_opts = [
     cfg.StrOpt('default_publisher_id', default="image.localhost",
@@ -57,6 +55,10 @@ _ALIASES = {
     'glance.openstack.common.rpc.impl_qpid': 'qpid',
     'glance.openstack.common.rpc.impl_zmq': 'zmq',
 }
+
+
+def set_defaults(control_exchange='glance'):
+    oslo_messaging.set_transport_defaults(control_exchange)
 
 
 def get_transport():

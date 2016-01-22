@@ -73,6 +73,7 @@ def main():
         config.parse_args()
         wsgi.set_eventlet_hub()
         logging.setup(CONF, 'glance')
+        notifier.set_defaults()
 
         if cfg.CONF.profiler.enabled:
             _notifier = osprofiler.notifier.create("Messaging",
@@ -81,6 +82,7 @@ def main():
                                                    "glance", "api",
                                                    cfg.CONF.bind_host)
             osprofiler.notifier.set(_notifier)
+            osprofiler.web.enable(cfg.CONF.profiler.hmac_keys)
         else:
             osprofiler.web.disable()
 

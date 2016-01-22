@@ -370,14 +370,21 @@ filesystem_store_datadir=%(image_dir)s
 default_store = %(default_store)s
 """
         self.paste_conf_base = """[pipeline:glance-api]
-pipeline = healthcheck versionnegotiation gzip unauthenticated-context rootapp
+pipeline =
+    cors
+    healthcheck
+    versionnegotiation
+    gzip
+    unauthenticated-context
+    rootapp
 
 [pipeline:glance-api-caching]
-pipeline = healthcheck versionnegotiation gzip unauthenticated-context
+pipeline = cors healthcheck versionnegotiation gzip unauthenticated-context
  cache rootapp
 
 [pipeline:glance-api-cachemanagement]
 pipeline =
+    cors
     healthcheck
     versionnegotiation
     gzip
@@ -387,10 +394,10 @@ pipeline =
     rootapp
 
 [pipeline:glance-api-fakeauth]
-pipeline = healthcheck versionnegotiation gzip fakeauth context rootapp
+pipeline = cors healthcheck versionnegotiation gzip fakeauth context rootapp
 
 [pipeline:glance-api-noauth]
-pipeline = healthcheck versionnegotiation gzip context rootapp
+pipeline = cors healthcheck versionnegotiation gzip context rootapp
 
 [composite:rootapp]
 paste.composite_factory = glance.api:root_app_factory
@@ -439,6 +446,10 @@ paste.filter_factory =
 
 [filter:fakeauth]
 paste.filter_factory = glance.tests.utils:FakeAuthMiddleware.factory
+
+[filter:cors]
+paste.filter_factory = oslo_middleware.cors:filter_factory
+allowed_origin=http://valid.example.com
 """
 
 
@@ -550,7 +561,6 @@ class ScrubberDaemon(Server):
         self.conf_base = """[DEFAULT]
 verbose = %(verbose)s
 debug = %(debug)s
-filesystem_store_datadir=%(image_dir)s
 log_file = %(log_file)s
 daemon = %(daemon)s
 wakeup_time = 2
@@ -563,6 +573,8 @@ sql_connection = %(sql_connection)s
 sql_idle_timeout = 3600
 send_identity_headers = %(send_identity_headers)s
 admin_role = %(admin_role)s
+[glance_store]
+filesystem_store_datadir=%(image_dir)s
 [oslo_policy]
 policy_file = %(policy_file)s
 policy_default_rule = %(policy_default_rule)s
@@ -823,7 +835,7 @@ class FunctionalTest(test_utils.BaseTestCase):
         :param expect_launch: Optional, true iff the server(s) are
                               expected to successfully start
         :param timeout: Optional, defaults to 30 seconds
-        :return: None if launch expectation is met, otherwise an
+        :returns: None if launch expectation is met, otherwise an
                  assertion message
         """
         now = datetime.datetime.now()

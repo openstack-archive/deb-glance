@@ -19,23 +19,22 @@ import glance_store
 from oslo_log import log as logging
 from oslo_serialization import jsonutils
 from oslo_utils import encodeutils
-from oslo_utils import timeutils
 import six
 import webob
 
 from glance.api import policy
 from glance.common import exception
+from glance.common import timeutils
 from glance.common import utils
 from glance.common import wsgi
 import glance.db
 import glance.gateway
-from glance import i18n
+from glance.i18n import _
 import glance.notifier
 import glance.schema
 
 
 LOG = logging.getLogger(__name__)
-_ = i18n._
 
 
 class ImageMembersController(object):

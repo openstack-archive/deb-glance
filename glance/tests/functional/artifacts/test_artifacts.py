@@ -250,11 +250,15 @@ paste.filter_factory = glance.tests.utils:FakeAuthMiddleware.factory
         self.assertEqual(status, response.status_code)
         return response.text
 
-    def _check_artifact_patch(self, url, data, status=200):
-        return self._check_artifact_method("patch", url, data, status)
+    def _check_artifact_patch(self, url, data, status=200,
+                              headers={'Content-Type': 'application/json'}):
+        return self._check_artifact_method("patch", url, data, status=status,
+                                           headers=headers)
 
-    def _check_artifact_put(self, url, data, status=200):
-        return self._check_artifact_method("put", url, data, status=status)
+    def _check_artifact_put(self, url, data, status=200,
+                            headers={'Content-Type': 'application/json'}):
+        return self._check_artifact_method("put", url, data, status=status,
+                                           headers=headers)
 
     def test_list_any_artifacts(self):
         """Returns information about all draft artifacts with given endpoint"""
@@ -490,6 +494,81 @@ paste.filter_factory = glance.tests.utils:FakeAuthMiddleware.factory
                                   headers=headers,
                                   data='ZZZZZ', status=200)
         self._check_artifact_delete('/withblob/v1/%s' % art['id'])
+
+    def test_update_nonexistent_property_by_replace_op(self):
+        art = self._create_artifact('withprops', data={'name': 'some art',
+                                                       'version': '4.2'})
+        data = [{'op': 'replace', 'value': 'some value',
+                 'path': '/nonexistent_property'}]
+        result = self._check_artifact_patch('/withprops/v1/%s' %
+                                            art['id'],
+                                            data=data,
+                                            status=400)
+        actual = u'''\
+<html>
+ <head>
+  <title>400 Bad Request</title>
+ </head>
+ <body>
+  <h1>400 Bad Request</h1>
+  Artifact has no property nonexistent_property<br /><br />
+
+
+
+ </body>
+</html>'''
+
+        self.assertEqual(actual, result)
+
+    def test_update_nonexistent_property_by_remove_op(self):
+        art = self._create_artifact('withprops', data={'name': 'some art',
+                                                       'version': '4.2'})
+        data = [{'op': 'replace', 'value': 'some value',
+                 'path': '/nonexistent_property'}]
+        result = self._check_artifact_patch('/withprops/v1/%s' %
+                                            art['id'],
+                                            data=data,
+                                            status=400)
+        actual = u'''\
+<html>
+ <head>
+  <title>400 Bad Request</title>
+ </head>
+ <body>
+  <h1>400 Bad Request</h1>
+  Artifact has no property nonexistent_property<br /><br />
+
+
+
+ </body>
+</html>'''
+
+        self.assertEqual(actual, result)
+
+    def test_update_nonexistent_property_by_add_op(self):
+        art = self._create_artifact('withprops', data={'name': 'some art',
+                                                       'version': '4.2'})
+        data = [{'op': 'replace', 'value': 'some value',
+                 'path': '/nonexistent_property'}]
+        result = self._check_artifact_patch('/withprops/v1/%s' %
+                                            art['id'],
+                                            data=data,
+                                            status=400)
+        actual = u'''\
+<html>
+ <head>
+  <title>400 Bad Request</title>
+ </head>
+ <body>
+  <h1>400 Bad Request</h1>
+  Artifact has no property nonexistent_property<br /><br />
+
+
+
+ </body>
+</html>'''
+
+        self.assertEqual(actual, result)
 
     def test_update_array_property_by_replace_op(self):
         art = self._create_artifact('withprops', data={'name': 'some art',
@@ -1025,6 +1104,18 @@ paste.filter_factory = glance.tests.utils:FakeAuthMiddleware.factory
                                   headers=headers,
                                   data='ZZZZZ', status=200)
 
+    def test_upload_file_with_invalid_content_type(self):
+        art = self._create_artifact('withblob')
+        data = {'data': 'jjjjjj'}
+        res = self._check_artifact_post('/withblob/v1/%s/blob1' % art['id'],
+                                        data=data, status=400)
+        self.assertIn('Invalid Content-Type for work with blob1', res)
+
+        res = self._check_artifact_post('/withblob/v1/%s/blob_list'
+                                        % art['id'],
+                                        data=data, status=400)
+        self.assertIn('Invalid Content-Type for work with blob_list', res)
+
     def test_upload_list_files(self):
         art = self._create_artifact('withblob')
         headers = self._headers({'Content-Type': 'application/octet-stream'})
@@ -1303,6 +1394,13 @@ paste.filter_factory = glance.tests.utils:FakeAuthMiddleware.factory
             artifact_type[u'versions'].sort(key=lambda x: x[u'id'])
 
         self.assertEqual(actual, response)
+
+    def test_invalid_content_type(self):
+        data = {'name': 'name1', 'version': '2.2'}
+        self._check_artifact_post('/withprops/v1.0/drafts',
+                                  data=data,
+                                  status=400,
+                                  headers={'Content-Type': 'lalala'})
 
     def test_filter_by_non_dict_props(self):
         data = {'name': 'art1',
@@ -1874,3 +1972,12 @@ paste.filter_factory = glance.tests.utils:FakeAuthMiddleware.factory
         result = self._check_artifact_get(url=url)['artifacts']
 
         self.assertEqual(1, len(result))
+
+    def test_filter_by_bad_version(self):
+        bad_versions = ['kkk', '1.k', 'h.0', '1.3.hf', 's.9.2s2']
+        response_string = ('The format of the version %s is not valid. '
+                           'Use semver notation')
+        for bad_version in bad_versions:
+            url = '/withprops/v1.0/drafts?version=gt:%s' % bad_version
+            result = self._check_artifact_get(url=url, status=400)
+            self.assertIn(response_string % bad_version, result)

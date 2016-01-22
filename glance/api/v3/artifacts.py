@@ -35,12 +35,10 @@ from glance.common import jsonpatchvalidator
 from glance.common import utils
 from glance.common import wsgi
 import glance.db
-from glance import i18n
+from glance.i18n import _, _LE
 from oslo_log import log as logging
 
 LOG = logging.getLogger(__name__)
-_LE = i18n._LE
-_ = i18n._
 
 possible_topdir = os.path.normpath(os.path.join(os.path.abspath(sys.argv[0]),
                                                 os.pardir,
@@ -116,6 +114,13 @@ class ArtifactsController(object):
                     filter['value'] = self._get_latest_version(
                         req, filters['name'][0]['value'], type_name,
                         type_version)
+                else:
+                    try:
+                        semantic_version.Version(filter['value'], partial=True)
+                    except ValueError:
+                        msg = (_('The format of the version %s is not valid. '
+                                 'Use semver notation') % filter['value'])
+                        raise webob.exc.HTTPBadRequest(explanation=msg)
 
         res = artifact_repo.list(filters=filters,
                                  show_level=Showlevel.BASIC,
@@ -179,6 +184,10 @@ class ArtifactsController(object):
                                                             type_name,
                                                             type_version)
             self._ensure_write_access(artifact, req.context)
+            if artifact.metadata.attributes.blobs.get(path) is not None:
+                msg = _('Invalid Content-Type for work with %s') % path
+                raise webob.exc.HTTPBadRequest(explanation=msg)
+
             # use updater mixin to perform updates: generate update path
             if req.method == "PUT":
                 # replaces existing value or creates a new one
@@ -556,17 +565,26 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer,
         except exception.ArtifactPluginNotFound as e:
             raise webob.exc.HTTPBadRequest(explanation=e.msg)
 
+    def _validate_headers(self, req, content_type='application/json'):
+        header = req.headers.get('Content-Type')
+        if header != content_type:
+            msg = _('Invalid headers "Content-Type": %s') % header
+            raise webob.exc.HTTPBadRequest(explanation=msg)
+
     def create(self, req):
+        self._validate_headers(req)
         res = self._process_type_from_request(req, True)
         res["artifact_data"] = self._get_request_body(req)
         return res
 
     def update(self, req):
+        self._validate_headers(req)
         res = self._process_type_from_request(req)
         res["changes"] = self.validate_body(req)
         return res
 
     def update_property(self, req):
+        self._validate_headers(req)
         """Data is expected in form {'data': ...}"""
         res = self._process_type_from_request(req)
         data_schema = {
@@ -592,6 +610,7 @@ class RequestDeserializer(wsgi.JSONRequestDeserializer,
             raise webob.exc.HTTPBadRequest(explanation=msg)
 
     def upload(self, req):
+        self._validate_headers(req, content_type='application/octet-stream')
         res = self._process_type_from_request(req)
         index = req.urlvars.get('path_left')
         try:

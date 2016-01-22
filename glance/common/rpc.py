@@ -23,18 +23,16 @@ from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_utils import encodeutils
 import oslo_utils.importutils as imp
-from oslo_utils import timeutils
 import six
 from webob import exc
 
 from glance.common import client
 from glance.common import exception
+from glance.common import timeutils
 from glance.common import wsgi
-from glance import i18n
+from glance.i18n import _, _LE
 
 LOG = logging.getLogger(__name__)
-_ = i18n._
-_LE = i18n._LE
 
 
 rpc_opts = [
@@ -114,7 +112,7 @@ class Controller(object):
         :params excluded: List of methods to exclude.
         :params refiner: Callable to use as filter for methods.
 
-        :raises AssertionError: If refiner is not callable.
+        :raises TypeError: If refiner is not callable.
         """
 
         funcs = filter(lambda x: not x.startswith("_"), dir(resource))
@@ -126,7 +124,6 @@ class Controller(object):
             funcs = [f for f in funcs if f not in excluded]
 
         if refiner:
-            assert callable(refiner), "Refiner must be callable"
             funcs = filter(refiner, funcs)
 
         for name in funcs:

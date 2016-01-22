@@ -25,17 +25,16 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import hashes
 from cryptography import x509
+import debtcollector
 from oslo_log import log as logging
 from oslo_serialization import base64
 from oslo_utils import encodeutils
 import six
 
 from glance.common import exception
-from glance import i18n
+from glance.i18n import _LE
 
 LOG = logging.getLogger(__name__)
-_ = i18n._
-_LE = i18n._LE
 
 
 # Note: This is the signature hash method, which is independent from the
@@ -72,7 +71,8 @@ MASK_GEN_ALGORITHMS = {
 }
 
 # Required image property names
-(SIGNATURE, HASH_METHOD, KEY_TYPE, CERT_UUID) = (
+# TODO(bpoulos): remove when 'sign-the-hash' approach is no longer supported
+(OLD_SIGNATURE, OLD_HASH_METHOD, OLD_KEY_TYPE, OLD_CERT_UUID) = (
     'signature',
     'signature_hash_method',
     'signature_key_type',
@@ -80,6 +80,7 @@ MASK_GEN_ALGORITHMS = {
 )
 
 # Optional image property names for RSA-PSS
+# TODO(bpoulos): remove when 'sign-the-hash' approach is no longer supported
 (MASK_GEN_ALG, PSS_SALT_LENGTH) = (
     'mask_gen_algorithm',
     'pss_salt_length'
@@ -95,7 +96,7 @@ def create_verifier_for_pss(signature, hash_method, public_key,
     :param hash_method: the hash method to use, as a cryptography object
     :param public_key: the public key to use, as a cryptography object
     :param image_properties: the key-value properties about the image
-    :return: the verifier to use to verify the signature for RSA-PSS
+    :returns: the verifier to use to verify the signature for RSA-PSS
     :raises: SignatureVerificationError if the RSA-PSS specific properties
                                         are invalid
     """
@@ -135,6 +136,7 @@ KEY_TYPE_METHODS = {
 }
 
 
+@debtcollector.removals.remove(message="This will be removed in the N cycle.")
 def should_verify_signature(image_properties):
     """Determine whether a signature should be verified.
 
@@ -142,22 +144,30 @@ def should_verify_signature(image_properties):
     that signature verification should be done.
 
     :param image_properties: the key-value properties about the image
-    :return: True, if signature metadata properties exist, False otherwise
+    :returns: True, if signature metadata properties exist, False otherwise
     """
     return (image_properties is not None and
-            CERT_UUID in image_properties and
-            HASH_METHOD in image_properties and
-            SIGNATURE in image_properties and
-            KEY_TYPE in image_properties)
+            OLD_CERT_UUID in image_properties and
+            OLD_HASH_METHOD in image_properties and
+            OLD_SIGNATURE in image_properties and
+            OLD_KEY_TYPE in image_properties)
 
 
+@debtcollector.removals.remove(
+    message="Starting with the Mitaka release, this approach to signature "
+            "verification using the image 'checksum' and signature metadata "
+            "properties that do not start with 'img' will not be supported. "
+            "This functionality will be removed in the N release. This "
+            "approach is being replaced with a signature of the data "
+            "directly, instead of a signature of the hash method, and the new "
+            "approach uses properties that start with 'img_'.")
 def verify_signature(context, checksum_hash, image_properties):
     """Retrieve the image properties and use them to verify the signature.
 
     :param context: the user context for authentication
     :param checksum_hash: the 'checksum' hash of the image data
     :param image_properties: the key-value properties about the image
-    :return: True if verification succeeds
+    :returns: True if verification succeeds
     :raises: SignatureVerificationError if verification fails
     """
     if not should_verify_signature(image_properties):
@@ -168,19 +178,28 @@ def verify_signature(context, checksum_hash, image_properties):
     if isinstance(checksum_hash, six.text_type):
         checksum_hash = checksum_hash.encode('utf-8')
 
-    signature = get_signature(image_properties[SIGNATURE])
-    hash_method = get_hash_method(image_properties[HASH_METHOD])
+    signature = get_signature(image_properties[OLD_SIGNATURE])
+    hash_method = get_hash_method(image_properties[OLD_HASH_METHOD])
     signature_key_type = get_signature_key_type(
-        image_properties[KEY_TYPE])
+        image_properties[OLD_KEY_TYPE])
     public_key = get_public_key(context,
-                                image_properties[CERT_UUID],
+                                image_properties[OLD_CERT_UUID],
                                 signature_key_type)
 
     # create the verifier based on the signature key type
-    verifier = KEY_TYPE_METHODS[signature_key_type](signature,
-                                                    hash_method,
-                                                    public_key,
-                                                    image_properties)
+    try:
+        verifier = KEY_TYPE_METHODS[signature_key_type](signature,
+                                                        hash_method,
+                                                        public_key,
+                                                        image_properties)
+    except crypto_exception.UnsupportedAlgorithm as e:
+        msg = (_LE("Unable to create verifier since algorithm is "
+                   "unsupported: %(e)s")
+               % {'e': encodeutils.exception_to_unicode(e)})
+        LOG.error(msg)
+        raise exception.SignatureVerificationError(
+            'Unable to verify signature since the algorithm is unsupported '
+            'on this system')
 
     if verifier:
         # Verify the signature
@@ -201,7 +220,7 @@ def get_signature(signature_data):
     """Decode the signature data and returns the signature.
 
     :param siganture_data: the base64-encoded signature data
-    :return: the decoded signature
+    :returns: the decoded signature
     :raises: SignatureVerificationError if the signature data is malformatted
     """
     try:
@@ -217,7 +236,7 @@ def get_hash_method(hash_method_name):
     """Verify the hash method name and create the hash method.
 
     :param hash_method_name: the name of the hash method to retrieve
-    :return: the hash method, a cryptography object
+    :returns: the hash method, a cryptography object
     :raises: SignatureVerificationError if the hash method name is invalid
     """
     if hash_method_name not in HASH_METHODS:
@@ -231,7 +250,7 @@ def get_signature_key_type(signature_key_type):
     """Verify the signature key type.
 
     :param signature_key_type: the key type of the signature
-    :return: the validated signature key type
+    :returns: the validated signature key type
     :raises: SignatureVerificationError if the signature key type is invalid
     """
     if signature_key_type not in SIGNATURE_KEY_TYPES:
@@ -248,7 +267,7 @@ def get_public_key(context, signature_certificate_uuid, signature_key_type):
     :param signature_certificate_uuid: the uuid to use to retrieve the
                                        certificate
     :param signature_key_type: the key type of the signature
-    :return: the public key cryptography object
+    :returns: the public key cryptography object
     :raises: SignatureVerificationError if public key format is invalid
     """
     certificate = get_certificate(context, signature_certificate_uuid)
@@ -272,7 +291,7 @@ def get_certificate(context, signature_certificate_uuid):
     :param context: the user context for authentication
     :param signature_certificate_uuid: the uuid to use to retrieve the
                                        certificate
-    :return: the certificate cryptography object
+    :returns: the certificate cryptography object
     :raises: SignatureVerificationError if the retrieval fails or the format
              is invalid
     """

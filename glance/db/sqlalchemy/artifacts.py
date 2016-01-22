@@ -19,7 +19,6 @@ import uuid
 from enum import Enum
 from oslo_config import cfg
 from oslo_db import exception as db_exc
-from oslo_utils import timeutils
 import sqlalchemy
 from sqlalchemy import and_
 from sqlalchemy import case
@@ -30,13 +29,12 @@ from sqlalchemy.orm import joinedload
 import glance.artifacts as ga
 from glance.common import exception
 from glance.common import semver_db
+from glance.common import timeutils
 from glance.db.sqlalchemy import models_artifacts as models
-from glance import i18n
+from glance.i18n import _LE, _LW
 from oslo_log import log as os_logging
 
 LOG = os_logging.getLogger(__name__)
-_LW = i18n._LW
-_LE = i18n._LE
 
 CONF = cfg.CONF
 
@@ -154,7 +152,7 @@ def publish(context, artifact_id, session, type_name,
     manually by calling this function.
     It creates transitive dependencies for the given artifact_id and saves
     them in DB.
-    :returns artifact dict with Transitive show level
+    :returns: artifact dict with Transitive show level
     """
     values = {'state': 'active'}
     return _out(_create_or_update(context, values, artifact_id, session,
@@ -184,7 +182,7 @@ def _out(artifact, show_level=ga.Showlevel.BASIC, show_text_properties=True):
     :param show_level: constant from Showlevel class
     :param show_text_properties: for performance optimization it's possible
     to disable loading of massive text properties
-    :return: generated dict
+    :returns: generated dict
     """
     res = artifact.to_dict(show_level=show_level,
                            show_text_properties=show_text_properties)
@@ -328,14 +326,16 @@ def _get_all(context, session, filters=None, marker=None,
 def _do_paginate_query(query, sort_keys=None, sort_dirs=None,
                        marker=None, limit=None):
     # Default the sort direction to ascending
-    if sort_dirs is None:
-        sort_dir = 'asc'
+    sort_dir = 'asc'
 
     # Ensure a per-column sort direction
     if sort_dirs is None:
-        sort_dirs = [sort_dir for _sort_key in sort_keys]
+        sort_dirs = [sort_dir] * len(sort_keys)
 
-    assert(len(sort_dirs) == len(sort_keys))
+    assert(len(sort_dirs) == len(sort_keys))  # nosec
+    # nosec: This function runs safely if the assertion fails.
+    if len(sort_dirs) < len(sort_keys):
+        sort_dirs += [sort_dir] * (len(sort_keys) - len(sort_dirs))
 
     # Add sorting
     for current_sort_key, current_sort_dir in zip(sort_keys, sort_dirs):
@@ -425,7 +425,7 @@ def _do_paginate_query(query, sort_keys=None, sort_dirs=None,
 def _do_artifacts_query(context, session, show_level=ga.Showlevel.NONE):
     """Build the query to get all artifacts based on the context"""
 
-    LOG.debug("context.is_admin=%(is_admin)s; context.owner=%(owner)s" %
+    LOG.debug("context.is_admin=%(is_admin)s; context.owner=%(owner)s",
               {'is_admin': context.is_admin, 'owner': context.owner})
 
     if show_level == ga.Showlevel.NONE:

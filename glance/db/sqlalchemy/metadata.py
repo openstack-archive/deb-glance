@@ -26,20 +26,16 @@ import re
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_utils import encodeutils
-from oslo_utils import timeutils
 import six
 import sqlalchemy
 from sqlalchemy import and_
 from sqlalchemy.schema import MetaData
 from sqlalchemy.sql import select
 
-from glance import i18n
+from glance.common import timeutils
+from glance.i18n import _, _LE, _LI, _LW
 
 LOG = logging.getLogger(__name__)
-_ = i18n._
-_LE = i18n._LE
-_LW = i18n._LW
-_LI = i18n._LI
 
 metadata_opts = [
     cfg.StrOpt('metadata_source_path', default='/etc/glance/metadefs/',

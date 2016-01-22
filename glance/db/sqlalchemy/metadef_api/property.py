@@ -22,10 +22,9 @@ from glance.common import exception as exc
 from glance.db.sqlalchemy.metadef_api import namespace as namespace_api
 from glance.db.sqlalchemy.metadef_api import utils as metadef_utils
 from glance.db.sqlalchemy import models_metadef as models
-from glance import i18n
+from glance.i18n import _
 
 LOG = logging.getLogger(__name__)
-_ = i18n._
 
 
 def _get(context, property_id, session):
@@ -53,10 +52,9 @@ def _get_by_name(context, namespace_name, name, session):
         property_rec = query.one()
 
     except sa_orm.exc.NoResultFound:
-        msg = ("The metadata definition property with name=%(name)s"
-               " was not found in namespace=%(namespace_name)s."
-               % {'name': name, 'namespace_name': namespace_name})
-        LOG.debug(msg)
+        LOG.debug("The metadata definition property with name=%(name)s"
+                  " was not found in namespace=%(namespace_name)s.",
+                  {'name': name, 'namespace_name': namespace_name})
         raise exc.MetadefPropertyNotFound(property_name=name,
                                           namespace_name=namespace_name)
 
@@ -93,12 +91,11 @@ def create(context, namespace_name, values, session):
     try:
         property_rec.save(session=session)
     except db_exc.DBDuplicateEntry:
-        msg = ("Can not create metadata definition property. A property"
-               " with name=%(name)s already exists in"
-               " namespace=%(namespace_name)s."
-               % {'name': property_rec.name,
-                  'namespace_name': namespace_name})
-        LOG.debug(msg)
+        LOG.debug("Can not create metadata definition property. A property"
+                  " with name=%(name)s already exists in"
+                  " namespace=%(namespace_name)s.",
+                  {'name': property_rec.name,
+                   'namespace_name': namespace_name})
         raise exc.MetadefDuplicateProperty(
             property_name=property_rec.name,
             namespace_name=namespace_name)
@@ -117,12 +114,11 @@ def update(context, namespace_name, property_id, values, session):
         property_rec.update(values.copy())
         property_rec.save(session=session)
     except db_exc.DBDuplicateEntry:
-        msg = ("Invalid update. It would result in a duplicate"
-               " metadata definition property with the same name=%(name)s"
-               " in namespace=%(namespace_name)s."
-               % {'name': property_rec.name,
-                  'namespace_name': namespace_name})
-        LOG.debug(msg)
+        LOG.debug("Invalid update. It would result in a duplicate"
+                  " metadata definition property with the same name=%(name)s"
+                  " in namespace=%(namespace_name)s.",
+                  {'name': property_rec.name,
+                   'namespace_name': namespace_name})
         emsg = (_("Invalid update. It would result in a duplicate"
                   " metadata definition property with the same name=%(name)s"
                   " in namespace=%(namespace_name)s.")
