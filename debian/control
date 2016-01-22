@@ -196,7 +196,8 @@ Description: OpenStack Image Registry and Delivery Service - common files
 
 Package: glance-api
 Architecture: all
-Depends: debconf,
+Depends: adduser,
+         debconf,
          glance-common (= ${source:Version}),
          python-openstackclient,
          q-text-as-data,
