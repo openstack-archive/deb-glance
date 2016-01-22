@@ -1,0 +1,31 @@
+Description: Fix call to psutils
+Author: Thomas Goirand <zigo@debian.org>
+Forwarded: no
+Last-Update: 2016-01-22
+
+diff --git a/glance/tests/functional/test_reload.py b/glance/tests/functional/test_reload.py
+index 6be842e..6a1ea0d 100644
+--- a/glance/tests/functional/test_reload.py
++++ b/glance/tests/functional/test_reload.py
+@@ -75,7 +75,7 @@ class TestReload(functional.FunctionalTest):
+         pid = None
+         pid = self._get_parent(server)
+         process = psutil.Process(pid)
+-        children = process.get_children()
++        children = process.children()
+         pids = set()
+         for child in children:
+             pids.add(child.pid)
+diff --git a/glance/tests/functional/v1/test_multiprocessing.py b/glance/tests/functional/v1/test_multiprocessing.py
+index 090e0c5..6a6b503 100644
+--- a/glance/tests/functional/v1/test_multiprocessing.py
++++ b/glance/tests/functional/v1/test_multiprocessing.py
+@@ -47,7 +47,7 @@ class TestMultiprocessing(functional.FunctionalTest):
+         api_pid = self.api_server.process_pid
+         process = psutil.Process(api_pid)
+ 
+-        children = process.get_children()
++        children = process.children()
+         pids = [str(child.pid) for child in children]
+         return pids
+ 
