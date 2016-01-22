@@ -2,21 +2,9 @@ Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: glance
 Source: https://github.com/openstack/glance
 
-Files: debian/*
-Copyright: (c) 2010-2013, Thomas Goirand <zigo@debian.org>
-	(c) 2012, Mehdi Abaakouk <sileht@sileht.net>
-	(c) 2011-2012, Ghe Rivero <ghe@debian.org>
-	(c) 2012, Ola Lundqvist <ola@inguza.com>
-	(c) 2011, Julien Danjou <acid@debian.org>
-	(c) 2011, Chuck Short <zulcss@ubuntu.com>
-	(c) 2011, Soren Hansen <soren@ubuntu.com>
-	(c) 2011, Canonical
-License: Apache-2
-
 Files: *
-Copyright: 2010 United States Government as represented by the Administrator of
-		the National Aeronautics and Space Administration.
-	2010-2011 OpenStack LLC
+Copyright: (c) 2010, US Government as represented by the Administrator of NASA
+	(c) 2010-2016, OpenStack Foundation <openstack-dev@lists.openstack.org>
 	Jay Pipes <jaypipes@gmail.com>
 	Brian Waldon <brian.waldon@rackspace.com>
 	Rick Harris <rconradharris@gmail.com>
@@ -139,6 +127,17 @@ Copyright: 2010 United States Government as represented by the Administrator of
 	Andrew Hutchings <andrew@linuxjedi.co.uk>
 	Alessio Ababilov <aababilov@griddynamics.com>
 	Alessandro Pilotti <ap@pilotti.it>
+License: Apache-2
+
+Files: debian/*
+Copyright: (c) 2010-2016, Thomas Goirand <zigo@debian.org>
+	(c) 2012, Mehdi Abaakouk <sileht@sileht.net>
+	(c) 2011-2012, Ghe Rivero <ghe@debian.org>
+	(c) 2012, Ola Lundqvist <ola@inguza.com>
+	(c) 2011, Julien Danjou <acid@debian.org>
+	(c) 2011, Chuck Short <zulcss@ubuntu.com>
+	(c) 2011, Soren Hansen <soren@ubuntu.com>
+	(c) 2011, Canonical
 License: Apache-2
 
 License: Apache-2
