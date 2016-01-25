@@ -2,7 +2,7 @@
 
 include /usr/share/openstack-pkg-tools/pkgos.make
 
-LAST_CHANGE = $(shell dpkg-parsechangelog -S Date)
+LAST_CHANGE = $(shell dpkg-parsechangelog | grep Date: | sed 's/Date: //')
 BUILD_DATE  = $(shell LC_ALL=C date -u "+%B %d, %Y" -d "$(LAST_CHANGE)")
 SPHINXOPTS := -D today="$(BUILD_DATE)"
 SPHINXOPTS += -D html_last_updated_fmt="$(BUILD_DATE)"
