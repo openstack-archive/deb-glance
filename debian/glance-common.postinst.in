@@ -83,7 +83,7 @@ SET FOREIGN_KEY_CHECKS=1;"
 		pkgos_inifile set ${GREG_CONF} database connection "${RET}"
 	fi
 
-	pkgos_rabbit_write_conf ${API_CONF} DEFAULT glance
+	pkgos_rabbit_write_conf ${API_CONF} oslo_messaging_rabbit glance
 
         # Upgrade or create the db if directed to do so
 	db_get glance/configure_db
