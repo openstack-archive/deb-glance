@@ -2,6 +2,7 @@ glance (2:12.0.0~b2-3) experimental; urgency=medium
 
   * Better config file generation.
   * Make build reproducible (Closes: #807475).
+  * VCS URLs using HTTPS.
 
  -- Thomas Goirand <zigo@debian.org>  Sat, 06 Feb 2016 06:15:09 +0000
 

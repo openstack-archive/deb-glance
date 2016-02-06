@@ -81,8 +81,8 @@ Build-Depends-Indep: curl,
                      subunit,
                      testrepository,
 Standards-Version: 3.9.6
-Vcs-Browser: http://anonscm.debian.org/gitweb/?p=openstack/glance.git;a=summary
-Vcs-Git: git://anonscm.debian.org/openstack/glance.git
+Vcs-Browser: https://anonscm.debian.org/gitweb/?p=openstack/glance.git;a=summary
+Vcs-Git: https://anonscm.debian.org/git/openstack/glance.git
 Homepage: https://github.com/openstack/glance
 
 Package: python-glance
