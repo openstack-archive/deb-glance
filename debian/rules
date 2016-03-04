@@ -82,6 +82,15 @@ override_dh_install:
 		--namespace oslo.log \
 		--namespace oslo.policy
 	PYTHONPATH=$(CURDIR)/debian/tmp/usr/lib/python2.7/dist-packages oslo-config-generator \
+		--output-file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-glare.conf \
+		--namespace glance.glare \
+		--namespace glance.store \
+		--namespace oslo.db \
+		--namespace oslo.db.concurrency \
+		--namespace keystonemiddleware.auth_token \
+		--namespace oslo.log \
+		--namespace oslo.middleware.cors
+	PYTHONPATH=$(CURDIR)/debian/tmp/usr/lib/python2.7/dist-packages oslo-config-generator \
 		--output-file $(CURDIR)/debian/glance-common/usr/share/glance-common/glance-manage.conf \
 		--namespace glance.manage \
 		--namespace oslo.db \
