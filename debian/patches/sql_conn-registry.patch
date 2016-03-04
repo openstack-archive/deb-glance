@@ -7,7 +7,7 @@ Index: glance/etc/glance-api.conf
 ===================================================================
 --- glance.orig/etc/glance-api.conf
 +++ glance/etc/glance-api.conf
-@@ -649,7 +649,7 @@
+@@ -646,7 +646,7 @@
  # Deprecated group/name - [DEFAULT]/sql_connection
  # Deprecated group/name - [DATABASE]/sql_connection
  # Deprecated group/name - [sql]/connection
@@ -20,7 +20,7 @@ Index: glance/etc/glance-registry.conf
 ===================================================================
 --- glance.orig/etc/glance-registry.conf
 +++ glance/etc/glance-registry.conf
-@@ -420,7 +420,7 @@
+@@ -417,7 +417,7 @@
  # Deprecated group/name - [DEFAULT]/sql_connection
  # Deprecated group/name - [DATABASE]/sql_connection
  # Deprecated group/name - [sql]/connection
