@@ -4,6 +4,7 @@ glance (2:12.0.0~b3-1) experimental; urgency=medium
   * Fixed (build-)depends for this release.
   * Also installs /usr/bin/glance-glare.
   * Also generates glance-glare.conf.
+  * Standards-Version: 3.9.7 (no change).
 
  -- Thomas Goirand <zigo@debian.org>  Fri, 04 Mar 2016 14:34:37 +0800
 
