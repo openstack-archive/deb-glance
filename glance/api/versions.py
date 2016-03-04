@@ -15,7 +15,6 @@
 
 from oslo_config import cfg
 from oslo_serialization import jsonutils
-import six
 from six.moves import http_client
 import webob.dec
 
@@ -56,9 +55,6 @@ class Controller(object):
             }
 
         version_objs = []
-        if CONF.enable_v3_api:
-            version_objs.append(
-                build_version_object(3.0, 'v3', 'EXPERIMENTAL'))
         if CONF.enable_v2_api:
             version_objs.extend([
                 build_version_object(2.3, 'v2', 'CURRENT'),
@@ -76,10 +72,7 @@ class Controller(object):
         response = webob.Response(request=req,
                                   status=status,
                                   content_type='application/json')
-        json = jsonutils.dumps(dict(versions=version_objs))
-        if six.PY3:
-            json = json.encode('utf-8')
-        response.body = json
+        response.body = jsonutils.dump_as_bytes(dict(versions=version_objs))
         return response
 
     @webob.dec.wsgify(RequestClass=wsgi.Request)

@@ -15,6 +15,8 @@
 import glance_store
 import mock
 
+from debtcollector import removals
+
 from glance.common import exception
 from glance.common import signature_utils
 import glance.location
@@ -188,7 +190,8 @@ class TestStoreImage(utils.BaseTestCase):
                           self.store_api.get_from_backend,
                           image.locations[0]['url'], context={})
 
-    def test_image_set_data_valid_signature(self):
+    @removals.remove(message="This will be removed in the N cycle.")
+    def test_old_image_set_data_valid_signature(self):
         context = glance.context.RequestContext(user=USER1)
         extra_properties = {
             'signature_certificate_uuid': 'UUID',
@@ -199,7 +202,7 @@ class TestStoreImage(utils.BaseTestCase):
         image_stub = ImageStub(UUID2, status='queued',
                                extra_properties=extra_properties)
         self.stubs.Set(signature_utils, 'verify_signature',
-                       unit_test_utils.fake_verify_signature)
+                       unit_test_utils.fake_old_verify_signature)
         image = glance.location.ImageProxy(image_stub, context,
                                            self.store_api, self.store_utils)
         image.set_data('YYYY', 4)
@@ -207,7 +210,8 @@ class TestStoreImage(utils.BaseTestCase):
         self.assertEqual('Z', image.checksum)
         self.assertEqual('active', image.status)
 
-    def test_image_set_data_invalid_signature(self):
+    @removals.remove(message="This will be removed in the N cycle.")
+    def test_old_image_set_data_invalid_signature(self):
         context = glance.context.RequestContext(user=USER1)
         extra_properties = {
             'signature_certificate_uuid': 'UUID',
@@ -218,14 +222,15 @@ class TestStoreImage(utils.BaseTestCase):
         image_stub = ImageStub(UUID2, status='queued',
                                extra_properties=extra_properties)
         self.stubs.Set(signature_utils, 'verify_signature',
-                       unit_test_utils.fake_verify_signature)
+                       unit_test_utils.fake_old_verify_signature)
         image = glance.location.ImageProxy(image_stub, context,
                                            self.store_api, self.store_utils)
         self.assertRaises(exception.SignatureVerificationError,
                           image.set_data,
                           'YYYY', 4)
 
-    def test_image_set_data_invalid_signature_missing_metadata(self):
+    @removals.remove(message="This will be removed in the N cycle.")
+    def test_old_image_set_data_invalid_signature_missing_metadata(self):
         context = glance.context.RequestContext(user=USER1)
         extra_properties = {
             'signature_hash_method': 'METHOD',
@@ -235,7 +240,65 @@ class TestStoreImage(utils.BaseTestCase):
         image_stub = ImageStub(UUID2, status='queued',
                                extra_properties=extra_properties)
         self.stubs.Set(signature_utils, 'verify_signature',
-                       unit_test_utils.fake_verify_signature)
+                       unit_test_utils.fake_old_verify_signature)
+        image = glance.location.ImageProxy(image_stub, context,
+                                           self.store_api, self.store_utils)
+        image.set_data('YYYY', 4)
+        self.assertEqual(UUID2, image.locations[0]['url'])
+        self.assertEqual('Z', image.checksum)
+        # Image is still active, since invalid signature was ignored
+        self.assertEqual('active', image.status)
+
+    @mock.patch('glance.location.LOG')
+    def test_image_set_data_valid_signature(self, mock_log):
+        context = glance.context.RequestContext(user=USER1)
+        extra_properties = {
+            'img_signature_certificate_uuid': 'UUID',
+            'img_signature_hash_method': 'METHOD',
+            'img_signature_key_type': 'TYPE',
+            'img_signature': 'VALID'
+        }
+        image_stub = ImageStub(UUID2, status='queued',
+                               extra_properties=extra_properties)
+        self.stubs.Set(signature_utils, 'get_verifier',
+                       unit_test_utils.fake_get_verifier)
+        image = glance.location.ImageProxy(image_stub, context,
+                                           self.store_api, self.store_utils)
+        image.set_data('YYYY', 4)
+        self.assertEqual('active', image.status)
+        mock_log.info.assert_called_once_with(
+            u'Successfully verified signature for image %s',
+            UUID2)
+
+    def test_image_set_data_invalid_signature(self):
+        context = glance.context.RequestContext(user=USER1)
+        extra_properties = {
+            'img_signature_certificate_uuid': 'UUID',
+            'img_signature_hash_method': 'METHOD',
+            'img_signature_key_type': 'TYPE',
+            'img_signature': 'INVALID'
+        }
+        image_stub = ImageStub(UUID2, status='queued',
+                               extra_properties=extra_properties)
+        self.stubs.Set(signature_utils, 'get_verifier',
+                       unit_test_utils.fake_get_verifier)
+        image = glance.location.ImageProxy(image_stub, context,
+                                           self.store_api, self.store_utils)
+        self.assertRaises(exception.SignatureVerificationError,
+                          image.set_data,
+                          'YYYY', 4)
+
+    def test_image_set_data_invalid_signature_missing_metadata(self):
+        context = glance.context.RequestContext(user=USER1)
+        extra_properties = {
+            'img_signature_hash_method': 'METHOD',
+            'img_signature_key_type': 'TYPE',
+            'img_signature': 'INVALID'
+        }
+        image_stub = ImageStub(UUID2, status='queued',
+                               extra_properties=extra_properties)
+        self.stubs.Set(signature_utils, 'get_verifier',
+                       unit_test_utils.fake_get_verifier)
         image = glance.location.ImageProxy(image_stub, context,
                                            self.store_api, self.store_utils)
         image.set_data('YYYY', 4)
@@ -741,6 +804,18 @@ class TestStoreImageRepo(utils.BaseTestCase):
         self.image_repo = glance.location.ImageRepoProxy(self.image_repo_stub,
                                                          {}, self.store_api,
                                                          store_utils)
+        patcher = mock.patch("glance.location._get_member_repo_for_store",
+                             self.get_fake_member_repo)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.fake_member_repo = FakeMemberRepo(self.image, [TENANT1, TENANT2])
+        self.image_member_repo = glance.location.ImageMemberRepoProxy(
+            self.fake_member_repo,
+            self.image,
+            {}, self.store_api)
+
+    def get_fake_member_repo(self, image, context, db_api, store_api):
+        return FakeMemberRepo(self.image, [TENANT1, TENANT2])
 
     def test_add_updates_acls(self):
         self.image_stub.locations = [{'url': 'foo', 'metadata': {},
@@ -794,10 +869,9 @@ class TestStoreImageRepo(utils.BaseTestCase):
         self.image_stub.locations = [{'url': 'glug', 'metadata': {},
                                       'status': 'active'}]
         self.image_stub.visibility = 'private'
-        member_repo = self.image.get_member_repo()
         membership = glance.domain.ImageMembership(
             UUID1, TENANT3, None, None, status='accepted')
-        member_repo.add(membership)
+        self.image_member_repo.add(membership)
         self.assertIn('glug', self.store_api.acls)
         acls = self.store_api.acls['glug']
         self.assertFalse(acls['public'])
@@ -808,10 +882,9 @@ class TestStoreImageRepo(utils.BaseTestCase):
         self.image_stub.locations = [{'url': 'glug', 'metadata': {},
                                       'status': 'active'}]
         self.image_stub.visibility = 'private'
-        member_repo = self.image.get_member_repo()
         membership = glance.domain.ImageMembership(
             UUID1, TENANT1, None, None, status='accepted')
-        member_repo.remove(membership)
+        self.image_member_repo.remove(membership)
         self.assertIn('glug', self.store_api.acls)
         acls = self.store_api.acls['glug']
         self.assertFalse(acls['public'])
@@ -900,94 +973,3 @@ class TestStoreMetaDataChecker(utils.BaseTestCase):
         self.assertRaises(glance_store.BackendException,
                           glance_store.check_location_metadata,
                           m)
-
-
-class TestStoreAddToBackend(utils.BaseTestCase):
-
-    def setUp(self):
-        super(TestStoreAddToBackend, self).setUp()
-        self.image_id = "animage"
-        self.data = "dataandstuff"
-        self.size = len(self.data)
-        self.location = "file:///ab/cde/fgh"
-        self.checksum = "md5"
-
-    def _bad_metadata(self, in_metadata):
-        mstore = mock.Mock()
-        mstore.add.return_value = (self.location, self.size,
-                                   self.checksum, in_metadata)
-        mstore.__str__ = lambda self: "hello"
-        mstore.__unicode__ = lambda self: "hello"
-
-        self.assertRaises(glance_store.BackendException,
-                          glance_store.store_add_to_backend,
-                          self.image_id,
-                          self.data,
-                          self.size,
-                          mstore)
-
-        mstore.add.assert_called_once_with(self.image_id, mock.ANY,
-                                           self.size, context=None)
-
-    def _good_metadata(self, in_metadata):
-        mstore = mock.Mock()
-        mstore.add.return_value = (self.location, self.size,
-                                   self.checksum, in_metadata)
-
-        (location,
-         size,
-         checksum,
-         metadata) = glance_store.store_add_to_backend(self.image_id,
-                                                       self.data,
-                                                       self.size,
-                                                       mstore)
-
-        mstore.add.assert_called_once_with(self.image_id, mock.ANY,
-                                           self.size, context=None)
-
-        self.assertEqual(self.location, location)
-        self.assertEqual(self.size, size)
-        self.assertEqual(self.checksum, checksum)
-        self.assertEqual(in_metadata, metadata)
-
-    def test_empty(self):
-        metadata = {}
-        self._good_metadata(metadata)
-
-    def test_string(self):
-        metadata = {'key': u'somevalue'}
-        self._good_metadata(metadata)
-
-    def test_list(self):
-        m = {'key': [u'somevalue', u'2']}
-        self._good_metadata(m)
-
-    def test_unicode_dict(self):
-        inner = {'key1': u'somevalue', 'key2': u'somevalue'}
-        m = {'topkey': inner}
-        self._good_metadata(m)
-
-    def test_unicode_dict_list(self):
-        inner = {'key1': u'somevalue', 'key2': u'somevalue'}
-        m = {'topkey': inner, 'list': [u'somevalue', u'2'], 'u': u'2'}
-        self._good_metadata(m)
-
-    def test_nested_dict(self):
-        inner = {'key1': u'somevalue', 'key2': u'somevalue'}
-        inner = {'newkey': inner}
-        inner = {'anotherkey': inner}
-        m = {'topkey': inner}
-        self._good_metadata(m)
-
-    def test_bad_top_level_nonunicode(self):
-        metadata = {'key': b'a string'}
-        self._bad_metadata(metadata)
-
-    def test_bad_nonunicode_dict_list(self):
-        inner = {'key1': u'somevalue', 'key2': u'somevalue',
-                 'k3': [1, object()]}
-        m = {'topkey': inner, 'list': [u'somevalue', u'2'], 'u': u'2'}
-        self._bad_metadata(m)
-
-    def test_bad_metadata_not_dict(self):
-        self._bad_metadata([])

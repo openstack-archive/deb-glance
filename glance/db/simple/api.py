@@ -16,7 +16,6 @@
 
 import copy
 import functools
-from operator import itemgetter
 import uuid
 
 from oslo_log import log as logging
@@ -128,7 +127,8 @@ def _image_property_format(image_id, name, value):
     }
 
 
-def _image_member_format(image_id, tenant_id, can_share, status='pending'):
+def _image_member_format(image_id, tenant_id, can_share, status='pending',
+                         deleted=False):
     dt = timeutils.utcnow()
     return {
         'id': str(uuid.uuid4()),
@@ -138,6 +138,7 @@ def _image_member_format(image_id, tenant_id, can_share, status='pending'):
         'status': status,
         'created_at': dt,
         'updated_at': dt,
+        'deleted': deleted,
     }
 
 
@@ -303,6 +304,20 @@ def _filter_images(images, filters, context,
                 threshold = timeutils.normalize_time(parsed_time)
                 to_add = utils.evaluate_filter_op(attr_value, operator,
                                                   threshold)
+            elif k in ['name', 'id', 'status',
+                       'container_format', 'disk_format']:
+                attr_value = image.get(key)
+                operator, list_value = utils.split_filter_op(value)
+                if operator == 'in':
+                    threshold = utils.split_filter_value_for_quotes(list_value)
+                    to_add = attr_value in threshold
+                elif operator == 'eq':
+                    to_add = (attr_value == list_value)
+                else:
+                    msg = (_("Unable to filter by unknown operator '%s'.")
+                           % operator)
+                    raise exception.InvalidFilterOperatorValue(msg)
+
             elif k != 'is_public' and image.get(k) is not None:
                 to_add = image.get(key) == value
             elif k == 'tags':
@@ -380,7 +395,7 @@ def _sort_images(images, sort_key, sort_dir):
 
     for key, dir in reversed(list(zip(sort_key, sort_dir))):
         reverse = dir == 'desc'
-        images.sort(key=itemgetter(key), reverse=reverse)
+        images.sort(key=lambda x: x[key] or '', reverse=reverse)
 
     return images
 
@@ -503,7 +518,8 @@ def image_member_create(context, values):
     member = _image_member_format(values['image_id'],
                                   values['member'],
                                   values.get('can_share', False),
-                                  values.get('status', 'pending'))
+                                  values.get('status', 'pending'),
+                                  values.get('deleted', False))
     global DATA
     DATA['members'].append(member)
     return copy.deepcopy(member)

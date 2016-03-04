@@ -38,11 +38,10 @@ from sqlalchemy import MetaData, Table, select
 import sqlalchemy.orm as sa_orm
 import sqlalchemy.sql as sa_sql
 
-from glance import artifacts as ga
 from glance.common import exception
 from glance.common import timeutils
 from glance.common import utils
-from glance.db.sqlalchemy import artifacts
+from glance.db.sqlalchemy import glare
 from glance.db.sqlalchemy.metadef_api import (resource_type
                                               as metadef_resource_type_api)
 from glance.db.sqlalchemy.metadef_api import (resource_type_association
@@ -52,6 +51,7 @@ from glance.db.sqlalchemy.metadef_api import object as metadef_object_api
 from glance.db.sqlalchemy.metadef_api import property as metadef_property_api
 from glance.db.sqlalchemy.metadef_api import tag as metadef_tag_api
 from glance.db.sqlalchemy import models
+from glance import glare as ga
 from glance.i18n import _, _LW, _LE, _LI
 
 BASE = models.BASE
@@ -509,6 +509,20 @@ def _make_conditions_from_filters(filters, is_public=None):
             comparison = utils.evaluate_filter_op(attr_value, operator,
                                                   threshold)
             image_conditions.append(comparison)
+
+        elif k in ['name', 'id', 'status', 'container_format', 'disk_format']:
+            attr_value = getattr(models.Image, key)
+            operator, list_value = utils.split_filter_op(filters.pop(k))
+            if operator == 'in':
+                threshold = utils.split_filter_value_for_quotes(list_value)
+                comparison = attr_value.in_(threshold)
+                image_conditions.append(comparison)
+            elif operator == 'eq':
+                image_conditions.append(attr_value == list_value)
+            else:
+                msg = (_("Unable to filter by unknown operator '%s'.")
+                       % operator)
+                raise exception.InvalidFilterOperatorValue(msg)
 
     for (k, value) in filters.items():
         if hasattr(models.Image, k):
@@ -1060,7 +1074,8 @@ def _image_member_format(member_ref):
         'can_share': member_ref['can_share'],
         'status': member_ref['status'],
         'created_at': member_ref['created_at'],
-        'updated_at': member_ref['updated_at']
+        'updated_at': member_ref['updated_at'],
+        'deleted': member_ref['deleted']
     }
 
 
@@ -1269,7 +1284,7 @@ def purge_deleted_rows(context, age_in_days, max_rows, session=None):
             tables.remove(tbl)
         except ValueError:
             LOG.warning(_LW('Expected table %(tbl)s was not found in DB.'),
-                        **locals())
+                        {'tbl': tbl})
         else:
             tables.append(tbl)
 
@@ -1278,8 +1293,7 @@ def purge_deleted_rows(context, age_in_days, max_rows, session=None):
         LOG.info(
             _LI('Purging deleted rows older than %(age_in_days)d day(s) '
                 'from table %(tbl)s'),
-            **locals()
-        )
+            {'age_in_days': age_in_days, 'tbl': tbl})
         with session.begin():
             result = session.execute(
                 tab.delete().where(
@@ -1292,7 +1306,7 @@ def purge_deleted_rows(context, age_in_days, max_rows, session=None):
             )
         rows = result.rowcount
         LOG.info(_LI('Deleted %(rows)d row(s) from table %(tbl)s'),
-                 **locals())
+                 {'rows': rows, 'tbl': tbl})
 
 
 def user_get_storage_usage(context, owner_id, image_id=None, session=None):
@@ -1815,24 +1829,24 @@ def metadef_tag_count(context, namespace_name, session=None):
 def artifact_create(context, values, type_name,
                     type_version=None, session=None):
     session = session or get_session()
-    artifact = artifacts.create(context, values, session, type_name,
-                                type_version)
+    artifact = glare.create(context, values, session, type_name,
+                            type_version)
     return artifact
 
 
 def artifact_delete(context, artifact_id, type_name,
                     type_version=None, session=None):
     session = session or get_session()
-    artifact = artifacts.delete(context, artifact_id, session, type_name,
-                                type_version)
+    artifact = glare.delete(context, artifact_id, session, type_name,
+                            type_version)
     return artifact
 
 
 def artifact_update(context, values, artifact_id, type_name,
                     type_version=None, session=None):
     session = session or get_session()
-    artifact = artifacts.update(context, values, artifact_id, session,
-                                type_name, type_version)
+    artifact = glare.update(context, values, artifact_id, session,
+                            type_name, type_version)
     return artifact
 
 
@@ -1842,8 +1856,8 @@ def artifact_get(context, artifact_id,
                  show_level=ga.Showlevel.BASIC,
                  session=None):
     session = session or get_session()
-    return artifacts.get(context, artifact_id, session, type_name,
-                         type_version, show_level)
+    return glare.get(context, artifact_id, session, type_name,
+                     type_version, show_level)
 
 
 def artifact_publish(context,
@@ -1852,16 +1866,16 @@ def artifact_publish(context,
                      type_version=None,
                      session=None):
     session = session or get_session()
-    return artifacts.publish(context,
-                             artifact_id,
-                             session,
-                             type_name,
-                             type_version)
+    return glare.publish(context,
+                         artifact_id,
+                         session,
+                         type_name,
+                         type_version)
 
 
 def artifact_get_all(context, marker=None, limit=None, sort_keys=None,
                      sort_dirs=None, filters=None,
                      show_level=ga.Showlevel.NONE, session=None):
     session = session or get_session()
-    return artifacts.get_all(context, session, marker, limit, sort_keys,
-                             sort_dirs, filters, show_level)
+    return glare.get_all(context, session, marker, limit, sort_keys,
+                         sort_dirs, filters, show_level)

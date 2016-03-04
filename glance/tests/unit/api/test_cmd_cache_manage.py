@@ -11,8 +11,10 @@
 #    under the License.
 
 import optparse
+import sys
 
 import mock
+import prettytable
 from six.moves import StringIO
 
 from glance.cmd import cache_manage
@@ -25,9 +27,43 @@ from glance.tests import utils as test_utils
 @mock.patch('sys.stdout', mock.Mock())
 class TestGlanceCmdManage(test_utils.BaseTestCase):
 
+    @mock.patch.object(optparse.OptionParser, 'print_help')
+    @mock.patch.object(optparse.OptionParser, 'parse_args')
+    def test_help(self, mock_parse_args, mock_print_help):
+        mock_parse_args.return_value = (optparse.Values(), ['help'])
+        oparser = optparse.OptionParser()
+        (options, command, args) = cache_manage.parse_options(oparser,
+                                                              ['help'])
+        command(options, args)
+        self.assertEqual(1, mock_print_help.call_count)
+
+    @mock.patch.object(optparse.OptionParser, 'parse_args')
+    def test_help_with_command(self, mock_parse_args):
+        mock_parse_args.return_value = (optparse.Values(), ['help',
+                                                            'list-cached'])
+        oparser = optparse.OptionParser()
+        (options, command, args) = cache_manage.parse_options(oparser,
+                                                              ['help',
+                                                               'list-cached'])
+        command(options, args)
+
+    @mock.patch.object(sys, 'exit')
+    @mock.patch.object(optparse.OptionParser, 'parse_args')
+    def test_help_with_redundant_command(self, mock_parse_args, mock_exit):
+        mock_parse_args.return_value = (optparse.Values(), ['help',
+                                                            'list-cached',
+                                                            "1"])
+        oparser = optparse.OptionParser()
+        (options, command, args) = cache_manage.parse_options(oparser,
+                                                              ['help',
+                                                               'list-cached',
+                                                               "1"])
+        command(options, args)
+        self.assertEqual(1, mock_exit.call_count)
+
     @mock.patch.object(glance.image_cache.client.CacheClient,
                        'get_cached_images')
-    @mock.patch.object(glance.common.utils.PrettyTable, 'make_row')
+    @mock.patch.object(prettytable.PrettyTable, 'add_row')
     def test_list_cached_images(self, mock_row_create, mock_images):
         """
         Verify that list_cached() method correctly processes images with all
@@ -60,7 +96,7 @@ class TestGlanceCmdManage(test_utils.BaseTestCase):
 
     @mock.patch.object(glance.image_cache.client.CacheClient,
                        'get_queued_images')
-    @mock.patch.object(glance.common.utils.PrettyTable, 'make_row')
+    @mock.patch.object(prettytable.PrettyTable, 'add_row')
     def test_list_queued_images(self, mock_row_create, mock_images):
         """Verify that list_queued() method correctly processes images."""
 

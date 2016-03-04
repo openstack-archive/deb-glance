@@ -409,7 +409,7 @@ Optional. Default: ``glance.store.filesystem.Store, glance.store.http.Store``
 A comma separated list of enabled glance stores. Options are specified
 in the format of glance.store.OPTION.Store.  Some available options for this
 option are (``filesystem``, ``http``, ``rbd``, ``s3``, ``swift``, ``sheepdog``,
-``cinder``, ``gridfs``, ``vmware_datastore``)
+``cinder``, ``vmware_datastore``)
 
 Configuring Glance Image Size Limit
 -----------------------------------
@@ -627,7 +627,7 @@ will use multiple containers to store images, and this value will determine
 how many characters from an image UUID are checked when determining what
 container to place the image in. The maximum number of containers that will be
 created is approximately equal to 16^N. This setting is used only when
-swift_store_multi_tentant is disabled.
+swift_store_multi_tenant is disabled.
 
 Example: if this config option is set to 3 and
 swift_store_container = 'glance', then an image with UUID
@@ -1157,7 +1157,7 @@ Optional. Default: ``None``
 
 Can only be specified in configuration files.
 
-Location of ca certicates file to use for cinder client requests.
+Location of ca certificates file to use for cinder client requests.
 
 * ``cinder_http_retries=TIMES``
 
@@ -1369,7 +1369,7 @@ Required when image cache middleware is enabled.
 Default: ``/var/lib/glance/image-cache``
 
 This is the base directory the image cache can write files to.
-Make sure the directory is writeable by the user running the
+Make sure the directory is writable by the user running the
 ``glance-api`` server
 
  * ``image_cache_driver=DRIVER``
@@ -1414,6 +1414,7 @@ to or less than this value. The ``glance-cache-pruner`` executable is designed
 to be run via cron on a regular basis. See more about this executable in
 :doc:`Controlling the Growth of the Image Cache <cache>`
 
+.. _configuring-the-glance-registry:
 
 Configuring the Glance Registry
 -------------------------------
@@ -1460,7 +1461,7 @@ Optional. Default: ``True``
 Defines which version(s) of the Registry API will be enabled.
 If the Glance API server parameter ``enable_v1_api`` has been set to ``True`` the
 ``enable_v1_registry`` has to be ``True`` as well.
-If the Glance API server parameter ``enable_v2_api`` or ``enable_v3_api`` has been
+If the Glance API server parameter ``enable_v2_api`` has been
 set to ``True`` and the parameter ``data_api`` has been set to
 ``glance.db.registry.api`` the ``enable_v2_registry`` has to be set to ``True``
 
@@ -1517,7 +1518,7 @@ Optional. Default: ``roles``.
 Configuring Glance APIs
 -----------------------
 
-The glance-api service implements versions 1, 2 and 3 of
+The glance-api service implements versions 1 and 2 of
 the OpenStack Images API. Disable any version of
 the Images API using the following options:
 
@@ -1529,11 +1530,7 @@ Optional. Default: ``True``
 
 Optional. Default: ``True``
 
-* ``enable_v3_api=<True|False>``
-
-Optional. Default: ``False``
-
-**IMPORTANT NOTE**: To use v2 registry in v2 or v3 API, you must set
+**IMPORTANT NOTE**: To use v2 registry in v2 API, you must set
 ``data_api`` to glance.db.registry.api in glance-api.conf.
 
 Configuring Glance Tasks
@@ -1699,6 +1696,6 @@ An operator can add or remove disk formats to the supported set.  This is
 done by setting the ``disk_formats`` parameter which is found in the
 ``[image_formats]`` section of ``glance-api.conf``.
 
-* ``disk_formats=<Comma seperated list of disk formats>``
+* ``disk_formats=<Comma separated list of disk formats>``
 
 Optional. Default: ``ami,ari,aki,vhd,vmdk,raw,qcow2,vdi,iso``

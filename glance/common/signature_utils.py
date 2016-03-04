@@ -21,6 +21,8 @@ import datetime
 from castellan import key_manager
 from cryptography import exceptions as crypto_exception
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric import dsa
+from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import hashes
@@ -29,10 +31,9 @@ import debtcollector
 from oslo_log import log as logging
 from oslo_serialization import base64
 from oslo_utils import encodeutils
-import six
 
 from glance.common import exception
-from glance.i18n import _LE
+from glance.i18n import _, _LE
 
 LOG = logging.getLogger(__name__)
 
@@ -46,15 +47,23 @@ HASH_METHODS = {
     'SHA-512': hashes.SHA512()
 }
 
-# These are the currently supported signature key types
-(RSA_PSS,) = (
-    'RSA-PSS',
-)
+# Currently supported signature key types
+# RSA Options
+RSA_PSS = 'RSA-PSS'
 
-# This includes the supported public key type for the signature key type
-SIGNATURE_KEY_TYPES = {
-    RSA_PSS: rsa.RSAPublicKey
-}
+# DSA Options
+DSA = 'DSA'
+
+# ECC curves -- note that only those with key sizes >=384 are included
+# Note also that some of these may not be supported by the cryptography backend
+ECC_CURVES = (
+    ec.SECT571K1(),
+    ec.SECT409K1(),
+    ec.SECT571R1(),
+    ec.SECT409R1(),
+    ec.SECP521R1(),
+    ec.SECP384R1(),
+)
 
 # These are the currently supported certificate formats
 (X_509,) = (
@@ -71,6 +80,13 @@ MASK_GEN_ALGORITHMS = {
 }
 
 # Required image property names
+(SIGNATURE, HASH_METHOD, KEY_TYPE, CERT_UUID) = (
+    'img_signature',
+    'img_signature_hash_method',
+    'img_signature_key_type',
+    'img_signature_certificate_uuid'
+)
+
 # TODO(bpoulos): remove when 'sign-the-hash' approach is no longer supported
 (OLD_SIGNATURE, OLD_HASH_METHOD, OLD_KEY_TYPE, OLD_CERT_UUID) = (
     'signature',
@@ -85,6 +101,43 @@ MASK_GEN_ALGORITHMS = {
     'mask_gen_algorithm',
     'pss_salt_length'
 )
+
+
+class SignatureKeyType(object):
+
+    _REGISTERED_TYPES = {}
+
+    def __init__(self, name, public_key_type, create_verifier):
+        self.name = name
+        self.public_key_type = public_key_type
+        self.create_verifier = create_verifier
+
+    @classmethod
+    def register(cls, name, public_key_type, create_verifier):
+        """Register a signature key type.
+
+        :param name: the name of the signature key type
+        :param public_key_type: e.g. RSAPublicKey, DSAPublicKey, etc.
+        :param create_verifier: a function to create a verifier for this type
+        """
+        cls._REGISTERED_TYPES[name] = cls(name,
+                                          public_key_type,
+                                          create_verifier)
+
+    @classmethod
+    def lookup(cls, name):
+        """Look up the signature key type.
+
+        :param name: the name of the signature key type
+        :returns: the SignatureKeyType object
+        :raises: glance.common.exception.SignatureVerificationError if
+                 signature key type is invalid
+        """
+        if name not in cls._REGISTERED_TYPES:
+            raise exception.SignatureVerificationError(
+                _('Invalid signature key type: %s') % name
+            )
+        return cls._REGISTERED_TYPES[name]
 
 
 # each key type will require its own verifier
@@ -130,10 +183,114 @@ def create_verifier_for_pss(signature, hash_method, public_key,
     )
 
 
+def create_verifier_for_ecc(signature, hash_method, public_key,
+                            image_properties):
+    """Create the verifier to use when the key type is ECC_*.
+
+    :param signature: the decoded signature to use
+    :param hash_method: the hash method to use, as a cryptography object
+    :param public_key: the public key to use, as a cryptography object
+    :param image_properties: the key-value properties about the image
+    :return: the verifier to use to verify the signature for ECC_*
+    """
+    # return the verifier
+    return public_key.verifier(
+        signature,
+        ec.ECDSA(hash_method)
+    )
+
+
+def create_verifier_for_dsa(signature, hash_method, public_key,
+                            image_properties):
+    """Create verifier to use when the key type is DSA
+
+    :param signature: the decoded signature to use
+    :param hash_method: the hash method to use, as a cryptography object
+    :param public_key: the public key to use, as a cryptography object
+    :param image_properties: the key-value properties about the image
+    :returns: the verifier to use to verify the signature for DSA
+    """
+    # return the verifier
+    return public_key.verifier(
+        signature,
+        hash_method
+    )
+
+
 # map the key type to the verifier function to use
-KEY_TYPE_METHODS = {
-    RSA_PSS: create_verifier_for_pss
-}
+SignatureKeyType.register(RSA_PSS, rsa.RSAPublicKey, create_verifier_for_pss)
+SignatureKeyType.register(DSA, dsa.DSAPublicKey, create_verifier_for_dsa)
+
+# Register the elliptic curves which are supported by the backend
+for curve in ECC_CURVES:
+    if default_backend().elliptic_curve_supported(curve):
+        SignatureKeyType.register('ECC_' + curve.name.upper(),
+                                  ec.EllipticCurvePublicKey,
+                                  create_verifier_for_ecc)
+
+
+def should_create_verifier(image_properties):
+    """Determine whether a verifier should be created.
+
+    Using the image properties, determine whether existing properties indicate
+    that signature verification should be done.
+
+    :param image_properties: the key-value properties about the image
+    :return: True, if signature metadata properties exist, False otherwise
+    """
+    return (image_properties is not None and
+            CERT_UUID in image_properties and
+            HASH_METHOD in image_properties and
+            SIGNATURE in image_properties and
+            KEY_TYPE in image_properties)
+
+
+def get_verifier(context, image_properties):
+    """Retrieve the image properties and use them to create a verifier.
+
+    :param context: the user context for authentication
+    :param image_properties: the key-value properties about the image
+    :return: instance of cryptography AsymmetricVerificationContext
+    :raises glance.common.exception.SignatureVerificationError: if building
+            the verifier fails
+    """
+    if not should_create_verifier(image_properties):
+        raise exception.SignatureVerificationError(
+            _('Required image properties for signature verification do not'
+              ' exist. Cannot verify signature.')
+        )
+
+    signature = get_signature(image_properties[SIGNATURE])
+    hash_method = get_hash_method(image_properties[HASH_METHOD])
+    signature_key_type = SignatureKeyType.lookup(
+        image_properties[KEY_TYPE])
+    public_key = get_public_key(context,
+                                image_properties[CERT_UUID],
+                                signature_key_type)
+
+    # create the verifier based on the signature key type
+    try:
+        verifier = signature_key_type.create_verifier(signature,
+                                                      hash_method,
+                                                      public_key,
+                                                      image_properties)
+    except crypto_exception.UnsupportedAlgorithm as e:
+        msg = (_LE("Unable to create verifier since algorithm is "
+                   "unsupported: %(e)s")
+               % {'e': encodeutils.exception_to_unicode(e)})
+        LOG.error(msg)
+        raise exception.SignatureVerificationError(
+            _('Unable to verify signature since the algorithm is unsupported '
+              'on this system')
+        )
+
+    if verifier:
+        return verifier
+    else:
+        # Error creating the verifier
+        raise exception.SignatureVerificationError(
+            _('Error occurred while creating the verifier')
+        )
 
 
 @debtcollector.removals.remove(message="This will be removed in the N cycle.")
@@ -175,12 +332,11 @@ def verify_signature(context, checksum_hash, image_properties):
             'Required image properties for signature verification do not'
             ' exist. Cannot verify signature.')
 
-    if isinstance(checksum_hash, six.text_type):
-        checksum_hash = checksum_hash.encode('utf-8')
+    checksum_hash = encodeutils.to_utf8(checksum_hash)
 
     signature = get_signature(image_properties[OLD_SIGNATURE])
     hash_method = get_hash_method(image_properties[OLD_HASH_METHOD])
-    signature_key_type = get_signature_key_type(
+    signature_key_type = SignatureKeyType.lookup(
         image_properties[OLD_KEY_TYPE])
     public_key = get_public_key(context,
                                 image_properties[OLD_CERT_UUID],
@@ -188,10 +344,10 @@ def verify_signature(context, checksum_hash, image_properties):
 
     # create the verifier based on the signature key type
     try:
-        verifier = KEY_TYPE_METHODS[signature_key_type](signature,
-                                                        hash_method,
-                                                        public_key,
-                                                        image_properties)
+        verifier = signature_key_type.create_verifier(signature,
+                                                      hash_method,
+                                                      public_key,
+                                                      image_properties)
     except crypto_exception.UnsupportedAlgorithm as e:
         msg = (_LE("Unable to create verifier since algorithm is "
                    "unsupported: %(e)s")
@@ -246,27 +402,13 @@ def get_hash_method(hash_method_name):
     return HASH_METHODS[hash_method_name]
 
 
-def get_signature_key_type(signature_key_type):
-    """Verify the signature key type.
-
-    :param signature_key_type: the key type of the signature
-    :returns: the validated signature key type
-    :raises: SignatureVerificationError if the signature key type is invalid
-    """
-    if signature_key_type not in SIGNATURE_KEY_TYPES:
-        raise exception.SignatureVerificationError(
-            'Invalid signature key type: %s' % signature_key_type)
-
-    return signature_key_type
-
-
 def get_public_key(context, signature_certificate_uuid, signature_key_type):
     """Create the public key object from a retrieved certificate.
 
     :param context: the user context for authentication
     :param signature_certificate_uuid: the uuid to use to retrieve the
                                        certificate
-    :param signature_key_type: the key type of the signature
+    :param signature_key_type: a SignatureKeyType object
     :returns: the public key cryptography object
     :raises: SignatureVerificationError if public key format is invalid
     """
@@ -277,10 +419,10 @@ def get_public_key(context, signature_certificate_uuid, signature_key_type):
     public_key = certificate.public_key()
 
     # Confirm the type is of the type expected based on the signature key type
-    if not isinstance(public_key, SIGNATURE_KEY_TYPES[signature_key_type]):
+    if not isinstance(public_key, signature_key_type.public_key_type):
         raise exception.SignatureVerificationError(
             'Invalid public key type for signature key type: %s'
-            % signature_key_type)
+            % signature_key_type.name)
 
     return public_key
 

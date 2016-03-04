@@ -184,21 +184,23 @@ def _get_base_properties():
             "$ref": "#/definitions/property"
         },
         "schema": {
+            'readOnly': True,
             "type": "string"
         },
         "self": {
+            'readOnly': True,
             "type": "string"
         },
         "created_at": {
             "type": "string",
-            "description": _("Date and time of object creation"
-                             " (READ-ONLY)"),
+            "readOnly": True,
+            "description": _("Date and time of object creation"),
             "format": "date-time"
         },
         "updated_at": {
             "type": "string",
-            "description": _("Date and time of the last object modification"
-                             " (READ-ONLY)"),
+            "readOnly": True,
+            "description": _("Date and time of the last object modification"),
             "format": "date-time"
         }
     }

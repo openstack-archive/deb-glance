@@ -51,7 +51,7 @@ from glance.db import migration
 from glance.db.sqlalchemy import migrate_repo
 from glance.db.sqlalchemy.migrate_repo.schema import from_migration_import
 from glance.db.sqlalchemy import models
-from glance.db.sqlalchemy import models_artifacts
+from glance.db.sqlalchemy import models_glare
 from glance.db.sqlalchemy import models_metadef
 
 from glance.i18n import _
@@ -1829,12 +1829,8 @@ class MigrationsMixin(test_migrations.WalkVersionsMixin):
         index_data = [(index.name, index.columns.keys()) for index in
                       table.indexes]
         column_data = [column.name for column in table.columns]
-        # instead of calling assertItemsEqual, which is not present in py26
-        # asserting equality of lengths and sorted collections
-        self.assertEqual(len(columns), len(column_data))
-        self.assertEqual(sorted(columns), sorted(column_data))
-        self.assertEqual(len(indices), len(index_data))
-        self.assertEqual(sorted(indices), sorted(index_data))
+        self.assertItemsEqual(columns, column_data)
+        self.assertItemsEqual(indices, index_data)
 
 
 class TestMysqlMigrations(test_base.MySQLOpportunisticTestCase,
@@ -1878,7 +1874,7 @@ class ModelsMigrationSyncMixin(object):
     def get_metadata(self):
         for table in models_metadef.BASE_DICT.metadata.sorted_tables:
             models.BASE.metadata._add_table(table.name, table.schema, table)
-        for table in models_artifacts.BASE.metadata.sorted_tables:
+        for table in models_glare.BASE.metadata.sorted_tables:
             models.BASE.metadata._add_table(table.name, table.schema, table)
         return models.BASE.metadata
 

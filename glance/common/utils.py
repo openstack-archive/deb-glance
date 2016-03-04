@@ -36,6 +36,7 @@ import uuid
 from OpenSSL import crypto
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_utils import encodeutils
 from oslo_utils import excutils
 from oslo_utils import netutils
 from oslo_utils import strutils
@@ -349,68 +350,6 @@ def safe_mkdirs(path):
             raise
 
 
-class PrettyTable(object):
-    """Creates an ASCII art table for use in bin/glance
-
-    Example:
-
-        ID  Name              Size         Hits
-        --- ----------------- ------------ -----
-        122 image                       22     0
-    """
-    def __init__(self):
-        self.columns = []
-
-    def add_column(self, width, label="", just='l'):
-        """Add a column to the table
-
-        :param width: number of characters wide the column should be
-        :param label: column heading
-        :param just: justification for the column, 'l' for left,
-                     'r' for right
-        """
-        self.columns.append((width, label, just))
-
-    def make_header(self):
-        label_parts = []
-        break_parts = []
-        for width, label, just in self.columns:
-            # NOTE(sirp): headers are always left justified
-            label_part = self._clip_and_justify(label, width, 'l')
-            label_parts.append(label_part)
-
-            break_part = '-' * width
-            break_parts.append(break_part)
-
-        label_line = ' '.join(label_parts)
-        break_line = ' '.join(break_parts)
-        return '\n'.join([label_line, break_line])
-
-    def make_row(self, *args):
-        row = args
-        row_parts = []
-        for data, (width, label, just) in zip(row, self.columns):
-            row_part = self._clip_and_justify(data, width, just)
-            row_parts.append(row_part)
-
-        row_line = ' '.join(row_parts)
-        return row_line
-
-    @staticmethod
-    def _clip_and_justify(data, width, just):
-        # clip field to column width
-        clipped_data = str(data)[:width]
-
-        if just == 'r':
-            # right justify
-            justified = clipped_data.rjust(width)
-        else:
-            # left justify
-            justified = clipped_data.ljust(width)
-
-        return justified
-
-
 def mutating(func):
     """Decorator to enforce read-only logic"""
     @functools.wraps(func)
@@ -476,6 +415,10 @@ def validate_key_cert(key_file, cert_file):
 
     try:
         data = str(uuid.uuid4())
+        # On Python 3, explicitly encode to UTF-8 to call crypto.sign() which
+        # requires bytes. Otherwise, it raises a deprecation warning (and
+        # will raise an error later).
+        data = encodeutils.to_utf8(data)
         digest = CONF.digest_algorithm
         if digest == 'sha1':
             LOG.warn('The FIPS (FEDERAL INFORMATION PROCESSING STANDARDS)'
@@ -667,6 +610,52 @@ def split_filter_op(expression):
 
     # NOTE stevelle decoding escaped values may be needed later
     return op, threshold
+
+
+def validate_quotes(value):
+    """Validate filter values
+
+    Validation opening/closing quotes in the expression.
+    """
+    open_quotes = True
+    for i in range(len(value)):
+        if value[i] == '"':
+            if i and value[i - 1] == '\\':
+                continue
+            if open_quotes:
+                if i and value[i - 1] != ',':
+                    msg = _("Invalid filter value %s. There is no comma "
+                            "before opening quotation mark.") % value
+                    raise exception.InvalidParameterValue(message=msg)
+            else:
+                if i + 1 != len(value) and value[i + 1] != ",":
+                    msg = _("Invalid filter value %s. There is no comma "
+                            "after closing quotation mark.") % value
+                    raise exception.InvalidParameterValue(message=msg)
+            open_quotes = not open_quotes
+    if not open_quotes:
+        msg = _("Invalid filter value %s. The quote is not closed.") % value
+        raise exception.InvalidParameterValue(message=msg)
+
+
+def split_filter_value_for_quotes(value):
+    """Split filter values
+
+    Split values by commas and quotes for 'in' operator, according api-wg.
+    """
+    validate_quotes(value)
+    tmp = re.compile(r'''
+        "(                 # if found a double-quote
+           [^\"\\]*        # take characters either non-quotes or backslashes
+           (?:\\.          # take backslashes and character after it
+            [^\"\\]*)*     # take characters either non-quotes or backslashes
+         )                 # before double-quote
+        ",?                # a double-quote with comma maybe
+        | ([^,]+),?        # if not found double-quote take any non-comma
+                           # characters with comma maybe
+        | ,                # if we have only comma take empty string
+        ''', re.VERBOSE)
+    return [val[0] or val[1] for val in re.findall(tmp, value)]
 
 
 def evaluate_filter_op(value, operator, threshold):

@@ -53,6 +53,7 @@ Glance Background Concepts
    architecture
    database_architecture
    domain_model
+   domain_implementation
    identifiers
    statuses
    tasks
@@ -74,6 +75,7 @@ Installing/Configuring Glance
    artifact-types
    flows
    property-protections
+   opts/index
 
 Operating Glance
 ================

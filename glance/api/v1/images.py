@@ -26,6 +26,7 @@ from oslo_log import log as logging
 from oslo_utils import encodeutils
 from oslo_utils import excutils
 from oslo_utils import strutils
+import six
 from webob.exc import HTTPBadRequest
 from webob.exc import HTTPConflict
 from webob.exc import HTTPForbidden
@@ -203,7 +204,7 @@ class Controller(controller.BaseController):
             # If value is negative, allow unlimited number of properties
             return
 
-        props = image_meta['properties'].keys()
+        props = list(image_meta['properties'].keys())
 
         # NOTE(ameade): If we are not removing existing properties,
         # take them in to account
@@ -249,7 +250,7 @@ class Controller(controller.BaseController):
         :param req: The WSGI/Webob Request object
         """
         if property_utils.is_property_protection_enabled():
-            for key in image_meta['properties'].keys():
+            for key in list(image_meta['properties'].keys()):
                 if (self.prop_enforcer.check_property_rules(
                         key, 'read', req.context) is False):
                     image_meta['properties'].pop(key)
@@ -461,26 +462,32 @@ class Controller(controller.BaseController):
         or copy-from headers) are supported. Otherwise we reject
         with 400 "Bad Request".
         """
-        if source:
-            if store_utils.validate_external_location(source):
-                return source
-            else:
+        if store_utils.validate_external_location(source):
+            return source
+        else:
+            if source:
                 msg = _("External sources are not supported: '%s'") % source
-                LOG.warn(msg)
-                raise HTTPBadRequest(explanation=msg,
-                                     request=req,
-                                     content_type="text/plain")
+            else:
+                msg = _("External source should not be empty")
+            LOG.warn(msg)
+            raise HTTPBadRequest(explanation=msg,
+                                 request=req,
+                                 content_type="text/plain")
 
     @staticmethod
     def _copy_from(req):
         return req.headers.get('x-glance-api-copy-from')
 
     def _external_source(self, image_meta, req):
-        source = image_meta.get('location')
-        if source is not None:
+        if 'location' in image_meta:
             self._enforce(req, 'set_image_location')
-        else:
+            source = image_meta['location']
+        elif 'x-glance-api-copy-from' in req.headers:
             source = Controller._copy_from(req)
+        else:
+            # we have an empty external source value
+            # so we are creating "draft" of the image and no need validation
+            return None
         return Controller._validate_source(source, req)
 
     @staticmethod
@@ -781,7 +788,7 @@ class Controller(controller.BaseController):
     def _handle_source(self, req, image_id, image_meta, image_data):
         copy_from = self._copy_from(req)
         location = image_meta.get('location')
-        sources = filter(lambda x: x, (copy_from, location, image_data))
+        sources = [obj for obj in (copy_from, location, image_data) if obj]
         if len(sources) >= 2:
             msg = _("It's invalid to provide multiple image sources.")
             LOG.warn(msg)
@@ -1228,7 +1235,7 @@ class ImageDeserializer(wsgi.JSONRequestDeserializer):
             # gets the correct image data
             request.body_file = data
 
-        elif image_size > CONF.image_size_cap:
+        elif image_size is not None and image_size > CONF.image_size_cap:
             max_image_size = CONF.image_size_cap
             msg = (_("Denying attempt to upload image larger than %d"
                      " bytes.") % max_image_size)
@@ -1253,11 +1260,16 @@ class ImageSerializer(wsgi.JSONResponseSerializer):
 
     def _inject_location_header(self, response, image_meta):
         location = self._get_image_location(image_meta)
-        response.headers['Location'] = location.encode('utf-8')
+        if six.PY2:
+            location = location.encode('utf-8')
+        response.headers['Location'] = location
 
     def _inject_checksum_header(self, response, image_meta):
         if image_meta['checksum'] is not None:
-            response.headers['ETag'] = image_meta['checksum'].encode('utf-8')
+            checksum = image_meta['checksum']
+            if six.PY2:
+                checksum = checksum.encode('utf-8')
+            response.headers['ETag'] = checksum
 
     def _inject_image_meta_headers(self, response, image_meta):
         """
@@ -1274,7 +1286,10 @@ class ImageSerializer(wsgi.JSONResponseSerializer):
         headers = utils.image_meta_to_http_headers(image_meta)
 
         for k, v in headers.items():
-            response.headers[k.encode('utf-8')] = v.encode('utf-8')
+            if six.PY3:
+                response.headers[str(k)] = str(v)
+            else:
+                response.headers[k.encode('utf-8')] = v.encode('utf-8')
 
     def _get_image_location(self, image_meta):
         """Build a relative url to reach the image defined by image_meta."""

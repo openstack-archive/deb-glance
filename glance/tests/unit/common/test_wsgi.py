@@ -16,12 +16,14 @@
 
 import datetime
 import gettext
+import os
 import socket
 
 from babel import localedata
 import eventlet.patcher
 import fixtures
 import mock
+from oslo_concurrency import processutils
 from oslo_serialization import jsonutils
 import routes
 import six
@@ -372,6 +374,32 @@ class ResourceTest(test_utils.BaseTestCase):
         e = wsgi.translate_exception(req, e)
         self.assertEqual('No Encontrado', e.explanation)
 
+    def test_response_headers_encoded(self):
+        # prepare environment
+        for_openstack_comrades =  \
+            u'\u0417\u0430 \u043e\u043f\u0435\u043d\u0441\u0442\u0435\u043a, ' \
+            u'\u0442\u043e\u0432\u0430\u0440\u0438\u0449\u0438'
+
+        class FakeController(object):
+            def index(self, shirt, pants=None):
+                return (shirt, pants)
+
+        class FakeSerializer(object):
+            def index(self, response, result):
+                response.headers['unicode_test'] = for_openstack_comrades
+
+        # make request
+        resource = wsgi.Resource(FakeController(), None, FakeSerializer())
+        actions = {'action': 'index'}
+        env = {'wsgiorg.routing_args': [None, actions]}
+        request = wsgi.Request.blank('/tests/123', environ=env)
+        response = resource.__call__(request)
+
+        # ensure it has been encoded correctly
+        value = (response.headers['unicode_test'].decode('utf-8')
+                 if six.PY2 else response.headers['unicode_test'])
+        self.assertEqual(for_openstack_comrades, value)
+
 
 class JSONResponseSerializerTest(test_utils.BaseTestCase):
 
@@ -529,6 +557,23 @@ class ServerTest(test_utils.BaseTestCase):
                                                 custom_pool=server.pool,
                                                 keepalive=False,
                                                 socket_timeout=900)
+
+    def test_number_of_workers(self):
+        """Ensure the default number of workers matches num cpus."""
+        def pid():
+            i = 1
+            while True:
+                i = i + 1
+                yield i
+
+        with mock.patch.object(os, 'fork') as mock_fork:
+            mock_fork.side_effect = pid
+            server = wsgi.Server()
+            server.configure = mock.Mock()
+            fake_application = "fake-application"
+            server.start(fake_application, None)
+            self.assertEqual(processutils.get_worker_count(),
+                             len(server.children))
 
 
 class TestHelpers(test_utils.BaseTestCase):

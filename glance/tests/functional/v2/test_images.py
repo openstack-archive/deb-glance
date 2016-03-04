@@ -561,20 +561,6 @@ class TestImages(functional.FunctionalTest):
         response = requests.patch(path, headers=headers, data=data)
         self.assertEqual(200, response.status_code, response.text)
 
-        # Remove all locations of the image then the image size shouldn't be
-        # able to access
-        path = self._url('/v2/images/%s' % image2_id)
-        media_type = 'application/openstack-images-v2.1-json-patch'
-        headers = self._headers({'content-type': media_type})
-        doc = [{'op': 'replace', 'path': '/locations', 'value': []}]
-        data = jsonutils.dumps(doc)
-        response = requests.patch(path, headers=headers, data=data)
-        self.assertEqual(200, response.status_code, response.text)
-        image = jsonutils.loads(response.text)
-        self.assertIsNone(image['size'])
-        self.assertIsNone(image['virtual_size'])
-        self.assertEqual('queued', image['status'])
-
         # Deletion should work. Deleting image-1
         path = self._url('/v2/images/%s' % image_id)
         response = requests.delete(path, headers=self._headers())
@@ -674,6 +660,79 @@ class TestImages(functional.FunctionalTest):
             data = jsonutils.dumps(doc)
             response = requests.patch(path, headers=headers, data=data)
             self.assertEqual(403, response.status_code)
+
+        self.stop_servers()
+
+    def test_methods_that_dont_accept_illegal_bodies(self):
+        # Check images can be reached
+        self.start_servers(**self.__dict__.copy())
+        path = self._url('/v2/images')
+        response = requests.get(path, headers=self._headers())
+        self.assertEqual(200, response.status_code)
+
+        # Test all the schemas
+        schema_urls = [
+            '/v2/schemas/images',
+            '/v2/schemas/image',
+            '/v2/schemas/members',
+            '/v2/schemas/member',
+        ]
+        for value in schema_urls:
+            path = self._url(value)
+            data = jsonutils.dumps(["body"])
+            response = requests.get(path, headers=self._headers(), data=data)
+            self.assertEqual(400, response.status_code)
+
+        # Create image for use with tests
+        path = self._url('/v2/images')
+        headers = self._headers({'content-type': 'application/json'})
+        data = jsonutils.dumps({'name': 'image'})
+        response = requests.post(path, headers=headers, data=data)
+        self.assertEqual(201, response.status_code)
+        image = jsonutils.loads(response.text)
+        image_id = image['id']
+
+        test_urls = [
+            ('/v2/images/%s', 'get'),
+            ('/v2/images/%s/actions/deactivate', 'post'),
+            ('/v2/images/%s/actions/reactivate', 'post'),
+            ('/v2/images/%s/tags/mytag', 'put'),
+            ('/v2/images/%s/tags/mytag', 'delete'),
+            ('/v2/images/%s/members', 'get'),
+            ('/v2/images/%s/file', 'get'),
+            ('/v2/images/%s', 'delete'),
+        ]
+
+        for link, method in test_urls:
+            path = self._url(link % image_id)
+            data = jsonutils.dumps(["body"])
+            response = getattr(requests, method)(
+                path, headers=self._headers(), data=data)
+            self.assertEqual(400, response.status_code)
+
+        # DELETE /images/imgid without legal json
+        path = self._url('/v2/images/%s' % image_id)
+        data = '{"hello"]'
+        response = requests.delete(path, headers=self._headers(), data=data)
+        self.assertEqual(400, response.status_code)
+
+        # POST /images/imgid/members
+        path = self._url('/v2/images/%s/members' % image_id)
+        data = jsonutils.dumps({'member': TENANT3})
+        response = requests.post(path, headers=self._headers(), data=data)
+        self.assertEqual(200, response.status_code)
+
+        # GET /images/imgid/members/memid
+        path = self._url('/v2/images/%s/members/%s' % (image_id, TENANT3))
+        data = jsonutils.dumps(["body"])
+        response = requests.get(path, headers=self._headers(), data=data)
+        self.assertEqual(400, response.status_code)
+
+        # DELETE /images/imgid/members/memid
+        path = self._url('/v2/images/%s/members/%s' % (image_id, TENANT3))
+        data = jsonutils.dumps(["body"])
+        response = requests.delete(path, headers=self._headers(), data=data)
+        self.assertEqual(400, response.status_code)
 
         self.stop_servers()
 
@@ -1261,6 +1320,52 @@ class TestImages(functional.FunctionalTest):
         path = self._url('/v2/images/%s' % image_id)
         response = requests.delete(path, headers=headers)
         self.assertEqual(204, response.status_code)
+
+    def test_list_show_ok_when_get_location_allowed_for_admins(self):
+        self.api_server.show_image_direct_url = True
+        self.api_server.show_multiple_locations = True
+        # setup context to allow a list locations by admin only
+        rules = {
+            "context_is_admin": "role:admin",
+            "default": "",
+            "add_image": "",
+            "get_image": "",
+            "modify_image": "",
+            "upload_image": "",
+            "get_image_location": "role:admin",
+            "delete_image": "",
+            "restricted": "",
+            "download_image": "",
+            "add_member": "",
+        }
+
+        self.set_policy_rules(rules)
+        self.start_servers(**self.__dict__.copy())
+
+        # Create an image
+        path = self._url('/v2/images')
+        headers = self._headers({'content-type': 'application/json',
+                                 'X-Tenant-Id': TENANT1})
+        data = jsonutils.dumps({'name': 'image-1', 'disk_format': 'aki',
+                                'container_format': 'aki'})
+        response = requests.post(path, headers=headers, data=data)
+        self.assertEqual(201, response.status_code)
+
+        # Get the image's ID
+        image = jsonutils.loads(response.text)
+        image_id = image['id']
+
+        # Can retrieve the image as TENANT1
+        path = self._url('/v2/images/%s' % image_id)
+        response = requests.get(path, headers=headers)
+        self.assertEqual(200, response.status_code)
+
+        # Can list images as TENANT1
+        path = self._url('/v2/images')
+        response = requests.get(path, headers=headers)
+        self.assertEqual(200, response.status_code)
+
+        self.stop_servers()
 
     def test_image_size_cap(self):
         self.api_server.image_size_cap = 128
@@ -2466,13 +2571,15 @@ class TestImages(functional.FunctionalTest):
         # Create 7 images
         images = []
         fixtures = [
-            {'name': 'image-3', 'type': 'kernel', 'ping': 'pong'},
-            {'name': 'image-4', 'type': 'kernel', 'ping': 'pong'},
+            {'name': 'image-3', 'type': 'kernel', 'ping': 'pong',
+             'container_format': 'ami', 'disk_format': 'ami'},
+            {'name': 'image-4', 'type': 'kernel', 'ping': 'pong',
+             'container_format': 'bare', 'disk_format': 'ami'},
             {'name': 'image-1', 'type': 'kernel', 'ping': 'pong'},
             {'name': 'image-3', 'type': 'ramdisk', 'ping': 'pong'},
             {'name': 'image-2', 'type': 'kernel', 'ping': 'ding'},
             {'name': 'image-3', 'type': 'kernel', 'ping': 'pong'},
-            {'name': 'image-2', 'type': 'kernel', 'ping': 'pong'},
+            {'name': 'image-2,image-5', 'type': 'kernel', 'ping': 'pong'},
         ]
         path = self._url('/v2/images')
         headers = self._headers({'content-type': 'application/json'})
@@ -2529,6 +2636,33 @@ class TestImages(functional.FunctionalTest):
         path = self._url('/v2/images?name=%FF')
         response = requests.get(path, headers=self._headers())
         self.assertEqual(400, response.status_code)
+
+        # Image list filters by name with in operator
+        url_template = '/v2/images?name=in:%s'
+        filter_value = 'image-1,image-2'
+        path = self._url(url_template % filter_value)
+        response = requests.get(path, headers=self._headers())
+        self.assertEqual(200, response.status_code)
+        body = jsonutils.loads(response.text)
+        self.assertGreaterEqual(3, len(body['images']))
+
+        # Image list filters by container_format with in operator
+        url_template = '/v2/images?container_format=in:%s'
+        filter_value = 'bare,ami'
+        path = self._url(url_template % filter_value)
+        response = requests.get(path, headers=self._headers())
+        self.assertEqual(200, response.status_code)
+        body = jsonutils.loads(response.text)
+        self.assertGreaterEqual(2, len(body['images']))
+
+        # Image list filters by disk_format with in operator
+        url_template = '/v2/images?disk_format=in:%s'
+        filter_value = 'bare,ami,iso'
+        path = self._url(url_template % filter_value)
+        response = requests.get(path, headers=self._headers())
+        self.assertEqual(200, response.status_code)
+        body = jsonutils.loads(response.text)
+        self.assertGreaterEqual(2, len(body['images']))
 
         # Begin pagination after the first image
         template_url = ('/v2/images?limit=2&sort_dir=asc&sort_key=name'

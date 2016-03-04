@@ -38,6 +38,8 @@ from oslo_concurrency import processutils
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_serialization import jsonutils
+from oslo_utils import encodeutils
+from oslo_utils import strutils
 import routes
 import routes.middleware
 import six
@@ -76,7 +78,7 @@ socket_opts = [
 ]
 
 eventlet_opts = [
-    cfg.IntOpt('workers', default=processutils.get_worker_count(),
+    cfg.IntOpt('workers',
                help=_('The number of child process workers that will be '
                       'created to service requests. The default will be '
                       'equal to the number of CPUs available.')),
@@ -121,6 +123,14 @@ CONF.register_opts(eventlet_opts)
 CONF.register_opts(profiler_opts, group="profiler")
 
 ASYNC_EVENTLET_THREAD_POOL_LIST = []
+
+
+def get_num_workers():
+    """Return the configured number of workers."""
+    if CONF.workers is None:
+        # None implies the number of CPUs
+        return processutils.get_worker_count()
+    return CONF.workers
 
 
 def get_bind_addr(default_port=None):
@@ -301,17 +311,18 @@ class Server(object):
         self.start_wsgi()
 
     def start_wsgi(self):
-        if CONF.workers == 0:
+        workers = get_num_workers()
+        if workers == 0:
             # Useful for profiling, test, debug etc.
             self.pool = self.create_pool()
             self.pool.spawn_n(self._single_run, self.application, self.sock)
             return
         else:
-            LOG.info(_LI("Starting %d workers"), CONF.workers)
+            LOG.info(_LI("Starting %d workers"), workers)
             signal.signal(signal.SIGTERM, self.kill_children)
             signal.signal(signal.SIGINT, self.kill_children)
             signal.signal(signal.SIGHUP, self.hup)
-            while len(self.children) < CONF.workers:
+            while len(self.children) < workers:
                 self.run_child()
 
     def create_pool(self):
@@ -338,7 +349,7 @@ class Server(object):
                     _LI('All workers have terminated. Exiting'))
                 self.running = False
         else:
-            if len(self.children) < CONF.workers:
+            if len(self.children) < get_num_workers():
                 self.run_child()
 
     def wait_on_children(self):
@@ -817,8 +828,7 @@ class JSONResponseSerializer(object):
     def default(self, response, result):
         response.content_type = 'application/json'
         body = self.to_json(result)
-        if isinstance(body, six.text_type):
-            body = body.encode('utf-8')
+        body = encodeutils.to_utf8(body)
         response.body = body
 
 
@@ -876,8 +886,13 @@ class Resource(object):
         """WSGI method that controls (de)serialization and method dispatch."""
         action_args = self.get_action_args(request.environ)
         action = action_args.pop('action', None)
+        body_reject = strutils.bool_from_string(
+            action_args.pop('body_reject', None))
 
         try:
+            if body_reject and self.deserializer.has_body(request):
+                msg = _('A body is not expected with this request.')
+                raise webob.exc.HTTPBadRequest(explanation=msg)
             deserialized_request = self.dispatch(self.deserializer,
                                                  action, request)
             action_args.update(deserialized_request)
@@ -893,13 +908,18 @@ class Resource(object):
                     "decoded by Glance")
             raise webob.exc.HTTPBadRequest(explanation=msg)
         except Exception as e:
-            LOG.exception(_LE("Caught error: %s"), six.text_type(e))
+            LOG.exception(_LE("Caught error: %s"),
+                          encodeutils.exception_to_unicode(e))
             response = webob.exc.HTTPInternalServerError()
             return response
 
         try:
             response = webob.Response(request=request)
             self.dispatch(self.serializer, action, response, action_result)
+            # encode all headers in response to utf-8 to prevent unicode errors
+            for name, value in list(response.headers.items()):
+                if six.PY2 and isinstance(value, six.text_type):
+                    response.headers[name] = encodeutils.safe_encode(value)
             return response
         except webob.exc.WSGIHTTPException as e:
             return translate_exception(request, e)

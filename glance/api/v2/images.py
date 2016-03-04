@@ -173,7 +173,10 @@ class ImagesController(object):
         path = change['path']
         path_root = path[0]
         value = change['value']
-        if path_root == 'locations':
+        if path_root == 'locations' and value == []:
+            msg = _("Cannot set locations to empty list.")
+            raise webob.exc.HTTPForbidden(msg)
+        elif path_root == 'locations' and value != []:
             self._do_replace_locations(image, value)
         elif path_root == 'owner' and req.context.is_admin == False:
             msg = _("Owner can't be updated by non admin.")
@@ -209,7 +212,10 @@ class ImagesController(object):
         path = change['path']
         path_root = path[0]
         if path_root == 'locations':
-            self._do_remove_locations(image, path[1])
+            try:
+                self._do_remove_locations(image, path[1])
+            except exception.Forbidden as e:
+                raise webob.exc.HTTPForbidden(e.msg)
         else:
             if hasattr(image, path_root):
                 msg = _("Property %s may not be removed.")
@@ -298,6 +304,11 @@ class ImagesController(object):
                 explanation=encodeutils.exception_to_unicode(e))
 
     def _do_remove_locations(self, image, path_pos):
+        if len(image.locations) == 1:
+            LOG.debug("User forbidden to remove last location of image %s",
+                      image.image_id)
+            msg = _("Cannot remove last location in the image.")
+            raise exception.Forbidden(msg)
         pos = self._get_locations_op_pos(path_pos,
                                          len(image.locations), False)
         if pos is None:
@@ -307,11 +318,11 @@ class ImagesController(object):
             # NOTE(zhiyan): this actually deletes the location
             # from the backend store.
             image.locations.pop(pos)
+        # TODO(jokke): Fix this, we should catch what store throws and
+        # provide definitely something else than IternalServerError to user.
         except Exception as e:
             raise webob.exc.HTTPInternalServerError(
                 explanation=encodeutils.exception_to_unicode(e))
-        if len(image.locations) == 0 and image.status == 'active':
-            image.status = 'queued'
 
 
 class RequestDeserializer(wsgi.JSONRequestDeserializer):
@@ -714,7 +725,13 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
         return base_href
 
     def _format_image(self, image):
-        image_view = dict()
+
+        def _get_image_locations(image):
+            try:
+                return list(image.locations)
+            except exception.Forbidden:
+                return []
+
         try:
             image_view = dict(image.extra_properties)
             attributes = ['name', 'disk_format', 'container_format',
@@ -728,7 +745,7 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
             image_view['updated_at'] = timeutils.isotime(image.updated_at)
 
             if CONF.show_multiple_locations:
-                locations = list(image.locations)
+                locations = _get_image_locations(image)
                 if locations:
                     image_view['locations'] = []
                     for loc in locations:
@@ -745,9 +762,10 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
                               "for image %s", image.image_id)
 
             if CONF.show_image_direct_url:
-                if image.locations:
+                locations = _get_image_locations(image)
+                if locations:
                     # Choose best location configured strategy
-                    l = location_strategy.choose_best_location(image.locations)
+                    l = location_strategy.choose_best_location(locations)
                     image_view['direct_url'] = l['url']
                 else:
                     LOG.debug("There is not available location "
@@ -758,9 +776,9 @@ class ResponseSerializer(wsgi.JSONResponseSerializer):
             image_view['file'] = self._get_image_href(image, 'file')
             image_view['schema'] = '/v2/schemas/image'
             image_view = self.schema.filter(image_view)  # domain
+            return image_view
         except exception.Forbidden as e:
             raise webob.exc.HTTPForbidden(explanation=e.msg)
-        return image_view
 
     def create(self, response, image):
         response.status_int = 201
@@ -817,7 +835,8 @@ def get_base_properties():
         },
         'status': {
             'type': 'string',
-            'description': _('Status of the image (READ-ONLY)'),
+            'readOnly': True,
+            'description': _('Status of the image'),
             'enum': ['queued', 'saving', 'active', 'killed',
                      'deleted', 'pending_delete', 'deactivated'],
         },
@@ -832,7 +851,8 @@ def get_base_properties():
         },
         'checksum': {
             'type': ['null', 'string'],
-            'description': _('md5 hash of image contents. (READ-ONLY)'),
+            'readOnly': True,
+            'description': _('md5 hash of image contents.'),
             'maxLength': 32,
         },
         'owner': {
@@ -842,11 +862,13 @@ def get_base_properties():
         },
         'size': {
             'type': ['null', 'integer'],
-            'description': _('Size of image file in bytes (READ-ONLY)'),
+            'readOnly': True,
+            'description': _('Size of image file in bytes'),
         },
         'virtual_size': {
             'type': ['null', 'integer'],
-            'description': _('Virtual size of image in bytes (READ-ONLY)'),
+            'readOnly': True,
+            'description': _('Virtual size of image in bytes'),
         },
         'container_format': {
             'type': ['null', 'string'],
@@ -860,16 +882,18 @@ def get_base_properties():
         },
         'created_at': {
             'type': 'string',
+            'readOnly': True,
             'description': _('Date and time of image registration'
-                             ' (READ-ONLY)'),
+                             ),
             # TODO(bcwaldon): our jsonschema library doesn't seem to like the
             # format attribute, figure out why!
             # 'format': 'date-time',
         },
         'updated_at': {
             'type': 'string',
+            'readOnly': True,
             'description': _('Date and time of the last image modification'
-                             ' (READ-ONLY)'),
+                             ),
             # 'format': 'date-time',
         },
         'tags': {
@@ -882,8 +906,9 @@ def get_base_properties():
         },
         'direct_url': {
             'type': 'string',
+            'readOnly': True,
             'description': _('URL to access the image file kept in external '
-                             'store (READ-ONLY)'),
+                             'store'),
         },
         'min_ram': {
             'type': 'integer',
@@ -896,15 +921,18 @@ def get_base_properties():
         },
         'self': {
             'type': 'string',
-            'description': '(READ-ONLY)'
+            'readOnly': True,
+            'description': _('An image self url'),
         },
         'file': {
             'type': 'string',
-            'description': '(READ-ONLY)'
+            'readOnly': True,
+            'description': _('An image file url'),
         },
         'schema': {
             'type': 'string',
-            'description': '(READ-ONLY)'
+            'readOnly': True,
+            'description': _('An image schema url'),
         },
         'locations': {
             'type': 'array',

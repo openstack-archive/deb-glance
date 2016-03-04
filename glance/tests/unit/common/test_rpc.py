@@ -18,6 +18,7 @@ import datetime
 
 from oslo_config import cfg
 from oslo_serialization import jsonutils
+from oslo_utils import encodeutils
 import routes
 import six
 import webob
@@ -29,13 +30,6 @@ from glance.tests.unit import base
 from glance.tests import utils as test_utils
 
 CONF = cfg.CONF
-
-
-def json_dump_as_bytes(obj):
-    body = jsonutils.dumps(obj)
-    if isinstance(body, six.text_type):
-        body = body.encode('utf-8')
-    return body
 
 
 class FakeResource(object):
@@ -126,7 +120,7 @@ class TestRPCController(base.IsolatedUnitTest):
         api = create_api()
         req = webob.Request.blank('/rpc')
         req.method = 'POST'
-        req.body = json_dump_as_bytes([
+        req.body = jsonutils.dump_as_bytes([
             {
                 "command": "get_images",
                 "kwargs": {"keyword": 1}
@@ -141,7 +135,7 @@ class TestRPCController(base.IsolatedUnitTest):
         api = create_api()
         req = webob.Request.blank('/rpc')
         req.method = 'POST'
-        req.body = json_dump_as_bytes([
+        req.body = jsonutils.dump_as_bytes([
             {
                 "command": "get_all_images",
                 "kwargs": {"keyword": 1}
@@ -161,27 +155,27 @@ class TestRPCController(base.IsolatedUnitTest):
         req.content_type = 'application/json'
 
         # Body is not a list, it should fail
-        req.body = json_dump_as_bytes({})
+        req.body = jsonutils.dump_as_bytes({})
         res = req.get_response(api)
         self.assertEqual(400, res.status_int)
 
         # cmd is not dict, it should fail.
-        req.body = json_dump_as_bytes([None])
+        req.body = jsonutils.dump_as_bytes([None])
         res = req.get_response(api)
         self.assertEqual(400, res.status_int)
 
         # No command key, it should fail.
-        req.body = json_dump_as_bytes([{}])
+        req.body = jsonutils.dump_as_bytes([{}])
         res = req.get_response(api)
         self.assertEqual(400, res.status_int)
 
         # kwargs not dict, it should fail.
-        req.body = json_dump_as_bytes([{"command": "test", "kwargs": 200}])
+        req.body = jsonutils.dump_as_bytes([{"command": "test", "kwargs": 2}])
         res = req.get_response(api)
         self.assertEqual(400, res.status_int)
 
         # Command does not exist, it should fail.
-        req.body = json_dump_as_bytes([{"command": "test"}])
+        req.body = jsonutils.dump_as_bytes([{"command": "test"}])
         res = req.get_response(api)
         self.assertEqual(404, res.status_int)
 
@@ -191,7 +185,7 @@ class TestRPCController(base.IsolatedUnitTest):
         req.method = 'POST'
         req.content_type = 'application/json'
 
-        req.body = json_dump_as_bytes([{"command": "raise_value_error"}])
+        req.body = jsonutils.dump_as_bytes([{"command": "raise_value_error"}])
         res = req.get_response(api)
         self.assertEqual(200, res.status_int)
 
@@ -199,7 +193,7 @@ class TestRPCController(base.IsolatedUnitTest):
         err_cls = 'builtins.ValueError' if six.PY3 else 'exceptions.ValueError'
         self.assertEqual(err_cls, returned['_error']['cls'])
 
-        req.body = json_dump_as_bytes([{"command": "raise_weird_error"}])
+        req.body = jsonutils.dump_as_bytes([{"command": "raise_weird_error"}])
         res = req.get_response(api)
         self.assertEqual(200, res.status_int)
 
@@ -218,8 +212,7 @@ class TestRPCClient(base.IsolatedUnitTest):
 
     def fake_request(self, method, url, body, headers):
         req = webob.Request.blank(url.path)
-        if isinstance(body, six.text_type):
-            body = body.encode('utf-8')
+        body = encodeutils.to_utf8(body)
         req.body = body
         req.method = method
 

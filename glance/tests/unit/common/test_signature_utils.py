@@ -20,6 +20,8 @@ import unittest
 
 from cryptography import exceptions as crypto_exception
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric import dsa
+from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import hashes
@@ -29,9 +31,24 @@ from glance.common import exception
 from glance.common import signature_utils
 from glance.tests import utils as test_utils
 
-TEST_PRIVATE_KEY = rsa.generate_private_key(public_exponent=3,
-                                            key_size=1024,
-                                            backend=default_backend())
+TEST_RSA_PRIVATE_KEY = rsa.generate_private_key(public_exponent=3,
+                                                key_size=1024,
+                                                backend=default_backend())
+
+TEST_DSA_PRIVATE_KEY = dsa.generate_private_key(key_size=3072,
+                                                backend=default_backend())
+
+# secp521r1 is assumed to be available on all supported platforms
+TEST_ECC_PRIVATE_KEY = ec.generate_private_key(ec.SECP521R1(),
+                                               default_backend())
+
+# Required image property names
+(SIGNATURE, HASH_METHOD, KEY_TYPE, CERT_UUID) = (
+    signature_utils.SIGNATURE,
+    signature_utils.HASH_METHOD,
+    signature_utils.KEY_TYPE,
+    signature_utils.CERT_UUID
+)
 
 # Required image property names
 # TODO(bpoulos): remove when 'sign-the-hash' approach is no longer supported
@@ -82,7 +99,7 @@ class FakeCastellanCertificate(object):
 
 class FakeCryptoCertificate(object):
 
-    def __init__(self, pub_key=TEST_PRIVATE_KEY.public_key(),
+    def __init__(self, pub_key=TEST_RSA_PRIVATE_KEY.public_key(),
                  not_valid_before=(datetime.datetime.utcnow() -
                                    datetime.timedelta(hours=1)),
                  not_valid_after=(datetime.datetime.utcnow() +
@@ -145,9 +162,9 @@ class TestSignatureUtils(test_utils.BaseTestCase):
     @mock.patch('glance.common.signature_utils.get_public_key')
     def test_old_verify_signature_PSS(self, mock_get_pub_key):
         checksum_hash = b'224626ae19824466f2a7f39ab7b80f7f'
-        mock_get_pub_key.return_value = TEST_PRIVATE_KEY.public_key()
+        mock_get_pub_key.return_value = TEST_RSA_PRIVATE_KEY.public_key()
         for hash_name, hash_alg in signature_utils.HASH_METHODS.items():
-            signer = TEST_PRIVATE_KEY.signer(
+            signer = TEST_RSA_PRIVATE_KEY.signer(
                 padding.PSS(
                     mgf=padding.MGF1(hash_alg),
                     salt_length=padding.PSS.MAX_LENGTH
@@ -172,10 +189,10 @@ class TestSignatureUtils(test_utils.BaseTestCase):
     @mock.patch('glance.common.signature_utils.get_public_key')
     def test_old_verify_signature_custom_PSS_salt(self, mock_get_pub_key):
         checksum_hash = b'224626ae19824466f2a7f39ab7b80f7f'
-        mock_get_pub_key.return_value = TEST_PRIVATE_KEY.public_key()
+        mock_get_pub_key.return_value = TEST_RSA_PRIVATE_KEY.public_key()
         custom_salt_length = 32
         for hash_name, hash_alg in signature_utils.HASH_METHODS.items():
-            signer = TEST_PRIVATE_KEY.signer(
+            signer = TEST_RSA_PRIVATE_KEY.signer(
                 padding.PSS(
                     mgf=padding.MGF1(hash_alg),
                     salt_length=custom_salt_length
@@ -201,44 +218,44 @@ class TestSignatureUtils(test_utils.BaseTestCase):
     @mock.patch('glance.common.signature_utils.get_public_key')
     def test_old_verify_signature_bad_signature(self, mock_get_pub_key):
         checksum_hash = '224626ae19824466f2a7f39ab7b80f7f'
-        mock_get_pub_key.return_value = TEST_PRIVATE_KEY.public_key()
+        mock_get_pub_key.return_value = TEST_RSA_PRIVATE_KEY.public_key()
         image_properties = {OLD_CERT_UUID:
                             'fea14bc2-d75f-4ba5-bccc-b5c924ad0693',
                             OLD_HASH_METHOD: 'SHA-256',
                             OLD_KEY_TYPE: 'RSA-PSS',
                             MASK_GEN_ALG: 'MGF1',
                             OLD_SIGNATURE: 'BLAH'}
-        self.assertRaisesRegexp(exception.SignatureVerificationError,
-                                'Signature verification failed.',
-                                signature_utils.verify_signature,
-                                None, checksum_hash, image_properties)
+        self.assertRaisesRegex(exception.SignatureVerificationError,
+                               'Signature verification failed.',
+                               signature_utils.verify_signature,
+                               None, checksum_hash, image_properties)
 
     @removals.remove(message="This will be removed in the N cycle.")
     @mock.patch('glance.common.signature_utils.should_verify_signature')
     def test_old_verify_signature_invalid_image_props(self, mock_should):
         mock_should.return_value = False
-        self.assertRaisesRegexp(exception.SignatureVerificationError,
-                                'Required image properties for signature'
-                                ' verification do not exist. Cannot verify'
-                                ' signature.',
-                                signature_utils.verify_signature,
-                                None, None, None)
+        self.assertRaisesRegex(exception.SignatureVerificationError,
+                               'Required image properties for signature'
+                               ' verification do not exist. Cannot verify'
+                               ' signature.',
+                               signature_utils.verify_signature,
+                               None, None, None)
 
     @removals.remove(message="This will be removed in the N cycle.")
     @mock.patch('glance.common.signature_utils.get_public_key')
     def test_old_verify_signature_bad_sig_key_type(self, mock_get_pub_key):
         checksum_hash = '224626ae19824466f2a7f39ab7b80f7f'
-        mock_get_pub_key.return_value = TEST_PRIVATE_KEY.public_key()
+        mock_get_pub_key.return_value = TEST_RSA_PRIVATE_KEY.public_key()
         image_properties = {OLD_CERT_UUID:
                             'fea14bc2-d75f-4ba5-bccc-b5c924ad0693',
                             OLD_HASH_METHOD: 'SHA-256',
                             OLD_KEY_TYPE: 'BLAH',
                             MASK_GEN_ALG: 'MGF1',
                             OLD_SIGNATURE: 'BLAH'}
-        self.assertRaisesRegexp(exception.SignatureVerificationError,
-                                'Invalid signature key type: .*',
-                                signature_utils.verify_signature,
-                                None, checksum_hash, image_properties)
+        self.assertRaisesRegex(exception.SignatureVerificationError,
+                               'Invalid signature key type: .*',
+                               signature_utils.verify_signature,
+                               None, checksum_hash, image_properties)
 
     @unittest.skipIf(not default_backend().hash_supported(hashes.SHA256()),
                      "SHA-2 hash algorithms not supported by backend")
@@ -246,38 +263,38 @@ class TestSignatureUtils(test_utils.BaseTestCase):
     @mock.patch('glance.common.signature_utils.get_public_key')
     def test_old_verify_signature_RSA_no_mask_gen(self, mock_get_pub_key):
         checksum_hash = '224626ae19824466f2a7f39ab7b80f7f'
-        mock_get_pub_key.return_value = TEST_PRIVATE_KEY.public_key()
+        mock_get_pub_key.return_value = TEST_RSA_PRIVATE_KEY.public_key()
         image_properties = {OLD_CERT_UUID:
                             'fea14bc2-d75f-4ba5-bccc-b5c924ad0693',
                             OLD_HASH_METHOD: 'SHA-256',
                             OLD_KEY_TYPE: 'RSA-PSS',
                             OLD_SIGNATURE: 'BLAH'}
-        self.assertRaisesRegexp(exception.SignatureVerificationError,
-                                'Signature verification failed.',
-                                signature_utils.verify_signature,
-                                None, checksum_hash, image_properties)
+        self.assertRaisesRegex(exception.SignatureVerificationError,
+                               'Signature verification failed.',
+                               signature_utils.verify_signature,
+                               None, checksum_hash, image_properties)
 
     @removals.remove(message="This will be removed in the N cycle.")
     @mock.patch('glance.common.signature_utils.get_public_key')
     def test_old_verify_signature_RSA_bad_mask_gen(self, mock_get_pub_key):
         checksum_hash = '224626ae19824466f2a7f39ab7b80f7f'
-        mock_get_pub_key.return_value = TEST_PRIVATE_KEY.public_key()
+        mock_get_pub_key.return_value = TEST_RSA_PRIVATE_KEY.public_key()
         image_properties = {OLD_CERT_UUID:
                             'fea14bc2-d75f-4ba5-bccc-b5c924ad0693',
                             OLD_HASH_METHOD: 'SHA-256',
                             OLD_KEY_TYPE: 'RSA-PSS',
                             MASK_GEN_ALG: 'BLAH',
                             OLD_SIGNATURE: 'BLAH'}
-        self.assertRaisesRegexp(exception.SignatureVerificationError,
-                                'Invalid mask_gen_algorithm: .*',
-                                signature_utils.verify_signature,
-                                None, checksum_hash, image_properties)
+        self.assertRaisesRegex(exception.SignatureVerificationError,
+                               'Invalid mask_gen_algorithm: .*',
+                               signature_utils.verify_signature,
+                               None, checksum_hash, image_properties)
 
     @removals.remove(message="This will be removed in the N cycle.")
     @mock.patch('glance.common.signature_utils.get_public_key')
     def test_old_verify_signature_bad_pss_salt(self, mock_get_pub_key):
         checksum_hash = '224626ae19824466f2a7f39ab7b80f7f'
-        mock_get_pub_key.return_value = TEST_PRIVATE_KEY.public_key()
+        mock_get_pub_key.return_value = TEST_RSA_PRIVATE_KEY.public_key()
         image_properties = {OLD_CERT_UUID:
                             'fea14bc2-d75f-4ba5-bccc-b5c924ad0693',
                             OLD_HASH_METHOD: 'SHA-256',
@@ -285,10 +302,10 @@ class TestSignatureUtils(test_utils.BaseTestCase):
                             MASK_GEN_ALG: 'MGF1',
                             PSS_SALT_LENGTH: 'BLAH',
                             OLD_SIGNATURE: 'BLAH'}
-        self.assertRaisesRegexp(exception.SignatureVerificationError,
-                                'Invalid pss_salt_length: .*',
-                                signature_utils.verify_signature,
-                                None, checksum_hash, image_properties)
+        self.assertRaisesRegex(exception.SignatureVerificationError,
+                               'Invalid pss_salt_length: .*',
+                               signature_utils.verify_signature,
+                               None, checksum_hash, image_properties)
 
     @removals.remove(message="This will be removed in the N cycle.")
     @mock.patch('glance.common.signature_utils.get_public_key')
@@ -301,18 +318,18 @@ class TestSignatureUtils(test_utils.BaseTestCase):
                             OLD_KEY_TYPE: 'RSA-PSS',
                             MASK_GEN_ALG: 'MGF1',
                             OLD_SIGNATURE: 'BLAH'}
-        self.assertRaisesRegexp(exception.SignatureVerificationError,
-                                'Error occurred while verifying'
-                                ' the signature',
-                                signature_utils.verify_signature,
-                                None, checksum_hash, image_properties)
+        self.assertRaisesRegex(exception.SignatureVerificationError,
+                               'Error occurred while verifying'
+                               ' the signature',
+                               signature_utils.verify_signature,
+                               None, checksum_hash, image_properties)
 
     @removals.remove(message="This will be removed in the N cycle.")
     @mock.patch('glance.common.signature_utils.get_public_key')
     def test_old_verify_signature_unsupported_algorithm(self,
                                                         mock_get_pub_key):
         checksum_hash = '224626ae19824466f2a7f39ab7b80f7f'
-        public_key = TEST_PRIVATE_KEY.public_key()
+        public_key = TEST_RSA_PRIVATE_KEY.public_key()
         public_key.verifier = mock.MagicMock(
             side_effect=crypto_exception.UnsupportedAlgorithm(
                 "When OpenSSL is older than 1.0.1 then only SHA1 is "
@@ -324,11 +341,186 @@ class TestSignatureUtils(test_utils.BaseTestCase):
                             OLD_HASH_METHOD: 'SHA-256',
                             OLD_KEY_TYPE: 'RSA-PSS',
                             OLD_SIGNATURE: 'BLAH'}
+        self.assertRaisesRegex(exception.SignatureVerificationError,
+                               'Unable to verify signature since the '
+                               'algorithm is unsupported on this system',
+                               signature_utils.verify_signature,
+                               None, checksum_hash, image_properties)
+
+    def test_should_create_verifier(self):
+        image_props = {CERT_UUID: 'CERT_UUID',
+                       HASH_METHOD: 'HASH_METHOD',
+                       SIGNATURE: 'SIGNATURE',
+                       KEY_TYPE: 'SIG_KEY_TYPE'}
+        self.assertTrue(signature_utils.should_create_verifier(image_props))
+
+    def test_should_create_verifier_fail(self):
+        bad_image_properties = [{CERT_UUID: 'CERT_UUID',
+                                 HASH_METHOD: 'HASH_METHOD',
+                                 SIGNATURE: 'SIGNATURE'},
+                                {CERT_UUID: 'CERT_UUID',
+                                 HASH_METHOD: 'HASH_METHOD',
+                                 KEY_TYPE: 'SIG_KEY_TYPE'},
+                                {CERT_UUID: 'CERT_UUID',
+                                 SIGNATURE: 'SIGNATURE',
+                                 KEY_TYPE: 'SIG_KEY_TYPE'},
+                                {HASH_METHOD: 'HASH_METHOD',
+                                 SIGNATURE: 'SIGNATURE',
+                                 KEY_TYPE: 'SIG_KEY_TYPE'}]
+
+        for bad_props in bad_image_properties:
+            result = signature_utils.should_create_verifier(bad_props)
+            self.assertFalse(result)
+
+    @unittest.skipIf(not default_backend().hash_supported(hashes.SHA256()),
+                     "SHA-2 hash algorithms not supported by backend")
+    @mock.patch('glance.common.signature_utils.get_public_key')
+    def test_verify_signature_PSS(self, mock_get_pub_key):
+        data = b'224626ae19824466f2a7f39ab7b80f7f'
+        mock_get_pub_key.return_value = TEST_RSA_PRIVATE_KEY.public_key()
+        for hash_name, hash_alg in signature_utils.HASH_METHODS.items():
+            signer = TEST_RSA_PRIVATE_KEY.signer(
+                padding.PSS(
+                    mgf=padding.MGF1(hash_alg),
+                    salt_length=padding.PSS.MAX_LENGTH
+                ),
+                hash_alg
+            )
+            signer.update(data)
+            signature = base64.b64encode(signer.finalize())
+            image_props = {CERT_UUID:
+                           'fea14bc2-d75f-4ba5-bccc-b5c924ad0693',
+                           HASH_METHOD: hash_name,
+                           KEY_TYPE: 'RSA-PSS',
+                           SIGNATURE: signature}
+            verifier = signature_utils.get_verifier(None, image_props)
+            verifier.update(data)
+            verifier.verify()
+
+    @mock.patch('glance.common.signature_utils.get_public_key')
+    def test_verify_signature_ECC(self, mock_get_pub_key):
+        data = b'224626ae19824466f2a7f39ab7b80f7f'
+        # test every ECC curve
+        for curve in signature_utils.ECC_CURVES:
+            key_type_name = 'ECC_' + curve.name.upper()
+            try:
+                signature_utils.SignatureKeyType.lookup(key_type_name)
+            except exception.SignatureVerificationError:
+                import warnings
+                warnings.warn("ECC curve '%s' not supported" % curve.name)
+                continue
+
+            # Create a private key to use
+            private_key = ec.generate_private_key(curve,
+                                                  default_backend())
+            mock_get_pub_key.return_value = private_key.public_key()
+            for hash_name, hash_alg in signature_utils.HASH_METHODS.items():
+                signer = private_key.signer(
+                    ec.ECDSA(hash_alg)
+                )
+                signer.update(data)
+                signature = base64.b64encode(signer.finalize())
+                image_props = {CERT_UUID:
+                               'fea14bc2-d75f-4ba5-bccc-b5c924ad0693',
+                               HASH_METHOD: hash_name,
+                               KEY_TYPE: key_type_name,
+                               SIGNATURE: signature}
+                verifier = signature_utils.get_verifier(None, image_props)
+                verifier.update(data)
+                verifier.verify()
+
+    @mock.patch('glance.common.signature_utils.get_public_key')
+    def test_verify_signature_DSA(self, mock_get_pub_key):
+        data = b'224626ae19824466f2a7f39ab7b80f7f'
+        mock_get_pub_key.return_value = TEST_DSA_PRIVATE_KEY.public_key()
+        for hash_name, hash_alg in signature_utils.HASH_METHODS.items():
+            signer = TEST_DSA_PRIVATE_KEY.signer(
+                hash_alg
+            )
+            signer.update(data)
+            signature = base64.b64encode(signer.finalize())
+            image_props = {CERT_UUID:
+                           'fea14bc2-d75f-4ba5-bccc-b5c924ad0693',
+                           HASH_METHOD: hash_name,
+                           KEY_TYPE: 'DSA',
+                           SIGNATURE: signature}
+            verifier = signature_utils.get_verifier(None, image_props)
+            verifier.update(data)
+            verifier.verify()
+
+    @unittest.skipIf(not default_backend().hash_supported(hashes.SHA256()),
+                     "SHA-2 hash algorithms not supported by backend")
+    @mock.patch('glance.common.signature_utils.get_public_key')
+    def test_verify_signature_bad_signature(self, mock_get_pub_key):
+        data = b'224626ae19824466f2a7f39ab7b80f7f'
+        mock_get_pub_key.return_value = TEST_RSA_PRIVATE_KEY.public_key()
+        image_properties = {CERT_UUID:
+                            'fea14bc2-d75f-4ba5-bccc-b5c924ad0693',
+                            HASH_METHOD: 'SHA-256',
+                            KEY_TYPE: 'RSA-PSS',
+                            SIGNATURE: 'BLAH'}
+        verifier = signature_utils.get_verifier(None, image_properties)
+        verifier.update(data)
+        self.assertRaises(crypto_exception.InvalidSignature,
+                          verifier.verify)
+
+    @mock.patch('glance.common.signature_utils.get_public_key')
+    def test_verify_signature_unsupported_algorithm(self,
+                                                    mock_get_pub_key):
+        public_key = TEST_RSA_PRIVATE_KEY.public_key()
+        public_key.verifier = mock.MagicMock(
+            side_effect=crypto_exception.UnsupportedAlgorithm(
+                "When OpenSSL is older than 1.0.1 then only SHA1 is "
+                "supported with MGF1.",
+                crypto_exception._Reasons.UNSUPPORTED_HASH))
+        mock_get_pub_key.return_value = public_key
+        image_properties = {CERT_UUID:
+                            'fea14bc2-d75f-4ba5-bccc-b5c924ad0693',
+                            HASH_METHOD: 'SHA-256',
+                            KEY_TYPE: 'RSA-PSS',
+                            SIGNATURE: 'BLAH'}
         self.assertRaisesRegexp(exception.SignatureVerificationError,
                                 'Unable to verify signature since the '
                                 'algorithm is unsupported on this system',
-                                signature_utils.verify_signature,
-                                None, checksum_hash, image_properties)
+                                signature_utils.get_verifier,
+                                None, image_properties)
+
+    @mock.patch('glance.common.signature_utils.should_create_verifier')
+    def test_verify_signature_invalid_image_props(self, mock_should):
+        mock_should.return_value = False
+        self.assertRaisesRegexp(exception.SignatureVerificationError,
+                                'Required image properties for signature'
+                                ' verification do not exist. Cannot verify'
+                                ' signature.',
+                                signature_utils.get_verifier,
+                                None, None)
+
+    @mock.patch('glance.common.signature_utils.get_public_key')
+    def test_verify_signature_bad_sig_key_type(self, mock_get_pub_key):
+        mock_get_pub_key.return_value = TEST_RSA_PRIVATE_KEY.public_key()
+        image_properties = {CERT_UUID:
+                            'fea14bc2-d75f-4ba5-bccc-b5c924ad0693',
+                            HASH_METHOD: 'SHA-256',
+                            KEY_TYPE: 'BLAH',
+                            SIGNATURE: 'BLAH'}
+        self.assertRaisesRegexp(exception.SignatureVerificationError,
+                                'Invalid signature key type: .*',
+                                signature_utils.get_verifier,
+                                None, image_properties)
+
+    @mock.patch('glance.common.signature_utils.get_public_key')
+    def test_get_verifier_none(self, mock_get_pub_key):
+        mock_get_pub_key.return_value = BadPublicKey()
+        image_properties = {CERT_UUID:
+                            'fea14bc2-d75f-4ba5-bccc-b5c924ad0693',
+                            HASH_METHOD: 'SHA-256',
+                            KEY_TYPE: 'RSA-PSS',
+                            SIGNATURE: 'BLAH'}
+        self.assertRaisesRegexp(exception.SignatureVerificationError,
+                                'Error occurred while creating'
+                                ' the verifier',
+                                signature_utils.get_verifier,
+                                None, image_properties)
 
     def test_get_signature(self):
         signature = b'A' * 256
@@ -337,10 +529,10 @@ class TestSignatureUtils(test_utils.BaseTestCase):
                          signature_utils.get_signature(data))
 
     def test_get_signature_fail(self):
-        self.assertRaisesRegexp(exception.SignatureVerificationError,
-                                'The signature data was not properly'
-                                ' encoded using base64',
-                                signature_utils.get_signature, '///')
+        self.assertRaisesRegex(exception.SignatureVerificationError,
+                               'The signature data was not properly'
+                               ' encoded using base64',
+                               signature_utils.get_signature, '///')
 
     def test_get_hash_method(self):
         hash_dict = signature_utils.HASH_METHODS
@@ -349,37 +541,60 @@ class TestSignatureUtils(test_utils.BaseTestCase):
             self.assertIsInstance(hash_dict[hash_name], hash_class)
 
     def test_get_hash_method_fail(self):
-        self.assertRaisesRegexp(exception.SignatureVerificationError,
-                                'Invalid signature hash method: .*',
-                                signature_utils.get_hash_method, 'SHA-2')
+        self.assertRaisesRegex(exception.SignatureVerificationError,
+                               'Invalid signature hash method: .*',
+                               signature_utils.get_hash_method, 'SHA-2')
 
-    def test_get_signature_key_type(self):
-        for sig_format in signature_utils.SIGNATURE_KEY_TYPES:
-            result = signature_utils.get_signature_key_type(sig_format)
-            self.assertEqual(sig_format, result)
+    def test_get_signature_key_type_lookup(self):
+        for sig_format in ['RSA-PSS', 'ECC_SECT571K1']:
+            sig_key_type = signature_utils.SignatureKeyType.lookup(sig_format)
+            self.assertIsInstance(sig_key_type,
+                                  signature_utils.SignatureKeyType)
+            self.assertEqual(sig_format, sig_key_type.name)
 
-    def test_get_signature_key_type_fail(self):
-        self.assertRaisesRegexp(exception.SignatureVerificationError,
-                                'Invalid signature key type: .*',
-                                signature_utils.get_signature_key_type,
-                                'RSB-PSS')
+    def test_signature_key_type_lookup_fail(self):
+        self.assertRaisesRegex(exception.SignatureVerificationError,
+                               'Invalid signature key type: .*',
+                               signature_utils.SignatureKeyType.lookup,
+                               'RSB-PSS')
 
     @mock.patch('glance.common.signature_utils.get_certificate')
-    def test_get_public_key(self, mock_get_cert):
+    def test_get_public_key_rsa(self, mock_get_cert):
         fake_cert = FakeCryptoCertificate()
         mock_get_cert.return_value = fake_cert
-        result_pub_key = signature_utils.get_public_key(None, None, 'RSA-PSS')
+        sig_key_type = signature_utils.SignatureKeyType.lookup('RSA-PSS')
+        result_pub_key = signature_utils.get_public_key(None, None,
+                                                        sig_key_type)
+        self.assertEqual(fake_cert.public_key(), result_pub_key)
+
+    @mock.patch('glance.common.signature_utils.get_certificate')
+    def test_get_public_key_ecc(self, mock_get_cert):
+        fake_cert = FakeCryptoCertificate(TEST_ECC_PRIVATE_KEY.public_key())
+        mock_get_cert.return_value = fake_cert
+        sig_key_type = signature_utils.SignatureKeyType.lookup('ECC_SECP521R1')
+        result_pub_key = signature_utils.get_public_key(None, None,
+                                                        sig_key_type)
+        self.assertEqual(fake_cert.public_key(), result_pub_key)
+
+    @mock.patch('glance.common.signature_utils.get_certificate')
+    def test_get_public_key_dsa(self, mock_get_cert):
+        fake_cert = FakeCryptoCertificate(TEST_DSA_PRIVATE_KEY.public_key())
+        mock_get_cert.return_value = fake_cert
+        sig_key_type = signature_utils.SignatureKeyType.lookup('DSA')
+        result_pub_key = signature_utils.get_public_key(None, None,
+                                                        sig_key_type)
         self.assertEqual(fake_cert.public_key(), result_pub_key)
 
     @mock.patch('glance.common.signature_utils.get_certificate')
     def test_get_public_key_invalid_key(self, mock_get_certificate):
         bad_pub_key = 'A' * 256
         mock_get_certificate.return_value = FakeCryptoCertificate(bad_pub_key)
-        self.assertRaisesRegexp(exception.SignatureVerificationError,
-                                'Invalid public key type for '
-                                'signature key type: .*',
-                                signature_utils.get_public_key, None,
-                                None, 'RSA-PSS')
+        sig_key_type = signature_utils.SignatureKeyType.lookup('RSA-PSS')
+        self.assertRaisesRegex(exception.SignatureVerificationError,
+                               'Invalid public key type for '
+                               'signature key type: .*',
+                               signature_utils.get_public_key, None,
+                               None, sig_key_type)
 
     @mock.patch('cryptography.x509.load_der_x509_certificate')
     @mock.patch('castellan.key_manager.API', return_value=FakeKeyManager())
@@ -399,10 +614,10 @@ class TestSignatureUtils(test_utils.BaseTestCase):
             not_valid_after=datetime.datetime.utcnow() -
             datetime.timedelta(hours=1))
         mock_load_cert.return_value = x509_cert
-        self.assertRaisesRegexp(exception.SignatureVerificationError,
-                                'Certificate is not valid after: .*',
-                                signature_utils.get_certificate, None,
-                                cert_uuid)
+        self.assertRaisesRegex(exception.SignatureVerificationError,
+                               'Certificate is not valid after: .*',
+                               signature_utils.get_certificate, None,
+                               cert_uuid)
 
     @mock.patch('cryptography.x509.load_der_x509_certificate')
     @mock.patch('castellan.key_manager.API', return_value=FakeKeyManager())
@@ -413,23 +628,23 @@ class TestSignatureUtils(test_utils.BaseTestCase):
             not_valid_before=datetime.datetime.utcnow() +
             datetime.timedelta(hours=1))
         mock_load_cert.return_value = x509_cert
-        self.assertRaisesRegexp(exception.SignatureVerificationError,
-                                'Certificate is not valid before: .*',
-                                signature_utils.get_certificate, None,
-                                cert_uuid)
+        self.assertRaisesRegex(exception.SignatureVerificationError,
+                               'Certificate is not valid before: .*',
+                               signature_utils.get_certificate, None,
+                               cert_uuid)
 
     @mock.patch('castellan.key_manager.API', return_value=FakeKeyManager())
     def test_get_certificate_key_manager_fail(self, mock_key_manager_API):
         bad_cert_uuid = 'fea14bc2-d75f-4ba5-bccc-b5c924ad0695'
-        self.assertRaisesRegexp(exception.SignatureVerificationError,
-                                'Unable to retrieve certificate with ID: .*',
-                                signature_utils.get_certificate, None,
-                                bad_cert_uuid)
+        self.assertRaisesRegex(exception.SignatureVerificationError,
+                               'Unable to retrieve certificate with ID: .*',
+                               signature_utils.get_certificate, None,
+                               bad_cert_uuid)
 
     @mock.patch('castellan.key_manager.API', return_value=FakeKeyManager())
     def test_get_certificate_invalid_format(self, mock_API):
         cert_uuid = 'invalid_format_cert'
-        self.assertRaisesRegexp(exception.SignatureVerificationError,
-                                'Invalid certificate format: .*',
-                                signature_utils.get_certificate, None,
-                                cert_uuid)
+        self.assertRaisesRegex(exception.SignatureVerificationError,
+                               'Invalid certificate format: .*',
+                               signature_utils.get_certificate, None,
+                               cert_uuid)
