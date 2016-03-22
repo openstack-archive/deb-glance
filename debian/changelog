@@ -1,4 +1,4 @@
-glance (2:12.0.0~rc-1) experimental; urgency=medium
+glance (2:12.0.0~rc1-1) experimental; urgency=medium
 
   * New upstream release.
   * Bumped python-glance-store (build-)depends version.
