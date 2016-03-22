@@ -277,9 +277,20 @@ Optional. Default: ``600``.
 The period of time, in seconds, that the API server will wait for a registry
 request to complete. A value of '0' implies no timeout.
 
+.. note::
+   ``use_user_token``, ``admin_user``, ``admin_password``,
+   ``admin_tenant_name``, ``auth_url``, ``auth_strategy`` and ``auth_region``
+   options were considered harmful and have been deprecated in M release.
+   They will be removed in O release. For more information read
+   `OSSN-0060 <https://wiki.openstack.org/wiki/OSSN/OSSN-0060>`_.
+   Related functionality with uploading big images has been implemented with
+   Keystone trusts support.
+
 * ``use_user_token=True``
 
 Optional. Default: True
+
+DEPRECATED. This option will be removed in O release.
 
 Pass the user token through for API requests to the registry.
 
@@ -288,10 +299,9 @@ specified (see below). If admin credentials are specified then they are
 used to generate a token; this token rather than the original user's
 token is used for requests to the registry.
 
-To prevent failures with token expiration during big files upload,
-it is recommended to set this parameter to False.
-
 * ``admin_user=USER``
+
+DEPRECATED. This option will be removed in O release.
 
 If 'use_user_token' is not in effect then admin credentials can be
 specified. Use this parameter to specify the username.
@@ -300,12 +310,16 @@ Optional. Default: None
 
 * ``admin_password=PASSWORD``
 
+DEPRECATED. This option will be removed in O release.
+
 If 'use_user_token' is not in effect then admin credentials can be
 specified. Use this parameter to specify the password.
 
 Optional. Default: None
 
 * ``admin_tenant_name=TENANTNAME``
+
+DEPRECATED. This option will be removed in O release.
 
 If 'use_user_token' is not in effect then admin credentials can be
 specified. Use this parameter to specify the tenant name.
@@ -314,6 +328,8 @@ Optional. Default: None
 
 * ``auth_url=URL``
 
+DEPRECATED. This option will be removed in O release.
+
 If 'use_user_token' is not in effect then admin credentials can be
 specified. Use this parameter to specify the Keystone endpoint.
 
@@ -321,12 +337,16 @@ Optional. Default: None
 
 * ``auth_strategy=STRATEGY``
 
+DEPRECATED. This option will be removed in O release.
+
 If 'use_user_token' is not in effect then admin credentials can be
 specified. Use this parameter to specify the auth strategy.
 
-Optional. Default: keystone
+Optional. Default: noauth
 
 * ``auth_region=REGION``
+
+DEPRECATED. This option will be removed in O release.
 
 If 'use_user_token' is not in effect then admin credentials can be
 specified. Use this parameter to specify the region.
@@ -410,39 +430,6 @@ A comma separated list of enabled glance stores. Options are specified
 in the format of glance.store.OPTION.Store.  Some available options for this
 option are (``filesystem``, ``http``, ``rbd``, ``s3``, ``swift``, ``sheepdog``,
 ``cinder``, ``vmware_datastore``)
-
-Configuring Glance Image Size Limit
------------------------------------
-
-The following configuration option is specified in the
-``glance-api.conf`` config file in the section ``[DEFAULT]``.
-
-* ``image_size_cap=SIZE``
-
-Optional. Default: ``1099511627776`` (1 TB)
-
-Maximum image size, in bytes, which can be uploaded through the Glance API server.
-
-**IMPORTANT NOTE**: this value should only be increased after careful consideration
-and must be set to a value under 8 EB (9223372036854775808).
-
-Configuring Glance User Storage Quota
--------------------------------------
-
-The following configuration option is specified in the
-``glance-api.conf`` config file in the section ``[DEFAULT]``.
-
-* ``user_storage_quota``
-
-Optional. Default: 0 (Unlimited).
-
-This value specifies the maximum amount of storage that each user can use
-across all storage systems. Optionally unit can be specified for the value.
-Values are accepted in B, KB, MB, GB or TB which are for Bytes, KiloBytes,
-MegaBytes, GigaBytes and TeraBytes respectively. Default unit is Bytes.
-
-Example values would be,
-    user_storage_quota=20GB
 
 Configuring the Filesystem Storage Backend
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -750,7 +737,7 @@ fails.
 Optional. Default: ``0``
 
 Configuring Multiple Swift Accounts/Stores
-------------------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 In order to not store Swift account credentials in the database, and to
 have support for multiple accounts (or multiple Swift backing stores), a
@@ -785,7 +772,7 @@ Can only be specified in configuration files.
 Optional. Default: ``False``
 
 Configuring Swift configuration file
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 If ``swift_store_config_file`` is set, Glance will use information
 from the file specified under this parameter.
@@ -1118,14 +1105,19 @@ For best performance, this should be a power of two.
 Configuring the Cinder Storage Backend
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-**Note**: Currently Cinder store is a partial implementation.
-After Cinder expose 'brick' library, and 'Readonly-volume-attaching',
-'volume-multiple-attaching' enhancement ready, the store will support
-'Upload' and 'Download' interface finally.
+**Note**: Currently Cinder store is experimental. Current deployers should be
+aware that the use of it in production right now may be risky. It is expected
+to work well with most iSCSI Cinder backends such as LVM iSCSI, but will not
+work with some backends especially if they don't support host-attach.
+
+**Note**: To create a Cinder volume from an image in this store quickly, additional
+settings are required. Please see the
+`Volume-backed image <http://docs.openstack.org/admin-guide-cloud/blockstorage_volume_backed_image.html>`_
+documentation for more information.
 
 * ``cinder_catalog_info=<service_type>:<service_name>:<endpoint_type>``
 
-Optional. Default: ``volume:cinder:publicURL``
+Optional. Default: ``volumev2::publicURL``
 
 Can only be specified in configuration files.
 
@@ -1134,14 +1126,17 @@ Can only be specified in configuration files.
 Sets the info to match when looking for cinder in the service catalog.
 Format is : separated values of the form: <service_type>:<service_name>:<endpoint_type>
 
-* ``cinder_endpoint_template=http://ADDR:PORT/VERSION/%(project_id)s``
+* ``cinder_endpoint_template=http://ADDR:PORT/VERSION/%(tenant)s``
 
 Optional. Default: ``None``
 
 Can only be specified in configuration files.
 
+`This option is specific to the Cinder storage backend.`
+
 Override service catalog lookup with template for cinder endpoint.
-e.g. http://localhost:8776/v1/%(project_id)s
+``%(...)s`` parts are replaced by the value in the request context.
+e.g. http://localhost:8776/v2/%(tenant)s
 
 * ``os_region_name=REGION_NAME``
 
@@ -1149,13 +1144,30 @@ Optional. Default: ``None``
 
 Can only be specified in configuration files.
 
+`This option is specific to the Cinder storage backend.`
+
 Region name of this node.
+
+Deprecated. Use ``cinder_os_region_name`` instead.
+
+* ``cinder_os_region_name=REGION_NAME``
+
+Optional. Default: ``None``
+
+Can only be specified in configuration files.
+
+`This option is specific to the Cinder storage backend.`
+
+Region name of this node.  If specified, it is used to locate cinder from
+the service catalog.
 
 * ``cinder_ca_certificates_file=CA_FILE_PATH``
 
 Optional. Default: ``None``
 
 Can only be specified in configuration files.
+
+`This option is specific to the Cinder storage backend.`
 
 Location of ca certificates file to use for cinder client requests.
 
@@ -1165,7 +1177,19 @@ Optional. Default: ``3``
 
 Can only be specified in configuration files.
 
+`This option is specific to the Cinder storage backend.`
+
 Number of cinderclient retries on failed http calls.
+
+* ``cinder_state_transition_timeout``
+
+Optional. Default: ``300``
+
+Can only be specified in configuration files.
+
+`This option is specific to the Cinder storage backend.`
+
+Time period, in seconds, to wait for a cinder volume transition to complete.
 
 * ``cinder_api_insecure=ON_OFF``
 
@@ -1173,7 +1197,70 @@ Optional. Default: ``False``
 
 Can only be specified in configuration files.
 
+`This option is specific to the Cinder storage backend.`
+
 Allow to perform insecure SSL requests to cinder.
+
+* ``cinder_store_user_name=NAME``
+
+Optional. Default: ``None``
+
+Can only be specified in configuration files.
+
+`This option is specific to the Cinder storage backend.`
+
+User name to authenticate against Cinder. If <None>, the user of current
+context is used.
+
+**NOTE**: This option is applied only if all of ``cinder_store_user_name``,
+``cinder_store_password``, ``cinder_store_project_name`` and
+``cinder_store_auth_address`` are set.
+These options are useful to put image volumes into the internal service
+project in order to hide the volume from users, and to make the image
+sharable among projects.
+
+* ``cinder_store_password=PASSWORD``
+
+Optional. Default: ``None``
+
+Can only be specified in configuration files.
+
+`This option is specific to the Cinder storage backend.`
+
+Password for the user authenticating against Cinder. If <None>, the current
+context auth token is used.
+
+* ``cinder_store_project_name=NAME``
+
+Optional. Default: ``None``
+
+Can only be specified in configuration files.
+
+`This option is specific to the Cinder storage backend.`
+
+Project name where the image is stored in Cinder. If <None>, the project
+in current context is used.
+
+* ``cinder_store_auth_address=URL``
+
+Optional. Default: ``None``
+
+Can only be specified in configuration files.
+
+`This option is specific to the Cinder storage backend.`
+
+The address where the Cinder authentication service is listening. If <None>,
+the cinder endpoint in the service catalog is used.
+
+* ``rootwrap_config=NAME``
+
+Optional. Default: ``/etc/glance/rootwrap.conf``
+
+Can only be specified in configuration files.
+
+`This option is specific to the Cinder storage backend.`
+
+Path to the rootwrap configuration file to use for running commands as root.
 
 Configuring the VMware Storage Backend
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1302,6 +1389,39 @@ Overrides the storage URL returned by auth. The URL should include the
 path up to and excluding the container. The location of an object is
 obtained by appending the container and object to the configured URL.
 e.g. ``https://www.my-domain.com/v1/path_up_to_container``
+
+Configuring Glance Image Size Limit
+-----------------------------------
+
+The following configuration option is specified in the
+``glance-api.conf`` config file in the section ``[DEFAULT]``.
+
+* ``image_size_cap=SIZE``
+
+Optional. Default: ``1099511627776`` (1 TB)
+
+Maximum image size, in bytes, which can be uploaded through the Glance API server.
+
+**IMPORTANT NOTE**: this value should only be increased after careful consideration
+and must be set to a value under 8 EB (9223372036854775808).
+
+Configuring Glance User Storage Quota
+-------------------------------------
+
+The following configuration option is specified in the
+``glance-api.conf`` config file in the section ``[DEFAULT]``.
+
+* ``user_storage_quota``
+
+Optional. Default: 0 (Unlimited).
+
+This value specifies the maximum amount of storage that each user can use
+across all storage systems. Optionally unit can be specified for the value.
+Values are accepted in B, KB, MB, GB or TB which are for Bytes, KiloBytes,
+MegaBytes, GigaBytes and TeraBytes respectively. Default unit is Bytes.
+
+Example values would be,
+    user_storage_quota=20GB
 
 Configuring the Image Cache
 ---------------------------

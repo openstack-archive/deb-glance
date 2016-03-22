@@ -135,6 +135,7 @@ class TestImages(functional.FunctionalTest):
 
     def test_image_lifecycle(self):
         # Image list should be empty
+        self.api_server.show_multiple_locations = True
         self.start_servers(**self.__dict__.copy())
         path = self._url('/v2/images')
         response = requests.get(path, headers=self._headers())
@@ -178,6 +179,7 @@ class TestImages(functional.FunctionalTest):
             u'checksum',
             u'size',
             u'virtual_size',
+            u'locations',
         ])
         self.assertEqual(checked_keys, set(image.keys()))
         expected_image = {
@@ -241,6 +243,7 @@ class TestImages(functional.FunctionalTest):
             u'checksum',
             u'size',
             u'virtual_size',
+            u'locations',
         ])
         self.assertEqual(checked_keys, set(image.keys()))
         expected_image = {
@@ -439,7 +442,7 @@ class TestImages(functional.FunctionalTest):
         path = self._url('/v2/images/%s/file' % image_id)
         headers = self._headers()
         response = requests.get(path, headers=headers)
-        self.assertEqual(403, response.status_code)
+        self.assertEqual(204, response.status_code)
 
         def _verify_image_checksum_and_status(checksum, status):
             # Checksum should be populated and status should be active
@@ -980,6 +983,7 @@ class TestImages(functional.FunctionalTest):
 
     def test_download_image_raises_service_unavailable(self):
         """Test image download returns HTTPServiceUnavailable."""
+        self.api_server.show_multiple_locations = True
         self.start_servers(**self.__dict__.copy())
 
         # Create an image
@@ -2554,6 +2558,19 @@ class TestImages(functional.FunctionalTest):
         images = jsonutils.loads(response.text)['images']
         self.assertEqual(0, len(images))
 
+        # Try to add a tag that is too long
+        big_tag = 'a' * 300
+        path = self._url('/v2/images/%s/tags/%s' % (image_id, big_tag))
+        response = requests.put(path, headers=self._headers())
+        self.assertEqual(400, response.status_code)
+
+        # Tags should not have changed since request was over limit
+        path = self._url('/v2/images/%s' % image_id)
+        response = requests.get(path, headers=self._headers())
+        self.assertEqual(200, response.status_code)
+        tags = jsonutils.loads(response.text)['tags']
+        self.assertEqual(['sniff', 'snozz'], sorted(tags))
+
         self.stop_servers()
 
     def test_images_container(self):
@@ -2810,6 +2827,7 @@ class TestImages(functional.FunctionalTest):
         self.stop_servers()
 
     def test_update_locations(self):
+        self.api_server.show_multiple_locations = True
         self.start_servers(**self.__dict__.copy())
         # Create an image
         path = self._url('/v2/images')
@@ -2845,6 +2863,7 @@ class TestImages(functional.FunctionalTest):
         self.assertEqual(10, image['size'])
 
     def test_update_locations_with_restricted_sources(self):
+        self.api_server.show_multiple_locations = True
         self.start_servers(**self.__dict__.copy())
         # Create an image
         path = self._url('/v2/images')
@@ -3016,7 +3035,7 @@ class TestImageDirectURLVisibility(functional.FunctionalTest):
         self.assertEqual(200, response.status_code)
         image = jsonutils.loads(response.text)
         self.assertIn('locations', image)
-        self.assertTrue(image["locations"] == [])
+        self.assertEqual([], image["locations"])
 
         # Upload some image data, setting the image location
         path = self._url('/v2/images/%s/file' % image_id)
@@ -3032,7 +3051,7 @@ class TestImageDirectURLVisibility(functional.FunctionalTest):
         image = jsonutils.loads(response.text)
         self.assertIn('locations', image)
         loc = image['locations']
-        self.assertTrue(len(loc) > 0)
+        self.assertGreater(len(loc), 0)
         loc = loc[0]
         self.assertIn('url', loc)
         self.assertIn('metadata', loc)
@@ -3160,7 +3179,7 @@ class TestImageLocationSelectionStrategy(functional.FunctionalTest):
         self.assertEqual(200, response.status_code)
         image = jsonutils.loads(response.text)
         self.assertIn('locations', image)
-        self.assertTrue(image["locations"] == [])
+        self.assertEqual([], image["locations"])
 
         # Update image locations via PATCH
         path = self._url('/v2/images/%s' % image_id)

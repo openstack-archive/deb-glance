@@ -23,6 +23,7 @@ import logging.handlers
 import os
 
 from oslo_config import cfg
+from oslo_middleware import cors
 from oslo_policy import policy
 from paste import deploy
 
@@ -146,9 +147,6 @@ common_opts = [
                 help=_("Deploy the v1 OpenStack Images API.")),
     cfg.BoolOpt('enable_v2_api', default=True,
                 help=_("Deploy the v2 OpenStack Images API.")),
-    cfg.BoolOpt('enable_v3_api', default=False,
-                help=_("Deploy the v3 OpenStack Objects API."),
-                deprecated_for_removal=True),
     cfg.BoolOpt('enable_v1_registry', default=True,
                 help=_("Deploy the v1 OpenStack Registry API.")),
     cfg.BoolOpt('enable_v2_registry', default=True,
@@ -273,3 +271,37 @@ def load_paste_app(app_name, flavor=None, conf_file=None):
                                     'e': e})
         logger.error(msg)
         raise RuntimeError(msg)
+
+
+def set_config_defaults():
+    """This method updates all configuration default values."""
+    set_cors_middleware_defaults()
+
+
+def set_cors_middleware_defaults():
+    """Update default configuration options for oslo.middleware."""
+    # CORS Defaults
+    # TODO(krotscheck): Update with https://review.openstack.org/#/c/285368/
+    cfg.set_defaults(cors.CORS_OPTS,
+                     allow_headers=['Content-MD5',
+                                    'X-Image-Meta-Checksum',
+                                    'X-Storage-Token',
+                                    'Accept-Encoding',
+                                    'X-Auth-Token',
+                                    'X-Identity-Status',
+                                    'X-Roles',
+                                    'X-Service-Catalog',
+                                    'X-User-Id',
+                                    'X-Tenant-Id',
+                                    'X-OpenStack-Request-ID'],
+                     expose_headers=['X-Image-Meta-Checksum',
+                                     'X-Auth-Token',
+                                     'X-Subject-Token',
+                                     'X-Service-Token',
+                                     'X-OpenStack-Request-ID'],
+                     allow_methods=['GET',
+                                    'PUT',
+                                    'POST',
+                                    'DELETE',
+                                    'PATCH']
+                     )
