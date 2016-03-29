@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: glance 2013.2-1\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
-"POT-Creation-Date: 2013-09-25 15:31+0800\n"
+"POT-Creation-Date: 2016-03-29 13:00+0000\n"
 "PO-Revision-Date: 2013-11-17 08:45+0400\n"
 "Last-Translator: Yuri Kozlov <yuray@komyakino.ru>\n"
 "Language-Team: Russian <debian-l10n-russian@lists.debian.org>\n"
@@ -57,7 +57,6 @@ msgstr "Канальное приложение:"
 #. Type: select
 #. Description
 #: ../glance-common.templates:2002
-#| msgid "Please specify the flavor of pipeline to be used by Glance."
 msgid "Please specify the flavor of the pipeline to be used by Glance."
 msgstr ""
 "Укажите канальное приложение (flavor of pipeline), используемое Glance:"
@@ -76,24 +75,19 @@ msgstr ""
 #. Type: string
 #. Description
 #: ../glance-common.templates:3001
-#| msgid "Auth server hostname:"
 msgid "Authentication server hostname:"
 msgstr "Имя узла сервера аутентификации:"
 
 #. Type: string
 #. Description
 #: ../glance-common.templates:3001
-#| msgid ""
-#| "Please specify the URL of your Glance authentication server. Typically "
-#| "this is also the URL of your OpenStack Identity Service (Keystone)."
 msgid ""
 "Please specify the hostname of the authentication server for Glance. "
 "Typically this is also the hostname of the OpenStack Identity Service "
 "(Keystone)."
 msgstr ""
-"Введите имя узла сервера аутентификации для Glance. "
-"Данное имя обычно совпадает с именем узла OpenStack Identity Service "
-"(Keystone)."
+"Введите имя узла сервера аутентификации для Glance. Данное имя обычно "
+"совпадает с именем узла OpenStack Identity Service (Keystone)."
 
 #. Type: string
 #. Description
@@ -105,7 +99,6 @@ msgstr ""
 #. or keep it parenthezised. Example for French:
 #. locataire ("tenant")
 #: ../glance-common.templates:4001
-#| msgid "Auth server tenant name:"
 msgid "Authentication server tenant name:"
 msgstr "Членское имя сервера аутентификации:"
 
@@ -125,7 +118,6 @@ msgstr "Укажите членское (tenant) имя сервера ауте�
 #. Type: string
 #. Description
 #: ../glance-common.templates:5001
-#| msgid "Auth server username:"
 msgid "Authentication server username:"
 msgstr "Имя пользователя для сервера аутентификации:"
 
@@ -138,7 +130,6 @@ msgstr "Введите имя пользователя для работы с с
 #. Type: password
 #. Description
 #: ../glance-common.templates:6001
-#| msgid "Auth server password:"
 msgid "Authentication server password:"
 msgstr "Пароль для сервера аутентификации:"
 
@@ -151,33 +142,22 @@ msgstr "Введите пароль для работы с сервером ау
 #. Type: boolean
 #. Description
 #: ../glance-common.templates:7001
-#| msgid "Set up a database for glance?"
 msgid "Set up a database for Glance?"
 msgstr "Настроить базу данных для Glance?"
 
 #. Type: boolean
 #. Description
 #: ../glance-common.templates:7001
-#| msgid ""
-#| "No database has been set up for glance-registry or glance-api to use. "
-#| "Before continuing, you should make sure you have:"
 msgid ""
 "No database has been set up for glance-registry or glance-api to use. Before "
 "continuing, you should make sure you have the following information:"
 msgstr ""
 "Для использования glance-registry или glance-api требуется база данных, "
-"которая пока не "
-"настроена. Перед тем как продолжить, проверьте:"
+"которая пока не настроена. Перед тем как продолжить, проверьте:"
 
 #. Type: boolean
 #. Description
 #: ../glance-common.templates:7001
-#| msgid ""
-#| " - the server host name (that server must allow TCP connections from "
-#| "this\n"
-#| "   machine);\n"
-#| " - a username and password to access the database.\n"
-#| " - A database type that you want to use."
 msgid ""
 " * the type of database that you want to use;\n"
 " * the database server hostname (that server must allow TCP connections from "
@@ -193,9 +173,6 @@ msgstr ""
 #. Type: boolean
 #. Description
 #: ../glance-common.templates:7001
-#| msgid ""
-#| "If some of these requirements are missing, reject this option and run "
-#| "with regular sqlite support."
 msgid ""
 "If some of these requirements are missing, do not choose this option and run "
 "with regular SQLite support."
@@ -206,9 +183,6 @@ msgstr ""
 #. Type: boolean
 #. Description
 #: ../glance-common.templates:7001
-#| msgid ""
-#| "You can change this setting later on by running 'dpkg-reconfigure -plow "
-#| "glance-common'."
 msgid ""
 "You can change this setting later on by running \"dpkg-reconfigure -plow "
 "glance-common\"."
@@ -234,8 +208,8 @@ msgid ""
 "In order to interoperate with other components of OpenStack, this package "
 "needs to connect to a central RabbitMQ server."
 msgstr ""
-"Для взаимодействия с другими компонентами OpenStack, этому пакету "
-"необходимо подключаться к центральному серверу RabbitMQ."
+"Для взаимодействия с другими компонентами OpenStack, этому пакету необходимо "
+"подключаться к центральному серверу RabbitMQ."
 
 #. Type: string
 #. Description
@@ -270,98 +244,100 @@ msgstr "Введите пароль для подключения к серве�
 #. Type: boolean
 #. Description
 #: ../glance-api.templates:2001
-#| msgid "Register Glance in the keystone endpoint catalog?"
 msgid "Register Glance in the Keystone endpoint catalog?"
 msgstr "Зарегистрировать Glance в каталоге конечных точек Keystone?"
 
 #. Type: boolean
 #. Description
 #: ../glance-api.templates:2001
-#| msgid ""
-#| "Each Openstack services (each API) should be registered in order to be "
-#| "accessible. This is done using \"keystone service-create\" and \"keystone "
-#| "endpoint-create\". Select if you want to run these commands now."
 msgid ""
 "Each OpenStack service (each API) should be registered in order to be "
 "accessible. This is done using \"keystone service-create\" and \"keystone "
 "endpoint-create\". This can be done automatically now."
 msgstr ""
-"Для доступа к службам Openstack (каждому API) их нужно регистрировать. "
-"Это выполняется с помощью команды «keystone service-create» и «keystone "
-"endpoint-create». Это может быть сделано автоматически прямо сейчас."
+"Для доступа к службам Openstack (каждому API) их нужно регистрировать. Это "
+"выполняется с помощью команды «keystone service-create» и «keystone endpoint-"
+"create». Это может быть сделано автоматически прямо сейчас."
 
 #. Type: boolean
 #. Description
 #: ../glance-api.templates:2001
+#, fuzzy
 #| msgid ""
-#| "Note that you will need to have an up and running keystone server on "
-#| "which to connect using the Keystone auth token."
+#| "Note that you will need to have an up and running Keystone server on "
+#| "which to connect using the Keystone authentication token."
 msgid ""
 "Note that you will need to have an up and running Keystone server on which "
-"to connect using the Keystone authentication token."
+"to connect using a known admin project name, admin username and password. "
+"The admin auth token is not used anymore."
 msgstr ""
-"Заметим, что у вас должен быть работающий сервер Keystone, к которому "
-"будет произведено подключение с помощью токена аутентификации Keystone."
+"Заметим, что у вас должен быть работающий сервер Keystone, к которому будет "
+"произведено подключение с помощью токена аутентификации Keystone."
 
 #. Type: string
 #. Description
 #: ../glance-api.templates:3001
-#| msgid "Keystone IP address:"
 msgid "Keystone server IP address:"
 msgstr "IP-адрес сервера Keystone:"
 
 #. Type: string
 #. Description
 #: ../glance-api.templates:3001
-#| msgid ""
-#| "Enter the IP address of your keystone server, so that glance-api can "
-#| "contact Keystone to do the Glance service and endpoint creation."
 msgid ""
 "Please enter the IP address of the Keystone server, so that glance-api can "
 "contact Keystone to do the Glance service and endpoint creation."
 msgstr ""
 "Введите IP-адрес сервера Keystone для того, чтобы glance-api могла "
-"подключиться "
-"к Keystone для запуска службы Glance и создания конечной точки."
+"подключиться к Keystone для запуска службы Glance и создания конечной точки."
 
-#. Type: password
+#. Type: string
 #. Description
 #: ../glance-api.templates:4001
-#| msgid "Keystone Auth Token:"
-msgid "Keystone authentication token:"
+#, fuzzy
+#| msgid "Keystone authentication token:"
+msgid "Keystone admin name:"
 msgstr "Токен аутентификации Keystone:"
 
+#. Type: string
+#. Description
+#. Type: string
+#. Description
 #. Type: password
 #. Description
-#: ../glance-api.templates:4001
-#| msgid ""
-#| "To configure its endpoint in Keystone, glance-api needs the Keystone auth "
-#| "token."
+#: ../glance-api.templates:4001 ../glance-api.templates:5001
+#: ../glance-api.templates:6001
 msgid ""
-"To configure its endpoint in Keystone, glance-api needs the Keystone "
-"authentication token."
+"To register the service endpoint, this package needs to know the Admin "
+"login, name, project name, and password to the Keystone server."
 msgstr ""
-"Для настройки собственной конечной точки в Keystone glance-api требуется "
-"токен аутентификации Keystone."
 
 #. Type: string
 #. Description
 #: ../glance-api.templates:5001
+msgid "Keystone admin project name:"
+msgstr ""
+
+#. Type: password
+#. Description
+#: ../glance-api.templates:6001
+msgid "Keystone admin password:"
+msgstr ""
+
+#. Type: string
+#. Description
+#: ../glance-api.templates:7001
 msgid "Glance endpoint IP address:"
 msgstr "IP-адрес конечной точки Glance:"
 
 #. Type: string
 #. Description
-#: ../glance-api.templates:5001
-#| msgid ""
-#| "Enter the IP address that will be used to contact Glance (eg: the Glance "
-#| "endpoint IP address)."
+#: ../glance-api.templates:7001
 msgid "Please enter the IP address that will be used to contact Glance."
 msgstr "Введите IP-адрес, который будет использован для подключения к Glance."
 
 #. Type: string
 #. Description
-#: ../glance-api.templates:5001
+#: ../glance-api.templates:7001
 msgid ""
 "This IP address should be accessible from the clients that will use this "
 "service, so if you are installing a public cloud, this should be a public IP "
@@ -373,26 +349,31 @@ msgstr ""
 
 #. Type: string
 #. Description
-#: ../glance-api.templates:6001
+#: ../glance-api.templates:8001
 msgid "Name of the region to register:"
 msgstr "Название области для регистрации:"
 
 #. Type: string
 #. Description
-#: ../glance-api.templates:6001
-#| msgid ""
-#| "Openstack can be used using availability zones, with each region "
-#| "representing a location. Please enter the zone that you wish to use when "
-#| "registering the endpoint."
+#: ../glance-api.templates:8001
 msgid ""
 "OpenStack supports using availability zones, with each region representing a "
 "location. Please enter the zone that you wish to use when registering the "
 "endpoint."
 msgstr ""
-"Openstack поддерживает разделение на зоны доступности, где каждая "
-"область представляет определённое расположение. Введите зону, которую вы "
-"хотите "
+"Openstack поддерживает разделение на зоны доступности, где каждая область "
+"представляет определённое расположение. Введите зону, которую вы хотите "
 "использовать при регистрации конечной точки."
+
+#~| msgid ""
+#~| "To configure its endpoint in Keystone, glance-api needs the Keystone "
+#~| "auth token."
+#~ msgid ""
+#~ "To configure its endpoint in Keystone, glance-api needs the Keystone "
+#~ "authentication token."
+#~ msgstr ""
+#~ "Для настройки собственной конечной точки в Keystone glance-api требуется "
+#~ "токен аутентификации Keystone."
 
 #~ msgid "Auth server URL:"
 #~ msgstr "URL сервера аутентификации:"

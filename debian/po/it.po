@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: glance\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
-"POT-Creation-Date: 2013-09-25 15:31+0800\n"
+"POT-Creation-Date: 2016-03-29 13:00+0000\n"
 "PO-Revision-Date: 2014-04-21 10:03+0200\n"
 "Last-Translator: Beatrice Torracca <beatricet@libero.it>\n"
 "Language-Team: Italian <debian-l10n-italian@lists.debian.org>\n"
@@ -56,7 +56,6 @@ msgstr "Tipo di pipeline:"
 #. Type: select
 #. Description
 #: ../glance-common.templates:2002
-#| msgid "Please specify the flavor of pipeline to be used by Glance."
 msgid "Please specify the flavor of the pipeline to be used by Glance."
 msgstr "Specificare il tipo di pipeline da usare con Glance."
 
@@ -68,23 +67,19 @@ msgid ""
 "select \"keystone\". If you don't use this service, you can safely choose "
 "\"caching\" only."
 msgstr ""
-"Se si usa OpenStack Identity Service (Keystone) si può selezionare «keystone»"
-". Se non si usa questo servizio, si può senza problemi scegliere "
+"Se si usa OpenStack Identity Service (Keystone) si può selezionare "
+"«keystone». Se non si usa questo servizio, si può senza problemi scegliere "
 "semplicemente «caching»."
 
 #. Type: string
 #. Description
 #: ../glance-common.templates:3001
-#| msgid "Auth server hostname:"
 msgid "Authentication server hostname:"
 msgstr "Nome host del server di autenticazione:"
 
 #. Type: string
 #. Description
 #: ../glance-common.templates:3001
-#| msgid ""
-#| "Please specify the URL of your Glance authentication server. Typically "
-#| "this is also the URL of your OpenStack Identity Service (Keystone)."
 msgid ""
 "Please specify the hostname of the authentication server for Glance. "
 "Typically this is also the hostname of the OpenStack Identity Service "
@@ -103,7 +98,6 @@ msgstr ""
 #. or keep it parenthezised. Example for French:
 #. locataire ("tenant")
 #: ../glance-common.templates:4001
-#| msgid "Auth server tenant name:"
 msgid "Authentication server tenant name:"
 msgstr "Nome del locatario («tenant») per il server di autenticazione:"
 
@@ -124,7 +118,6 @@ msgstr ""
 #. Type: string
 #. Description
 #: ../glance-common.templates:5001
-#| msgid "Auth server username:"
 msgid "Authentication server username:"
 msgstr "Nome utente per il server di autenticazione:"
 
@@ -137,7 +130,6 @@ msgstr "Inserire il nome utente da usare con il server di autenticazione."
 #. Type: password
 #. Description
 #: ../glance-common.templates:6001
-#| msgid "Auth server password:"
 msgid "Authentication server password:"
 msgstr "Password per il server di autenticazione:"
 
@@ -150,16 +142,12 @@ msgstr "Inserire la password da usare con il server di autenticazione."
 #. Type: boolean
 #. Description
 #: ../glance-common.templates:7001
-#| msgid "Set up a database for glance?"
 msgid "Set up a database for Glance?"
 msgstr "Impostare un database per Glance?"
 
 #. Type: boolean
 #. Description
 #: ../glance-common.templates:7001
-#| msgid ""
-#| "No database has been set up for glance-registry or glance-api to use. "
-#| "Before continuing, you should make sure you have:"
 msgid ""
 "No database has been set up for glance-registry or glance-api to use. Before "
 "continuing, you should make sure you have the following information:"
@@ -171,12 +159,6 @@ msgstr ""
 #. Type: boolean
 #. Description
 #: ../glance-common.templates:7001
-#| msgid ""
-#| " - the server host name (that server must allow TCP connections from "
-#| "this\n"
-#| "   machine);\n"
-#| " - a username and password to access the database.\n"
-#| " - A database type that you want to use."
 msgid ""
 " * the type of database that you want to use;\n"
 " * the database server hostname (that server must allow TCP connections from "
@@ -192,9 +174,6 @@ msgstr ""
 #. Type: boolean
 #. Description
 #: ../glance-common.templates:7001
-#| msgid ""
-#| "If some of these requirements are missing, reject this option and run "
-#| "with regular sqlite support."
 msgid ""
 "If some of these requirements are missing, do not choose this option and run "
 "with regular SQLite support."
@@ -205,9 +184,6 @@ msgstr ""
 #. Type: boolean
 #. Description
 #: ../glance-common.templates:7001
-#| msgid ""
-#| "You can change this setting later on by running 'dpkg-reconfigure -plow "
-#| "glance-common'."
 msgid ""
 "You can change this setting later on by running \"dpkg-reconfigure -plow "
 "glance-common\"."
@@ -252,7 +228,8 @@ msgstr "Nome utente per la connessione al server RabbitMQ:"
 #. Description
 #: ../glance-common.templates:9001
 msgid "Please specify the username used to connect to the RabbitMQ server."
-msgstr "Specificare il nome utente da usare per connettersi al server RabbitMQ."
+msgstr ""
+"Specificare il nome utente da usare per connettersi al server RabbitMQ."
 
 #. Type: password
 #. Description
@@ -269,35 +246,32 @@ msgstr "Specificare la password da usare per connettersi al server RabbitMQ."
 #. Type: boolean
 #. Description
 #: ../glance-api.templates:2001
-#| msgid "Register Glance in the keystone endpoint catalog?"
 msgid "Register Glance in the Keystone endpoint catalog?"
 msgstr "Registrare Glance nel catalogo dei punti terminali di Keystone?"
 
 #. Type: boolean
 #. Description
 #: ../glance-api.templates:2001
-#| msgid ""
-#| "Each Openstack services (each API) should be registered in order to be "
-#| "accessible. This is done using \"keystone service-create\" and \"keystone "
-#| "endpoint-create\". Select if you want to run these commands now."
 msgid ""
 "Each OpenStack service (each API) should be registered in order to be "
 "accessible. This is done using \"keystone service-create\" and \"keystone "
 "endpoint-create\". This can be done automatically now."
 msgstr ""
 "Ogni servizio OpenStack (ogni API) dovrebbe essere registrato per poter "
-"essere accessibile. Ciò viene fatto usando «keystone service-create» e «"
-"keystone endpoint-create». Ciò può essere fatto ora automaticamente."
+"essere accessibile. Ciò viene fatto usando «keystone service-create» e "
+"«keystone endpoint-create». Ciò può essere fatto ora automaticamente."
 
 #. Type: boolean
 #. Description
 #: ../glance-api.templates:2001
+#, fuzzy
 #| msgid ""
-#| "Note that you will need to have an up and running keystone server on "
-#| "which to connect using the Keystone auth token."
+#| "Note that you will need to have an up and running Keystone server on "
+#| "which to connect using the Keystone authentication token."
 msgid ""
 "Note that you will need to have an up and running Keystone server on which "
-"to connect using the Keystone authentication token."
+"to connect using a known admin project name, admin username and password. "
+"The admin auth token is not used anymore."
 msgstr ""
 "Notare che sarà necessario avere un server Keystone in funzione a cui "
 "connettersi usando il token di autenticazione Keystone."
@@ -305,16 +279,12 @@ msgstr ""
 #. Type: string
 #. Description
 #: ../glance-api.templates:3001
-#| msgid "Keystone IP address:"
 msgid "Keystone server IP address:"
 msgstr "Indirizzo IP del server Keystone:"
 
 #. Type: string
 #. Description
 #: ../glance-api.templates:3001
-#| msgid ""
-#| "Enter the IP address of your keystone server, so that glance-api can "
-#| "contact Keystone to do the Glance service and endpoint creation."
 msgid ""
 "Please enter the IP address of the Keystone server, so that glance-api can "
 "contact Keystone to do the Glance service and endpoint creation."
@@ -323,44 +293,54 @@ msgstr ""
 "contattare Keystone per effettuare la creazione del servizio e del punto "
 "terminale Glance."
 
-#. Type: password
+#. Type: string
 #. Description
 #: ../glance-api.templates:4001
-#| msgid "Keystone Auth Token:"
-msgid "Keystone authentication token:"
+#, fuzzy
+#| msgid "Keystone authentication token:"
+msgid "Keystone admin name:"
 msgstr "Token di autenticazione Keystone:"
 
+#. Type: string
+#. Description
+#. Type: string
+#. Description
 #. Type: password
 #. Description
-#: ../glance-api.templates:4001
-#| msgid ""
-#| "To configure its endpoint in Keystone, glance-api needs the Keystone auth "
-#| "token."
+#: ../glance-api.templates:4001 ../glance-api.templates:5001
+#: ../glance-api.templates:6001
 msgid ""
-"To configure its endpoint in Keystone, glance-api needs the Keystone "
-"authentication token."
+"To register the service endpoint, this package needs to know the Admin "
+"login, name, project name, and password to the Keystone server."
 msgstr ""
-"Per configurare il proprio punto terminale in Keystone, glance-api ha "
-"bisogno del token di autenticazione Keystone."
 
 #. Type: string
 #. Description
 #: ../glance-api.templates:5001
+msgid "Keystone admin project name:"
+msgstr ""
+
+#. Type: password
+#. Description
+#: ../glance-api.templates:6001
+msgid "Keystone admin password:"
+msgstr ""
+
+#. Type: string
+#. Description
+#: ../glance-api.templates:7001
 msgid "Glance endpoint IP address:"
 msgstr "Indirizzo IP del punto terminale Glance:"
 
 #. Type: string
 #. Description
-#: ../glance-api.templates:5001
-#| msgid ""
-#| "Enter the IP address that will be used to contact Glance (eg: the Glance "
-#| "endpoint IP address)."
+#: ../glance-api.templates:7001
 msgid "Please enter the IP address that will be used to contact Glance."
 msgstr "Inserire l'indirizzo IP che verrà usato per contattare Glance."
 
 #. Type: string
 #. Description
-#: ../glance-api.templates:5001
+#: ../glance-api.templates:7001
 msgid ""
 "This IP address should be accessible from the clients that will use this "
 "service, so if you are installing a public cloud, this should be a public IP "
@@ -372,17 +352,13 @@ msgstr ""
 
 #. Type: string
 #. Description
-#: ../glance-api.templates:6001
+#: ../glance-api.templates:8001
 msgid "Name of the region to register:"
 msgstr "Nome della regione da registrare:"
 
 #. Type: string
 #. Description
-#: ../glance-api.templates:6001
-#| msgid ""
-#| "Openstack can be used using availability zones, with each region "
-#| "representing a location. Please enter the zone that you wish to use when "
-#| "registering the endpoint."
+#: ../glance-api.templates:8001
 msgid ""
 "OpenStack supports using availability zones, with each region representing a "
 "location. Please enter the zone that you wish to use when registering the "
@@ -391,6 +367,16 @@ msgstr ""
 "OpenStack gestisce le zone di disponibilità, con ogni regione che "
 "rappresenta una posizione. Inserire la zona che si desidera usare durante la "
 "registrazione del punto terminale."
+
+#~| msgid ""
+#~| "To configure its endpoint in Keystone, glance-api needs the Keystone "
+#~| "auth token."
+#~ msgid ""
+#~ "To configure its endpoint in Keystone, glance-api needs the Keystone "
+#~ "authentication token."
+#~ msgstr ""
+#~ "Per configurare il proprio punto terminale in Keystone, glance-api ha "
+#~ "bisogno del token di autenticazione Keystone."
 
 #~ msgid "Set up a database for glance-registry?"
 #~ msgstr "Impostare un database per glance-registry?"

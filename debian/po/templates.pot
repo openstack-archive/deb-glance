@@ -1,6 +1,6 @@
 # SOME DESCRIPTIVE TITLE.
 # Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
-# This file is distributed under the same license as the PACKAGE package.
+# This file is distributed under the same license as the glance package.
 # FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
 #
 #, fuzzy
@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: glance\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
-"POT-Creation-Date: 2013-09-25 15:31+0800\n"
+"POT-Creation-Date: 2016-03-29 13:00+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -243,7 +243,8 @@ msgstr ""
 #: ../glance-api.templates:2001
 msgid ""
 "Note that you will need to have an up and running Keystone server on which "
-"to connect using the Keystone authentication token."
+"to connect using a known admin project name, admin username and password. "
+"The admin auth token is not used anymore."
 msgstr ""
 
 #. Type: string
@@ -260,35 +261,52 @@ msgid ""
 "contact Keystone to do the Glance service and endpoint creation."
 msgstr ""
 
-#. Type: password
+#. Type: string
 #. Description
 #: ../glance-api.templates:4001
-msgid "Keystone authentication token:"
+msgid "Keystone admin name:"
 msgstr ""
 
+#. Type: string
+#. Description
+#. Type: string
+#. Description
 #. Type: password
 #. Description
-#: ../glance-api.templates:4001
+#: ../glance-api.templates:4001 ../glance-api.templates:5001
+#: ../glance-api.templates:6001
 msgid ""
-"To configure its endpoint in Keystone, glance-api needs the Keystone "
-"authentication token."
+"To register the service endpoint, this package needs to know the Admin "
+"login, name, project name, and password to the Keystone server."
 msgstr ""
 
 #. Type: string
 #. Description
 #: ../glance-api.templates:5001
+msgid "Keystone admin project name:"
+msgstr ""
+
+#. Type: password
+#. Description
+#: ../glance-api.templates:6001
+msgid "Keystone admin password:"
+msgstr ""
+
+#. Type: string
+#. Description
+#: ../glance-api.templates:7001
 msgid "Glance endpoint IP address:"
 msgstr ""
 
 #. Type: string
 #. Description
-#: ../glance-api.templates:5001
+#: ../glance-api.templates:7001
 msgid "Please enter the IP address that will be used to contact Glance."
 msgstr ""
 
 #. Type: string
 #. Description
-#: ../glance-api.templates:5001
+#: ../glance-api.templates:7001
 msgid ""
 "This IP address should be accessible from the clients that will use this "
 "service, so if you are installing a public cloud, this should be a public IP "
@@ -297,13 +315,13 @@ msgstr ""
 
 #. Type: string
 #. Description
-#: ../glance-api.templates:6001
+#: ../glance-api.templates:8001
 msgid "Name of the region to register:"
 msgstr ""
 
 #. Type: string
 #. Description
-#: ../glance-api.templates:6001
+#: ../glance-api.templates:8001
 msgid ""
 "OpenStack supports using availability zones, with each region representing a "
 "location. Please enter the zone that you wish to use when registering the "
