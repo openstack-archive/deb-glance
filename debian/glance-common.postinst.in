@@ -90,7 +90,7 @@ SET FOREIGN_KEY_CHECKS=1;"
 	db_get glance/configure_db
 	if [ "$RET" = "true" ] ; then
 		echo "Now doing glance-manage db_sync: this may take a while..."
-		su glance -c "glance-manage db_sync" || true
+		su glance -s /bin/sh -c "glance-manage db_sync" || true
 	fi
 
 	write_auth_token_and_auth
