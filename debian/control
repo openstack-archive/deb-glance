@@ -82,7 +82,7 @@ Build-Depends-Indep: bandit,
                      sqlite3,
                      subunit,
                      testrepository,
-Standards-Version: 3.9.7
+Standards-Version: 3.9.8
 Vcs-Browser: https://anonscm.debian.org/gitweb/?p=openstack/glance.git;a=summary
 Vcs-Git: https://anonscm.debian.org/git/openstack/glance.git
 Homepage: https://github.com/openstack/glance
