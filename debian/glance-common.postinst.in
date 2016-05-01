@@ -37,6 +37,7 @@ if [ "$1" = "configure" ] || [ "$1" = "reconfigure" ] ; then
 	pkgos_write_new_conf glance glance-scrubber.conf
 
 	pkgos_write_new_conf glance glance-api-paste.ini
+	pkgos_write_new_conf glance glance-glare-paste.ini
 	pkgos_write_new_conf glance glance-registry-paste.ini
 	pkgos_write_new_conf glance policy.json
 	pkgos_write_new_conf glance schema-image.json

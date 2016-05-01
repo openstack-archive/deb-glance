@@ -1,0 +1,17 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          glance-glare
+# Required-Start:    $network $local_fs $remote_fs $syslog
+# Required-Stop:     $remote_fs
+# Should-Start:      postgresql mysql keystone ntp rabbitmq-server
+# Should-Stop:       postgresql mysql keystone ntp rabbitmq-server
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Glance Glare API server
+# Description:       Frontend Glance Glare API server
+### END INIT INFO
+
+DESC="OpenStack Image Service API"
+PROJECT_NAME=glance
+NAME=${PROJECT_NAME}-glare
+CONFIG_FILE=/etc/${PROJECT_NAME}/glance-glare.conf

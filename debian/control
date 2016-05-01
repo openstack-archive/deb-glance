@@ -217,6 +217,24 @@ Description: OpenStack Image Registry and Delivery Service - API server
  .
  This package contains the Glance API server.
 
+Package: glance-glare
+Architecture: all
+Depends: adduser,
+         glance-common (= ${source:Version}),
+         python-openstackclient (>= 2.1.0),
+         ${misc:Depends},
+         ${ostack-lsb-base},
+         ${python:Depends},
+Recommends: python-glanceclient
+Suggests: q-text-as-data
+Description: OpenStack Artifacts - API server
+ The Glance project provides services for discovering, registering, and
+ retrieving virtual machine images over the cloud. They may be stand-alone
+ services, or may be used to deliver images from object stores, such as
+ OpenStack's Swift service, to Nova's compute nodes.
+ .
+ This package contains the Glance Glare artifacts API server.
+
 Package: glance-registry
 Architecture: all
 Depends: adduser,
