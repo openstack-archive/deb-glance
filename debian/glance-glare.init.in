@@ -11,7 +11,7 @@
 # Description:       Frontend Glance Glare API server
 ### END INIT INFO
 
-DESC="OpenStack Image Service API"
+DESC="OpenStack Glance Glare API"
 PROJECT_NAME=glance
 NAME=${PROJECT_NAME}-glare
 CONFIG_FILE=/etc/${PROJECT_NAME}/glance-glare.conf
