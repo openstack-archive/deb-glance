@@ -10,7 +10,7 @@ msgstr ""
 "Project-Id-Version: glance\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
 "POT-Creation-Date: 2016-03-29 13:00+0000\n"
-"PO-Revision-Date: 2016-02-19 20:07+0900\n"
+"PO-Revision-Date: 2016-04-07 12:35+0900\n"
 "Last-Translator: Takuma Yamada <tyamada@takumayamada.com>\n"
 "Language-Team: Japanese <debian-japanese@lists.debian.org>\n"
 "Language: ja\n"
@@ -70,9 +70,9 @@ msgid ""
 "select \"keystone\". If you don't use this service, you can safely choose "
 "\"caching\" only."
 msgstr ""
-"OpenStack Identity Service (Keystone) を利用する場合は「keystone」を選択する"
-"ことを推奨します。このサービスを使わない場合は安全のため「caching」だけを選択"
-"してください。"
+"OpenStack Identity Service (Keystone) を利用する場合は \"keystone\" を選択す"
+"ることを推奨します。このサービスを使わない場合は安全のため \"caching\" だけを"
+"選択してください。"
 
 #. Type: string
 #. Description
@@ -189,8 +189,8 @@ msgid ""
 "You can change this setting later on by running \"dpkg-reconfigure -plow "
 "glance-common\"."
 msgstr ""
-"「dpkg-reconfigure -plow glance-common」を実行することにより、後でこの設定を"
-"変更することができます。"
+"この設定は、後で \"dpkg-reconfigure -plow glance-common\" を実行することで変"
+"更できます。"
 
 #. Type: string
 #. Description
@@ -247,7 +247,7 @@ msgstr "RabbitMQ サーバに接続するときに使うパスワードを指定
 #. Description
 #: ../glance-api.templates:2001
 msgid "Register Glance in the Keystone endpoint catalog?"
-msgstr "Glance を Keystone のエンドポイントのカタログに登録しますか?"
+msgstr "Glance を Keystone のエンドポイントカタログに登録しますか?"
 
 #. Type: boolean
 #. Description
@@ -257,14 +257,13 @@ msgid ""
 "accessible. This is done using \"keystone service-create\" and \"keystone "
 "endpoint-create\". This can be done automatically now."
 msgstr ""
-"各 OpenStack のサービス (各 API) がアクセスできるようにするために登録する必要"
-"があります。これは「keystone service-create」と「keystone endpoint-create」を"
-"使用して行われます。これは自動的に行うことができます。"
+"各 OpenStack サービス (各 API) は、アクセス可能にするために登録する必要があり"
+"ます。\"keystone service-create\" と \"keystone endpoint-create\" を使って登"
+"録することができます。ここで自動的に行うことができます。"
 
 #. Type: boolean
 #. Description
 #: ../glance-api.templates:2001
-#, fuzzy
 #| msgid ""
 #| "Note that you will need to have an up and running Keystone server on "
 #| "which to connect using the Keystone authentication token."
@@ -273,8 +272,9 @@ msgid ""
 "to connect using a known admin project name, admin username and password. "
 "The admin auth token is not used anymore."
 msgstr ""
-"Keystone 認証トークンを使用して接続するために、 Keystone サーバを起動し、実行"
-"している必要がありますので注意してください。"
+"既知の管理プロジェクト名、管理者のユーザ名とパスワードを使用して接続するに"
+"は、Keystone サーバの起動および実行が必要になりますので注意してください。管理"
+"者認証トークンはもう使用されていません。"
 
 #. Type: string
 #. Description
@@ -289,16 +289,16 @@ msgid ""
 "Please enter the IP address of the Keystone server, so that glance-api can "
 "contact Keystone to do the Glance service and endpoint creation."
 msgstr ""
-"Keystone サーバの IP アドレスを入力してください。その後 glance-api は Glance "
-"サービスやエンドポイント作成のための Keystone との通信が可能になります。"
+"Keystone サーバの IP アドレスを入力してください。それにより glance-api は "
+"Keystone と通信し、Glance サービスやエンドポイントの作成ができるようになりま"
+"す。"
 
 #. Type: string
 #. Description
 #: ../glance-api.templates:4001
-#, fuzzy
 #| msgid "Keystone authentication token:"
 msgid "Keystone admin name:"
-msgstr "Keystone 認証トークン:"
+msgstr "Keystone 管理者名:"
 
 #. Type: string
 #. Description
@@ -312,18 +312,21 @@ msgid ""
 "To register the service endpoint, this package needs to know the Admin "
 "login, name, project name, and password to the Keystone server."
 msgstr ""
+"サービスのエンドポイントを登録するには、このパッケージが Keystone サーバへの"
+"管理者ログイン、名前、プロジェクト名、およびパスワードを知っている必要があり"
+"ます。"
 
 #. Type: string
 #. Description
 #: ../glance-api.templates:5001
 msgid "Keystone admin project name:"
-msgstr ""
+msgstr "Keystone 管理プロジェクト名:"
 
 #. Type: password
 #. Description
 #: ../glance-api.templates:6001
 msgid "Keystone admin password:"
-msgstr ""
+msgstr "Keystone 管理者パスワード:"
 
 #. Type: string
 #. Description
@@ -346,8 +349,8 @@ msgid ""
 "address."
 msgstr ""
 "この IP アドレスは、このサービスを利用するクライアントからアクセス可能でなけ"
-"ればならないので、パブリッククラウドをインストールしている場合、これはパブ"
-"リック IP アドレスを使わなければなりません。"
+"ればなりません。パブリッククラウドをインストールしている場合は、パブリック "
+"IP アドレスにする必要があります。"
 
 #. Type: string
 #. Description
@@ -363,8 +366,9 @@ msgid ""
 "location. Please enter the zone that you wish to use when registering the "
 "endpoint."
 msgstr ""
-"OpenStack は、場所を表すリージョン毎のアベイラビリティーゾーンの使用をサポー"
-"トしています。エンドポイントを登録する際に使用するゾーンを入力してください。"
+"OpenStack は、場所を示すリージョン毎に、アベイラビリティーゾーンの使用をサ"
+"ポートします。エンドポイントを登録する際に、使用するゾーンを入力してくださ"
+"い。"
 
 #~ msgid ""
 #~ "To configure its endpoint in Keystone, glance-api needs the Keystone "
