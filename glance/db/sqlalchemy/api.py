@@ -54,7 +54,7 @@ from glance.db.sqlalchemy.metadef_api import property as metadef_property_api
 from glance.db.sqlalchemy.metadef_api import tag as metadef_tag_api
 from glance.db.sqlalchemy import models
 from glance import glare as ga
-from glance.i18n import _, _LW, _LE, _LI
+from glance.i18n import _, _LW, _LI
 
 BASE = models.BASE
 sa_logger = None
@@ -1273,21 +1273,6 @@ def purge_deleted_rows(context, age_in_days, max_rows, session=None):
     Deletes rows of table images, table tasks and all dependent tables
     according to given age for relevant models.
     """
-    try:
-        age_in_days = int(age_in_days)
-    except ValueError:
-        LOG.exception(_LE('Invalid value for age, %(age)d'),
-                      {'age': age_in_days})
-        raise exception.InvalidParameterValue(value=age_in_days,
-                                              param='age_in_days')
-    try:
-        max_rows = int(max_rows)
-    except ValueError:
-        LOG.exception(_LE('Invalid value for max_rows, %(max_rows)d'),
-                      {'max_rows': max_rows})
-        raise exception.InvalidParameterValue(value=max_rows,
-                                              param='max_rows')
-
     session = session or get_session()
     metadata = MetaData(get_engine())
     deleted_age = timeutils.utcnow() - datetime.timedelta(days=age_in_days)
@@ -1606,12 +1591,14 @@ def metadef_namespace_get(context, namespace_name, session=None):
         context, namespace_name, session)
 
 
+@utils.no_4byte_params
 def metadef_namespace_create(context, values, session=None):
     """Create a namespace or raise if it already exists."""
     session = session or get_session()
     return metadef_namespace_api.create(context, values, session)
 
 
+@utils.no_4byte_params
 def metadef_namespace_update(context, namespace_id, namespace_dict,
                              session=None):
     """Update a namespace or raise if it does not exist or not visible"""
@@ -1641,6 +1628,7 @@ def metadef_object_get(context, namespace_name, object_name, session=None):
         context, namespace_name, object_name, session)
 
 
+@utils.no_4byte_params
 def metadef_object_create(context, namespace_name, object_dict,
                           session=None):
     """Create a metadata-schema object or raise if it already exists."""
@@ -1649,6 +1637,7 @@ def metadef_object_create(context, namespace_name, object_dict,
         context, namespace_name, object_dict, session)
 
 
+@utils.no_4byte_params
 def metadef_object_update(context, namespace_name, object_id, object_dict,
                           session=None):
     """Update an object or raise if it does not exist or not visible."""
@@ -1693,6 +1682,7 @@ def metadef_property_get(context, namespace_name,
         context, namespace_name, property_name, session)
 
 
+@utils.no_4byte_params
 def metadef_property_create(context, namespace_name, property_dict,
                             session=None):
     """Create a metadef property or raise if it already exists."""
@@ -1701,6 +1691,7 @@ def metadef_property_create(context, namespace_name, property_dict,
         context, namespace_name, property_dict, session)
 
 
+@utils.no_4byte_params
 def metadef_property_update(context, namespace_name, property_id,
                             property_dict, session=None):
     """Update an object or raise if it does not exist or not visible."""
@@ -1803,6 +1794,7 @@ def metadef_tag_get(context, namespace_name, name, session=None):
         context, namespace_name, name, session)
 
 
+@utils.no_4byte_params
 def metadef_tag_create(context, namespace_name, tag_dict,
                        session=None):
     """Create a metadata-schema tag or raise if it already exists."""
@@ -1819,6 +1811,7 @@ def metadef_tag_create_tags(context, namespace_name, tag_list,
         context, namespace_name, tag_list, session)
 
 
+@utils.no_4byte_params
 def metadef_tag_update(context, namespace_name, id, tag_dict,
                        session=None):
     """Update an tag or raise if it does not exist or not visible."""

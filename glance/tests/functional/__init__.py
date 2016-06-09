@@ -23,6 +23,7 @@ and spinning down the servers.
 
 import atexit
 import datetime
+import errno
 import logging
 import os
 import platform
@@ -62,7 +63,6 @@ class Server(object):
                          passed from the FunctionalTestCase.
         :param port: The port to start a server up on.
         """
-        self.verbose = True
         self.debug = True
         self.no_venv = False
         self.test_dir = test_dir
@@ -319,7 +319,6 @@ class ApiServer(Server):
         self.send_identity_headers = False
 
         self.conf_base = """[DEFAULT]
-verbose = %(verbose)s
 debug = %(debug)s
 default_log_levels = eventlet.wsgi.server=DEBUG
 bind_host = 127.0.0.1
@@ -475,7 +474,6 @@ class RegistryServer(Server):
         self.disable_path = None
 
         self.conf_base = """[DEFAULT]
-verbose = %(verbose)s
 debug = %(debug)s
 bind_host = 127.0.0.1
 bind_port = %(bind_port)s
@@ -553,7 +551,6 @@ class ScrubberDaemon(Server):
         self.admin_role = 'admin'
 
         self.conf_base = """[DEFAULT]
-verbose = %(verbose)s
 debug = %(debug)s
 log_file = %(log_file)s
 daemon = %(daemon)s
@@ -857,7 +854,14 @@ class FunctionalTest(test_utils.BaseTestCase):
                 trace = f.pid_file.replace('.pid', '.trace')
                 if self.tracecmd:
                     cmd = '%s -p %d -o %s' % (self.tracecmd, pid, trace)
-                    execute(cmd, raise_error=False, expect_exit=False)
+                    try:
+                        execute(cmd, raise_error=False, expect_exit=False)
+                    except OSError as e:
+                        if e.errno == errno.ENOENT:
+                            raise RuntimeError('No executable found for "%s" '
+                                               'command.' % self.tracecmd)
+                        else:
+                            raise
                     time.sleep(0.5)
                     if os.path.exists(trace):
                         msg += ('\n%s:\n%s\n' % (self.tracecmd,

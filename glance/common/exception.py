@@ -397,7 +397,9 @@ class MetadefDuplicateResourceTypeAssociation(Duplicate):
 
 class MetadefDuplicateTag(Duplicate):
     message = _("A metadata tag with name=%(name)s"
-                " already exists in namespace=%(namespace_name)s.")
+                " already exists in namespace=%(namespace_name)s."
+                " (Please note that metadata tag names are"
+                " case insensitive).")
 
 
 class MetadefForbidden(Forbidden):
@@ -412,7 +414,7 @@ class MetadefIntegrityError(Forbidden):
 
 class MetadefNamespaceNotFound(NotFound):
     message = _("Metadata definition namespace=%(namespace_name)s"
-                "was not found.")
+                " was not found.")
 
 
 class MetadefObjectNotFound(NotFound):
@@ -527,8 +529,8 @@ class ArtifactLoadError(GlanceException):
 
 
 class ArtifactNonMatchingTypeName(ArtifactLoadError):
-    message = _(
-        "Plugin name '%(plugin)s' should match artifact typename '%(name)s'")
+    message = _("Plugin name '%(plugin)s' should match "
+                "artifact typename '%(name)s'")
 
 
 class ArtifactPluginNotFound(NotFound):

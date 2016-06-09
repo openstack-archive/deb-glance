@@ -52,7 +52,7 @@ class TestArtifactsLoader(utils.BaseTestCase):
 
     def test_load(self):
         """
-        Plugins can be loaded as entrypoint=sigle plugin and
+        Plugins can be loaded as entrypoint=single plugin and
         entrypoint=[a, list, of, plugins]
         """
         # single version
@@ -138,9 +138,11 @@ class TestArtifactsLoader(utils.BaseTestCase):
         """
         A test to show that plugin-load specific options in artifacts.conf
         are correctly processed:
-            * no plugins can be loaded if load_enabled = False
-            * if available_plugins list is given only plugins specified can be
-              be loaded
+
+        * no plugins can be loaded if load_enabled = False
+        * if available_plugins list is given only plugins specified can be
+          be loaded
+
         """
         self.config(load_enabled=False)
         self.assertRaises(exception.ArtifactLoadError,

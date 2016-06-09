@@ -40,6 +40,7 @@ from oslo_log import log as logging
 from oslo_serialization import jsonutils
 from oslo_utils import encodeutils
 from oslo_utils import strutils
+from osprofiler import opts as profiler_opts
 import routes
 import routes.middleware
 import six
@@ -104,14 +105,12 @@ eventlet_opts = [
                       'wait forever.')),
 ]
 
-profiler_opts = [
-    cfg.BoolOpt("enabled", default=False,
-                help=_('If False fully disable profiling feature.')),
-    cfg.BoolOpt("trace_sqlalchemy", default=False,
-                help=_("If False doesn't trace SQL requests.")),
-    cfg.StrOpt("hmac_keys", default="SECRET_KEY",
-               help=_("Secret key to use to sign Glance API and Glance "
-                      "Registry services tracing messages.")),
+wsgi_opts = [
+    cfg.StrOpt('secure_proxy_ssl_header',
+               help=_('The HTTP header used to determine the scheme for the '
+                      'original request, even if it was removed by an SSL '
+                      'terminating proxy. Typical value is '
+                      '"HTTP_X_FORWARDED_PROTO".')),
 ]
 
 
@@ -121,7 +120,8 @@ CONF = cfg.CONF
 CONF.register_opts(bind_opts)
 CONF.register_opts(socket_opts)
 CONF.register_opts(eventlet_opts)
-CONF.register_opts(profiler_opts, group="profiler")
+CONF.register_opts(wsgi_opts)
+profiler_opts.set_defaults(CONF)
 
 ASYNC_EVENTLET_THREAD_POOL_LIST = []
 
@@ -731,6 +731,13 @@ class Router(object):
 
 class Request(webob.Request):
     """Add some OpenStack API-specific logic to the base webob.Request."""
+
+    def __init__(self, environ, *args, **kwargs):
+        if CONF.secure_proxy_ssl_header:
+            scheme = environ.get(CONF.secure_proxy_ssl_header)
+            if scheme:
+                environ['wsgi.url_scheme'] = scheme
+        super(Request, self).__init__(environ, *args, **kwargs)
 
     def best_match_content_type(self):
         """Determine the requested response content-type."""

@@ -200,7 +200,7 @@ logged. Affects only if context middleware is configured in pipeline.
 Optional. Default: ``64`` (Limited by max_header_line default: 16384)
 
 Configuring SSL Support
-~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
 
 * ``cert_file=PATH``
 
@@ -225,7 +225,7 @@ certificates provided during an SSL handshake. This is ignored if
 Optional. Default: not enabled.
 
 Configuring Registry Access
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 There are a number of configuration options in Glance that control how
 the API server accesses the registry server.
@@ -1112,7 +1112,7 @@ work with some backends especially if they don't support host-attach.
 
 **Note**: To create a Cinder volume from an image in this store quickly, additional
 settings are required. Please see the
-`Volume-backed image <http://docs.openstack.org/admin-guide-cloud/blockstorage_volume_backed_image.html>`_
+`Volume-backed image <http://docs.openstack.org/admin-guide/blockstorage_volume_backed_image.html>`_
 documentation for more information.
 
 * ``cinder_catalog_info=<service_type>:<service_name>:<endpoint_type>``
@@ -1589,21 +1589,25 @@ set to ``True`` and the parameter ``data_api`` has been set to
 Configuring Notifications
 -------------------------
 
-Glance can optionally generate notifications to be logged or sent to
-a message queue. The configuration options are specified in the
-``glance-api.conf`` config file in the section ``[DEFAULT]``.
+Glance can optionally generate notifications to be logged or sent to a message
+queue. The configuration options are specified in the ``glance-api.conf``
+config file.
 
-* ``notification_driver``
+* ``[oslo_messaging_notifications]/driver``
 
 Optional. Default: ``noop``
 
 Sets the notification driver used by oslo.messaging. Options include
 ``messaging``, ``messagingv2``, ``log`` and ``routing``.
 
+**NOTE**
+In M release, the``[DEFAULT]/notification_driver`` option has been deprecated in favor
+of ``[oslo_messaging_notifications]/driver``.
+
 For more information see :doc:`Glance notifications <notifications>` and
 `oslo.messaging <http://docs.openstack.org/developer/oslo.messaging/>`_.
 
-* ``disabled_notifications``
+* ``[DEFAULT]/disabled_notifications``
 
 Optional. Default: ``[]``
 
@@ -1718,10 +1722,10 @@ deployment. Without HMAC key the profiling will not be triggered even profiling
 feature is enabled.
 
 **IMPORTANT NOTE**: previously HMAC keys (as well as enabled parameter) were
-placed at /etc/glance/api-paste.ini and /etc/glance/registry-paste.ini files
+placed at `/etc/glance/api-paste.ini` and `/etc/glance/registry-paste.ini` files
 for Glance API and Glance Registry services respectively. Starting with
-opsrofiler 0.3.1 release there is no need to set these arguments in the
-*-paste.ini files. This functionality is still supported, although the
+osprofiler 0.3.1 release there is no need to set these arguments in the
+`*-paste.ini` files. This functionality is still supported, although the
 config values are having larger priority.
 
 The config value ``trace_sqlalchemy`` is used to determine whether fully enable

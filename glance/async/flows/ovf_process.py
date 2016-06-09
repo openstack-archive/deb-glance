@@ -68,6 +68,7 @@ class _OVF_Process(task.Task):
 
     def _get_ova_iter_objects(self, uri):
         """Returns iterable object either for local file or uri
+
         :param uri: uri (remote or local) to the ova package we want to iterate
         """
 
@@ -134,9 +135,10 @@ class OVAImageExtractor(object):
 
         Extracts a single disk image and OVF from OVA tar archive and calls
         OVF parser method.
+
         :param ova: a file object containing the OVA file
         :returns: a tuple of extracted disk file object and dictionary of
-                  properties parsed from the OVF file
+            properties parsed from the OVF file
         :raises: RuntimeError for malformed OVA and OVF files
         """
         with tarfile.open(fileobj=ova) as tar_file:
@@ -159,10 +161,11 @@ class OVAImageExtractor(object):
         """Parses the OVF file
 
         Parses the OVF file for specified metadata properties. Interested
-        properties must be specfied in ovf-metadata.json conf file.
+        properties must be specified in ovf-metadata.json conf file.
 
         The OVF file's qualified namespaces are removed from the included
         properties.
+
         :param ovf: a file object containing the OVF file
         :returns: a tuple of disk filename and a properties dictionary
         :raises: RuntimeError for malformed OVF file

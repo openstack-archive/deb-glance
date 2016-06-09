@@ -24,6 +24,8 @@ __all__ = [
 import copy
 import itertools
 
+from osprofiler import opts as profiler
+
 import glance.api.middleware.context
 import glance.api.versions
 import glance.async.taskflow_executor
@@ -53,6 +55,7 @@ _api_opts = [
         glance.common.wsgi.bind_opts,
         glance.common.wsgi.eventlet_opts,
         glance.common.wsgi.socket_opts,
+        glance.common.wsgi.wsgi_opts,
         glance.image_cache.drivers.sqlite.sqlite_opts,
         glance.image_cache.image_cache_opts,
         glance.notifier.notifier_opts,
@@ -67,7 +70,7 @@ _api_opts = [
      glance.async.taskflow_executor.taskflow_executor_opts),
     ('store_type_location_strategy',
      glance.common.location_strategy.store_type.store_type_opts),
-    ('profiler', glance.common.wsgi.profiler_opts),
+    profiler.list_opts()[0],
     ('paste_deploy', glance.common.config.paste_deploy_opts)
 ]
 _registry_opts = [
@@ -76,8 +79,9 @@ _registry_opts = [
         glance.common.config.common_opts,
         glance.common.wsgi.bind_opts,
         glance.common.wsgi.socket_opts,
+        glance.common.wsgi.wsgi_opts,
         glance.common.wsgi.eventlet_opts))),
-    ('profiler', glance.common.wsgi.profiler_opts),
+    profiler.list_opts()[0],
     ('paste_deploy', glance.common.config.paste_deploy_opts)
 ]
 _scrubber_opts = [
@@ -108,8 +112,8 @@ _artifacts_opts = [
         glance.common.wsgi.bind_opts,
         glance.common.wsgi.eventlet_opts,
         glance.common.wsgi.socket_opts,
-        glance.common.wsgi.profiler_opts,
         glance.notifier.notifier_opts))),
+    profiler.list_opts()[0],
     ('paste_deploy', glance.common.config.paste_deploy_opts)
 ]
 

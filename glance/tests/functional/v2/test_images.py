@@ -509,13 +509,13 @@ class TestImages(functional.FunctionalTest):
         response = requests.patch(path, headers=headers, data=data)
         self.assertEqual(200, response.status_code, response.text)
 
-        # Tennant2 should get Forbidden when deactivating the public image
+        # Tenant2 should get Forbidden when deactivating the public image
         path = self._url('/v2/images/%s/actions/deactivate' % image_id)
         response = requests.post(path, data={}, headers=self._headers(
             {'X-Tenant-Id': TENANT2}))
         self.assertEqual(403, response.status_code)
 
-        # Tennant2 should get Forbidden when reactivating the public image
+        # Tenant2 should get Forbidden when reactivating the public image
         path = self._url('/v2/images/%s/actions/reactivate' % image_id)
         response = requests.post(path, data={}, headers=self._headers(
             {'X-Tenant-Id': TENANT2}))
@@ -954,7 +954,7 @@ class TestImages(functional.FunctionalTest):
         }
 
         for key, value in six.iteritems(expected_image):
-            self.assertEqual(value, value, key)
+            self.assertEqual(value, image[key], key)
 
         # Upload data to image
         path = self._url('/v2/images/%s/file' % image_id)
