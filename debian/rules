@@ -121,7 +121,6 @@ override_dh_install:
 	install -D -m 0664 etc/property-protections-roles.conf.sample $(CURDIR)/debian/glance-common/usr/share/glance-common/property-protections-roles.conf
 
 override_dh_auto_clean:
-	dh_auto_clean -O--buildsystem=python_distutils
 	find . -iname '*.pyc' -delete
 	rm -rf doc/build
 	rm -rf glance.sqlite
