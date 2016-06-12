@@ -3,6 +3,8 @@ glance (2:13.0.0~b1-1) experimental; urgency=medium
   * New upstream release.
   * Fixed (build-)depends for this release.
   * Added fix-requirements.txt.patch.
+  * Disable test_wsgi_ipv6.IPv6ServerTest.test_evnetlet_no_dnspython that is
+    failing in Xenial.
 
  -- Thomas Goirand <zigo@debian.org>  Thu, 09 Jun 2016 09:46:22 +0200
 
