@@ -1,0 +1,20 @@
+Description: Fix test_evnetlet_no_dnspython()
+ The test case tried to do:
+   os.environ['EVENTLET_NO_GREENDNS'] = 'foo'
+ which doesn't work. Fix it and use 'yes' instead.
+Author: Thomas Goirand <zigo@debian.org>
+Bug-Debian: https://bugs.debian.org/828113
+Forwarded: no
+Last-Update: 2016-06-28
+
+--- glance-12.0.0.orig/glance/tests/unit/common/test_wsgi_ipv6.py
++++ glance-12.0.0/glance/tests/unit/common/test_wsgi_ipv6.py
+@@ -35,7 +35,7 @@ else:
+     sys.exit(%d)
+ """
+ 
+-eventlet_no_dns = script % ('fake', 'import eventlet', 'foo', 'not', 1, 0)
++eventlet_no_dns = script % ('fake', 'import eventlet', 'yes', 'not', 1, 0)
+ 
+ no_eventlet_no_dns = script % ('fake', '', 'foo', '', 1, 0)
+ 

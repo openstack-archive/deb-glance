@@ -7,7 +7,7 @@ Index: glance/etc/glance-api.conf
 ===================================================================
 --- glance.orig/etc/glance-api.conf
 +++ glance/etc/glance-api.conf
-@@ -1524,7 +1524,7 @@ connection = sqlite:////var/lib/glance/g
+@@ -1683,7 +1683,7 @@ connection = sqlite:////var/lib/glance/g
  # service name removed. For example, if your paste section name is
  # [pipeline:glance-api-keystone] use the value "keystone" (string
  # value)
@@ -20,7 +20,7 @@ Index: glance/etc/glance-registry.conf
 ===================================================================
 --- glance.orig/etc/glance-registry.conf
 +++ glance/etc/glance-registry.conf
-@@ -1261,7 +1261,7 @@ connection = sqlite:////var/lib/glance/g
+@@ -1390,7 +1390,7 @@ connection = sqlite:////var/lib/glance/g
  # service name removed. For example, if your paste section name is
  # [pipeline:glance-api-keystone] use the value "keystone" (string
  # value)
