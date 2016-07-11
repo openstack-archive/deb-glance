@@ -1,14 +1,14 @@
 # Danish translation glance.
-# Copyright (C) 2014 glance & nedenstående oversættere.
+# Copyright (C) 2016 glance & nedenstående oversættere.
 # This file is distributed under the same license as the glance package.
-# Joe Hansen (joedalton2@yahoo.dk), 2012, 2013, 2014.
+# Joe Hansen (joedalton2@yahoo.dk), 2012, 2013, 2014, 2016.
 #
 msgid ""
 msgstr ""
 "Project-Id-Version: glance\n"
 "Report-Msgid-Bugs-To: glance@packages.debian.org\n"
 "POT-Creation-Date: 2016-03-29 13:00+0000\n"
-"PO-Revision-Date: 2014-02-22 12:42+0000\n"
+"PO-Revision-Date: 2016-07-09 12:42+0000\n"
 "Last-Translator: Joe Hansen <joedalton2@yahoo.dk>\n"
 "Language-Team: Danish <debian-l10n-danish@lists.debian.org>\n"
 "Language: da\n"
@@ -263,17 +263,14 @@ msgstr ""
 #. Type: boolean
 #. Description
 #: ../glance-api.templates:2001
-#, fuzzy
-#| msgid ""
-#| "Note that you will need to have an up and running Keystone server on "
-#| "which to connect using the Keystone authentication token."
 msgid ""
 "Note that you will need to have an up and running Keystone server on which "
 "to connect using a known admin project name, admin username and password. "
 "The admin auth token is not used anymore."
 msgstr ""
 "Bemærk at du skal have en op og kørende Keystoneserver, som du skal forbinde "
-"til med Keystones godkendelsessymbol."
+"til via et kendt administratorprojektnavn, administratorbrugernavn og adgangskode. "
+"Administratorens auth-symbol bruges ikke længere."
 
 #. Type: string
 #. Description
@@ -294,10 +291,8 @@ msgstr ""
 #. Type: string
 #. Description
 #: ../glance-api.templates:4001
-#, fuzzy
-#| msgid "Keystone authentication token:"
 msgid "Keystone admin name:"
-msgstr "Godkendelsessymbol for Keystone:"
+msgstr "Administratornavn for Keystone:"
 
 #. Type: string
 #. Description
@@ -311,18 +306,20 @@ msgid ""
 "To register the service endpoint, this package needs to know the Admin "
 "login, name, project name, and password to the Keystone server."
 msgstr ""
+"For at registrere tjenesteslutpunktet, så skal denne pakke kende "
+"administratorlogindet, navn, projektnavn og adgangskode for Keystoneserveren."
 
 #. Type: string
 #. Description
 #: ../glance-api.templates:5001
 msgid "Keystone admin project name:"
-msgstr ""
+msgstr "Projektnavn for Keystoneadministratoren:"
 
 #. Type: password
 #. Description
 #: ../glance-api.templates:6001
 msgid "Keystone admin password:"
-msgstr ""
+msgstr "Adgangskode for Keystoneadministratoren:"
 
 #. Type: string
 #. Description
@@ -367,9 +364,3 @@ msgstr ""
 "repræsenterer et sted. Indtast venligst zonen du ønsker at bruge, når "
 "slutpunktet registreres."
 
-#~ msgid ""
-#~ "To configure its endpoint in Keystone, glance-api needs the Keystone "
-#~ "authentication token."
-#~ msgstr ""
-#~ "For at konfigurere dets slutpunkt i Keystone, kræver glance-api Keystones "
-#~ "godkendelsessymbol."

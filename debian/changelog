@@ -1,3 +1,9 @@
+glance (2:13.0.0~b1-2) UNRELEASED; urgency=medium
+
+  * Updated Danish translation of debconf (Closes: #830632).
+
+ -- Thomas Goirand <zigo@debian.org>  Mon, 11 Jul 2016 14:21:43 +0200
+
 glance (2:13.0.0~b1-1) experimental; urgency=medium
 
   * New upstream release.
