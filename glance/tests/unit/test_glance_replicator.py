@@ -254,22 +254,22 @@ class FakeHttpResponse(object):
 
 
 FAKEIMAGES = [{'status': 'active', 'size': 100, 'dontrepl': 'banana',
-               'id': '5dcddce0-cba5-4f18-9cf4-9853c7b207a6'},
+               'id': '5dcddce0-cba5-4f18-9cf4-9853c7b207a6', 'name': 'x1'},
               {'status': 'deleted', 'size': 200, 'dontrepl': 'banana',
-               'id': 'f4da1d2a-40e8-4710-b3aa-0222a4cc887b'},
+               'id': 'f4da1d2a-40e8-4710-b3aa-0222a4cc887b', 'name': 'x2'},
               {'status': 'active', 'size': 300, 'dontrepl': 'banana',
-               'id': '37ff82db-afca-48c7-ae0b-ddc7cf83e3db'}]
+               'id': '37ff82db-afca-48c7-ae0b-ddc7cf83e3db', 'name': 'x3'}]
 FAKEIMAGES_LIVEMASTER = [{'status': 'active', 'size': 100,
-                          'dontrepl': 'banana',
+                          'dontrepl': 'banana', 'name': 'x1',
                           'id': '5dcddce0-cba5-4f18-9cf4-9853c7b207a6'},
                          {'status': 'deleted', 'size': 200,
-                          'dontrepl': 'banana',
+                          'dontrepl': 'banana', 'name': 'x2',
                           'id': 'f4da1d2a-40e8-4710-b3aa-0222a4cc887b'},
                          {'status': 'deleted', 'size': 300,
-                          'dontrepl': 'banana',
+                          'dontrepl': 'banana', 'name': 'x3',
                           'id': '37ff82db-afca-48c7-ae0b-ddc7cf83e3db'},
                          {'status': 'active', 'size': 100,
-                          'dontrepl': 'banana',
+                          'dontrepl': 'banana', 'name': 'x4',
                           'id': '15648dd7-8dd0-401c-bd51-550e1ba9a088'}]
 
 
@@ -364,7 +364,10 @@ class ReplicationCommandsTestCase(test_utils.BaseTestCase):
             glance_replicator.get_image_service = orig_img_service
 
         output = output.rstrip()
-        self.assertEqual('Total size is 400 bytes across 2 images', output)
+        self.assertEqual(
+            'Total size is 400 bytes (400.0 B) across 2 images',
+            output
+        )
 
     def test_replication_size_with_no_args(self):
         args = []
@@ -375,6 +378,20 @@ class ReplicationCommandsTestCase(test_utils.BaseTestCase):
         args = ['aaa']
         command = glance_replicator.replication_size
         self.assertTrue(check_bad_args(command, args))
+
+    def test_human_readable_size(self):
+        _human_readable_size = glance_replicator._human_readable_size
+
+        self.assertEqual('0.0 B', _human_readable_size(0))
+        self.assertEqual('1.0 B', _human_readable_size(1))
+        self.assertEqual('512.0 B', _human_readable_size(512))
+        self.assertEqual('1.0 KiB', _human_readable_size(1024))
+        self.assertEqual('2.0 KiB', _human_readable_size(2048))
+        self.assertEqual('8.0 KiB', _human_readable_size(8192))
+        self.assertEqual('64.0 KiB', _human_readable_size(65536))
+        self.assertEqual('93.3 KiB', _human_readable_size(95536))
+        self.assertEqual('117.7 MiB', _human_readable_size(123456789))
+        self.assertEqual('36.3 GiB', _human_readable_size(39022543360))
 
     def test_replication_dump(self):
         tempdir = self.useFixture(fixtures.TempDir()).path

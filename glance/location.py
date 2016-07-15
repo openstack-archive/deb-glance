@@ -27,7 +27,7 @@ from glance.common import exception
 from glance.common import signature_utils
 from glance.common import utils
 import glance.domain.proxy
-from glance.i18n import _, _LE, _LI
+from glance.i18n import _, _LE, _LI, _LW
 
 
 CONF = cfg.CONF
@@ -303,6 +303,9 @@ class StoreLocations(collections.MutableSequence):
     def __eq__(self, other):
         return self.value == self.__cast(other)
 
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
     def __iter__(self):
         return iter(self.value)
 
@@ -462,8 +465,8 @@ class ImageProxy(glance.domain.proxy.Image):
 
                 return data
             except Exception as e:
-                LOG.warn(_('Get image %(id)s data failed: '
-                           '%(err)s.')
+                LOG.warn(_LW('Get image %(id)s data failed: '
+                             '%(err)s.')
                          % {'id': self.image.image_id,
                             'err': encodeutils.exception_to_unicode(e)})
                 err = e

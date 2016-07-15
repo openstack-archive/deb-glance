@@ -13,7 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import logging
 import os
 import re
 import shutil
@@ -25,6 +24,7 @@ except ImportError:
     import xml.etree.ElementTree as ET
 
 from oslo_config import cfg
+from oslo_log import log as logging
 from oslo_serialization import jsonutils as json
 from six.moves import urllib
 from taskflow.patterns import linear_flow as lf
@@ -243,11 +243,11 @@ class OVAImageExtractor(object):
                 self.interested_properties = properties.get(
                     'cim_pasd', [])
                 if not self.interested_properties:
-                    LOG.warn(_('OVF metadata of interest was not specified '
-                               'in ovf-metadata.json config file. Please set '
-                               '"cim_pasd" to a list of interested '
-                               'CIM_ProcessorAllocationSettingData '
-                               'properties.'))
+                    LOG.warn(_LW('OVF metadata of interest was not specified '
+                                 'in ovf-metadata.json config file. Please '
+                                 'set "cim_pasd" to a list of interested '
+                                 'CIM_ProcessorAllocationSettingData '
+                                 'properties.'))
         else:
             LOG.warn(_('OVF properties config file "ovf-metadata.json" was '
                        'not found.'))

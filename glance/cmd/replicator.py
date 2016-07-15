@@ -73,9 +73,9 @@ cli_opts = [
     cfg.StrOpt('command',
                positional=True,
                help="Command to be given to replicator"),
-    cfg.ListOpt('args',
-                positional=True,
-                help="Arguments for the command"),
+    cfg.MultiStrOpt('args',
+                    positional=True,
+                    help="Arguments for the command"),
 ]
 
 CONF = cfg.CONF
@@ -313,6 +313,14 @@ def get_image_service():
     return ImageService
 
 
+def _human_readable_size(num, suffix='B'):
+    for unit in ['', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi']:
+        if abs(num) < 1024.0:
+            return "%3.1f %s%s" % (num, unit, suffix)
+        num /= 1024.0
+    return "%.1f %s%s" % (num, 'Yi', suffix)
+
+
 def replication_size(options, args):
     """%(prog)s size <server:port>
 
@@ -339,8 +347,10 @@ def replication_size(options, args):
             total_size += int(image['size'])
             count += 1
 
-    print(_('Total size is %(size)d bytes across %(img_count)d images') %
+    print(_('Total size is %(size)d bytes (%(human_size)s) across '
+            '%(img_count)d images') %
           {'size': total_size,
+           'human_size': _human_readable_size(total_size),
            'img_count': count})
 
 
@@ -618,8 +628,10 @@ def replication_compare(options, args):
                               {'image_id': image['id']})
 
         elif image['status'] == 'active':
-            LOG.warn(_LW('Image %s entirely missing from the destination')
-                     % image['id'])
+            LOG.warn(_LW('Image %(image_id)s ("%(image_name)s") '
+                     'entirely missing from the destination')
+                     % {'image_id': image['id'],
+                        'image_name': image['name']})
             differences[image['id']] = 'missing'
 
     return differences
