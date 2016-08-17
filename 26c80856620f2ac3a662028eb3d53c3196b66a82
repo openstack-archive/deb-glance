@@ -1,0 +1,10 @@
+Code-Review+1: Nikhil Komawar <nik.komawar@gmail.com>
+Code-Review+1: iccha-sethi <iccha.sethi@rackspace.com>
+Code-Review+2: Chuck Short <chuck.short@canonical.com>
+Workflow+1: Chuck Short <chuck.short@canonical.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Wed, 14 Nov 2012 20:31:57 +0000
+Reviewed-on: https://review.openstack.org/15148
+Project: openstack/deb-glance
+Branch: refs/heads/stable/folsom

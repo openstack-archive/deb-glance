@@ -1,0 +1,9 @@
+Code-Review+2: Mark McLoughlin <markmc@redhat.com>
+Code-Review+2: Brian Waldon <brian@waldon.cc>
+Workflow+1: Brian Waldon <brian@waldon.cc>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Sat, 16 Jun 2012 17:41:36 +0000
+Reviewed-on: https://review.openstack.org/8596
+Project: openstack/deb-glance
+Branch: refs/heads/stable/essex

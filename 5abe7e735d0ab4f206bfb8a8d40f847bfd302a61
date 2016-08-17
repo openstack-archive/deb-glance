@@ -1,0 +1,7 @@
+Code-Review+2: Jay Pipes <jaypipes@gmail.com>
+Verified+1: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Mon, 12 Sep 2011 20:58:36 +0000
+Reviewed-on: https://review.openstack.org/425
+Project: openstack/deb-glance
+Branch: refs/heads/milestone-proposed

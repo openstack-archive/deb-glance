@@ -1,0 +1,10 @@
+Code-Review+2: Brian Waldon <brian@waldon.cc>
+Code-Review+1: Ghe Rivero <ghe.rivero@gmail.com>
+Code-Review+2: Jay Pipes <jaypipes@gmail.com>
+Workflow+1: Jay Pipes <jaypipes@gmail.com>
+Verified+1: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Mon, 30 Apr 2012 16:44:00 +0000
+Reviewed-on: https://review.openstack.org/6923
+Project: openstack/deb-glance
+Branch: refs/heads/stable/essex

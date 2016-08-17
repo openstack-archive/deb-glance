@@ -1,0 +1,10 @@
+Code-Review+1: p-draigbrady <P@draigBrady.com>
+Code-Review+2: Mark McLoughlin <markmc@redhat.com>
+Code-Review+2: Chuck Short <chuck.short@canonical.com>
+Workflow+1: Chuck Short <chuck.short@canonical.com>
+Verified+1: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 13 Apr 2012 13:35:55 +0000
+Reviewed-on: https://review.openstack.org/6490
+Project: openstack/deb-glance
+Branch: refs/heads/stable/essex

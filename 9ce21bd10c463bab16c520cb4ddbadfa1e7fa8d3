@@ -1,0 +1,9 @@
+Code-Review+2: Eoghan Glynn <eglynn@redhat.com>
+Code-Review+2: Alan Pevec <alan.pevec@redhat.com>
+Workflow+1: Alan Pevec <alan.pevec@redhat.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Thu, 30 May 2013 10:52:24 +0000
+Reviewed-on: https://review.openstack.org/28279
+Project: openstack/deb-glance
+Branch: refs/heads/stable/grizzly

@@ -1,0 +1,13 @@
+Code-Review+1: Pawel Koniszewski <pawel.koniszewski@intel.com>
+Code-Review+1: Erno Kuvaja <jokke@usr.fi>
+Code-Review+1: Hemanth Makkapati <hemanth.makkapati@rackspace.com>
+Code-Review+2: Flavio Percoco <fpercoco@redhat.com>
+Code-Review+1: Inessa Vasilevskaya <ivasilevskaya@mirantis.com>
+Code-Review+2: Nikhil Komawar <nik.komawar@gmail.com>
+Workflow+1: Nikhil Komawar <nik.komawar@gmail.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Wed, 26 Nov 2014 19:38:05 +0000
+Reviewed-on: https://review.openstack.org/134286
+Project: openstack/deb-glance
+Branch: refs/heads/stable/juno

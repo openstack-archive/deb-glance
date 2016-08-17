@@ -1,0 +1,9 @@
+Code-Review+1: Chuck Short <chuck.short@canonical.com>
+Code-Review+2: Thierry Carrez <thierry@openstack.org>
+Workflow+1: Thierry Carrez <thierry@openstack.org>
+Verified+1: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Thu, 29 Mar 2012 20:40:51 +0000
+Reviewed-on: https://review.openstack.org/5966
+Project: openstack/deb-glance
+Branch: refs/heads/milestone-proposed

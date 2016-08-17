@@ -1,0 +1,9 @@
+Code-Review+2: Eoghan Glynn <eglynn@redhat.com>
+Code-Review+2: Jay Pipes <jaypipes@gmail.com>
+Workflow+1: Jay Pipes <jaypipes@gmail.com>
+Verified+1: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Wed, 28 Mar 2012 20:51:34 +0000
+Reviewed-on: https://review.openstack.org/5891
+Project: openstack/deb-glance
+Branch: refs/heads/milestone-proposed

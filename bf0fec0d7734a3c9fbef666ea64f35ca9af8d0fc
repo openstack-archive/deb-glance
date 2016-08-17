@@ -1,0 +1,9 @@
+Code-Review+2: Eoghan Glynn <eglynn@redhat.com>
+Code-Review+2: Thierry Carrez <thierry@openstack.org>
+Workflow+1: Thierry Carrez <thierry@openstack.org>
+Verified+1: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Wed, 28 Mar 2012 12:43:44 +0000
+Reviewed-on: https://review.openstack.org/5890
+Project: openstack/deb-glance
+Branch: refs/heads/milestone-proposed

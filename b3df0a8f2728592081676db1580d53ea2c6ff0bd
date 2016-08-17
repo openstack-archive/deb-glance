@@ -1,0 +1,9 @@
+Code-Review+2: Mark McLoughlin <markmc@redhat.com>
+Code-Review+2: Dave Walker <email@daviey.com>
+Workflow+1: Dave Walker <email@daviey.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 15 Jun 2012 14:56:29 +0000
+Reviewed-on: https://review.openstack.org/8598
+Project: openstack/deb-glance
+Branch: refs/heads/stable/essex

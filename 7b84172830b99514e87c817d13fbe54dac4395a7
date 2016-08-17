@@ -1,0 +1,8 @@
+Code-Review+2: Brian Waldon <brian@waldon.cc>
+Workflow+1: Brian Waldon <brian@waldon.cc>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Thu, 20 Sep 2012 20:34:16 +0000
+Reviewed-on: https://review.openstack.org/13405
+Project: openstack/deb-glance
+Branch: refs/heads/milestone-proposed

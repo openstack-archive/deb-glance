@@ -1,0 +1,9 @@
+Code-Review+2: Alan Pevec <alan.pevec@redhat.com>
+Code-Review+2: Flavio Percoco <fpercoco@redhat.com>
+Workflow+1: Flavio Percoco <fpercoco@redhat.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Tue, 03 Jun 2014 02:48:03 +0000
+Reviewed-on: https://review.openstack.org/95656
+Project: openstack/deb-glance
+Branch: refs/heads/stable/icehouse

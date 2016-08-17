@@ -1,0 +1,9 @@
+Code-Review+2: Brian Waldon <brian@waldon.cc>
+Code-Review+2: Mark McLoughlin <markmc@redhat.com>
+Workflow+1: Mark McLoughlin <markmc@redhat.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Tue, 27 Nov 2012 23:16:09 +0000
+Reviewed-on: https://review.openstack.org/16931
+Project: openstack/deb-glance
+Branch: refs/heads/stable/folsom

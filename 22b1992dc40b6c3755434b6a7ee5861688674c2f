@@ -1,0 +1,16 @@
+Code-Review+1: Brianna Poulos <Brianna.Poulos@jhuapl.edu>
+Code-Review+1: Roman Vasilets <rvasilets@mirantis.com>
+Code-Review+1: Dave Walker <email@daviey.com>
+Code-Review+1: Louis Taylor <louis@kragniz.eu>
+Code-Review+1: Erno Kuvaja <jokke@usr.fi>
+Code-Review+2: Alan Pevec <alan.pevec@redhat.com>
+Code-Review+1: Arnaud Legendre <arnaudleg@gmail.com>
+Code-Review+1: Zhi Yan Liu <lzy.dev@gmail.com>
+Code-Review+2: Flavio Percoco <fpercoco@redhat.com>
+Workflow+1: Flavio Percoco <fpercoco@redhat.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 21 Nov 2014 10:19:28 +0000
+Reviewed-on: https://review.openstack.org/132969
+Project: openstack/deb-glance
+Branch: refs/heads/stable/juno

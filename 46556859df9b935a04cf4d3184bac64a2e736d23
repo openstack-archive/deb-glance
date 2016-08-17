@@ -1,0 +1,9 @@
+Code-Review+2: Eoghan Glynn <eglynn@redhat.com>
+Code-Review+1: Fei Long Wang <flwang@catalyst.net.nz>
+Workflow+1: Eoghan Glynn <eglynn@redhat.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Thu, 30 May 2013 11:11:08 +0000
+Reviewed-on: https://review.openstack.org/28280
+Project: openstack/deb-glance
+Branch: refs/heads/stable/grizzly

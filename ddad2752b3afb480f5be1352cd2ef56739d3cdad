@@ -1,0 +1,8 @@
+Code-Review+2: p-draigbrady <P@draigBrady.com>
+Workflow+1: p-draigbrady <P@draigBrady.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Wed, 31 Oct 2012 18:28:53 +0000
+Reviewed-on: https://review.openstack.org/15109
+Project: openstack/deb-glance
+Branch: refs/heads/stable/folsom

@@ -1,0 +1,9 @@
+Code-Review+1: Zhi Yan Liu <lzy.dev@gmail.com>
+Code-Review+2: Thierry Carrez <thierry@openstack.org>
+Workflow+1: Thierry Carrez <thierry@openstack.org>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 11 Oct 2013 07:46:57 +0000
+Reviewed-on: https://review.openstack.org/51045
+Project: openstack/deb-glance
+Branch: refs/heads/milestone-proposed
