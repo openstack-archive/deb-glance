@@ -1,0 +1,9 @@
+Code-Review+2: Kairat Kushaev <kkushaev@mirantis.com>
+Code-Review+2: Erno Kuvaja <jokke@usr.fi>
+Workflow+1: Erno Kuvaja <jokke@usr.fi>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Mon, 18 Jul 2016 23:53:01 +0000
+Reviewed-on: https://review.openstack.org/342550
+Project: openstack/deb-glance
+Branch: refs/heads/master

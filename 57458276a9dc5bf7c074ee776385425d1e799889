@@ -1,0 +1,8 @@
+Code-Review+2: Nikhil Komawar <nik.komawar@gmail.com>
+Workflow+1: Nikhil Komawar <nik.komawar@gmail.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Tue, 26 Jul 2016 16:39:15 +0000
+Reviewed-on: https://review.openstack.org/346858
+Project: openstack/deb-glance
+Branch: refs/heads/master

@@ -1,0 +1,13 @@
+Code-Review+2: Kairat Kushaev <kkushaev@mirantis.com>
+Code-Review+1: yuyafei <yu.yafei@hotmail.com>
+Code-Review+1: haobing <hao.bing1@zte.com.cn>
+Code-Review+1: Niall Bunting <niall.bunting@hpe.com>
+Code-Review-1: Andreas Jaeger <jaegerandi@gmail.com>
+Code-Review+2: Nikhil Komawar <nik.komawar@gmail.com>
+Workflow+1: Nikhil Komawar <nik.komawar@gmail.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Thu, 14 Jul 2016 22:21:31 +0000
+Reviewed-on: https://review.openstack.org/338040
+Project: openstack/deb-glance
+Branch: refs/heads/master

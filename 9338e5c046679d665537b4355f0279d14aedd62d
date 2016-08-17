@@ -1,0 +1,12 @@
+Code-Review+2: Kairat Kushaev <kkushaev@mirantis.com>
+Code-Review+1: Tom Cocozzello (tjcocozz) <tjcocozz@us.ibm.com>
+Code-Review-1: Flavio Percoco <fpercoco@redhat.com>
+Code-Review+1: Cyril Roelandt <cyril@redhat.com>
+Code-Review+2: Nikhil Komawar <nik.komawar@gmail.com>
+Workflow+1: Nikhil Komawar <nik.komawar@gmail.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Sat, 30 Jul 2016 22:32:41 +0000
+Reviewed-on: https://review.openstack.org/280571
+Project: openstack/deb-glance
+Branch: refs/heads/master
