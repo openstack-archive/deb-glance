@@ -1,0 +1,10 @@
+Code-Review+2: Erno Kuvaja <jokke@usr.fi>
+Code-Review+1: Ian Cordasco <ian.cordasco@rackspace.com>
+Code-Review+2: Nikhil Komawar <nik.komawar@gmail.com>
+Workflow+1: Nikhil Komawar <nik.komawar@gmail.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 06 May 2016 02:47:16 +0000
+Reviewed-on: https://review.openstack.org/312601
+Project: openstack/deb-glance
+Branch: refs/heads/stable/mitaka

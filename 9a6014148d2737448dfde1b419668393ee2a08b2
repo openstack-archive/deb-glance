@@ -1,0 +1,8 @@
+Code-Review+2: Ian Cordasco <ian.cordasco@rackspace.com>
+Workflow+1: Ian Cordasco <ian.cordasco@rackspace.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Tue, 06 Sep 2016 14:18:55 +0000
+Reviewed-on: https://review.openstack.org/365975
+Project: openstack/deb-glance
+Branch: refs/heads/stable/mitaka
