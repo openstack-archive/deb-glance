@@ -1,0 +1,10 @@
+Code-Review+1: Alexander Bashmakov <alexander.bashmakov@intel.com>
+Code-Review+2: Hemanth Makkapati <hemanth.makkapati@rackspace.com>
+Code-Review+2: Erno Kuvaja <jokke@usr.fi>
+Workflow+1: Erno Kuvaja <jokke@usr.fi>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 19 Aug 2016 19:11:05 +0000
+Reviewed-on: https://review.openstack.org/348507
+Project: openstack/deb-glance
+Branch: refs/heads/master

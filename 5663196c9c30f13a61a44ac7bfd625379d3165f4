@@ -1,0 +1,11 @@
+Code-Review+2: Stuart McLaren <stuart.mclaren@hp.com>
+Code-Review+1: Cyril Roelandt <cyril@redhat.com>
+Code-Review+1: Brianna Poulos <Brianna.Poulos@jhuapl.edu>
+Code-Review+2: Nikhil Komawar <nik.komawar@gmail.com>
+Workflow+1: Nikhil Komawar <nik.komawar@gmail.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Mon, 29 Aug 2016 23:33:53 +0000
+Reviewed-on: https://review.openstack.org/360411
+Project: openstack/deb-glance
+Branch: refs/heads/master
