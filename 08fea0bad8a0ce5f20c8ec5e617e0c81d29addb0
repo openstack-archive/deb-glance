@@ -1,0 +1,9 @@
+Code-Review+1: Kairat Kushaev <kkushaev@mirantis.com>
+Code-Review+2: Flavio Percoco <fpercoco@redhat.com>
+Workflow+1: Flavio Percoco <fpercoco@redhat.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Mon, 29 Feb 2016 19:50:50 +0000
+Reviewed-on: https://review.openstack.org/271427
+Project: openstack/deb-glance
+Branch: refs/heads/stable/liberty

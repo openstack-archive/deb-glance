@@ -1,0 +1,8 @@
+Code-Review+2: Flavio Percoco <fpercoco@redhat.com>
+Workflow+1: Flavio Percoco <fpercoco@redhat.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Tue, 22 Dec 2015 04:33:00 +0000
+Reviewed-on: https://review.openstack.org/258314
+Project: openstack/deb-glance
+Branch: refs/heads/stable/liberty

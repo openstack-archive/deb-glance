@@ -1,0 +1,10 @@
+Code-Review+1: Andreas Jaeger <jaegerandi@gmail.com>
+Code-Review+2: Mike Fedosin <mfedosin@mirantis.com>
+Code-Review+2: Flavio Percoco <fpercoco@redhat.com>
+Workflow+1: Flavio Percoco <fpercoco@redhat.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Mon, 29 Feb 2016 14:34:16 +0000
+Reviewed-on: https://review.openstack.org/277699
+Project: openstack/deb-glance
+Branch: refs/heads/stable/liberty

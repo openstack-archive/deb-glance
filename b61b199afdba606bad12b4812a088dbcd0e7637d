@@ -1,0 +1,13 @@
+Code-Review+1: Ian Cordasco <ian.cordasco@rackspace.com>
+Code-Review+1: Darja Shakhray <dshakhray@mirantis.com>
+Code-Review+1: Kairat Kushaev <kkushaev@mirantis.com>
+Code-Review+1: Abhishek Kekane <abhishek.kekane@nttdata.com>
+Code-Review+1: Niall Bunting <niall.bunting@hpe.com>
+Code-Review+2: Erno Kuvaja <jokke@usr.fi>
+Workflow+1: Erno Kuvaja <jokke@usr.fi>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Tue, 12 Jan 2016 16:29:54 +0000
+Reviewed-on: https://review.openstack.org/260975
+Project: openstack/deb-glance
+Branch: refs/heads/stable/liberty
