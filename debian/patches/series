@@ -1,4 +1,3 @@
 sql_conn-registry.patch
-default-config.patch
 fix-test_multiprocessing.py-call-to-psutils.patch
 fix-requirements.txt.patch

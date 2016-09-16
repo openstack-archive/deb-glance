@@ -15,11 +15,9 @@
 
 
 from cryptography import exceptions as crypto_exception
-from debtcollector import removals
 import glance_store as store
 import mock
 from oslo_config import cfg
-from oslo_log import log as logging
 from six.moves import urllib
 
 from glance.common import exception
@@ -30,7 +28,6 @@ import glance.db.simple.api as simple_db
 
 
 CONF = cfg.CONF
-LOG = logging.getLogger(__name__)
 
 UUID1 = 'c80a1a6c-bd1f-41c5-90ee-81afedb1d58d'
 UUID2 = '971ec09a-8067-4bc8-a91f-ae3557f1c4c7'
@@ -88,20 +85,10 @@ def fake_get_size_from_backend(uri, context=None):
     return 1
 
 
-@removals.remove(message="This will be removed in the N cycle.")
-def fake_old_verify_signature(context, checksum_hash, image_properties):
-    if (image_properties is not None and 'signature' in image_properties and
-            image_properties['signature'] == 'VALID'):
-        return True
-    else:
-        raise exception.SignatureVerificationError(
-            'Signature verification failed.')
-
-
-def fake_get_verifier(context, image_properties):
+def fake_get_verifier(context, cert_uuid, hash_method,
+                      img_signature, key_type):
     verifier = mock.Mock()
-    if (image_properties is not None and 'img_signature' in image_properties
-            and image_properties['img_signature'] == 'VALID'):
+    if (img_signature is not None and img_signature == 'VALID'):
         verifier.verify.return_value = None
     else:
         ex = crypto_exception.InvalidSignature()

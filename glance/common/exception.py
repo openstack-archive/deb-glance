@@ -113,7 +113,7 @@ class UploadException(GlanceException):
 
 
 class Forbidden(GlanceException):
-    message = _("You are not authorized to complete this action.")
+    message = _("You are not authorized to complete %(action)s action.")
 
 
 class ForbiddenPublicImage(Forbidden):
@@ -445,10 +445,6 @@ class MetadefTagNotFound(NotFound):
     message = _("The metadata definition tag with"
                 " name=%(name)s was not found in"
                 " namespace=%(namespace_name)s.")
-
-
-class SignatureVerificationError(GlanceException):
-    message = _("Unable to verify signature: %(reason)s")
 
 
 class InvalidVersion(Invalid):

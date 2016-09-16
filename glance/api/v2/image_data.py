@@ -12,6 +12,7 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+from cursive import exception as cursive_exception
 import glance_store
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -115,14 +116,14 @@ class ImageDataController(object):
 
                 try:
                     image_repo.save(image, from_state='saving')
-                except exception.NotAuthenticated as e:
+                except exception.NotAuthenticated:
                     if refresher is not None:
                         # request a new token to update an image in database
                         cxt.auth_token = refresher.refresh_token()
                         image_repo = self.gateway.get_repo(req.context)
                         image_repo.save(image, from_state='saving')
                     else:
-                        raise e
+                        raise
 
                 try:
                     # release resources required for re-auth
@@ -225,7 +226,7 @@ class ImageDataController(object):
             raise webob.exc.HTTPServiceUnavailable(explanation=msg,
                                                    request=req)
 
-        except exception.SignatureVerificationError as e:
+        except cursive_exception.SignatureVerificationError as e:
             msg = (_LE("Signature verification failed for image %(id)s: %(e)s")
                    % {'id': image_id,
                       'e': encodeutils.exception_to_unicode(e)})

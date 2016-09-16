@@ -52,7 +52,23 @@ extensions = ['sphinx.ext.coverage',
               'oslo_config.sphinxext',
               'sphinx.ext.autodoc',
               'sphinx.ext.viewcode',
+              'oslo_config.sphinxconfiggen',
               ]
+
+config_generator_config_file = [
+    ('../../etc/oslo-config-generator/glance-api.conf',
+     '_static/glance-api'),
+    ('../../etc/oslo-config-generator/glance-cache.conf',
+     '_static/glance-cache'),
+    ('../../etc/oslo-config-generator/glance-glare.conf',
+     '_static/glance-glare'),
+    ('../../etc/oslo-config-generator/glance-manage.conf',
+     '_static/glance-manage'),
+    ('../../etc/oslo-config-generator/glance-registry.conf',
+     '_static/glance-registry'),
+    ('../../etc/oslo-config-generator/glance-scrubber.conf',
+     '_static/glance-scrubber'),
+]
 
 # Add any paths that contain templates here, relative to this directory.
 # templates_path = []
@@ -68,7 +84,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'Glance'
-copyright = u'2010-2014, OpenStack Foundation.'
+copyright = u'2010-present, OpenStack Foundation.'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the

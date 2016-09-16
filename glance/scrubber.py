@@ -33,47 +33,182 @@ import glance.registry.client.v1.api as registry
 LOG = logging.getLogger(__name__)
 
 scrubber_opts = [
-    cfg.IntOpt('scrub_time', default=0,
-               help=_('The amount of time in seconds to delay before '
-                      'performing a delete.')),
-    cfg.IntOpt('scrub_pool_size', default=1,
-               help=_('The size of thread pool to be used for '
-                      'scrubbing images. The default is one, which '
-                      'signifies serial scrubbing. Any value above '
-                      'one indicates the max number of images that '
-                      'may be scrubbed in parallel.')),
+    cfg.IntOpt('scrub_time', default=0, min=0,
+               help=_("""
+The amount of time, in seconds, to delay image scrubbing.
+
+When delayed delete is turned on, an image is put into ``pending_delete``
+state upon deletion until the scrubber deletes its image data. Typically, soon
+after the image is put into ``pending_delete`` state, it is available for
+scrubbing. However, scrubbing can be delayed until a later point using this
+configuration option. This option denotes the time period an image spends in
+``pending_delete`` state before it is available for scrubbing.
+
+It is important to realize that this has storage implications. The larger the
+``scrub_time``, the longer the time to reclaim backend storage from deleted
+images.
+
+Possible values:
+    * Any non-negative integer
+
+Related options:
+    * ``delayed_delete``
+
+""")),
+    cfg.IntOpt('scrub_pool_size', default=1, min=1,
+               help=_("""
+The size of thread pool to be used for scrubbing images.
+
+When there are a large number of images to scrub, it is beneficial to scrub
+images in parallel so that the scrub queue stays in control and the backend
+storage is reclaimed in a timely fashion. This configuration option denotes
+the maximum number of images to be scrubbed in parallel. The default value is
+one, which signifies serial scrubbing. Any value above one indicates parallel
+scrubbing.
+
+Possible values:
+    * Any non-zero positive integer
+
+Related options:
+    * ``delayed_delete``
+
+""")),
     cfg.BoolOpt('delayed_delete', default=False,
-                help=_('Turn on/off delayed delete.')),
+                help=_("""
+Turn on/off delayed delete.
+
+Typically when an image is deleted, the ``glance-api`` service puts the image
+into ``deleted`` state and deletes its data at the same time. Delayed delete
+is a feature in Glance that delays the actual deletion of image data until a
+later point in time (as determined by the configuration option ``scrub_time``).
+When delayed delete is turned on, the ``glance-api`` service puts the image
+into ``pending_delete`` state upon deletion and leaves the image data in the
+storage backend for the image scrubber to delete at a later time. The image
+scrubber will move the image into ``deleted`` state upon successful deletion
+of image data.
+
+NOTE: When delayed delete is turned on, image scrubber MUST be running as a
+periodic task to prevent the backend storage from filling up with undesired
+usage.
+
+Possible values:
+    * True
+    * False
+
+Related options:
+    * ``scrub_time``
+    * ``wakeup_time``
+    * ``scrub_pool_size``
+
+""")),
+
+    # Note: Though the conf option admin_role is used by other Glance
+    # service and their usage differs requiring us to have a differing
+    # help text here, oslo.config generator treats them as the same
+    # config option and would throw a DuplicateError exception in case
+    # of differing help texts. Hence we have the same help text for
+    # admin_role here and in context.py.
+
     cfg.StrOpt('admin_role', default='admin',
-               help=_('Role used to identify an authenticated user as '
-                      'administrator.')),
-    cfg.BoolOpt('send_identity_headers', default=False,
-                help=_("Whether to pass through headers containing user "
-                       "and tenant information when making requests to "
-                       "the registry. This allows the registry to use the "
-                       "context middleware without keystonemiddleware's "
-                       "auth_token middleware, removing calls to the keystone "
-                       "auth service. It is recommended that when using this "
-                       "option, secure communication between glance api and "
-                       "glance registry is ensured by means other than "
-                       "auth_token middleware.")),
+               help=_("""
+Role used to identify an authenticated user as administrator.
+
+Provide a string value representing a Keystone role to identify an
+administrative user. Users with this role will be granted
+administrative privileges. The default value for this option is
+'admin'.
+
+Possible values:
+    * A string value which is a valid Keystone role
+
+Related options:
+    * None
+
+""")),
+    cfg.BoolOpt('send_identity_headers',
+                default=False,
+                help=_("""
+Send headers received from identity when making requests to
+registry.
+
+Typically, Glance registry can be deployed in multiple flavors,
+which may or may not include authentication. For example,
+``trusted-auth`` is a flavor that does not require the registry
+service to authenticate the requests it receives. However, the
+registry service may still need a user context to be populated to
+serve the requests. This can be achieved by the caller
+(the Glance API usually) passing through the headers it received
+from authenticating with identity for the same request. The typical
+headers sent are ``X-User-Id``, ``X-Tenant-Id``, ``X-Roles``,
+``X-Identity-Status`` and ``X-Service-Catalog``.
+
+Provide a boolean value to determine whether to send the identity
+headers to provide tenant and user information along with the
+requests to registry service. By default, this option is set to
+``False``, which means that user and tenant information is not
+available readily. It must be obtained by authenticating. Hence, if
+this is set to ``False``, ``flavor`` must be set to value that
+either includes authentication or authenticated user context.
+
+Possible values:
+    * True
+    * False
+
+Related options:
+    * flavor
+
+""")),
 ]
 
 scrubber_cmd_opts = [
-    cfg.IntOpt('wakeup_time', default=300,
-               help=_('Loop time between checking for new '
-                      'items to schedule for delete.'))
+    cfg.IntOpt('wakeup_time', default=300, min=0,
+               help=_("""
+Time interval, in seconds, between scrubber runs in daemon mode.
+
+Scrubber can be run either as a cron job or daemon. When run as a daemon, this
+configuration time specifies the time period between two runs. When the
+scrubber wakes up, it fetches and scrubs all ``pending_delete`` images that
+are available for scrubbing after taking ``scrub_time`` into consideration.
+
+If the wakeup time is set to a large number, there may be a large number of
+images to be scrubbed for each run. Also, this impacts how quickly the backend
+storage is reclaimed.
+
+Possible values:
+    * Any non-negative integer
+
+Related options:
+    * ``daemon``
+    * ``delayed_delete``
+
+"""))
 ]
 
 scrubber_cmd_cli_opts = [
     cfg.BoolOpt('daemon',
                 short='D',
                 default=False,
-                help=_('Run as a long-running process. When not '
-                       'specified (the default) run the scrub operation '
-                       'once and then exits. When specified do not exit '
-                       'and run scrub on wakeup_time interval as '
-                       'specified in the config.'))
+                help=_("""
+Run scrubber as a daemon.
+
+This boolean configuration option indicates whether scrubber should
+run as a long-running process that wakes up at regular intervals to
+scrub images. The wake up interval can be specified using the
+configuration option ``wakeup_time``.
+
+If this configuration option is set to ``False``, which is the
+default value, scrubber runs once to scrub images and exits. In this
+case, if the operator wishes to implement continuous scrubbing of
+images, scrubber needs to be scheduled as a cron job.
+
+Possible values:
+    * True
+    * False
+
+Related options:
+    * ``wakeup_time``
+
+"""))
 ]
 
 CONF = cfg.CONF
