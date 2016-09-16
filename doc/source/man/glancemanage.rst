@@ -8,7 +8,7 @@ Glance Management Utility
 
 :Author: glance@lists.launchpad.net
 :Date:   2016-10-6
-:Copyright: OpenStack LLC
+:Copyright: OpenStack Foundation
 :Version: 13.0.0
 :Manual section: 1
 :Manual group: cloud computing
@@ -48,10 +48,6 @@ COMMANDS
 
   **db_upgrade <VERSION>**
         This will take an existing database and upgrade it to the
-        specified VERSION.
-
-  **db_downgrade <VERSION>**
-        This will take an existing database and downgrade it to the
         specified VERSION.
 
   **db_version_control**

@@ -69,6 +69,7 @@ Installing/Configuring Glance
 
    installing
    configuring
+   sample-configuration
    authentication
    policies
    image-location-strategy-modules
@@ -76,6 +77,7 @@ Installing/Configuring Glance
    flows
    property-protections
    opts/index
+   requirements
 
 Operating Glance
 ================

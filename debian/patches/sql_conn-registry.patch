@@ -3,29 +3,29 @@ Author: Thomas Goirand <zigo@debian.org>
 Forwarded: no
 Last-Update: 2014-04-15
 
-Index: glance/etc/glance-api.conf
+Index: deb-glance/etc/glance-api.conf
 ===================================================================
---- glance.orig/etc/glance-api.conf
-+++ glance/etc/glance-api.conf
-@@ -646,7 +646,7 @@
+--- deb-glance.orig/etc/glance-api.conf
++++ deb-glance/etc/glance-api.conf
+@@ -1745,7 +1745,7 @@
  # Deprecated group/name - [DEFAULT]/sql_connection
  # Deprecated group/name - [DATABASE]/sql_connection
  # Deprecated group/name - [sql]/connection
 -#connection = <None>
 +connection = sqlite:////var/lib/glance/glancedb
  
- # The SQLAlchemy connection string to use to connect to the slave
- # database. (string value)
-Index: glance/etc/glance-registry.conf
+ # The SQLAlchemy connection string to use to connect to the slave database.
+ # (string value)
+Index: deb-glance/etc/glance-registry.conf
 ===================================================================
---- glance.orig/etc/glance-registry.conf
-+++ glance/etc/glance-registry.conf
-@@ -417,7 +417,7 @@
+--- deb-glance.orig/etc/glance-registry.conf
++++ deb-glance/etc/glance-registry.conf
+@@ -1035,7 +1035,7 @@
  # Deprecated group/name - [DEFAULT]/sql_connection
  # Deprecated group/name - [DATABASE]/sql_connection
  # Deprecated group/name - [sql]/connection
 -#connection = <None>
 +connection = sqlite:////var/lib/glance/glancedb
  
- # The SQLAlchemy connection string to use to connect to the slave
- # database. (string value)
+ # The SQLAlchemy connection string to use to connect to the slave database.
+ # (string value)
