@@ -1,0 +1,265 @@
+{
+    "links": [
+        {
+            "href": "{first}",
+            "rel": "first"
+        },
+        {
+            "href": "{next}",
+            "rel": "next"
+        },
+        {
+            "href": "{schema}",
+            "rel": "describedby"
+        }
+    ],
+    "name": "images",
+    "properties": {
+        "first": {
+            "type": "string"
+        },
+        "images": {
+            "items": {
+                "additionalProperties": {
+                    "type": "string"
+                },
+                "links": [
+                    {
+                        "href": "{self}",
+                        "rel": "self"
+                    },
+                    {
+                        "href": "{file}",
+                        "rel": "enclosure"
+                    },
+                    {
+                        "href": "{schema}",
+                        "rel": "describedby"
+                    }
+                ],
+                "name": "image",
+                "properties": {
+                    "architecture": {
+                        "description": "Operating system architecture as specified in http://docs.openstack.org/trunk/openstack-compute/admin/content/adding-images.html",
+                        "is_base": false,
+                        "type": "string"
+                    },
+                    "checksum": {
+                        "description": "md5 hash of image contents.",
+                        "maxLength": 32,
+                        "readOnly": true,
+                        "type": [
+                            "null",
+                            "string"
+                        ]
+                    },
+                    "container_format": {
+                        "description": "Format of the container",
+                        "enum": [
+                            null,
+                            "ami",
+                            "ari",
+                            "aki",
+                            "bare",
+                            "ovf",
+                            "ova",
+                            "docker"
+                        ],
+                        "type": [
+                            "null",
+                            "string"
+                        ]
+                    },
+                    "created_at": {
+                        "description": "Date and time of image registration",
+                        "readOnly": true,
+                        "type": "string"
+                    },
+                    "direct_url": {
+                        "description": "URL to access the image file kept in external store",
+                        "readOnly": true,
+                        "type": "string"
+                    },
+                    "disk_format": {
+                        "description": "Format of the disk",
+                        "enum": [
+                            null,
+                            "ami",
+                            "ari",
+                            "aki",
+                            "vhd",
+                            "vmdk",
+                            "raw",
+                            "qcow2",
+                            "vdi",
+                            "iso"
+                        ],
+                        "type": [
+                            "null",
+                            "string"
+                        ]
+                    },
+                    "file": {
+                        "description": "An image file url",
+                        "readOnly": true,
+                        "type": "string"
+                    },
+                    "id": {
+                        "description": "An identifier for the image",
+                        "pattern": "^([0-9a-fA-F]){8}-([0-9a-fA-F]){4}-([0-9a-fA-F]){4}-([0-9a-fA-F]){4}-([0-9a-fA-F]){12}$",
+                        "type": "string"
+                    },
+                    "instance_uuid": {
+                        "description": "Metadata which can be used to record which instance this image is associated with. (Informational only, does not create an instance snapshot.)",
+                        "is_base": false,
+                        "type": "string"
+                    },
+                    "kernel_id": {
+                        "description": "ID of image stored in Glance that should be used as the kernel when booting an AMI-style image.",
+                        "is_base": false,
+                        "pattern": "^([0-9a-fA-F]){8}-([0-9a-fA-F]){4}-([0-9a-fA-F]){4}-([0-9a-fA-F]){4}-([0-9a-fA-F]){12}$",
+                        "type": [
+                            "null",
+                            "string"
+                        ]
+                    },
+                    "locations": {
+                        "description": "A set of URLs to access the image file kept in external store",
+                        "items": {
+                            "properties": {
+                                "metadata": {
+                                    "type": "object"
+                                },
+                                "url": {
+                                    "maxLength": 255,
+                                    "type": "string"
+                                }
+                            },
+                            "required": [
+                                "url",
+                                "metadata"
+                            ],
+                            "type": "object"
+                        },
+                        "type": "array"
+                    },
+                    "min_disk": {
+                        "description": "Amount of disk space (in GB) required to boot image.",
+                        "type": "integer"
+                    },
+                    "min_ram": {
+                        "description": "Amount of ram (in MB) required to boot image.",
+                        "type": "integer"
+                    },
+                    "name": {
+                        "description": "Descriptive name for the image",
+                        "maxLength": 255,
+                        "type": [
+                            "null",
+                            "string"
+                        ]
+                    },
+                    "os_distro": {
+                        "description": "Common name of operating system distribution as specified in http://docs.openstack.org/trunk/openstack-compute/admin/content/adding-images.html",
+                        "is_base": false,
+                        "type": "string"
+                    },
+                    "os_version": {
+                        "description": "Operating system version as specified by the distributor",
+                        "is_base": false,
+                        "type": "string"
+                    },
+                    "owner": {
+                        "description": "Owner of the image",
+                        "maxLength": 255,
+                        "type": [
+                            "null",
+                            "string"
+                        ]
+                    },
+                    "protected": {
+                        "description": "If true, image will not be deletable.",
+                        "type": "boolean"
+                    },
+                    "ramdisk_id": {
+                        "description": "ID of image stored in Glance that should be used as the ramdisk when booting an AMI-style image.",
+                        "is_base": false,
+                        "pattern": "^([0-9a-fA-F]){8}-([0-9a-fA-F]){4}-([0-9a-fA-F]){4}-([0-9a-fA-F]){4}-([0-9a-fA-F]){12}$",
+                        "type": [
+                            "null",
+                            "string"
+                        ]
+                    },
+                    "schema": {
+                        "description": "An image schema url",
+                        "readOnly": true,
+                        "type": "string"
+                    },
+                    "self": {
+                        "description": "An image self url",
+                        "readOnly": true,
+                        "type": "string"
+                    },
+                    "size": {
+                        "description": "Size of image file in bytes",
+                        "readOnly": true,
+                        "type": [
+                            "null",
+                            "integer"
+                        ]
+                    },
+                    "status": {
+                        "description": "Status of the image",
+                        "enum": [
+                            "queued",
+                            "saving",
+                            "active",
+                            "killed",
+                            "deleted",
+                            "pending_delete",
+                            "deactivated"
+                        ],
+                        "readOnly": true,
+                        "type": "string"
+                    },
+                    "tags": {
+                        "description": "List of strings related to the image",
+                        "items": {
+                            "maxLength": 255,
+                            "type": "string"
+                        },
+                        "type": "array"
+                    },
+                    "updated_at": {
+                        "description": "Date and time of the last image modification",
+                        "readOnly": true,
+                        "type": "string"
+                    },
+                    "virtual_size": {
+                        "description": "Virtual size of image in bytes",
+                        "readOnly": true,
+                        "type": [
+                            "null",
+                            "integer"
+                        ]
+                    },
+                    "visibility": {
+                        "description": "Scope of image accessibility",
+                        "enum": [
+                            "public",
+                            "private"
+                        ],
+                        "type": "string"
+                    }
+                }
+            },
+            "type": "array"
+        },
+        "next": {
+            "type": "string"
+        },
+        "schema": {
+            "type": "string"
+        }
+    }
+}
