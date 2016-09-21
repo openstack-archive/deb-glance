@@ -1,0 +1,9 @@
+Code-Review+2: Thomas Goirand <thomas@goirand.fr>
+Workflow+1: Thomas Goirand <thomas@goirand.fr>
+Code-Review+1: Praveen N <npraveen35@gmail.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Wed, 21 Sep 2016 08:34:15 +0000
+Reviewed-on: https://review.openstack.org/373842
+Project: openstack/deb-glance
+Branch: refs/heads/debian/newton
