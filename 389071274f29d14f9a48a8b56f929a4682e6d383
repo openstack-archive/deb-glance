@@ -1,0 +1,10 @@
+Code-Review+2: Ian Cordasco <ian.cordasco@rackspace.com>
+Code-Review+1: Kairat Kushaev <kkushaev@mirantis.com>
+Code-Review+2: Mike Fedosin <mfedosin@mirantis.com>
+Workflow+1: Mike Fedosin <mfedosin@mirantis.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Tue, 20 Sep 2016 14:04:31 +0000
+Reviewed-on: https://review.openstack.org/368609
+Project: openstack/deb-glance
+Branch: refs/heads/stable/mitaka
