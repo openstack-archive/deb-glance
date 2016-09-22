@@ -1,0 +1,9 @@
+Code-Review+2: Nikhil Komawar <nik.komawar@gmail.com>
+Code-Review+1: Peter Hamilton <peter.hamilton@jhuapl.edu>
+Workflow+1: Nikhil Komawar <nik.komawar@gmail.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Tue, 20 Sep 2016 14:55:11 +0000
+Reviewed-on: https://review.openstack.org/371322
+Project: openstack/deb-glance
+Branch: refs/heads/stable/newton
