@@ -1,0 +1,11 @@
+Code-Review+2: Hemanth Makkapati <hemanth.makkapati@rackspace.com>
+Code-Review+1: Dharini Chandrasekar <dharini.chandrasekar@intel.com>
+Code-Review+1: Steve Lewis (stevelle) <steve.lewis@rackspace.com>
+Code-Review+2: Kairat Kushaev <kkushaev@mirantis.com>
+Workflow+1: Kairat Kushaev <kkushaev@mirantis.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Wed, 21 Sep 2016 07:45:42 +0000
+Reviewed-on: https://review.openstack.org/361233
+Project: openstack/deb-glance
+Branch: refs/heads/master
