@@ -1,0 +1,10 @@
+Code-Review+2: Brian Rosmaita <brian.rosmaita@rackspace.com>
+Code-Review+2: Nikhil Komawar <nik.komawar@gmail.com>
+Code-Review+1: Nam Nguyen Hoai <namnh@vn.fujitsu.com>
+Workflow+1: Brian Rosmaita <brian.rosmaita@rackspace.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Mon, 26 Sep 2016 22:09:47 +0000
+Reviewed-on: https://review.openstack.org/366474
+Project: openstack/deb-glance
+Branch: refs/heads/master
