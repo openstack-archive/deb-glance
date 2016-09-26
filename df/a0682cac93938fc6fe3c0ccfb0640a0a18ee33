@@ -1,0 +1,9 @@
+Code-Review+2: Ian Cordasco <ian.cordasco@rackspace.com>
+Code-Review+2: Hemanth Makkapati <hemanth.makkapati@rackspace.com>
+Workflow+1: Hemanth Makkapati <hemanth.makkapati@rackspace.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 23 Sep 2016 20:05:46 +0000
+Reviewed-on: https://review.openstack.org/359402
+Project: openstack/deb-glance
+Branch: refs/heads/master
