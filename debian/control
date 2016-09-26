@@ -85,8 +85,8 @@ Build-Depends-Indep: bandit,
                      subunit,
                      testrepository,
 Standards-Version: 3.9.8
-Vcs-Browser: https://git.openstack.org/cgit/openstack/deb-glance
-Vcs-Git: https://git.openstack.org/openstack/deb-glance
+Vcs-Browser: https://git.openstack.org/cgit/openstack/deb-glance?h=debian%2Fnewton
+Vcs-Git: https://git.openstack.org/openstack/deb-glance -b debian/newton
 Homepage: https://github.com/openstack/glance
 
 Package: python-glance
