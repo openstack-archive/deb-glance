@@ -1,0 +1,9 @@
+Code-Review+2: Ian Cordasco <sigmavirus24@gmail.com>
+Code-Review+2: Erno Kuvaja <jokke@usr.fi>
+Workflow+1: Brian Rosmaita <brian.rosmaita@rackspace.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Wed, 28 Sep 2016 11:58:14 +0000
+Reviewed-on: https://review.openstack.org/378025
+Project: openstack/deb-glance
+Branch: refs/heads/stable/newton
