@@ -1,0 +1,9 @@
+Code-Review+2: Brian Rosmaita <brian.rosmaita@rackspace.com>
+Code-Review+2: Nikhil Komawar <nik.komawar@gmail.com>
+Workflow+1: Erno Kuvaja <jokke@usr.fi>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Tue, 27 Sep 2016 23:38:51 +0000
+Reviewed-on: https://review.openstack.org/371618
+Project: openstack/deb-glance
+Branch: refs/heads/stable/newton
