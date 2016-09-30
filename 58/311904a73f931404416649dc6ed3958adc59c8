@@ -1,0 +1,10 @@
+Code-Review+2: Ian Cordasco <sigmavirus24@gmail.com>
+Code-Review+1: Hemanth Makkapati <hemanth.makkapati@rackspace.com>
+Code-Review+2: Erno Kuvaja <jokke@usr.fi>
+Workflow+1: Erno Kuvaja <jokke@usr.fi>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 30 Sep 2016 10:55:34 +0000
+Reviewed-on: https://review.openstack.org/378012
+Project: openstack/deb-glance
+Branch: refs/heads/stable/liberty
