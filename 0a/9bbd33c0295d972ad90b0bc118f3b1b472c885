@@ -1,0 +1,11 @@
+Code-Review+2: Stuart McLaren <stuart.mclaren@hpe.com>
+Code-Review+2: Erno Kuvaja <jokke@usr.fi>
+Workflow+1: Erno Kuvaja <jokke@usr.fi>
+Code-Review+2: Ian Cordasco <sigmavirus24@gmail.com>
+Code-Review+1: Dharini Chandrasekar <dharini.chandrasekar@intel.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 30 Sep 2016 15:56:46 +0000
+Reviewed-on: https://review.openstack.org/380173
+Project: openstack/deb-glance
+Branch: refs/heads/master
