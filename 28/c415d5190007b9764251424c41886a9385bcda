@@ -1,0 +1,8 @@
+Code-Review+2: Erno Kuvaja <jokke@usr.fi>
+Workflow+1: Erno Kuvaja <jokke@usr.fi>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 07 Oct 2016 11:08:19 +0000
+Reviewed-on: https://review.openstack.org/383109
+Project: openstack/deb-glance
+Branch: refs/heads/master
