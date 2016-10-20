@@ -1,0 +1,12 @@
+Code-Review+1: Alexander Bashmakov <alexander.bashmakov@intel.com>
+Code-Review+2: Hemanth Makkapati <hemanth.makkapati@rackspace.com>
+Code-Review+1: dane-fichter <dane.fichter@jhuapl.edu>
+Code-Review+1: Dharini Chandrasekar <dharini.chandrasekar@intel.com>
+Code-Review+2: Brian Rosmaita <brian.rosmaita@rackspace.com>
+Workflow+1: Brian Rosmaita <brian.rosmaita@rackspace.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Wed, 19 Oct 2016 18:15:24 +0000
+Reviewed-on: https://review.openstack.org/360372
+Project: openstack/deb-glance
+Branch: refs/heads/master
