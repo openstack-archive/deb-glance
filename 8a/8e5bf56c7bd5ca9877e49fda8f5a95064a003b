@@ -1,0 +1,10 @@
+Code-Review+2: Brian Rosmaita <brian.rosmaita@rackspace.com>
+Code-Review+1: Alexander Bashmakov <alexander.bashmakov@intel.com>
+Code-Review+2: Kairat Kushaev <kkushaev@mirantis.com>
+Workflow+1: Kairat Kushaev <kkushaev@mirantis.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 21 Oct 2016 08:54:28 +0000
+Reviewed-on: https://review.openstack.org/360378
+Project: openstack/deb-glance
+Branch: refs/heads/master
