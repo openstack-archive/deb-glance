@@ -1,0 +1,10 @@
+Code-Review+1: Alexander Bashmakov <alexander.bashmakov@intel.com>
+Code-Review+1: Peter Hamilton <peter.hamilton@jhuapl.edu>
+Code-Review+2: Ian Cordasco <sigmavirus24@gmail.com>
+Workflow+1: Ian Cordasco <sigmavirus24@gmail.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Mon, 14 Nov 2016 14:31:09 +0000
+Reviewed-on: https://review.openstack.org/391909
+Project: openstack/deb-glance
+Branch: refs/heads/master
