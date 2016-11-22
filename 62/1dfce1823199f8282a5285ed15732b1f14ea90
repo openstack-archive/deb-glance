@@ -1,0 +1,12 @@
+Code-Review+2: Brian Rosmaita <brian.rosmaita@rackspace.com>
+Code-Review+1: Steve Lewis (stevelle) <steve.lewis@rackspace.com>
+Code-Review+1: Peter Hamilton <peter.hamilton@jhuapl.edu>
+Code-Review+1: Dharini Chandrasekar <dharini.chandrasekar@intel.com>
+Code-Review+2: Kairat Kushaev <kkushaev@mirantis.com>
+Workflow+1: Kairat Kushaev <kkushaev@mirantis.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Tue, 22 Nov 2016 04:03:23 +0000
+Reviewed-on: https://review.openstack.org/354387
+Project: openstack/deb-glance
+Branch: refs/heads/master
