@@ -1,0 +1,8 @@
+Code-Review+2: Matt Riedemann <mriedem@us.ibm.com>
+Workflow+1: Matt Riedemann <mriedem@us.ibm.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Thu, 08 Dec 2016 20:50:19 +0000
+Reviewed-on: https://review.openstack.org/408196
+Project: openstack/deb-glance
+Branch: refs/heads/stable/liberty
