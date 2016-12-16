@@ -1,0 +1,9 @@
+Code-Review+2: Brian Rosmaita <brian.rosmaita@rackspace.com>
+Workflow+1: Brian Rosmaita <brian.rosmaita@rackspace.com>
+Code-Review+1: Christos Zonios <czonios@gmail.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 16 Dec 2016 03:22:27 +0000
+Reviewed-on: https://review.openstack.org/408088
+Project: openstack/deb-glance
+Branch: refs/heads/master
