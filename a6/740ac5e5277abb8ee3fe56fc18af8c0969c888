@@ -1,0 +1,9 @@
+Code-Review+2: Ian Cordasco <sigmavirus24@gmail.com>
+Code-Review+2: Kairat Kushaev <kkushaev@mirantis.com>
+Workflow+1: Ian Cordasco <sigmavirus24@gmail.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 16 Dec 2016 19:06:49 +0000
+Reviewed-on: https://review.openstack.org/411092
+Project: openstack/deb-glance
+Branch: refs/heads/master
