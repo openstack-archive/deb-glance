@@ -1,0 +1,14 @@
+Code-Review+2: Nikhil Komawar <nik.komawar@gmail.com>
+Code-Review+1: iswarya vakati <v.iswarya@nectechnologies.in>
+Code-Review+1: Peter Hamilton <peter.hamilton@jhuapl.edu>
+Code-Review+1: Juan Antonio Osorio Robles <jaosorior@redhat.com>
+Code-Review+1: Dharini Chandrasekar <dharini.chandrasekar@intel.com>
+Code-Review+1: Brianna Poulos <Brianna.Poulos@jhuapl.edu>
+Code-Review+2: Steve Lewis (stevelle) <steve.lewis@rackspace.com>
+Workflow+1: Steve Lewis (stevelle) <steve.lewis@rackspace.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 06 Jan 2017 02:00:39 +0000
+Reviewed-on: https://review.openstack.org/364840
+Project: openstack/deb-glance
+Branch: refs/heads/master
