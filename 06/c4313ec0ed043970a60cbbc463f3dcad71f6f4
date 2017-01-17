@@ -1,0 +1,10 @@
+Code-Review+2: Steve Lewis (stevelle) <steve.lewis@rackspace.com>
+Code-Review+1: wanghongtaozz <wanghongtaozz@inspur.com>
+Code-Review+2: Mike Fedosin <mfedosin@gmail.com>
+Workflow+1: Mike Fedosin <mfedosin@gmail.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Mon, 16 Jan 2017 10:39:28 +0000
+Reviewed-on: https://review.openstack.org/409140
+Project: openstack/deb-glance
+Branch: refs/heads/master
