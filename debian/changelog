@@ -1,5 +1,6 @@
 glance (2:13.0.0-2) unstable; urgency=medium
 
+  * Team upload.
   * Bumped debhelper compat version to 10
   * Patch-out upper constraints of SQLAlchemy
 
