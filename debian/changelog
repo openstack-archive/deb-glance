@@ -1,8 +1,9 @@
-glance (2:13.0.0-2) UNRELEASED; urgency=medium
+glance (2:13.0.0-2) unstable; urgency=medium
 
   * Bumped debhelper compat version to 10
+  * Patch-out upper constraints of SQLAlchemy
 
- -- Ondřej Nový <onovy@debian.org>  Wed, 23 Nov 2016 23:58:32 +0100
+ -- Ondřej Nový <onovy@debian.org>  Fri, 20 Jan 2017 11:26:08 +0100
 
 glance (2:13.0.0-1) unstable; urgency=medium
 

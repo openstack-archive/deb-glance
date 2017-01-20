@@ -1,3 +1,4 @@
 sql_conn-registry.patch
 fix-test_multiprocessing.py-call-to-psutils.patch
 fix-requirements.txt.patch
+allow_newer_sqlalchemy.patch
