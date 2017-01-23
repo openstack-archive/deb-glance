@@ -1,0 +1,9 @@
+Code-Review+2: Brian Rosmaita <brian.rosmaita@rackspace.com>
+Code-Review+1: Dharini Chandrasekar <dharini.chandrasekar@intel.com>
+Workflow+1: Brian Rosmaita <brian.rosmaita@rackspace.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Sat, 21 Jan 2017 03:39:48 +0000
+Reviewed-on: https://review.openstack.org/423499
+Project: openstack/deb-glance
+Branch: refs/heads/master
