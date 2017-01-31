@@ -1,0 +1,9 @@
+Code-Review+2: Ian Cordasco <sigmavirus24@gmail.com>
+Code-Review+2: Nikhil Komawar <nik.komawar@gmail.com>
+Workflow+1: Nikhil Komawar <nik.komawar@gmail.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Tue, 31 Jan 2017 08:35:38 +0000
+Reviewed-on: https://review.openstack.org/426603
+Project: openstack/deb-glance
+Branch: refs/heads/master
