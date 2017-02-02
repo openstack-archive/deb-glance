@@ -1,0 +1,9 @@
+Code-Review+2: Ian Cordasco <sigmavirus24@gmail.com>
+Code-Review+2: Dharini Chandrasekar <dharini.chandrasekar@intel.com>
+Workflow+1: Dharini Chandrasekar <dharini.chandrasekar@intel.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Wed, 01 Feb 2017 05:13:06 +0000
+Reviewed-on: https://review.openstack.org/426283
+Project: openstack/deb-glance
+Branch: refs/heads/master
