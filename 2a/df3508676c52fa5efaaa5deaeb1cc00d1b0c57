@@ -1,0 +1,8 @@
+Code-Review+2: Ondřej Nový <novy@ondrej.org>
+Workflow+1: Ondřej Nový <novy@ondrej.org>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Sat, 18 Mar 2017 21:26:04 +0000
+Reviewed-on: https://review.openstack.org/447230
+Project: openstack/deb-glance
+Branch: refs/heads/debian/newton
