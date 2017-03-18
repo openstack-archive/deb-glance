@@ -2,7 +2,7 @@ Source: glance
 Section: net
 Priority: extra
 Maintainer: PKG OpenStack <openstack-devel@lists.alioth.debian.org>
-Uploaders: Thomas Goirand <zigo@debian.org>,
+Uploaders: Thomas Goirand <zigo@debian.org>, David Rabel <david.rabel@noresoft.com>
 Build-Depends: debhelper (>= 10),
                dh-python,
                dh-systemd,
@@ -206,6 +206,7 @@ Depends: adduser,
          glance-common (= ${source:Version}),
          python-openstackclient,
          q-text-as-data,
+         net-tools,
          ${misc:Depends},
          ${ostack-lsb-base},
          ${python:Depends},
