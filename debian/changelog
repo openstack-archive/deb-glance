@@ -1,3 +1,11 @@
+glance (2:13.0.0-3) unstable; urgency=medium
+
+  * Team upload.
+  * Added dependency: net-tools
+  * Closes: #858123
+
+ -- David Rabel <david.rabel@noresoft.com>  Sat, 18 Mar 2017 19:06:26 +0100
+
 glance (2:13.0.0-2) unstable; urgency=medium
 
   * Team upload.
