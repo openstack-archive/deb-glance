@@ -20,7 +20,6 @@ Various conveniences used for migration scripts
 from oslo_log import log as logging
 import sqlalchemy.types
 
-from glance.i18n import _LI
 
 
 LOG = logging.getLogger(__name__)
@@ -97,11 +96,11 @@ def from_migration_import(module_name, fromlist):
 
 def create_tables(tables):
     for table in tables:
-        LOG.info(_LI("creating table %(table)s"), {'table': table})
+        LOG.info("creating table %(table)s", {'table': table})
         table.create()
 
 
 def drop_tables(tables):
     for table in tables:
-        LOG.info(_LI("dropping table %(table)s"), {'table': table})
+        LOG.info("dropping table %(table)s", {'table': table})
         table.drop()

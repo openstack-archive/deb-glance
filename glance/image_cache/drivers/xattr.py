@@ -66,7 +66,7 @@ import six
 import xattr
 
 from glance.common import exception
-from glance.i18n import _, _LI, _LW
+from glance.i18n import _
 from glance.image_cache.drivers import base
 
 LOG = logging.getLogger(__name__)
@@ -335,16 +335,16 @@ class Driver(base.Driver):
         :param image_id: Image ID
         """
         if self.is_cached(image_id):
-            LOG.info(_LI("Not queueing image '%s'. Already cached."), image_id)
+            LOG.info("Not queueing image '%s'. Already cached.", image_id)
             return False
 
         if self.is_being_cached(image_id):
-            LOG.info(_LI("Not queueing image '%s'. Already being "
-                         "written to cache"), image_id)
+            LOG.info("Not queueing image '%s'. Already being "
+                         "written to cache", image_id)
             return False
 
         if self.is_queued(image_id):
-            LOG.info(_LI("Not queueing image '%s'. Already queued."), image_id)
+            LOG.info("Not queueing image '%s'. Already queued.", image_id)
             return False
 
         path = self.get_image_filepath(image_id, 'queue')
@@ -389,7 +389,7 @@ class Driver(base.Driver):
                 delete_cached_file(path)
                 reaped += 1
 
-        LOG.info(_LI("Reaped %(reaped)s %(entry_type)s cache entries"),
+        LOG.info("Reaped %(reaped)s %(entry_type)s cache entries",
                  {'reaped': reaped, 'entry_type': entry_type})
         return reaped
 
@@ -436,8 +436,8 @@ def delete_cached_file(path):
         LOG.debug("Deleting image cache file '%s'", path)
         os.unlink(path)
     else:
-        LOG.warn(_LW("Cached image file '%s' doesn't exist, unable to"
-                     " delete") % path)
+        LOG.warn("Cached image file '%s' doesn't exist, unable to"
+                     " delete" % path)
 
 
 def _make_namespaced_xattr_key(key, namespace='user'):

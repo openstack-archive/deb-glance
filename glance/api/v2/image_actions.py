@@ -23,7 +23,6 @@ from glance.common import utils
 from glance.common import wsgi
 import glance.db
 import glance.gateway
-from glance.i18n import _LI
 import glance.notifier
 
 
@@ -50,7 +49,7 @@ class ImageActionsController(object):
             # not necessary to change the status if it's already 'deactivated'
             if status == 'active':
                 image_repo.save(image, from_state='active')
-            LOG.info(_LI("Image %s is deactivated"), image_id)
+            LOG.info("Image %s is deactivated", image_id)
         except exception.NotFound as e:
             raise webob.exc.HTTPNotFound(explanation=e.msg)
         except exception.Forbidden as e:
@@ -69,7 +68,7 @@ class ImageActionsController(object):
             # not necessary to change the status if it's already 'active'
             if status == 'deactivated':
                 image_repo.save(image, from_state='deactivated')
-            LOG.info(_LI("Image %s is reactivated"), image_id)
+            LOG.info("Image %s is reactivated", image_id)
         except exception.NotFound as e:
             raise webob.exc.HTTPNotFound(explanation=e.msg)
         except exception.Forbidden as e:

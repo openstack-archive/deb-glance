@@ -23,7 +23,6 @@ from oslo_log import log as logging
 
 from glance.common import exception
 from glance import context
-from glance.i18n import _LI, _LW
 from glance.image_cache import base
 import glance.registry.client.v1.api as registry
 
@@ -43,12 +42,12 @@ class Prefetcher(base.CacheApp):
         try:
             image_meta = registry.get_image_metadata(ctx, image_id)
             if image_meta['status'] != 'active':
-                LOG.warn(_LW("Image '%s' is not active. Not caching.") %
+                LOG.warn("Image '%s' is not active. Not caching." %
                          image_id)
                 return False
 
         except exception.NotFound:
-            LOG.warn(_LW("No metadata found for image '%s'") % image_id)
+            LOG.warn("No metadata found for image '%s'" % image_id)
             return False
 
         location = image_meta['location']
@@ -76,9 +75,9 @@ class Prefetcher(base.CacheApp):
         results = pool.imap(self.fetch_image_into_cache, images)
         successes = sum([1 for r in results if r is True])
         if successes != num_images:
-            LOG.warn(_LW("Failed to successfully cache all "
-                         "images in queue."))
+            LOG.warn("Failed to successfully cache all "
+                         "images in queue.")
             return False
 
-        LOG.info(_LI("Successfully cached all %d images"), num_images)
+        LOG.info("Successfully cached all %d images", num_images)
         return True

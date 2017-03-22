@@ -49,7 +49,7 @@ from glance.common import store_utils
 from glance.common import timeutils
 from glance.common import utils
 from glance.common import wsgi
-from glance.i18n import _, _LE, _LI, _LW
+from glance.i18n import _
 from glance import notifier
 import glance.registry.client.v1.api as registry
 
@@ -658,8 +658,8 @@ class Controller(controller.BaseController):
                                                               dest=store)
             except Exception:
                 upload_utils.safe_kill(req, image_meta['id'], 'queued')
-                msg = (_LE("Copy from external source '%(scheme)s' failed for "
-                           "image: %(image)s") %
+                msg = ("Copy from external source '%(scheme)s' failed for "
+                           "image: %(image)s" %
                        {'scheme': scheme, 'image': image_meta['id']})
                 LOG.exception(msg)
                 return
@@ -746,8 +746,8 @@ class Controller(controller.BaseController):
         """
         location_data = self._upload(req, image_meta)
         image_id = image_meta['id']
-        LOG.info(_LI("Uploaded data of image %s from request "
-                     "payload successfully."), image_id)
+        LOG.info("Uploaded data of image %s from request "
+                     "payload successfully.", image_id)
 
         if location_data:
             try:
@@ -761,10 +761,10 @@ class Controller(controller.BaseController):
                 with excutils.save_and_reraise_exception():
                     # NOTE(zhiyan): Delete image data since it has already
                     # been added to store by above _upload() call.
-                    LOG.warn(_LW("Failed to activate image %s in "
+                    LOG.warn("Failed to activate image %s in "
                                  "registry. About to delete image "
                                  "bits from store and update status "
-                                 "to 'killed'.") % image_id)
+                                 "to 'killed'." % image_id)
                     upload_utils.initiate_deletion(req, location_data,
                                                    image_id)
                     upload_utils.safe_kill(req, image_id, 'saving')
@@ -811,7 +811,7 @@ class Controller(controller.BaseController):
                                                              image_meta)
             image_meta = self._upload_and_activate(req, image_meta)
         elif copy_from:
-            msg = _LI('Triggering asynchronous copy from external source')
+            msg = 'Triggering asynchronous copy from external source'
             LOG.info(msg)
             pool = common.get_thread_pool("copy_from_eventlet_pool")
             pool.spawn_n(self._upload_and_activate, req, image_meta)

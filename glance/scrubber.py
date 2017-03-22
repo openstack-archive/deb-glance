@@ -27,7 +27,7 @@ from glance.common import crypt
 from glance.common import exception
 from glance import context
 import glance.db as db_api
-from glance.i18n import _, _LC, _LE, _LI, _LW
+from glance.i18n import _
 import glance.registry.client.v1.api as registry
 
 LOG = logging.getLogger(__name__)
@@ -345,8 +345,8 @@ def get_scrub_queue():
 
 class Daemon(object):
     def __init__(self, wakeup_time=300, threads=100):
-        LOG.info(_LI("Starting Daemon: wakeup_time=%(wakeup_time)s "
-                     "threads=%(threads)s"),
+        LOG.info("Starting Daemon: wakeup_time=%(wakeup_time)s "
+                     "threads=%(threads)s",
                  {'wakeup_time': wakeup_time, 'threads': threads})
         self.wakeup_time = wakeup_time
         self.event = eventlet.event.Event()
@@ -360,7 +360,7 @@ class Daemon(object):
         try:
             self.event.wait()
         except KeyboardInterrupt:
-            msg = _LI("Daemon Shutdown on KeyboardInterrupt")
+            msg = "Daemon Shutdown on KeyboardInterrupt"
             LOG.info(msg)
 
     def _run(self, application):
@@ -372,7 +372,7 @@ class Daemon(object):
 
 class Scrubber(object):
     def __init__(self, store_api):
-        LOG.info(_LI("Initializing scrubber with configuration: %s"),
+        LOG.info("Initializing scrubber with configuration: %s",
                  six.text_type({'registry_host': CONF.registry_host,
                                 'registry_port': CONF.registry_port}))
 
@@ -411,7 +411,7 @@ class Scrubber(object):
         except Exception as err:
             # Note(dharinic): spawn_n, in Daemon mode will log the
             # exception raised. Otherwise, exit 1 will occur.
-            msg = (_LC("Can not get scrub jobs from queue: %s") %
+            msg = ("Can not get scrub jobs from queue: %s" %
                    encodeutils.exception_to_unicode(err))
             LOG.critical(msg)
             raise exception.FailedToGetScrubberJobs()
@@ -433,7 +433,7 @@ class Scrubber(object):
         if len(delete_jobs) == 0:
             return
 
-        LOG.info(_LI("Scrubbing image %(id)s from %(count)d locations."),
+        LOG.info("Scrubbing image %(id)s from %(count)d locations.",
                  {'id': image_id, 'count': len(delete_jobs)})
 
         success = True
@@ -447,11 +447,11 @@ class Scrubber(object):
             image = self.registry.get_image(image_id)
             if image['status'] == 'pending_delete':
                 self.registry.update_image(image_id, {'status': 'deleted'})
-            LOG.info(_LI("Image %s has been scrubbed successfully"), image_id)
+            LOG.info("Image %s has been scrubbed successfully", image_id)
         else:
-            LOG.warn(_LW("One or more image locations couldn't be scrubbed "
+            LOG.warn("One or more image locations couldn't be scrubbed "
                          "from backend. Leaving image '%s' in 'pending_delete'"
-                         " status") % image_id)
+                         " status" % image_id)
 
     def _delete_image_location_from_backend(self, image_id, loc_id, uri):
         if CONF.metadata_encryption_key:
@@ -461,19 +461,19 @@ class Scrubber(object):
             try:
                 self.store_api.delete_from_backend(uri, self.admin_context)
             except store_exceptions.NotFound:
-                LOG.info(_LI("Image location for image '%s' not found in "
+                LOG.info("Image location for image '%s' not found in "
                              "backend; Marking image location deleted in "
-                             "db."), image_id)
+                             "db.", image_id)
 
             if loc_id != '-':
                 db_api.get_api().image_location_delete(self.admin_context,
                                                        image_id,
                                                        int(loc_id),
                                                        'deleted')
-            LOG.info(_LI("Image %s is scrubbed from a location."), image_id)
+            LOG.info("Image %s is scrubbed from a location.", image_id)
         except Exception as e:
-            LOG.error(_LE("Unable to scrub image %(id)s from a location. "
-                          "Reason: %(exc)s ") %
+            LOG.error("Unable to scrub image %(id)s from a location. "
+                          "Reason: %(exc)s " %
                       {'id': image_id,
                        'exc': encodeutils.exception_to_unicode(e)})
             raise

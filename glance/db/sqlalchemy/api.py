@@ -55,7 +55,7 @@ from glance.db.sqlalchemy.metadef_api import tag as metadef_tag_api
 from glance.db.sqlalchemy import models
 from glance.db import utils as db_utils
 from glance import glare as ga
-from glance.i18n import _, _LW, _LI
+from glance.i18n import _
 
 sa_logger = None
 LOG = logging.getLogger(__name__)
@@ -75,7 +75,7 @@ def _retry_on_deadlock(exc):
     """Decorator to retry a DB API call if Deadlock was received."""
 
     if isinstance(exc, db_exception.DBDeadlock):
-        LOG.warn(_LW("Deadlock detected. Retrying..."))
+        LOG.warn("Deadlock detected. Retrying...")
         return True
     return False
 
@@ -132,7 +132,7 @@ def clear_db_env():
 
 def _check_mutate_authorization(context, image_ref):
     if not is_image_mutable(context, image_ref):
-        LOG.warn(_LW("Attempted to modify image user did not own."))
+        LOG.warn("Attempted to modify image user did not own.")
         msg = _("You do not own this image")
         if image_ref.visibility in ['private', 'shared']:
             exc_class = exception.Forbidden
@@ -377,7 +377,7 @@ def _paginate_query(query, model, limit, sort_keys, marker=None,
     if 'id' not in sort_keys:
         # TODO(justinsb): If this ever gives a false-positive, check
         # the actual primary key, rather than assuming its id
-        LOG.warn(_LW('Id not in sort_keys; is sort_keys unique?'))
+        LOG.warn('Id not in sort_keys; is sort_keys unique?')
 
     assert(not (sort_dir and sort_dirs))  # nosec
     # nosec: This function runs safely if the assertion fails.
@@ -1331,7 +1331,7 @@ def purge_deleted_rows(context, age_in_days, max_rows, session=None):
         try:
             tables.remove(tbl)
         except ValueError:
-            LOG.warning(_LW('Expected table %(tbl)s was not found in DB.'),
+            LOG.warning('Expected table %(tbl)s was not found in DB.',
                         {'tbl': tbl})
         else:
             tables.append(tbl)
@@ -1339,8 +1339,8 @@ def purge_deleted_rows(context, age_in_days, max_rows, session=None):
     for tbl in tables:
         tab = Table(tbl, metadata, autoload=True)
         LOG.info(
-            _LI('Purging deleted rows older than %(age_in_days)d day(s) '
-                'from table %(tbl)s'),
+            'Purging deleted rows older than %(age_in_days)d day(s) '
+                'from table %(tbl)s',
             {'age_in_days': age_in_days, 'tbl': tbl})
 
         column = tab.c.id
@@ -1356,7 +1356,7 @@ def purge_deleted_rows(context, age_in_days, max_rows, session=None):
             result = session.execute(delete_statement)
 
         rows = result.rowcount
-        LOG.info(_LI('Deleted %(rows)d row(s) from table %(tbl)s'),
+        LOG.info('Deleted %(rows)d row(s) from table %(tbl)s',
                  {'rows': rows, 'tbl': tbl})
 
 

@@ -27,14 +27,14 @@ from glance.api.v2 import images as v2_api
 from glance.common import exception
 from glance.common.scripts import utils as script_utils
 from glance.common import store_utils
-from glance.i18n import _, _LE, _LI, _LW
+from glance.i18n import _
 
 LOG = logging.getLogger(__name__)
 
 
 def run(t_id, context, task_repo, image_repo, image_factory):
-    LOG.info(_LI('Task %(task_id)s beginning import '
-                 'execution.'), {'task_id': t_id})
+    LOG.info('Task %(task_id)s beginning import '
+                 'execution.', {'task_id': t_id})
     _execute(t_id, task_repo, image_repo, image_factory)
 
 
@@ -67,10 +67,10 @@ def _execute(t_id, task_repo, image_repo, image_factory):
         # necessary
         err_msg = ("Error: " + six.text_type(type(e)) + ': ' +
                    encodeutils.exception_to_unicode(e))
-        log_msg = _LE(err_msg + ("Task ID %s" % task.task_id))  # noqa
+        log_msg = err_msg + ("Task ID %s" % task.task_id)  # noqa
         LOG.exception(log_msg)
 
-        task.fail(_LE(err_msg))  # noqa
+        task.fail(err_msg)  # noqa
     finally:
         task_repo.save(task)
 
@@ -144,17 +144,17 @@ def create_image(image_repo, image_factory, image_properties, task_id):
 def set_image_data(image, uri, task_id):
     data_iter = None
     try:
-        LOG.info(_LI("Task %(task_id)s: Got image data uri %(data_uri)s to be "
-                 "imported"), {"data_uri": uri, "task_id": task_id})
+        LOG.info("Task %(task_id)s: Got image data uri %(data_uri)s to be "
+                 "imported", {"data_uri": uri, "task_id": task_id})
         data_iter = script_utils.get_image_data_iter(uri)
         image.set_data(data_iter)
     except Exception as e:
         with excutils.save_and_reraise_exception():
-            LOG.warn(_LW("Task %(task_id)s failed with exception %(error)s") %
+            LOG.warn("Task %(task_id)s failed with exception %(error)s" %
                      {"error": encodeutils.exception_to_unicode(e),
                       "task_id": task_id})
-            LOG.info(_LI("Task %(task_id)s: Could not import image file"
-                         " %(image_data)s"), {"image_data": uri,
+            LOG.info("Task %(task_id)s: Could not import image file"
+                         " %(image_data)s", {"image_data": uri,
                                               "task_id": task_id})
     finally:
         if hasattr(data_iter, 'close'):

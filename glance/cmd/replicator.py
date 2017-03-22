@@ -34,7 +34,7 @@ from webob import exc
 from glance.common import config
 from glance.common import exception
 from glance.common import utils
-from glance.i18n import _, _LE, _LI, _LW
+from glance.i18n import _
 
 LOG = logging.getLogger(__name__)
 
@@ -384,8 +384,8 @@ def replication_dump(options, args):
         data_path = os.path.join(path, image['id'])
         data_filename = data_path + '.img'
         if not os.path.exists(data_path):
-            LOG.info(_LI('Storing: %(image_id)s (%(image_name)s)'
-                         ' (%(image_size)d bytes) in %(data_filename)s'),
+            LOG.info('Storing: %(image_id)s (%(image_name)s)'
+                         ' (%(image_size)d bytes) in %(data_filename)s',
                      {'image_id': image['id'],
                       'image_name': image.get('name', '--unnamed--'),
                       'image_size': image['size'],
@@ -466,7 +466,7 @@ def replication_load(options, args):
     for ent in os.listdir(path):
         if uuidutils.is_uuid_like(ent):
             image_uuid = ent
-            LOG.info(_LI('Considering: %s'), image_uuid)
+            LOG.info('Considering: %s', image_uuid)
 
             meta_file_name = os.path.join(path, image_uuid)
             with open(meta_file_name) as meta_file:
@@ -492,7 +492,7 @@ def replication_load(options, args):
                         del headers[key]
 
                 if _dict_diff(meta, headers):
-                    LOG.info(_LI('Image %s metadata has changed'), image_uuid)
+                    LOG.info('Image %s metadata has changed', image_uuid)
                     headers, body = client.add_image_meta(meta)
                     _check_upload_response_headers(headers, body)
                     updated.append(meta['id'])
@@ -510,7 +510,7 @@ def replication_load(options, args):
                         _check_upload_response_headers(headers, body)
                         updated.append(meta['id'])
                     except exc.HTTPConflict:
-                        LOG.error(_LE(IMAGE_ALREADY_PRESENT_MESSAGE)
+                        LOG.error(IMAGE_ALREADY_PRESENT_MESSAGE
                                   % image_uuid)  # noqa
 
     return updated
@@ -566,8 +566,8 @@ def replication_livecopy(options, args):
                         del headers[key]
 
                 if _dict_diff(image, headers):
-                    LOG.info(_LI('Image %(image_id)s (%(image_name)s) '
-                                 'metadata has changed'),
+                    LOG.info('Image %(image_id)s (%(image_name)s) '
+                                 'metadata has changed',
                              {'image_id': image['id'],
                               'image_name': image.get('name', '--unnamed--')})
                     headers, body = slave_client.add_image_meta(image)
@@ -575,9 +575,9 @@ def replication_livecopy(options, args):
                     updated.append(image['id'])
 
         elif image['status'] == 'active':
-            LOG.info(_LI('Image %(image_id)s (%(image_name)s) '
+            LOG.info('Image %(image_id)s (%(image_name)s) '
                          '(%(image_size)d bytes) '
-                         'is being synced'),
+                         'is being synced',
                      {'image_id': image['id'],
                       'image_name': image.get('name', '--unnamed--'),
                       'image_size': image['size']})
@@ -589,7 +589,7 @@ def replication_livecopy(options, args):
                     _check_upload_response_headers(headers, body)
                     updated.append(image['id'])
                 except exc.HTTPConflict:
-                    LOG.error(_LE(IMAGE_ALREADY_PRESENT_MESSAGE) % image['id'])  # noqa
+                    LOG.error(IMAGE_ALREADY_PRESENT_MESSAGE % image['id'])  # noqa
 
     return updated
 
@@ -634,9 +634,9 @@ def replication_compare(options, args):
 
             for key in image:
                 if image[key] != headers.get(key, None):
-                    LOG.warn(_LW('%(image_id)s: field %(key)s differs '
+                    LOG.warn('%(image_id)s: field %(key)s differs '
                                  '(source is %(master_value)s, destination '
-                                 'is %(slave_value)s)')
+                                 'is %(slave_value)s)'
                              % {'image_id': image['id'],
                                 'key': key,
                                 'master_value': image[key],
@@ -647,8 +647,8 @@ def replication_compare(options, args):
                               {'image_id': image['id']})
 
         elif image['status'] == 'active':
-            LOG.warn(_LW('Image %(image_id)s ("%(image_name)s") '
-                     'entirely missing from the destination')
+            LOG.warn('Image %(image_id)s ("%(image_name)s") '
+                     'entirely missing from the destination'
                      % {'image_id': image['id'],
                         'image_name': image.get('name', '--unnamed')})
             differences[image['id']] = 'missing'
@@ -750,10 +750,10 @@ def main():
     try:
         command(CONF, CONF.args)
     except TypeError as e:
-        LOG.error(_LE(command.__doc__) % {'prog': command.__name__})  # noqa
+        LOG.error(command.__doc__ % {'prog': command.__name__})  # noqa
         sys.exit("ERROR: %s" % encodeutils.exception_to_unicode(e))
     except ValueError as e:
-        LOG.error(_LE(command.__doc__) % {'prog': command.__name__})  # noqa
+        LOG.error(command.__doc__ % {'prog': command.__name__})  # noqa
         sys.exit("ERROR: %s" % encodeutils.exception_to_unicode(e))
 
 

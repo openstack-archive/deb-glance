@@ -34,7 +34,7 @@ from glance.async import utils
 from glance.common import exception
 from glance.common.scripts.image_import import main as image_import
 from glance.common.scripts import utils as script_utils
-from glance.i18n import _, _LE, _LI
+from glance.i18n import _
 
 
 LOG = logging.getLogger(__name__)
@@ -160,8 +160,8 @@ class _ImportToFS(task.Task):
         except OSError as exc:
             with excutils.save_and_reraise_exception():
                 exc_message = encodeutils.exception_to_unicode(exc)
-                msg = _LE('Failed to execute security checks on the image '
-                          '%(task_id)s: %(exc)s')
+                msg = 'Failed to execute security checks on the image \
+                          %(task_id)s: %(exc)s'
                 LOG.error(msg, {'task_id': self.task_id, 'exc': exc_message})
 
         metadata = json.loads(stdout)
@@ -177,8 +177,8 @@ class _ImportToFS(task.Task):
 
     def revert(self, image_id, result, **kwargs):
         if isinstance(result, failure.Failure):
-            LOG.exception(_LE('Task: %(task_id)s failed to import image '
-                              '%(image_id)s to the filesystem.'),
+            LOG.exception('Task: %(task_id)s failed to import image '
+                              '%(image_id)s to the filesystem.',
                           {'task_id': self.task_id, 'image_id': image_id})
             return
 
@@ -364,8 +364,8 @@ class _CompleteTask(task.Task):
 
             # TODO(nikhil): need to bring back save_and_reraise_exception when
             # necessary
-            log_msg = _LE("Task ID %(task_id)s failed. Error: %(exc_type)s: "
-                          "%(e)s")
+            log_msg = "Task ID %(task_id)s failed. Error: %(exc_type)s: \
+                          %(e)s"
             LOG.exception(log_msg, {'exc_type': six.text_type(type(e)),
                                     'e': encodeutils.exception_to_unicode(e),
                                     'task_id': task.task_id})
@@ -376,7 +376,7 @@ class _CompleteTask(task.Task):
         finally:
             self.task_repo.save(task)
 
-        LOG.info(_LI("%(task_id)s of %(task_type)s completed"),
+        LOG.info("%(task_id)s of %(task_type)s completed",
                  {'task_id': self.task_id, 'task_type': self.task_type})
 
 
@@ -464,7 +464,7 @@ def get_flow(**kwargs):
     except exception.BadTaskConfiguration as exc:
         # NOTE(flaper87): If something goes wrong with the load of
         # import tasks, make sure we go on.
-        LOG.error(_LE('Bad task configuration: %s'), exc.message)
+        LOG.error('Bad task configuration: %s', exc.message)
         flow.add(import_to_store)
 
     flow.add(

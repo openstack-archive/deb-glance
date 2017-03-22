@@ -28,7 +28,7 @@ from glance.common import utils
 from glance.common import wsgi
 import glance.db
 import glance.gateway
-from glance.i18n import _, _LE, _LI
+from glance.i18n import _
 import glance.notifier
 
 
@@ -62,7 +62,7 @@ class ImageDataController(object):
                 image.status = 'queued'
                 image_repo.save(image)
         except Exception as e:
-            msg = (_LE("Unable to restore image %(image_id)s: %(e)s") %
+            msg = ("Unable to restore image %(image_id)s: %(e)s" %
                    {'image_id': image.image_id,
                     'e': encodeutils.exception_to_unicode(e)})
             LOG.exception(msg)
@@ -78,7 +78,7 @@ class ImageDataController(object):
                 image.status = 'killed'
                 image_repo.save(image)
         except Exception as e:
-            msg = (_LE("Unable to delete image %(image_id)s: %(e)s") %
+            msg = ("Unable to delete image %(image_id)s: %(e)s" %
                    {'image_id': image.image_id,
                     'e': encodeutils.exception_to_unicode(e)})
             LOG.exception(msg)
@@ -108,8 +108,8 @@ class ImageDataController(object):
                                                               cxt.tenant,
                                                               roles)
                     except Exception as e:
-                        LOG.info(_LI("Unable to create trust: %s "
-                                     "Use the existing user token."),
+                        LOG.info("Unable to create trust: %s "
+                                     "Use the existing user token.",
                                  encodeutils.exception_to_unicode(e))
 
                 image_repo.save(image, from_state='queued')
@@ -131,7 +131,7 @@ class ImageDataController(object):
                     if refresher is not None:
                         refresher.release_resources()
                 except Exception as e:
-                    LOG.info(_LI("Unable to delete trust %(trust)s: %(msg)s"),
+                    LOG.info("Unable to delete trust %(trust)s: %(msg)s",
                              {"trust": refresher.trust_id,
                               "msg": encodeutils.exception_to_unicode(e)})
 
@@ -228,7 +228,7 @@ class ImageDataController(object):
                                                    request=req)
 
         except cursive_exception.SignatureVerificationError as e:
-            msg = (_LE("Signature verification failed for image %(id)s: %(e)s")
+            msg = ("Signature verification failed for image %(id)s: %(e)s"
                    % {'id': image_id,
                       'e': encodeutils.exception_to_unicode(e)})
             LOG.error(msg)
@@ -237,17 +237,17 @@ class ImageDataController(object):
 
         except webob.exc.HTTPGone as e:
             with excutils.save_and_reraise_exception():
-                LOG.error(_LE("Failed to upload image data due to HTTP error"))
+                LOG.error("Failed to upload image data due to HTTP error")
 
         except webob.exc.HTTPError as e:
             with excutils.save_and_reraise_exception():
-                LOG.error(_LE("Failed to upload image data due to HTTP error"))
+                LOG.error("Failed to upload image data due to HTTP error")
                 self._restore(image_repo, image)
 
         except Exception as e:
             with excutils.save_and_reraise_exception():
-                LOG.exception(_LE("Failed to upload image data due to "
-                                  "internal error"))
+                LOG.exception("Failed to upload image data due to "
+                                  "internal error")
                 self._restore(image_repo, image)
 
     def download(self, req, image_id):

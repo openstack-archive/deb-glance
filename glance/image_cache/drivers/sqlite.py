@@ -31,7 +31,7 @@ from oslo_log import log as logging
 from oslo_utils import excutils
 
 from glance.common import exception
-from glance.i18n import _, _LE, _LI, _LW
+from glance.i18n import _
 from glance.image_cache.drivers import base
 
 LOG = logging.getLogger(__name__)
@@ -340,9 +340,9 @@ class Driver(base.Driver):
                 if os.path.exists(incomplete_path):
                     invalid_path = self.get_image_filepath(image_id, 'invalid')
 
-                    LOG.warn(_LW("Fetch of cache file failed (%(e)s), rolling "
+                    LOG.warn("Fetch of cache file failed (%(e)s), rolling "
                                  "back by moving '%(incomplete_path)s' to "
-                                 "'%(invalid_path)s'") %
+                                 "'%(invalid_path)s'" %
                              {'e': e,
                               'incomplete_path': incomplete_path,
                               'invalid_path': invalid_path})
@@ -405,7 +405,7 @@ class Driver(base.Driver):
         try:
             yield conn
         except sqlite3.DatabaseError as e:
-            msg = _LE("Error executing SQLite call. Got error: %s") % e
+            msg = "Error executing SQLite call. Got error: %s" % e
             LOG.error(msg)
             conn.rollback()
         finally:
@@ -421,16 +421,16 @@ class Driver(base.Driver):
         :param image_id: Image ID
         """
         if self.is_cached(image_id):
-            LOG.info(_LI("Not queueing image '%s'. Already cached."), image_id)
+            LOG.info("Not queueing image '%s'. Already cached.", image_id)
             return False
 
         if self.is_being_cached(image_id):
-            LOG.info(_LI("Not queueing image '%s'. Already being "
-                         "written to cache"), image_id)
+            LOG.info("Not queueing image '%s'. Already being "
+                         "written to cache", image_id)
             return False
 
         if self.is_queued(image_id):
-            LOG.info(_LI("Not queueing image '%s'. Already queued."), image_id)
+            LOG.info("Not queueing image '%s'. Already queued.", image_id)
             return False
 
         path = self.get_image_filepath(image_id, 'queue')
@@ -447,7 +447,7 @@ class Driver(base.Driver):
         """
         for path in self.get_cache_files(self.invalid_dir):
             os.unlink(path)
-            LOG.info(_LI("Removed invalid cache file %s"), path)
+            LOG.info("Removed invalid cache file %s", path)
 
     def delete_stalled_files(self, older_than):
         """
@@ -461,10 +461,10 @@ class Driver(base.Driver):
             if os.path.getmtime(path) < older_than:
                 try:
                     os.unlink(path)
-                    LOG.info(_LI("Removed stalled cache file %s"), path)
+                    LOG.info("Removed stalled cache file %s", path)
                 except Exception as e:
-                    msg = (_LW("Failed to delete file %(path)s. "
-                               "Got error: %(e)s"),
+                    msg = ("Failed to delete file %(path)s. "
+                               "Got error: %(e)s",
                            dict(path=path, e=e))
                     LOG.warn(msg)
 
@@ -500,5 +500,5 @@ def delete_cached_file(path):
         LOG.debug("Deleting image cache file '%s'", path)
         os.unlink(path)
     else:
-        LOG.warn(_LW("Cached image file '%s' doesn't exist, unable to"
-                     " delete") % path)
+        LOG.warn("Cached image file '%s' doesn't exist, unable to"
+                     " delete" % path)

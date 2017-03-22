@@ -28,7 +28,7 @@ from oslo_utils import units
 
 from glance.common import exception
 from glance.common import utils
-from glance.i18n import _, _LE, _LI, _LW
+from glance.i18n import _
 
 LOG = logging.getLogger(__name__)
 
@@ -170,16 +170,16 @@ class ImageCache(object):
         driver_module = (__name__ + '.drivers.' + driver_name + '.Driver')
         try:
             self.driver_class = importutils.import_class(driver_module)
-            LOG.info(_LI("Image cache loaded driver '%s'."), driver_name)
+            LOG.info("Image cache loaded driver '%s'.", driver_name)
         except ImportError as import_err:
-            LOG.warn(_LW("Image cache driver "
+            LOG.warn("Image cache driver "
                          "'%(driver_name)s' failed to load. "
-                         "Got error: '%(import_err)s."),
+                         "Got error: '%(import_err)s.",
                      {'driver_name': driver_name,
                       'import_err': import_err})
 
             driver_module = __name__ + '.drivers.sqlite.Driver'
-            LOG.info(_LI("Defaulting to SQLite driver."))
+            LOG.info("Defaulting to SQLite driver.")
             self.driver_class = importutils.import_class(driver_module)
         self.configure_driver()
 
@@ -193,12 +193,12 @@ class ImageCache(object):
             self.driver.configure()
         except exception.BadDriverConfiguration as config_err:
             driver_module = self.driver_class.__module__
-            LOG.warn(_LW("Image cache driver "
+            LOG.warn("Image cache driver "
                          "'%(driver_module)s' failed to configure. "
-                         "Got error: '%(config_err)s"),
+                         "Got error: '%(config_err)s",
                      {'driver_module': driver_module,
                       'config_err': config_err})
-            LOG.info(_LI("Defaulting to SQLite driver."))
+            LOG.info("Defaulting to SQLite driver.")
             default_module = __name__ + '.drivers.sqlite.Driver'
             self.driver_class = importutils.import_class(default_module)
             self.driver = self.driver_class()
@@ -369,9 +369,9 @@ class ImageCache(object):
                 # bad length), or corrupt data (checksum is wrong).
                 LOG.exception(encodeutils.exception_to_unicode(e))
         except Exception as e:
-            LOG.exception(_LE("Exception encountered while tee'ing "
+            LOG.exception("Exception encountered while tee'ing "
                               "image '%(image_id)s' into cache: %(error)s. "
-                              "Continuing with response.") %
+                              "Continuing with response." %
                           {'image_id': image_id,
                            'error': encodeutils.exception_to_unicode(e)})
 

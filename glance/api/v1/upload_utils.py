@@ -23,7 +23,7 @@ from glance.common import exception
 from glance.common import store_utils
 from glance.common import utils
 import glance.db
-from glance.i18n import _, _LE, _LI
+from glance.i18n import _
 import glance.registry.client.v1.api as registry
 
 
@@ -73,7 +73,7 @@ def safe_kill(req, image_id, from_state):
     try:
         _kill(req, image_id, from_state)
     except Exception:
-        LOG.exception(_LE("Unable to kill image %(id)s: ") % {'id': image_id})
+        LOG.exception("Unable to kill image %(id)s: " % {'id': image_id})
 
 
 def upload_data_to_store(req, image_meta, image_data, store, notifier):
@@ -120,8 +120,8 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
                 req.context, size, db_api, image_id=image_id)
         except exception.StorageQuotaFull:
             with excutils.save_and_reraise_exception():
-                LOG.info(_LI('Cleaning up %s after exceeding '
-                             'the quota'), image_id)
+                LOG.info('Cleaning up %s after exceeding '
+                             'the quota', image_id)
                 store_utils.safe_delete_from_backend(
                     req.context, image_meta['id'], location_data)
 
@@ -267,7 +267,7 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
         # but something in the above function calls is affecting the
         # exception context and we must explicitly re-raise the
         # caught exception.
-        msg = _LE("Received HTTP error while uploading image %s") % image_id
+        msg = "Received HTTP error while uploading image %s" % image_id
         notifier.error('image.upload', msg)
         with excutils.save_and_reraise_exception():
             LOG.exception(msg)

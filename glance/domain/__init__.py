@@ -26,7 +26,7 @@ import six
 
 from glance.common import exception
 from glance.common import timeutils
-from glance.i18n import _, _LE, _LI, _LW
+from glance.i18n import _
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
@@ -400,14 +400,14 @@ class Task(object):
     def _set_task_status(self, new_status):
         if self._validate_task_status_transition(self.status, new_status):
             self._status = new_status
-            LOG.info(_LI("Task [%(task_id)s] status changing from "
-                         "%(cur_status)s to %(new_status)s"),
+            LOG.info("Task [%(task_id)s] status changing from "
+                         "%(cur_status)s to %(new_status)s",
                      {'task_id': self.task_id, 'cur_status': self.status,
                       'new_status': new_status})
             self._status = new_status
         else:
-            LOG.error(_LE("Task [%(task_id)s] status failed to change from "
-                          "%(cur_status)s to %(new_status)s"),
+            LOG.error("Task [%(task_id)s] status failed to change from "
+                          "%(cur_status)s to %(new_status)s",
                       {'task_id': self.task_id, 'cur_status': self.status,
                        'new_status': new_status})
             raise exception.InvalidTaskStatusTransition(
@@ -496,8 +496,8 @@ class TaskExecutorFactory(object):
                 # NOTE(jokke): Making sure we do not log the deprecation
                 # warning 1000 times or anything crazy like that.
                 if not TaskExecutorFactory.eventlet_deprecation_warned:
-                    msg = _LW("The `eventlet` executor has been deprecated. "
-                              "Use `taskflow` instead.")
+                    msg = "The `eventlet` executor has been deprecated. \
+                              Use `taskflow` instead."
                     LOG.warn(msg)
                     TaskExecutorFactory.eventlet_deprecation_warned = True
                 task_executor = 'taskflow'
@@ -512,8 +512,8 @@ class TaskExecutorFactory(object):
                             self.image_factory)
         except ImportError:
             with excutils.save_and_reraise_exception():
-                LOG.exception(_LE("Failed to load the %s executor provided "
-                                  "in the config.") % CONF.task.task_executor)
+                LOG.exception("Failed to load the %s executor provided "
+                                  "in the config." % CONF.task.task_executor)
 
 
 class MetadefNamespace(object):

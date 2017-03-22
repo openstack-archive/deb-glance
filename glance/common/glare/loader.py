@@ -21,7 +21,7 @@ from stevedore import enabled
 
 from glance.common import exception
 from glance.common.glare import definitions
-from glance.i18n import _, _LE, _LI, _LW
+from glance.i18n import _
 from oslo_log import log as logging
 
 LOG = logging.getLogger(__name__)
@@ -88,7 +88,7 @@ class ArtifactsPluginLoader(object):
         try:
             self.mgr.map(_add_extension)
         except RuntimeError as re:
-            LOG.error(_LE("Unable to load artifacts: %s") % re.message)
+            LOG.error("Unable to load artifacts: %s" % re.message)
 
     def _version(self, artifact):
         return semantic_version.Version.coerce(artifact.metadata.type_version)
@@ -117,13 +117,13 @@ class ArtifactsPluginLoader(object):
         """generates check_func for EnabledExtensionManager"""
 
         def _all_forbidden(ext):
-            LOG.warn(_LW("Can't load artifact %s: load disabled in config") %
+            LOG.warn("Can't load artifact %s: load disabled in config" %
                      ext.name)
             raise exception.ArtifactLoadError(name=ext.name)
 
         def _all_allowed(ext):
             LOG.info(
-                _LI("Artifact %s has been successfully loaded"), ext.name)
+                "Artifact %s has been successfully loaded", ext.name)
             return True
 
         if not CONF.load_enabled:
@@ -143,11 +143,11 @@ class ArtifactsPluginLoader(object):
                      if n == ext.plugin.metadata.type_name and
                      (v is None or v == ext.plugin.metadata.type_version))
             except StopIteration:
-                LOG.warn(_LW("Can't load artifact %s: not in"
-                             " available_plugins list") % ext.name)
+                LOG.warn("Can't load artifact %s: not in"
+                             " available_plugins list" % ext.name)
                 raise exception.ArtifactLoadError(name=ext.name)
             LOG.info(
-                _LI("Artifact %s has been successfully loaded"), ext.name)
+                "Artifact %s has been successfully loaded", ext.name)
             return True
 
         return _check_ext
@@ -156,7 +156,7 @@ class ArtifactsPluginLoader(object):
     # face to face with an Exception and tries to swallow it and print sth
     # irrelevant instead of expected error message
     def _on_load_failure(self, manager, ep, exc):
-        msg = (_LE("Could not load plugin from %(module)s") %
+        msg = ("Could not load plugin from %(module)s" %
                {"module": ep.module_name})
         LOG.exception(msg)
         raise exc

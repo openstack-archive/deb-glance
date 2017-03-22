@@ -33,7 +33,7 @@ from sqlalchemy.schema import MetaData
 from sqlalchemy.sql import select
 
 from glance.common import timeutils
-from glance.i18n import _, _LE, _LI, _LW
+from glance.i18n import _
 
 LOG = logging.getLogger(__name__)
 
@@ -177,7 +177,7 @@ def _clear_metadata(meta):
 
     for table in metadef_tables:
         table.delete().execute()
-        LOG.info(_LI("Table %s has been cleared"), table)
+        LOG.info("Table %s has been cleared", table)
 
 
 def _clear_namespace_metadata(meta, namespace_id):
@@ -210,7 +210,7 @@ def _populate_metadata(meta, metadata_path=None, merge=False,
         return
 
     if not json_schema_files:
-        LOG.error(_LE("Json schema files not found in %s. Aborting."),
+        LOG.error("Json schema files not found in %s. Aborting.",
                   metadata_path)
         return
 
@@ -227,8 +227,8 @@ def _populate_metadata(meta, metadata_path=None, merge=False,
             with open(file) as json_file:
                 metadata = json.load(json_file)
         except Exception as e:
-            LOG.error(_LE("Failed to parse json file %(file_path)s while "
-                          "populating metadata due to: %(error_msg)s"),
+            LOG.error("Failed to parse json file %(file_path)s while "
+                          "populating metadata due to: %(error_msg)s",
                       {"file_path": file,
                        "error_msg": encodeutils.exception_to_unicode(e)})
             continue
@@ -251,7 +251,7 @@ def _populate_metadata(meta, metadata_path=None, merge=False,
         ).execute().fetchone()
 
         if db_namespace and overwrite:
-            LOG.info(_LI("Overwriting namespace %s"), values['namespace'])
+            LOG.info("Overwriting namespace %s", values['namespace'])
             _clear_namespace_metadata(meta, db_namespace[0])
             db_namespace = None
 
@@ -267,8 +267,8 @@ def _populate_metadata(meta, metadata_path=None, merge=False,
                 namespaces_table
             ).execute().fetchone()
         elif not merge:
-            LOG.info(_LI("Skipping namespace %s. It already exists in the "
-                         "database."), values['namespace'])
+            LOG.info("Skipping namespace %s. It already exists in the "
+                         "database.", values['namespace'])
             continue
         elif prefer_new:
             values.update({'updated_at': timeutils.utcnow()})
@@ -358,9 +358,9 @@ def _populate_metadata(meta, metadata_path=None, merge=False,
                 _update_data_in_db(tags_table, values,
                                    tags_table.c.id, tag_id)
 
-        LOG.info(_LI("File %s loaded to database."), file)
+        LOG.info("File %s loaded to database.", file)
 
-    LOG.info(_LI("Metadata loading finished"))
+    LOG.info("Metadata loading finished")
 
 
 def _insert_data_to_db(table, values, log_exception=True):
@@ -368,7 +368,7 @@ def _insert_data_to_db(table, values, log_exception=True):
         table.insert(values=values).execute()
     except sqlalchemy.exc.IntegrityError:
         if log_exception:
-            LOG.warning(_LW("Duplicate entry for values: %s"), values)
+            LOG.warning("Duplicate entry for values: %s", values)
 
 
 def _update_data_in_db(table, values, column, value):
@@ -376,7 +376,7 @@ def _update_data_in_db(table, values, column, value):
         (table.update(values=values).
          where(column == value).execute())
     except sqlalchemy.exc.IntegrityError:
-        LOG.warning(_LW("Duplicate entry for values: %s"), values)
+        LOG.warning("Duplicate entry for values: %s", values)
 
 
 def _update_rt_association(table, values, rt_id, namespace_id):
@@ -385,7 +385,7 @@ def _update_rt_association(table, values, rt_id, namespace_id):
          where(and_(table.c.resource_type_id == rt_id,
                     table.c.namespace_id == namespace_id)).execute())
     except sqlalchemy.exc.IntegrityError:
-        LOG.warning(_LW("Duplicate entry for values: %s"), values)
+        LOG.warning("Duplicate entry for values: %s", values)
 
 
 def _export_data_to_file(meta, path):
@@ -465,12 +465,12 @@ def _export_data_to_file(meta, path):
         try:
             file_name = ''.join([path, namespace_file_name, '.json'])
             if isfile(file_name):
-                LOG.info(_LI("Overwriting: %s"), file_name)
+                LOG.info("Overwriting: %s", file_name)
             with open(file_name, 'w') as json_file:
                 json_file.write(json.dumps(values))
         except Exception as e:
             LOG.exception(encodeutils.exception_to_unicode(e))
-        LOG.info(_LI("Namespace %(namespace)s saved in %(file)s"), {
+        LOG.info("Namespace %(namespace)s saved in %(file)s", {
             'namespace': namespace_file_name, 'file': file_name})
 
 
@@ -480,13 +480,13 @@ def db_load_metadefs(engine, metadata_path=None, merge=False,
     meta.bind = engine
 
     if not merge and (prefer_new or overwrite):
-        LOG.error(_LE("To use --prefer_new or --overwrite you need to combine "
-                      "of these options with --merge option."))
+        LOG.error("To use --prefer_new or --overwrite you need to combine "
+                      "of these options with --merge option.")
         return
 
     if prefer_new and overwrite and merge:
-        LOG.error(_LE("Please provide no more than one option from this list: "
-                      "--prefer_new, --overwrite"))
+        LOG.error("Please provide no more than one option from this list: "
+                      "--prefer_new, --overwrite")
         return
 
     _populate_metadata(meta, metadata_path, merge, prefer_new, overwrite)

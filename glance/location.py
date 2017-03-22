@@ -28,7 +28,7 @@ from oslo_utils import excutils
 from glance.common import exception
 from glance.common import utils
 import glance.domain.proxy
-from glance.i18n import _, _LE, _LI, _LW
+from glance.i18n import _
 
 
 CONF = cfg.CONF
@@ -442,7 +442,7 @@ class ImageProxy(glance.domain.proxy.Image):
         if verifier:
             try:
                 verifier.verify()
-                LOG.info(_LI("Successfully verified signature for image %s"),
+                LOG.info("Successfully verified signature for image %s",
                          self.image.image_id)
             except crypto_exception.InvalidSignature:
                 raise cursive_exception.SignatureVerificationError(
@@ -474,14 +474,14 @@ class ImageProxy(glance.domain.proxy.Image):
 
                 return data
             except Exception as e:
-                LOG.warn(_LW('Get image %(id)s data failed: '
-                             '%(err)s.')
+                LOG.warn('Get image %(id)s data failed: '
+                             '%(err)s.'
                          % {'id': self.image.image_id,
                             'err': encodeutils.exception_to_unicode(e)})
                 err = e
         # tried all locations
-        LOG.error(_LE('Glance tried all active locations to get data for '
-                      'image %s but all have failed.') % self.image.image_id)
+        LOG.error('Glance tried all active locations to get data for '
+                      'image %s but all have failed.' % self.image.image_id)
         raise err
 
 
