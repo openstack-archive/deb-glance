@@ -1,0 +1,15 @@
+Code-Review+1: Alexander Bashmakov <alexander.bashmakov@intel.com>
+Code-Review+1: Steve Lewis (stevelle) <steve.lewis@rackspace.com>
+Code-Review+1: Mehdi Abaakouk (sileht) <sileht@redhat.com>
+Code-Review+1: Dharini Chandrasekar <dharini.chandrasekar@intel.com>
+Code-Review+2: Brian Rosmaita <brian.rosmaita@rackspace.com>
+Code-Review+1: Davanum Srinivas (dims) <davanum@gmail.com>
+Code-Review+1: soumiyajit <somya.rock@gmail.com>
+Code-Review+2: Hemanth Makkapati <hemanth.makkapati@rackspace.com>
+Workflow+1: Hemanth Makkapati <hemanth.makkapati@rackspace.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 17 Mar 2017 15:49:56 +0000
+Reviewed-on: https://review.openstack.org/419074
+Project: openstack/deb-glance
+Branch: refs/heads/master

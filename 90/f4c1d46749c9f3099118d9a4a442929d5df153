@@ -1,0 +1,15 @@
+Code-Review+1: Brianna Poulos <Brianna.Poulos@jhuapl.edu>
+Code-Review+1: iswarya vakati <v.iswarya@nectechnologies.in>
+Code-Review+2: Brian Rosmaita <brian.rosmaita@rackspace.com>
+Code-Review+1: Kairat Kushaev <kkushaev@mirantis.com>
+Code-Review+1: dane-fichter <dane.fichter@jhuapl.edu>
+Code-Review+1: Abhishek Kekane <abhishek.kekane@nttdata.com>
+Code-Review+1: Jeremy Liu <liujiong@gohighsec.com>
+Code-Review+2: Steve Lewis (stevelle) <steve.lewis@rackspace.com>
+Workflow+1: Steve Lewis (stevelle) <steve.lewis@rackspace.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Wed, 15 Mar 2017 17:29:22 +0000
+Reviewed-on: https://review.openstack.org/376302
+Project: openstack/deb-glance
+Branch: refs/heads/master

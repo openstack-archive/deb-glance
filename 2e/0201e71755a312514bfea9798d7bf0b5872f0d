@@ -1,0 +1,9 @@
+Code-Review+2: Steve Lewis (stevelle) <steve.lewis@rackspace.com>
+Code-Review+2: Nikhil Komawar <nik.komawar@gmail.com>
+Workflow+1: Steve Lewis (stevelle) <steve.lewis@rackspace.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Thu, 23 Mar 2017 17:11:05 +0000
+Reviewed-on: https://review.openstack.org/436528
+Project: openstack/deb-glance
+Branch: refs/heads/master

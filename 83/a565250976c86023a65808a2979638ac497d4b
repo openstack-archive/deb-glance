@@ -1,0 +1,9 @@
+Code-Review+2: Hemanth Makkapati <hemanth.makkapati@rackspace.com>
+Code-Review+2: Nikhil Komawar <nik.komawar@gmail.com>
+Workflow+1: Nikhil Komawar <nik.komawar@gmail.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Tue, 28 Feb 2017 18:01:49 +0000
+Reviewed-on: https://review.openstack.org/436593
+Project: openstack/deb-glance
+Branch: refs/heads/master

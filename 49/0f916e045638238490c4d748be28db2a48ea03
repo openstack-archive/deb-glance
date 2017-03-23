@@ -1,0 +1,9 @@
+Code-Review+2: Ian Cordasco <sigmavirus24@gmail.com>
+Code-Review+2: Steve Lewis (stevelle) <steve.lewis@rackspace.com>
+Workflow+1: Steve Lewis (stevelle) <steve.lewis@rackspace.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 03 Mar 2017 23:05:26 +0000
+Reviewed-on: https://review.openstack.org/437445
+Project: openstack/deb-glance
+Branch: refs/heads/master
