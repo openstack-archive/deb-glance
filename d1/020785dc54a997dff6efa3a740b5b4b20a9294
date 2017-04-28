@@ -1,0 +1,10 @@
+Code-Review+2: Brian Rosmaita <rosmaita.fossdev@gmail.com>
+Code-Review+2: Feilong Wang <flwang@catalyst.net.nz>
+Code-Review+2: Erno Kuvaja <jokke@usr.fi>
+Workflow+1: Erno Kuvaja <jokke@usr.fi>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 28 Apr 2017 12:45:17 +0000
+Reviewed-on: https://review.openstack.org/457050
+Project: openstack/deb-glance
+Branch: refs/heads/master
