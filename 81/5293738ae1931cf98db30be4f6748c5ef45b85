@@ -1,0 +1,9 @@
+Code-Review+2: Feilong Wang <flwang@catalyst.net.nz>
+Code-Review+2: Flavio Percoco <fpercoco@redhat.com>
+Workflow+1: Flavio Percoco <fpercoco@redhat.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Thu, 04 May 2017 17:00:10 +0000
+Reviewed-on: https://review.openstack.org/461089
+Project: openstack/deb-glance
+Branch: refs/heads/master
