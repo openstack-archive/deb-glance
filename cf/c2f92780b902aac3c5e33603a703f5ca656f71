@@ -1,0 +1,8 @@
+Code-Review+2: Brian Rosmaita <rosmaita.fossdev@gmail.com>
+Workflow+1: Brian Rosmaita <rosmaita.fossdev@gmail.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Mon, 22 May 2017 03:48:15 +0000
+Reviewed-on: https://review.openstack.org/464378
+Project: openstack/deb-glance
+Branch: refs/heads/master
