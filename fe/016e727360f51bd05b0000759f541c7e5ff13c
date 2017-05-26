@@ -1,0 +1,9 @@
+Code-Review+2: Brian Rosmaita <rosmaita.fossdev@gmail.com>
+Code-Review+2: Flavio Percoco <fpercoco@redhat.com>
+Workflow+1: Flavio Percoco <fpercoco@redhat.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 26 May 2017 15:45:27 +0000
+Reviewed-on: https://review.openstack.org/391442
+Project: openstack/deb-glance
+Branch: refs/heads/master
