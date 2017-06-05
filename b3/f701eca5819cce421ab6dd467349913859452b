@@ -1,0 +1,9 @@
+Code-Review+2: Brian Rosmaita <rosmaita.fossdev@gmail.com>
+Code-Review+2: Mike Fedosin <mikhail.fedosin.ext@nokia.com>
+Workflow+1: Mike Fedosin <mikhail.fedosin.ext@nokia.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Mon, 05 Jun 2017 14:19:43 +0000
+Reviewed-on: https://review.openstack.org/468835
+Project: openstack/deb-glance
+Branch: refs/heads/master
