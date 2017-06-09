@@ -1,0 +1,10 @@
+Code-Review+1: Abhishek Kekane <abhishek.kekane@nttdata.com>
+Code-Review+2: Mike Fedosin <mikhail.fedosin.ext@nokia.com>
+Code-Review+2: Flavio Percoco <fpercoco@redhat.com>
+Workflow+1: Flavio Percoco <fpercoco@redhat.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 09 Jun 2017 18:09:45 +0000
+Reviewed-on: https://review.openstack.org/443636
+Project: openstack/deb-glance
+Branch: refs/heads/master
