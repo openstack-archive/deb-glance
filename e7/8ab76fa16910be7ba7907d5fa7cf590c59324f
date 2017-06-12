@@ -1,0 +1,16 @@
+Code-Review+1: Abhishek Kekane <abhishek.kekane@nttdata.com>
+Code-Review+1: qtlu <qtlu@fiberhome.com>
+Code-Review+1: Ngo Quoc Cuong <cuongnq@vn.fujitsu.com>
+Code-Review+2: Mike Fedosin <mikhail.fedosin.ext@nokia.com>
+Code-Review+1: Tin Lam <tin@irrational.io>
+Code-Review+1: Sean Dague <sean@dague.net>
+Code-Review+2: Feilong Wang <flwang@catalyst.net.nz>
+Code-Review+1: Sean McGinnis <sean.mcginnis@gmail.com>
+Code-Review+2: Flavio Percoco <fpercoco@redhat.com>
+Workflow+1: Flavio Percoco <fpercoco@redhat.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Mon, 12 Jun 2017 21:24:23 +0000
+Reviewed-on: https://review.openstack.org/462376
+Project: openstack/deb-glance
+Branch: refs/heads/master
