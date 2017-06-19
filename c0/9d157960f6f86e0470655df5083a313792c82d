@@ -1,0 +1,12 @@
+Code-Review+2: Flavio Percoco <fpercoco@redhat.com>
+Code-Review+1: Steve Lewis (stevelle) <stevelle@gmail.com>
+Code-Review+1: Sean McGinnis <sean.mcginnis@gmail.com>
+Code-Review+1: Sean Dague <sean@dague.net>
+Code-Review+2: Erno Kuvaja <jokke@usr.fi>
+Workflow+1: Erno Kuvaja <jokke@usr.fi>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Mon, 19 Jun 2017 19:28:46 +0000
+Reviewed-on: https://review.openstack.org/459474
+Project: openstack/deb-glance
+Branch: refs/heads/master
