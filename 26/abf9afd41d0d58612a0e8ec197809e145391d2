@@ -1,0 +1,10 @@
+Code-Review+2: Mike Fedosin <mikhail.fedosin.ext@nokia.com>
+Code-Review+1: Sean McGinnis <sean.mcginnis@gmail.com>
+Code-Review+2: Abhishek Kekane <abhishek.kekane@nttdata.com>
+Workflow+1: Abhishek Kekane <abhishek.kekane@nttdata.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Wed, 21 Jun 2017 14:10:32 +0000
+Reviewed-on: https://review.openstack.org/475690
+Project: openstack/deb-glance
+Branch: refs/heads/master
