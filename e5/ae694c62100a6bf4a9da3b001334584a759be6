@@ -1,0 +1,13 @@
+Code-Review+1: Dharini Chandrasekar <dharini.chandrasekar@intel.com>
+Code-Review+1: Jamie Lennox <jamielennox@gmail.com>
+Code-Review+1: Dai Dang Van <daidv@vn.fujitsu.com>
+Code-Review+1: Sean Dague <sean@dague.net>
+Code-Review+2: Mike Fedosin <mikhail.fedosin.ext@nokia.com>
+Code-Review+2: Abhishek Kekane <abhishek.kekane@nttdata.com>
+Workflow+1: Abhishek Kekane <abhishek.kekane@nttdata.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 23 Jun 2017 20:44:51 +0000
+Reviewed-on: https://review.openstack.org/354841
+Project: openstack/deb-glance
+Branch: refs/heads/master
