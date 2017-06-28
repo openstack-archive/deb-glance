@@ -1,0 +1,12 @@
+Code-Review+1: Sean McGinnis <sean.mcginnis@gmail.com>
+Code-Review+1: Abhishek Kekane <abhishek.kekane@nttdata.com>
+Code-Review+2: Erno Kuvaja <jokke@usr.fi>
+Code-Review+1: Kairat Kushaev <kkushaev@mirantis.com>
+Code-Review+2: Flavio Percoco <fpercoco@redhat.com>
+Workflow+1: Flavio Percoco <fpercoco@redhat.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Wed, 28 Jun 2017 17:33:25 +0000
+Reviewed-on: https://review.openstack.org/474749
+Project: openstack/deb-glance
+Branch: refs/heads/master
