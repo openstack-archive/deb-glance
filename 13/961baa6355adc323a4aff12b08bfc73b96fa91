@@ -1,0 +1,9 @@
+Code-Review+1: Sean McGinnis <sean.mcginnis@gmail.com>
+Code-Review+2: Erno Kuvaja <jokke@usr.fi>
+Workflow+1: Erno Kuvaja <jokke@usr.fi>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Wed, 28 Jun 2017 14:49:07 +0000
+Reviewed-on: https://review.openstack.org/477085
+Project: openstack/deb-glance
+Branch: refs/heads/master
