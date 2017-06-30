@@ -1,0 +1,8 @@
+Code-Review+2: Flavio Percoco <fpercoco@redhat.com>
+Workflow+1: Flavio Percoco <fpercoco@redhat.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 30 Jun 2017 11:16:30 +0000
+Reviewed-on: https://review.openstack.org/475062
+Project: openstack/deb-glance
+Branch: refs/heads/master

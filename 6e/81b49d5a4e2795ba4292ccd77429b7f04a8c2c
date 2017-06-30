@@ -1,0 +1,9 @@
+Code-Review+1: Sean McGinnis <sean.mcginnis@gmail.com>
+Code-Review+2: Flavio Percoco <fpercoco@redhat.com>
+Workflow+1: Flavio Percoco <fpercoco@redhat.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 30 Jun 2017 11:16:43 +0000
+Reviewed-on: https://review.openstack.org/476526
+Project: openstack/deb-glance
+Branch: refs/heads/master
