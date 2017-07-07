@@ -1,0 +1,10 @@
+Code-Review+2: Abhishek Kekane <abhishek.kekane@nttdata.com>
+Code-Review+1: Eric Fried <efried@us.ibm.com>
+Code-Review+2: Erno Kuvaja <jokke@usr.fi>
+Workflow+1: Erno Kuvaja <jokke@usr.fi>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 07 Jul 2017 12:18:56 +0000
+Reviewed-on: https://review.openstack.org/449108
+Project: openstack/deb-glance
+Branch: refs/heads/master
