@@ -1,0 +1,9 @@
+Code-Review+2: Brian Rosmaita <rosmaita.fossdev@gmail.com>
+Code-Review+2: Abhishek Kekane <abhishek.kekane@nttdata.com>
+Workflow+1: Abhishek Kekane <abhishek.kekane@nttdata.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Wed, 19 Jul 2017 16:09:41 +0000
+Reviewed-on: https://review.openstack.org/482182
+Project: openstack/deb-glance
+Branch: refs/heads/master
