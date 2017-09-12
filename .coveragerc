@@ -1,7 +1,0 @@
-[run]
-branch = True
-source = glance
-omit = glance/tests/*
-
-[report]
-ignore_errors = True
